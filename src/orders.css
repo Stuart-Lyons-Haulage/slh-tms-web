@@ -16,4 +16,6 @@ code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
 .order-card span { color: #007878; margin: 3px 0; }
 .order-card small { color: #637985; }
 .order-card em { display: inline-block; margin-top: 9px; font-style: normal; }
+.order-card.selectable { width: 100%; text-align: left; font-weight: inherit; cursor: pointer; }
+.order-card.selectable.selected { border-color: #007878; background: #eaf7f2; box-shadow: inset 0 0 0 1px #007878; }
 @media (max-width: 900px) { .planning-grid { grid-template-columns: 1fr; } .planner-toolbar { flex-wrap: wrap; } }
