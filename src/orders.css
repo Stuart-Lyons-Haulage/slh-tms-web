@@ -3,3 +3,17 @@ input[type=file] { display: block; margin: 18px 0; }
 .hint { color: #607685; font-size: .9rem; }
 code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
 .inline-notice { margin-top: 18px; }
+.planner-toolbar { display: flex; align-items: center; gap: 18px; margin: -1rem 0 20px; color: #607685; font-size: .9rem; }
+.planner-toolbar label { font-weight: 700; color: #17344a; }
+.planner-toolbar input { margin-left: 8px; padding: .45rem; border: 1px solid #c8d5da; border-radius: 6px; font: inherit; }
+.planning-grid { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(280px, .8fr); gap: 18px; }
+.lane { min-height: 330px; border: 1px solid #dce7ea; border-radius: 10px; background: #f7fafb; padding: 16px; }
+.lane h2 { display: flex; justify-content: space-between; color: #073a5a; margin-bottom: 14px; }
+.lane h2 span { color: #007878; }
+.unallocated { border-top: 4px solid #e7a73b; }
+.order-card { background: white; border: 1px solid #dce7ea; border-radius: 8px; margin: 10px 0; padding: 13px; box-shadow: 0 1px 3px #082e4708; }
+.order-card strong, .order-card span, .order-card small { display: block; }
+.order-card span { color: #007878; margin: 3px 0; }
+.order-card small { color: #637985; }
+.order-card em { display: inline-block; margin-top: 9px; font-style: normal; }
+@media (max-width: 900px) { .planning-grid { grid-template-columns: 1fr; } .planner-toolbar { flex-wrap: wrap; } }
