@@ -1,5 +1,7 @@
 # SLH TMS Web
 
+Container Apps deployment is triggered automatically from the `main` branch.
+
 Production-oriented React and TypeScript operations portal for the [SLH TMS API](https://github.com/danwilliams201302-max/slh-tms-api). The API remains the system of record; this project does not alter backend architecture.
 
 See [`docs/BACKEND_CONTRACT.md`](docs/BACKEND_CONTRACT.md) for the inspected endpoint, model, authentication, and integration inventory.
