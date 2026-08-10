@@ -1,0 +1,5 @@
+.import-panel { display: block; max-width: 850px; margin-bottom: 18px; }
+input[type=file] { display: block; margin: 18px 0; }
+.hint { color: #607685; font-size: .9rem; }
+code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
+.inline-notice { margin-top: 18px; }
