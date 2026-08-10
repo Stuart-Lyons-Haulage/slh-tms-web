@@ -1,9 +1,6 @@
 name: Deploy SLH TMS Web
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
