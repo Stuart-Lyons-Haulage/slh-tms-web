@@ -48,3 +48,4 @@ All `VITE_` values are public build-time configuration. Never put client secrets
 
 - `docs/BACKEND_CONTRACT.md` — current inspected versioned API routes and authentication.
 - `docs/POWER_AUTOMATE_EMAIL_INTAKE.md` — Power Automate email order intake contract.
+- `docs/DRIVER_SMS_DELIVERY.md` — secure Azure Communication Services driver-message setup.
