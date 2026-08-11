@@ -50,7 +50,7 @@ jobs:
             VITE_ENTRA_TENANT_ID=${{ vars.VITE_ENTRA_TENANT_ID }}
             VITE_ENTRA_CLIENT_ID=${{ vars.VITE_ENTRA_CLIENT_ID }}
             VITE_ENTRA_API_SCOPE=${{ vars.VITE_ENTRA_API_SCOPE }}
-            VITE_AZURE_MAPS_CLIENT_ID=${{ vars.VITE_AZURE_MAPS_CLIENT_ID }}
+            VITE_AZURE_MAPS_CLIENT_ID=${{ vars.VITE_AZURE_MAPS_CLIENT_ID || '58e0a4b4-b8e9-42e9-89cc-361ba0f33a5c' }}
 
       - name: Deploy the exact image revision
         run: az containerapp update --name slh-tms-portal-prod --resource-group slh-tms-prod-rg --image slhtmsacrprod.azurecr.io/slh-tms-portal-prod:${{ github.sha }}
