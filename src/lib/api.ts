@@ -5,6 +5,7 @@ export type Trailer = { id: string; trailerNumber: string; type?: string; standa
 export type Site = { id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; mapLink?: string; active: boolean };
 export type MarketContact = { id: string; market: string; name: string; standOrLocation?: string; active: boolean };
 export type StagedImport = { id: string; entityType: string; idempotencyKey: string; payloadJson: string; status: string; source?: string; receivedAtUtc: string; reviewedAtUtc?: string; reviewedBy?: string; reviewNote?: string };
+export type TransportOrder = { id: string; reference: string; customerCode: string; collectionDate: string; deliveryDate?: string; pallets?: number; status: string; sellerName?: string; marketName?: string; stallNumber?: string; driverInstructions?: string; mapLink?: string };
 export type Telemetry = { provider: string; retrievedAtUtc: string; recordCount: number; records: Array<{ vehicleIdentifier: string; eventTimeUtc: string; latitude?: number; longitude?: number; speedKph?: number; isMoving?: boolean; status?: string }> };
 export type StageImportResponse = { stagingId: string; status: string; receivedAtUtc: string; reviewUrl: string };
 export type LoadStop = { id: string; sequence: number; name: string; address?: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string };
@@ -29,6 +30,7 @@ export const api = {
   sites: (token?: string) => request<Site[]>('/api/v1/sites', token),
   marketContacts: (token?: string) => request<MarketContact[]>('/api/v1/market-contacts', token),
   staging: (token?: string) => request<StagedImport[]>('/api/v1/staging?take=100', token),
+  orders: (from?: string, to?: string, token?: string) => request<TransportOrder[]>(`/api/v1/orders?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`, token),
   stageOrder: (payload: Record<string, string>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType: 'order', idempotencyKey, source: 'SLH TMS Web/CSV', payload }) }),
   stageRecord: (entityType: string, payload: Record<string, string | boolean | number | undefined>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType, idempotencyKey, source: 'SLH TMS Web', payload }) }),
   telemetry: (token?: string) => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
