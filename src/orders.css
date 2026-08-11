@@ -42,3 +42,12 @@ main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700
 .planner-workspace { grid-template-columns: minmax(270px, .9fr) minmax(330px, 1.1fr) minmax(290px, .9fr); }
 .lane, .map-panel { border-radius: 12px; box-shadow: 0 2px 8px #082e470d; }
 .planner-toolbar { background: white; border: 1px solid #dce7ea; border-radius: 10px; padding: 12px 14px; margin: -4px 0 18px; }
+.quick-order { background: white; border: 1px solid #dce7ea; border-radius: 12px; padding: 22px; margin-bottom: 18px; box-shadow: 0 2px 8px #082e470d; }
+.quick-order h2 { margin: 5px 0 18px; font-size: 1.25rem; }
+.field-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 18px; }
+.field-grid label { display: grid; gap: 5px; font-size: .78rem; font-weight: 800; color: #46616f; }
+.field-grid input, .field-grid textarea { width: 100%; border: 1px solid #c8d5da; border-radius: 7px; padding: .6rem; font: inherit; color: #17344a; }
+.field-grid textarea { min-height: 72px; resize: vertical; }
+.field-grid .wide { grid-column: span 2; }
+@media (max-width: 900px) { .field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .field-grid { grid-template-columns: 1fr; } .field-grid .wide { grid-column: auto; } .header-context { display: none; } }
