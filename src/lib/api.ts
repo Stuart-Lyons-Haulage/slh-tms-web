@@ -26,6 +26,7 @@ export const api = {
   trailers: (token?: string) => request<Trailer[]>('/api/v1/trailers', token),
   staging: (token?: string) => request<StagedImport[]>('/api/v1/staging?take=100', token),
   stageOrder: (payload: Record<string, string>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType: 'order', idempotencyKey, source: 'SLH TMS Web/CSV', payload }) }),
+  stageRecord: (entityType: string, payload: Record<string, string | boolean>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType, idempotencyKey, source: 'SLH TMS Web', payload }) }),
   telemetry: (token?: string) => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
   loads: (date?: string, token?: string) => request<Load[]>(`/api/v1/loads${date ? `?date=${date}` : ''}`, token),
   createLoad: (payload: CreateLoad, token?: string) => request<Load>('/api/v1/loads', token, { method: 'POST', body: JSON.stringify(payload) }),
