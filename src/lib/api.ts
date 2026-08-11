@@ -29,6 +29,7 @@ export const api = {
   telemetry: (token?: string) => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
   loads: (date?: string, token?: string) => request<Load[]>(`/api/v1/loads${date ? `?date=${date}` : ''}`, token),
   createLoad: (payload: CreateLoad, token?: string) => request<Load>('/api/v1/loads', token, { method: 'POST', body: JSON.stringify(payload) }),
+  allocateLoad: (id: string, payload: { vehicleId?: string; driverId?: string; trailerId?: string }, token?: string) => request<Load>(`/api/v1/loads/${id}/allocation`, token, { method: 'PUT', body: JSON.stringify(payload) }),
   route: (loadId: string, token?: string) => request<Record<string, unknown>>(`/api/v1/loads/${loadId}/route`, token),
   review: (id: string, approved: boolean, note: string, token?: string) => request(`/api/v1/staging/${id}/${approved ? 'approve' : 'reject'}`, token, { method: 'POST', body: JSON.stringify({ note }) })
 };

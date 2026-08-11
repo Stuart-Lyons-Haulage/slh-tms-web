@@ -18,6 +18,9 @@ code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
 .order-card em { display: inline-block; margin-top: 9px; font-style: normal; }
 .order-card.selectable { width: 100%; text-align: left; font-weight: inherit; cursor: pointer; }
 .order-card.selectable.selected { border-color: #007878; background: #eaf7f2; box-shadow: inset 0 0 0 1px #007878; }
+.allocation-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
+.allocation-fields select { min-width: 0; border: 1px solid #c8d5da; border-radius: 6px; padding: .42rem; font: inherit; font-size: .78rem; color: #17344a; }
+.allocation-fields button { grid-column: span 2; padding: .42rem; font-size: .78rem; }
 @media (max-width: 900px) { .planning-grid { grid-template-columns: 1fr; } .planner-toolbar { flex-wrap: wrap; } }
 .planner-workspace { display: grid; grid-template-columns: minmax(250px, .9fr) minmax(280px, 1fr) minmax(260px, .9fr); gap: 16px; }
 .map-panel { background: #fff; border: 1px solid #dce7ea; border-radius: 10px; padding: 16px; } .map-panel h2 { margin: 6px 0 15px; }
