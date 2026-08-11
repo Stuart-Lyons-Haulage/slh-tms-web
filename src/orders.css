@@ -29,6 +29,10 @@ code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
 .route-actions { display: flex; gap: 7px; margin-top: 9px; }
 .route-actions button { padding: .42rem .55rem; font-size: .76rem; }
 .route-summary { margin: 8px 0 0; color: #007878; font-weight: 800; font-size: .8rem; }
+.exception-list { display: grid; gap: 10px; }
+.exception-list article { display: grid; grid-template-columns: 1.1fr 2fr 1.3fr; gap: 10px; align-items: center; border-left: 4px solid #d98536; background: #fff; border-radius: 8px; padding: 14px; box-shadow: 0 1px 5px #082e470b; }
+.exception-list span, .exception-list small { color: #637985; }
+@media (max-width: 700px) { .exception-list article { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .stop-row { grid-template-columns: 1fr 1fr; } .stop-row strong { grid-column: 1 / -1; } }
 @media (max-width: 900px) { .planning-grid { grid-template-columns: 1fr; } .planner-toolbar { flex-wrap: wrap; } }
 .planner-workspace { display: grid; grid-template-columns: minmax(250px, .9fr) minmax(280px, 1fr) minmax(260px, .9fr); gap: 16px; }
