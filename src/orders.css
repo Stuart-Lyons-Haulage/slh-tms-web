@@ -26,6 +26,9 @@ code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
 .stop-row { display: grid; grid-template-columns: 1fr 1fr 82px 82px; gap: 6px; align-items: center; margin: 8px 0; }
 .stop-row strong { font-size: .74rem; }
 .stop-row input { min-width: 0; border: 1px solid #c8d5da; border-radius: 6px; padding: .38rem; font: inherit; font-size: .74rem; }
+.route-actions { display: flex; gap: 7px; margin-top: 9px; }
+.route-actions button { padding: .42rem .55rem; font-size: .76rem; }
+.route-summary { margin: 8px 0 0; color: #007878; font-weight: 800; font-size: .8rem; }
 @media (max-width: 700px) { .stop-row { grid-template-columns: 1fr 1fr; } .stop-row strong { grid-column: 1 / -1; } }
 @media (max-width: 900px) { .planning-grid { grid-template-columns: 1fr; } .planner-toolbar { flex-wrap: wrap; } }
 .planner-workspace { display: grid; grid-template-columns: minmax(250px, .9fr) minmax(280px, 1fr) minmax(260px, .9fr); gap: 16px; }
