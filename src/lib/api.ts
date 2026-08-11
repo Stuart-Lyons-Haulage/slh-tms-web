@@ -1,4 +1,5 @@
 export type Customer = { id: string; code: string; name: string; active: boolean };
+export type CustomerContact = { id: string; customerCode: string; name: string; email?: string; mobileNumber?: string; receivesEtaUpdates: boolean; active: boolean };
 export type Vehicle = { id: string; registration: string; fleetNumber?: string; abbreviation?: string; active: boolean };
 export type Driver = { id: string; employeeNumber: string; displayName: string; mobileNumber?: string; driverType?: string; active: boolean };
 export type Trailer = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; active: boolean };
@@ -25,6 +26,7 @@ export async function request<T>(path: string, token?: string, init?: RequestIni
 
 export const api = {
   customers: (token?: string) => request<Customer[]>('/api/v1/customers', token),
+  customerContacts: (token?: string) => request<CustomerContact[]>('/api/v1/customer-contacts', token),
   vehicles: (token?: string) => request<Vehicle[]>('/api/v1/vehicles', token),
   drivers: (token?: string) => request<Driver[]>('/api/v1/drivers', token),
   trailers: (token?: string) => request<Trailer[]>('/api/v1/trailers', token),
