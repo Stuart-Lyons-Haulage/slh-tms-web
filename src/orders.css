@@ -21,6 +21,12 @@ code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
 .allocation-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
 .allocation-fields select { min-width: 0; border: 1px solid #c8d5da; border-radius: 6px; padding: .42rem; font: inherit; font-size: .78rem; color: #17344a; }
 .allocation-fields button { grid-column: span 2; padding: .42rem; font-size: .78rem; }
+.stop-editor { margin-top: 10px; }
+.stop-editor > button:first-child { padding: .35rem .5rem; font-size: .76rem; }
+.stop-row { display: grid; grid-template-columns: 1fr 1fr 82px 82px; gap: 6px; align-items: center; margin: 8px 0; }
+.stop-row strong { font-size: .74rem; }
+.stop-row input { min-width: 0; border: 1px solid #c8d5da; border-radius: 6px; padding: .38rem; font: inherit; font-size: .74rem; }
+@media (max-width: 700px) { .stop-row { grid-template-columns: 1fr 1fr; } .stop-row strong { grid-column: 1 / -1; } }
 @media (max-width: 900px) { .planning-grid { grid-template-columns: 1fr; } .planner-toolbar { flex-wrap: wrap; } }
 .planner-workspace { display: grid; grid-template-columns: minmax(250px, .9fr) minmax(280px, 1fr) minmax(260px, .9fr); gap: 16px; }
 .map-panel { background: #fff; border: 1px solid #dce7ea; border-radius: 10px; padding: 16px; } .map-panel h2 { margin: 6px 0 15px; }
