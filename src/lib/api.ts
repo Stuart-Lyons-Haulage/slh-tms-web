@@ -2,6 +2,8 @@ export type Customer = { id: string; code: string; name: string; active: boolean
 export type Vehicle = { id: string; registration: string; fleetNumber?: string; abbreviation?: string; active: boolean };
 export type Driver = { id: string; employeeNumber: string; displayName: string; driverType?: string; active: boolean };
 export type Trailer = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; active: boolean };
+export type Site = { id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; mapLink?: string; active: boolean };
+export type MarketContact = { id: string; market: string; name: string; standOrLocation?: string; active: boolean };
 export type StagedImport = { id: string; entityType: string; idempotencyKey: string; payloadJson: string; status: string; source?: string; receivedAtUtc: string; reviewedAtUtc?: string; reviewedBy?: string; reviewNote?: string };
 export type Telemetry = { provider: string; retrievedAtUtc: string; recordCount: number; records: Array<{ vehicleIdentifier: string; eventTimeUtc: string; latitude?: number; longitude?: number; speedKph?: number; isMoving?: boolean; status?: string }> };
 export type StageImportResponse = { stagingId: string; status: string; receivedAtUtc: string; reviewUrl: string };
@@ -24,9 +26,11 @@ export const api = {
   vehicles: (token?: string) => request<Vehicle[]>('/api/v1/vehicles', token),
   drivers: (token?: string) => request<Driver[]>('/api/v1/drivers', token),
   trailers: (token?: string) => request<Trailer[]>('/api/v1/trailers', token),
+  sites: (token?: string) => request<Site[]>('/api/v1/sites', token),
+  marketContacts: (token?: string) => request<MarketContact[]>('/api/v1/market-contacts', token),
   staging: (token?: string) => request<StagedImport[]>('/api/v1/staging?take=100', token),
   stageOrder: (payload: Record<string, string>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType: 'order', idempotencyKey, source: 'SLH TMS Web/CSV', payload }) }),
-  stageRecord: (entityType: string, payload: Record<string, string | boolean>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType, idempotencyKey, source: 'SLH TMS Web', payload }) }),
+  stageRecord: (entityType: string, payload: Record<string, string | boolean | number | undefined>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType, idempotencyKey, source: 'SLH TMS Web', payload }) }),
   telemetry: (token?: string) => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
   loads: (date?: string, token?: string) => request<Load[]>(`/api/v1/loads${date ? `?date=${date}` : ''}`, token),
   createLoad: (payload: CreateLoad, token?: string) => request<Load>('/api/v1/loads', token, { method: 'POST', body: JSON.stringify(payload) }),
