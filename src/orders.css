@@ -40,6 +40,11 @@ code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
 .map-grid { height: 250px; position: relative; overflow: hidden; border-radius: 8px; background: linear-gradient(130deg, #dce8df 0 22%, #b8d2d6 22% 25%, #e7d9c2 25% 46%, #bad5c8 46% 69%, #d6c9e1 69%); }
 .map-grid::before, .map-grid::after { content: ''; position: absolute; background: #fff9; transform: rotate(-24deg); } .map-grid::before { width: 140%; height: 10px; top: 42%; left: -18%; } .map-grid::after { width: 9px; height: 140%; left: 55%; top: -15%; }
 .map-grid i { position: absolute; inset: 28% 20% 26% 28%; border: 3px dashed #007878; border-radius: 50%; } .map-pin { position: absolute; z-index: 1; width: 30px; height: 30px; display:grid; place-items:center; border-radius:50% 50% 50% 0; transform:rotate(-45deg); background:#006d6c; color:#fff; font-weight:800; } .map-pin::first-letter { transform:rotate(45deg); } .pin-one { top: 22%; left: 22%; } .pin-two { top: 52%; left: 55%; background:#e7a73b; } .pin-three { top: 32%; right: 18%; background:#063b5c; }
+.live-map { background: linear-gradient(130deg, #dce8df 0 22%, #b8d2d6 22% 25%, #e7d9c2 25% 46%, #bad5c8 46% 69%, #d6c9e1 69%); }
+.live-map::before { content: ''; position: absolute; width: 160%; height: 7px; top: 46%; left: -25%; background: #fff8; transform: rotate(-20deg); }
+.map-point { position: absolute; z-index: 1; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; color: white; background: #006d6c; font-size: .76rem; font-weight: 850; box-shadow: 0 2px 6px #062e47aa; transform: translate(-50%, -50%); }
+.map-point.vehicle { background: #e07b2e; font-size: 1.15rem; }
+.map-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 40px; text-align: center; color: #526975; }
 @media (max-width: 1100px) { .planner-workspace { grid-template-columns: 1fr 1fr; } .map-panel { grid-column: 1 / -1; } } @media (max-width: 700px) { .planner-workspace { grid-template-columns: 1fr; } .map-panel { grid-column: auto; } }
 
 /* Planner-first operational shell */
