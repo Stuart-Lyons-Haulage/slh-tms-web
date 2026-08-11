@@ -65,6 +65,13 @@ main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700
 .planner-toolbar { background: white; border: 1px solid #dce7ea; border-radius: 10px; padding: 12px 14px; margin: -4px 0 18px; }
 .quick-order { background: white; border: 1px solid #dce7ea; border-radius: 12px; padding: 22px; margin-bottom: 18px; box-shadow: 0 2px 8px #082e470d; }
 .quick-order h2 { margin: 5px 0 18px; font-size: 1.25rem; }
+.export-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.export-card { background: #fff; border: 1px solid #dce7ea; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px #082e470d; display: flex; flex-direction: column; gap: 14px; }
+.export-card h2 { color: #073a5a; }
+.export-card p { color: #637985; margin: 0; min-height: 70px; }
+.export-card button { margin-top: auto; color: #006d6c; }
+.export-note { margin-top: 18px; }
+@media (max-width: 900px) { .export-grid { grid-template-columns: 1fr; } .export-card p { min-height: 0; } }
 .driver-message { margin: 2px 0 18px; padding: 14px 16px; border: 1px solid #b9d9d1; border-radius: 9px; background: #f1faf7; color: #1c4c45; }
 .driver-message strong { font-size: .78rem; }
 .driver-message pre { margin: 10px 0 0; white-space: pre-wrap; font: 500 .84rem/1.55 Inter, ui-sans-serif, system-ui, sans-serif; }
