@@ -85,6 +85,7 @@ main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700
 .export-note { margin-top: 18px; }
 @media (max-width: 900px) { .export-grid { grid-template-columns: 1fr; } .export-card p { min-height: 0; } }
 .driver-message { margin: 2px 0 18px; padding: 14px 16px; border: 1px solid #b9d9d1; border-radius: 9px; background: #f1faf7; color: #1c4c45; }
+.driver-recipient { margin: 9px 0 0; color: #46616f; font-size: .78rem; }.driver-recipient strong { color: #006d6c; }
 .driver-message strong { font-size: .78rem; }
 .driver-message pre { margin: 10px 0 0; white-space: pre-wrap; font: 500 .84rem/1.55 Inter, ui-sans-serif, system-ui, sans-serif; }
 .field-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 18px; }
