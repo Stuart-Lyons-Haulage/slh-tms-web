@@ -39,6 +39,7 @@ export const api = {
   loads: (date?: string, token?: string) => request<Load[]>(`/api/v1/loads${date ? `?date=${date}` : ''}`, token),
   createLoad: (payload: CreateLoad, token?: string) => request<Load>('/api/v1/loads', token, { method: 'POST', body: JSON.stringify(payload) }),
   allocateLoad: (id: string, payload: { vehicleId?: string; driverId?: string; trailerId?: string }, token?: string) => request<Load>(`/api/v1/loads/${id}/allocation`, token, { method: 'PUT', body: JSON.stringify(payload) }),
+  updateLoadStatus: (id: string, status: string, token?: string) => request<Load>(`/api/v1/loads/${id}/status`, token, { method: 'PUT', body: JSON.stringify({ status }) }),
   updateLoadStops: (id: string, stops: Array<{ orderId?: string; name: string; address?: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string }>, token?: string) => request<Load>(`/api/v1/loads/${id}/stops`, token, { method: 'PUT', body: JSON.stringify(stops) }),
   route: (loadId: string, token?: string) => request<Record<string, unknown>>(`/api/v1/loads/${loadId}/route`, token),
   dispatch: (loadId: string, token?: string) => request<LoadDispatch>(`/api/v1/loads/${loadId}/dispatch`, token),
