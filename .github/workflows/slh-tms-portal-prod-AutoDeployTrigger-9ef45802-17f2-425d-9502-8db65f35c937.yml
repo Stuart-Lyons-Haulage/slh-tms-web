@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout to the branch
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Azure Login
         uses: azure/login@v2
@@ -31,17 +31,22 @@ jobs:
           tenant-id: 5aec48a1-c3c7-4cfd-a073-b38ae50041b1
           subscription-id: 29d5b52a-5b9f-4b5a-9495-892f1c2a30f3
 
-      - name: Build and push container image to registry
-        uses: azure/container-apps-deploy-action@v2
+      - name: Sign in to the container registry
+        uses: docker/login-action@v3
         with:
-          appSourcePath: ${{ github.workspace }}
-          registryUrl: slhtmsacrprod.azurecr.io
-          registryUsername: ${{ secrets.SLHTMSPORTALPROD_REGISTRY_USERNAME }}
-          registryPassword: ${{ secrets.SLHTMSPORTALPROD_REGISTRY_PASSWORD }}
-          containerAppName: slh-tms-portal-prod
-          resourceGroup: slh-tms-prod-rg
-          containerAppEnvironment: slh-tms-prod-env
-          dockerfilePath: Dockerfile
-          imageToBuild: slhtmsacrprod.azurecr.io/slh-tms-portal-prod:${{ github.sha }}
+          registry: slhtmsacrprod.azurecr.io
+          username: ${{ secrets.SLHTMSPORTALPROD_REGISTRY_USERNAME }}
+          password: ${{ secrets.SLHTMSPORTALPROD_REGISTRY_PASSWORD }}
+
+      - name: Build and push the portal image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: slhtmsacrprod.azurecr.io/slh-tms-portal-prod:${{ github.sha }}
+
+      - name: Deploy the exact image revision
+        run: az containerapp update --name slh-tms-portal-prod --resource-group slh-tms-prod-rg --image slhtmsacrprod.azurecr.io/slh-tms-portal-prod:${{ github.sha }}
 
 
