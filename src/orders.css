@@ -25,3 +25,20 @@ code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
 .map-grid::before, .map-grid::after { content: ''; position: absolute; background: #fff9; transform: rotate(-24deg); } .map-grid::before { width: 140%; height: 10px; top: 42%; left: -18%; } .map-grid::after { width: 9px; height: 140%; left: 55%; top: -15%; }
 .map-grid i { position: absolute; inset: 28% 20% 26% 28%; border: 3px dashed #007878; border-radius: 50%; } .map-pin { position: absolute; z-index: 1; width: 30px; height: 30px; display:grid; place-items:center; border-radius:50% 50% 50% 0; transform:rotate(-45deg); background:#006d6c; color:#fff; font-weight:800; } .map-pin::first-letter { transform:rotate(45deg); } .pin-one { top: 22%; left: 22%; } .pin-two { top: 52%; left: 55%; background:#e7a73b; } .pin-three { top: 32%; right: 18%; background:#063b5c; }
 @media (max-width: 1100px) { .planner-workspace { grid-template-columns: 1fr 1fr; } .map-panel { grid-column: 1 / -1; } } @media (max-width: 700px) { .planner-workspace { grid-template-columns: 1fr; } .map-panel { grid-column: auto; } }
+
+/* Planner-first operational shell */
+header { height: 72px; padding: 0 30px; gap: 22px; box-shadow: 0 2px 12px #062a4080; }
+.brand { text-decoration: none; color: white; letter-spacing: .05em; }
+.brand span { color: #75d35c; font-size: 1.5rem; }
+.brand small { font-weight: 600; }
+.header-context { display: grid; border-left: 1px solid #ffffff35; padding-left: 22px; }
+.header-context small { color: #b9ccd7; font-size: .74rem; margin-top: 2px; }
+.primary, .header-actions .primary { background: #75d35c; color: #083851; border-color: #75d35c; }
+aside { width: 248px; top: 72px; padding: 18px 13px; }
+.new-order { display: block; border-radius: 8px; background: #75d35c; color: #063b5c; padding: 11px 13px; font-weight: 800; text-decoration: none; margin: 0 5px 22px; }
+aside a:not(.new-order) { padding: 9px 12px; border-radius: 7px; }
+.nav-title { font-size: .68rem; padding: 0 12px 9px; margin-top: 15px; }
+main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700px; }
+.planner-workspace { grid-template-columns: minmax(270px, .9fr) minmax(330px, 1.1fr) minmax(290px, .9fr); }
+.lane, .map-panel { border-radius: 12px; box-shadow: 0 2px 8px #082e470d; }
+.planner-toolbar { background: white; border: 1px solid #dce7ea; border-radius: 10px; padding: 12px 14px; margin: -4px 0 18px; }
