@@ -13,7 +13,11 @@ ENV VITE_AZURE_MAPS_CLIENT_ID=$VITE_AZURE_MAPS_CLIENT_ID
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm run build
+RUN test -n "$VITE_API_BASE_URL" \
+    && test -n "$VITE_ENTRA_TENANT_ID" \
+    && test -n "$VITE_ENTRA_CLIENT_ID" \
+    && test -n "$VITE_ENTRA_API_SCOPE" \
+    && pnpm run build
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf

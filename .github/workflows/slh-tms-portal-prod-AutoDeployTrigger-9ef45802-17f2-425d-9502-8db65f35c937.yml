@@ -46,10 +46,10 @@ jobs:
           push: true
           tags: slhtmsacrprod.azurecr.io/slh-tms-portal-prod:${{ github.sha }}
           build-args: |
-            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }}
-            VITE_ENTRA_TENANT_ID=${{ vars.VITE_ENTRA_TENANT_ID }}
-            VITE_ENTRA_CLIENT_ID=${{ vars.VITE_ENTRA_CLIENT_ID }}
-            VITE_ENTRA_API_SCOPE=${{ vars.VITE_ENTRA_API_SCOPE }}
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || 'https://slh-tms-api-prod.gentlepond-08dba66b.uksouth.azurecontainerapps.io' }}
+            VITE_ENTRA_TENANT_ID=${{ vars.VITE_ENTRA_TENANT_ID || '5aec48a1-c3c7-4cfd-a073-b38ae50041b1' }}
+            VITE_ENTRA_CLIENT_ID=${{ vars.VITE_ENTRA_CLIENT_ID || 'b4d086ae-6e9d-4578-8861-e61410127359' }}
+            VITE_ENTRA_API_SCOPE=${{ vars.VITE_ENTRA_API_SCOPE || 'api://497f6ea5-9753-43ee-8ccf-afaa0a3869c2/Tms.Access' }}
             VITE_AZURE_MAPS_CLIENT_ID=${{ vars.VITE_AZURE_MAPS_CLIENT_ID || '58e0a4b4-b8e9-42e9-89cc-361ba0f33a5c' }}
 
       - name: Deploy the exact image revision
