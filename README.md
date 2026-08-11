@@ -1,49 +1,50 @@
 # SLH TMS Web
 
-Container Apps deployment is triggered automatically from the `main` branch.
+Production React and TypeScript operations portal for the [SLH TMS API](https://github.com/danwilliams201302-max/slh-tms-api). The API and Azure SQL database remain the system of record; this repository only contains the user-facing portal.
 
-Production-oriented React and TypeScript operations portal for the [SLH TMS API](https://github.com/danwilliams201302-max/slh-tms-api). The API remains the system of record; this project does not alter backend architecture.
+The production portal runs in Azure Container Apps and publishes automatically when `main` changes.
 
-See [`docs/BACKEND_CONTRACT.md`](docs/BACKEND_CONTRACT.md) for the inspected endpoint, model, authentication, and integration inventory.
+## Operational workflow
 
-## Current API integration
+1. Enter a single order or upload the supplied Excel/CSV template.
+2. The portal checks required fields, dates, pallets, duplicates and map links before submitting rows to Staging.
+3. A planner reviews the original staged payload, then approves it into an operational order.
+4. The Planner groups approved orders into saved loads, allocates driver/vehicle/trailer, locates stops and draws Azure Maps routes.
+5. The dispatcher copies a driver brief containing seller, market, stall, map link and driver notes. Connect an approved SMS provider before sending messages directly from the portal.
+6. Operations use live and historic RoadTech tracking, exceptions, reporting and CSV exports to control the day.
 
-The current backend exposes authenticated master data, approval staging, and RoadTech Falcon telemetry. Those pages are live in this portal:
-
-- **Operations dashboard**: staging review count.
-- **Staging review**: list, approve, and reject staged imports.
-- **Live tracking**: `/api/v1/tracking/dot/telemetry` provider view.
-- **Master data & CRM**: customers, vehicles, drivers, and trailers.
-
-Order intake, planning, loads, allocation, exceptions, reporting, exports, and admin are navigable operational workspaces. They deliberately show a readiness state until versioned API endpoints exist. This avoids inventing client-side records or bypassing the staging approval model.
+`docs/POWER_AUTOMATE_EMAIL_INTAKE.md` defines the safe Power Automate email-to-staging handoff. Email automation must never bypass Staging approval.
 
 ## Local development
 
-1. Copy `.env.example` to `.env.local` and enter your App Service URL plus Entra registration values.
-2. Create a single-tenant Entra **SPA** app registration, add `http://localhost:5173` as a redirect URI, and grant delegated access to `api://<API-CLIENT-ID>/Tms.Access`.
+1. Copy `.env.example` to `.env.local` and enter the API and Entra values.
+2. In Entra, configure a single-tenant SPA registration with `http://localhost:5173` as a redirect URI and delegated access to `api://<API-CLIENT-ID>/Tms.Access`.
 3. Install dependencies with `npm install`, then run `npm run dev`.
 
-The API requires bearer tokens issued by the configured tenant, for the `Tms.Access` delegated scope. The frontend uses MSAL with session storage and obtains this scope before every API call. The API must allow the frontend origin through CORS before browsers can call it; configure CORS in the existing API deployment rather than weakening authentication.
+The API requires a bearer token issued by the configured tenant for the `Tms.Access` delegated scope. Configure API CORS for the local and production portal origins; do not weaken API authentication.
 
-## Environment variables
+## Build configuration
 
 | Variable | Purpose |
 | --- | --- |
-| `VITE_API_BASE_URL` | API origin, without `/api/v1` suffix. |
+| `VITE_API_BASE_URL` | API origin, without `/api/v1`. |
 | `VITE_ENTRA_TENANT_ID` | Microsoft Entra tenant ID. |
-| `VITE_ENTRA_CLIENT_ID` | Frontend SPA app registration client ID. |
-| `VITE_ENTRA_API_SCOPE` | Usually `api://<API-CLIENT-ID>/Tms.Access`. |
+| `VITE_ENTRA_CLIENT_ID` | Portal SPA application (client) ID. |
+| `VITE_ENTRA_API_SCOPE` | Normally `api://<API-CLIENT-ID>/Tms.Access`. |
+| `VITE_AZURE_MAPS_CLIENT_ID` | Azure Maps account client ID / unique ID for map rendering. |
 
-`VITE_` variables are public build-time configuration. Never put a client secret, database credential, or tracking provider credential in this project.
+All `VITE_` values are public build-time configuration. Never put client secrets, connection strings or RoadTech credentials in this repository.
 
-## Azure deployment
+## Azure Container Apps deployment
 
-1. Create an Azure Static Web Apps resource (or an Azure Storage static website/CDN) and configure its production environment with the four `VITE_` values.
-2. In Entra, add the production Static Web Apps URL as a SPA redirect URI.
-3. Configure the API’s CORS allow-list with the local and production frontend origins, retaining JWT audience, issuer, and `Tms.Access` checks.
-4. Build with `npm run build`; publish `dist/`. The included GitHub Actions workflow can deploy once its Azure Static Web Apps token is added as `AZURE_STATIC_WEB_APPS_API_TOKEN`.
-5. Verify sign-in, `/api/v1/staging`, master-data lists, and telemetry using a user assigned the API’s delegated permission.
+1. In GitHub repository variables, configure the five `VITE_` settings above.
+2. Keep the GitHub Actions Azure OIDC credentials and the Container App contributor role in place.
+3. In Entra, add the portal's Container Apps URL as an SPA redirect URI.
+4. In the API, allow that same origin through CORS while retaining issuer, audience and `Tms.Access` validation.
+5. Push to `main`. The workflow builds an Nginx portal image, pushes it to Azure Container Registry and updates the `slh-tms-portal-prod` revision.
+6. After the revision is healthy, sign in and verify Staging, Planner, route calculation, Excel intake and tracking against authorised production data.
 
-## Backend contract observed
+## Reference
 
-`GET /api/v1/health` is anonymous. All operational routes require a valid Entra JWT for the API audience and `Tms.Access` delegated scope. Staging approval and telemetry additionally use the existing write/approve policies, currently backed by that same scope.
+- `docs/BACKEND_CONTRACT.md` — current inspected versioned API routes and authentication.
+- `docs/POWER_AUTOMATE_EMAIL_INTAKE.md` — Power Automate email order intake contract.

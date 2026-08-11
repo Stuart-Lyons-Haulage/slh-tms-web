@@ -1,6 +1,6 @@
 # SLH TMS API contract observed on `main`
 
-Inspected from commit `d7be6f446c5deca58b67042f2461b62d05f7c37f` of `danwilliams201302-max/slh-tms-api`. All controller routes are beneath `/api/v1`.
+Inspected from the production planning and tracking implementation of `danwilliams201302-max/slh-tms-api`. All controller routes are beneath `/api/v1`.
 
 ## Authentication and authorisation
 
@@ -25,7 +25,16 @@ Operational access requires the delegated `Tms.Access` scope in the `scp` claim.
 | GET | `/staging/{id}` | Authenticated | Read a staged import. |
 | POST | `/staging/{id}/approve` | `Tms.Access` | Approve and promote supported imports. |
 | POST | `/staging/{id}/reject` | `Tms.Access` | Reject a staged import. |
-| GET | `/tracking/dot/telemetry` | `Tms.Access` | Read RoadTech Falcon telemetry preview. |
+| GET | `/orders?from=&to=` | Authenticated | Operational transport orders for planning. |
+| GET | `/loads?date=` | Authenticated | Saved loads including stops and allocation IDs. |
+| POST | `/loads` | `Tms.Access` | Create a saved planning load. |
+| PUT | `/loads/{id}/allocation` | `Tms.Access` | Allocate driver, vehicle and trailer. |
+| PUT | `/loads/{id}/stops` | `Tms.Access` | Save ordered route stops and coordinates. |
+| GET | `/loads/{id}/route` | Authenticated | Azure Maps directions for saved coordinates. |
+| GET | `/loads/{id}/dispatch` | Authenticated | Driver, fleet and market-aware dispatch brief data. |
+| GET | `/maps/geocode?address=` | Authenticated | Azure Maps address lookup. |
+| GET | `/tracking/dot/telemetry` | `Tms.Access` | Current RoadTech Falcon telemetry. |
+| GET | `/tracking/dot/history?date=&vehicle=&take=` | `Tms.Access` | Persisted tracking history for a day. |
 
 The backend README’s health URL omits `/api/v1`; the program maps the actual routes above.
 
@@ -37,10 +46,13 @@ The backend README’s health URL omits `/api/v1`; the program maps the actual r
 - **Trailer**: number, type, standard/Euro capacity, active.
 - **Site**: external code, name, driver-facing name, collection address/instructions, map link, active.
 - **Market contact**: market, name, stand/location, active.
-- **Staging**: entity type, idempotency key, raw source payload, lifecycle status, source and audit/review metadata. Staging supports customer, driver, vehicle, trailer, site and market contact promotion. Order promotion is expressly deferred.
-- **DOT / RoadTech**: configuration and credentials stay server-side. The client returns a provider envelope and raw provider-mapped telemetry records; no genuine deployed response was available to safely finalise a richer mapping.
+- **Staging**: entity type, idempotency key, raw source payload, lifecycle status, source and audit/review metadata. Order, customer, driver, vehicle, trailer, site and market-contact imports pass through the same control gate.
+- **Planning**: approved orders can be grouped into loads, allocated, edited with route coordinates and rendered through Azure Maps.
+- **DOT / RoadTech**: configuration and credentials stay server-side. A scheduled ingestion service normalises valid coordinates into current vehicle status and historic tracking events.
 - **Sage HR**: `SageHrClient` and configuration exist but there is no controller endpoint. It must be surfaced through a server-side, authenticated API endpoint before a browser can use availability data.
 
-## Required next backend increment
+## External integration boundaries
 
-Orders, loads, allocation, capacity conflict checks, planning stops, availability/leave, exceptions, reports, exports, and administration have no API contract in this backend version. Implement versioned authenticated endpoints and domain models before enabling those frontend modules. The frontend must not infer or fabricate operational records.
+- **Power Automate email intake** posts normalised, idempotent rows to `/staging`; it needs a configured mailbox connection and Entra-authorised HTTP action.
+- **Outbound SMS / WhatsApp** requires an approved provider and a server-side delivery/audit endpoint. The portal currently prepares the complete dispatcher-approved message but does not send it itself.
+- **Route optimisation** currently uses grouping rules and Azure Maps directions. An optimisation provider can be introduced server-side without exposing credentials to the browser.
