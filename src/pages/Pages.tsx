@@ -302,7 +302,8 @@ function MasterWorkbookImport() {
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
       const mapped = mapMasterWorkbook(workbook);
-      setRecords(mapped.records);
+      const importRun = `${Date.now()}-${file.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
+      setRecords(mapped.records.map(record => ({ ...record, idempotencyKey: `${record.idempotencyKey}:import:${importRun}` })));
       setIssues(mapped.issues);
       setSummary(`${mapped.records.length} active master-data records found: ${summariseBatch(mapped.records)}.`);
     } catch {
@@ -330,7 +331,7 @@ function MasterWorkbookImport() {
           }
         }
       }
-      setSummary(`${received} records submitted to staging: ${created} new and ${existing} already present.${failures.length ? ` ${failures.length} group issue${failures.length === 1 ? '' : 's'}: ${failures.join('; ')}` : ''}`);
+      setSummary(`${received} records submitted to staging: ${created} new and ${existing} already present.${created ? ' Open Staging Review and approve the new pending records.' : ''}${failures.length ? ` ${failures.length} group issue${failures.length === 1 ? '' : 's'}: ${failures.join('; ')}` : ''}`);
       if (!failures.length) setRecords([]);
     } catch (exception) {
       setSummary(exception instanceof Error ? exception.message : 'Master-data import failed.');
