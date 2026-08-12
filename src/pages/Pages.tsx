@@ -323,23 +323,24 @@ function MasterWorkbookImport() {
     setSubmitting(true);
     try {
       const accessToken = await token();
-      let created = 0; let existing = 0; let received = 0;
+      let applied = 0; let received = 0;
       const failures: string[] = [];
       const grouped = records.reduce<Record<string, StageBatchRequest[]>>((result, record) => {
         (result[record.entityType] ||= []).push(record);
         return result;
       }, {});
       for (const [entityType, group] of Object.entries(grouped)) {
-        for (let index = 0; index < group.length; index += 500) {
+        for (let index = 0; index < group.length; index += 1000) {
           try {
-            const response = await api.stageBatch(group.slice(index, index + 500), accessToken);
-            created += response.created; existing += response.existing; received += response.received;
+            const response = await api.applyMasterData(group.slice(index, index + 1000), accessToken);
+            applied += response.applied; received += response.received;
+            failures.push(...response.results.filter(result => !result.applied).slice(0, 10).map(result => `${entityType}: ${result.error || 'record failed'}`));
           } catch (exception) {
-            failures.push(`${entityType}: ${exception instanceof Error ? exception.message : 'batch failed'}`);
+            failures.push(`${entityType}: ${exception instanceof Error ? exception.message : 'apply failed'}`);
           }
         }
       }
-      setSummary(`${received} records submitted to staging: ${created} new and ${existing} already present.${created ? ' Open Staging Review and approve the new pending records.' : ''}${failures.length ? ` ${failures.length} group issue${failures.length === 1 ? '' : 's'}: ${failures.join('; ')}` : ''}`);
+      setSummary(`${applied}/${received} master-data records applied directly to the live cloud master data.${failures.length ? ` ${failures.length} issue${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 8).join('; ')}` : ''}`);
       if (!failures.length) setRecords([]);
     } catch (exception) {
       setSummary(exception instanceof Error ? exception.message : 'Master-data import failed.');
@@ -348,7 +349,7 @@ function MasterWorkbookImport() {
     }
   }
 
-  return <div className="panel import-panel master-import"><h2>Import master-data workbook</h2><p>Upload the Transport Operations master workbook to stage drivers, vehicles, trailers, sites, market sellers and ETA contacts for review.</p><input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event => void selectWorkbook(event.target.files?.[0])} /><p className="hint">Planner order is retained from Driver Type and Driver Group: full-time drivers first, then casual, LTD and agency.</p>{summary && <p className="notice inline-notice">{summary}</p>}{issues.length > 0 && <div className="import-issues"><strong>Import notes</strong><ul>{issues.slice(0, 12).map(issue => <li key={issue}>{issue}</li>)}</ul>{issues.length > 12 && <small>{issues.length - 12} more notes hidden.</small>}</div>}{records.length > 0 && <button className="primary" disabled={submitting} onClick={() => void submit()}>{submitting ? 'Submitting...' : `Submit ${records.length} records to staging`}</button>}</div>;
+  return <div className="panel import-panel master-import"><h2>Import master-data workbook</h2><p>Upload the Transport Operations master workbook to update live drivers, vehicles, trailers, sites, market sellers and ETA contacts in the cloud master data.</p><input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event => void selectWorkbook(event.target.files?.[0])} /><p className="hint">Planner order is retained from Driver Type and Driver Group: full-time drivers first, then casual, LTD and agency. Orders still go through staging review; master setup applies directly.</p>{summary && <p className="notice inline-notice">{summary}</p>}{issues.length > 0 && <div className="import-issues"><strong>Import notes</strong><ul>{issues.slice(0, 12).map(issue => <li key={issue}>{issue}</li>)}</ul>{issues.length > 12 && <small>{issues.length - 12} more notes hidden.</small>}</div>}{records.length > 0 && <button className="primary" disabled={submitting} onClick={() => void submit()}>{submitting ? 'Applying...' : `Apply ${records.length} records to Master Data`}</button>}</div>;
 }
 
 function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchRequest[]; issues: string[] } {

@@ -12,6 +12,7 @@ export type FleetStatus = { provider: string; retrievedAtUtc: string; vehicleCou
 export type StageImportResponse = { stagingId: string; status: string; receivedAtUtc: string; reviewUrl: string };
 export type StageBatchRequest = { entityType: string; idempotencyKey: string; source?: string; payload: Record<string, string | boolean | number | undefined> };
 export type StageBatchResponse = { received: number; existing: number; created: number; records: StageImportResponse[] };
+export type MasterApplyResponse = { received: number; applied: number; failed: number; results: Array<{ entityType: string; idempotencyKey?: string; applied: boolean; error?: string }> };
 export type LoadStop = { id: string; orderId?: string; sequence: number; name: string; address?: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string };
 export type Load = { id: string; reference: string; planningDate: string; status: string; vehicleId?: string; driverId?: string; trailerId?: string; stops: LoadStop[] };
 export type LoadDispatch = { reference: string; planningDate: string; status: string; driver?: { displayName: string; employeeNumber: string; mobileNumber?: string }; vehicle?: { registration: string; fleetNumber?: string }; trailer?: { trailerNumber: string; type?: string }; stops: Array<{ sequence: number; name: string; address?: string; order?: { reference: string; customerCode: string; sellerName?: string; marketName?: string; stallNumber?: string; driverInstructions?: string; mapLink?: string } }> };
@@ -56,6 +57,7 @@ export const api = {
   stageOrder: (payload: Record<string, string>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType: 'order', idempotencyKey, source: 'SLH TMS Web/CSV', payload }) }),
   stageRecord: (entityType: string, payload: Record<string, string | boolean | number | undefined>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType, idempotencyKey, source: 'SLH TMS Web', payload }) }),
   stageBatch: (records: StageBatchRequest[], token?: string) => request<StageBatchResponse>('/api/v1/staging/batch', token, { method: 'POST', body: JSON.stringify(records) }),
+  applyMasterData: (records: StageBatchRequest[], token?: string) => request<MasterApplyResponse>('/api/v1/master-data/apply', token, { method: 'POST', body: JSON.stringify(records) }),
   telemetry: (token?: string) => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
   fleetStatus: (token?: string) => request<FleetStatus>('/api/v1/tracking/dot/fleet-status', token),
   trackingHistory: (date: string, token?: string) => request<Telemetry>(`/api/v1/tracking/dot/history?date=${encodeURIComponent(date)}`, token),
