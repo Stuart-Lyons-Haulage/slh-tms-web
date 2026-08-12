@@ -10,6 +10,8 @@ export type TransportOrder = { id: string; reference: string; customerCode: stri
 export type Telemetry = { provider: string; retrievedAtUtc: string; recordCount: number; records: Array<{ vehicleIdentifier: string; eventTimeUtc: string; latitude?: number; longitude?: number; speedKph?: number; isMoving?: boolean; status?: string }> };
 export type FleetStatus = { provider: string; retrievedAtUtc: string; vehicleCount: number; readyCount: number; attentionCount: number; vehicles: Array<{ vehicleId: string; registration: string; fleetNumber?: string; trackingIdentifier?: string; condition: 'Moving' | 'Started' | 'Stationary' | 'SignedOn' | 'Stale' | 'NotSignedOn'; lastEventTimeUtc?: string; ignitionOn?: boolean; isMoving?: boolean; speedKph?: number; latitude?: number; longitude?: number; ageMinutes?: number; loadReference?: string; loadStatus?: string; driverName?: string }> };
 export type StageImportResponse = { stagingId: string; status: string; receivedAtUtc: string; reviewUrl: string };
+export type StageBatchRequest = { entityType: string; idempotencyKey: string; source?: string; payload: Record<string, string | boolean | number | undefined> };
+export type StageBatchResponse = { received: number; existing: number; created: number; records: StageImportResponse[] };
 export type LoadStop = { id: string; orderId?: string; sequence: number; name: string; address?: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string };
 export type Load = { id: string; reference: string; planningDate: string; status: string; vehicleId?: string; driverId?: string; trailerId?: string; stops: LoadStop[] };
 export type LoadDispatch = { reference: string; planningDate: string; status: string; driver?: { displayName: string; employeeNumber: string; mobileNumber?: string }; vehicle?: { registration: string; fleetNumber?: string }; trailer?: { trailerNumber: string; type?: string }; stops: Array<{ sequence: number; name: string; address?: string; order?: { reference: string; customerCode: string; sellerName?: string; marketName?: string; stallNumber?: string; driverInstructions?: string; mapLink?: string } }> };
@@ -29,7 +31,13 @@ export class ApiError extends Error { constructor(public status: number, message
 export async function request<T>(path: string, token?: string, init?: RequestInit): Promise<T> {
   if (!baseUrl) throw new ApiError(0, 'Set VITE_API_BASE_URL to connect the TMS API.');
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } });
-  if (!response.ok) { const error = await response.json().catch(() => null); throw new ApiError(response.status, error?.detail || error?.message || `Request failed (${response.status}).`); }
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    const message = response.status === 403
+      ? 'Microsoft sign-in worked, but your account has not been granted TMS API access yet.'
+      : error?.detail || error?.message || `Request failed (${response.status}).`;
+    throw new ApiError(response.status, message);
+  }
   return response.json() as Promise<T>;
 }
 
@@ -45,6 +53,7 @@ export const api = {
   orders: (from?: string, to?: string, token?: string) => request<TransportOrder[]>(`/api/v1/orders?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`, token),
   stageOrder: (payload: Record<string, string>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType: 'order', idempotencyKey, source: 'SLH TMS Web/CSV', payload }) }),
   stageRecord: (entityType: string, payload: Record<string, string | boolean | number | undefined>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType, idempotencyKey, source: 'SLH TMS Web', payload }) }),
+  stageBatch: (records: StageBatchRequest[], token?: string) => request<StageBatchResponse>('/api/v1/staging/batch', token, { method: 'POST', body: JSON.stringify(records) }),
   telemetry: (token?: string) => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
   fleetStatus: (token?: string) => request<FleetStatus>('/api/v1/tracking/dot/fleet-status', token),
   trackingHistory: (date: string, token?: string) => request<Telemetry>(`/api/v1/tracking/dot/history?date=${encodeURIComponent(date)}`, token),

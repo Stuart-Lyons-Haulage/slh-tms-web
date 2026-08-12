@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import * as XLSX from 'xlsx';
 import * as atlas from 'azure-maps-control';
 import 'azure-maps-control/dist/atlas.min.css';
-import { api, type Customer, type CustomerContact, type Driver, type DriverAssignment, type FleetStatus, type Load, type LoadDispatch, type MarketContact, type ReturnLoadSuggestions, type Site, type StagedImport, type Telemetry, type Trailer, type TransportOrder, type Vehicle } from '../lib/api';
+import { api, type Customer, type CustomerContact, type Driver, type DriverAssignment, type FleetStatus, type Load, type LoadDispatch, type MarketContact, type ReturnLoadSuggestions, type Site, type StageBatchRequest, type StagedImport, type Telemetry, type Trailer, type TransportOrder, type Vehicle } from '../lib/api';
 import { useAccessToken } from '../lib/auth';
 import { useApi } from '../lib/useApi';
 
@@ -23,6 +23,7 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
 type ImportRow = Record<string, string>;
 const expectedColumns = ['poNumber', 'customerCode', 'collectionDate', 'deliveryDate', 'pallets'];
 const marketColumns = ['deliveryWindowStartUtc', 'deliveryWindowEndUtc', 'sellerName', 'marketName', 'stallNumber', 'driverInstructions', 'mapLink'];
+type SheetRow = Record<string, string | number | boolean | Date | undefined>;
 function parseCsv(text: string): ImportRow[] { const [header, ...lines] = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/); if (!header) return []; const fields = header.split(',').map(value => value.trim()); return lines.filter(Boolean).map(line => Object.fromEntries(fields.map((field, index) => [field, line.split(',')[index]?.trim() || '']))); }
 function validateImportRows(rows: ImportRow[]) { const seen = new Set<string>(); return rows.flatMap((row, index) => { const missing = expectedColumns.filter(column => !row[column]?.trim()); const dates = [row.collectionDate, row.deliveryDate].filter(Boolean).some(value => !/^\d{4}-\d{2}-\d{2}$/.test(value)); const pallets = Number(row.pallets); const key = `${row.poNumber}|${row.customerCode}|${row.collectionDate}`.toLowerCase(); const duplicate = seen.has(key); seen.add(key); const invalidMap = Boolean(row.mapLink && !/^https?:\/\//i.test(row.mapLink)); const issues = [missing.length ? `missing ${missing.join(', ')}` : '', dates ? 'dates must use YYYY-MM-DD' : '', !Number.isFinite(pallets) || pallets <= 0 ? 'pallets must be greater than zero' : '', duplicate ? 'duplicate order row' : '', invalidMap ? 'map link must start with http:// or https://' : ''].filter(Boolean); return issues.length ? [`Row ${index + 2}: ${issues.join('; ')}.`] : []; }); }
 export function Orders() { const token = useAccessToken(); const [rows, setRows] = useState<ImportRow[]>([]); const [issues, setIssues] = useState<string[]>([]); const [message, setMessage] = useState<string>(); const [submitting, setSubmitting] = useState(false); function downloadTemplate() { const workbook = XLSX.utils.book_new(); const worksheet = XLSX.utils.json_to_sheet([{ poNumber: 'SLH-10001', customerCode: 'CUSTOMER-001', collectionDate: '2026-08-12', deliveryDate: '2026-08-13', deliveryWindowStartUtc: '2026-08-13T08:00:00+01:00', deliveryWindowEndUtc: '2026-08-13T10:00:00+01:00', pallets: '8', sellerName: 'Example seller', marketName: 'Example market', stallNumber: 'A12', driverInstructions: 'Gate access from 05:30', mapLink: 'https://maps.google.com/?q=53.4808,-2.2426' }]); worksheet['!cols'] = [...expectedColumns, ...marketColumns].map(column => ({ wch: Math.max(column.length + 3, 18) })); XLSX.utils.book_append_sheet(workbook, worksheet, 'Orders'); XLSX.writeFile(workbook, 'slh-order-import-template.xlsx'); } async function selectFile(file?: File) { if (!file) return; setMessage(undefined); setIssues([]); try { const extension = file.name.split('.').pop()?.toLowerCase(); let parsed: ImportRow[] = []; if (extension === 'csv') parsed = parseCsv(await file.text()); else if (['xlsx', 'xls'].includes(extension || '')) { const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' }); const sheet = workbook.Sheets[workbook.SheetNames[0]]; parsed = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' }).map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key.trim(), String(value).trim()]))); } const missing = expectedColumns.filter(column => !Object.keys(parsed[0] || {}).includes(column)); if (!parsed.length || missing.length) { setRows([]); setMessage(`The import needs these columns: ${expectedColumns.join(', ')}.`); return; } const validationIssues = validateImportRows(parsed); setRows(validationIssues.length ? [] : parsed); setIssues(validationIssues); } catch { setRows([]); setMessage('The workbook could not be read. Use the first worksheet with a header row.'); } } async function submit() { setSubmitting(true); setMessage(undefined); try { const accessToken = await token(); const results = await Promise.all(rows.map((row, index) => api.stageOrder(row, `web-import:${row.poNumber || 'row'}:${row.customerCode || 'unknown'}:${row.collectionDate || index}`, accessToken))); setMessage(`${results.length} order${results.length === 1 ? '' : 's'} submitted to staging for review.`); setRows([]); } catch (exception) { setMessage(exception instanceof Error ? exception.message : 'Order import failed.'); } finally { setSubmitting(false); } } return <section><p className="eyebrow">Order intake</p><h1>New order</h1><QuickOrderForm /><div className="panel import-panel"><h2>Import Excel or CSV</h2><p>Upload an Excel workbook or CSV for batches. Each row is checked before it enters the review queue.</p><button type="button" onClick={downloadTemplate}>Download Excel template</button><input type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event => void selectFile(event.target.files?.[0])} /><p className="hint">Required: <code>{expectedColumns.join(', ')}</code>. Optional delivery window uses ISO time with an offset: <code>deliveryWindowStartUtc</code>, <code>deliveryWindowEndUtc</code>.</p>{issues.length > 0 && <div className="import-issues"><strong>Correct the following before import</strong><ul>{issues.map(issue => <li key={issue}>{issue}</li>)}</ul></div>}{rows.length > 0 && <><p><strong>{rows.length}</strong> checked rows ready to submit.</p><button className="primary" onClick={() => void submit()} disabled={submitting}>{submitting ? 'Submitting…' : `Submit ${rows.length} order${rows.length === 1 ? '' : 's'} for review`}</button></>}{message && <p className="notice inline-notice">{message}</p>}</div><div className="panel import-panel"><h2>Email intake</h2><p>Power Automate submits normalised email orders into the same review queue; the Admin screen shows when that connection is ready.</p><a href="/staging">Open staging review →</a></div></section>; }
@@ -122,7 +123,7 @@ export function MasterData() {
   const error = customers.error || customerContacts.error || vehicles.error || drivers.error || trailers.error || sites.error || contacts.error;
   const loading = customers.loading || customerContacts.loading || vehicles.loading || drivers.loading || trailers.loading || sites.loading || contacts.loading;
 
-  return <section><p className="eyebrow">Reference data</p><h1>Master data & CRM</h1><CoreMasterDataForm /><SiteSetupForm /><State loading={loading} error={error}><div className="master-grid">
+  return <section><p className="eyebrow">Reference data</p><h1>Master data & CRM</h1><MasterWorkbookImport /><CoreMasterDataForm /><SiteSetupForm /><State loading={loading} error={error}><div className="master-grid">
     <DataList title="Customers" data={customers.data} render={(item: Customer) => <><strong>{item.name}</strong><small>{item.code}</small></>} />
     <DataList title="Customer ETA contacts" data={customerContacts.data} render={(item: CustomerContact) => <><strong>{item.name}</strong><small>{item.customerCode} · {item.email || 'No ETA email'}{item.receivesEtaUpdates ? ' · ETA updates on' : ' · ETA updates off'}</small></>} />
     <DataList title="Vehicles" data={vehicles.data} render={(item: Vehicle) => <><strong>{item.registration}</strong><small>{item.fleetNumber || item.abbreviation || 'Fleet vehicle'}</small></>} />
@@ -133,6 +134,120 @@ export function MasterData() {
   </div></State></section>;
 }
 type MasterEntity = 'customer' | 'customercontact' | 'vehicle' | 'driver' | 'trailer' | 'marketcontact';
+function MasterWorkbookImport() {
+  const token = useAccessToken();
+  const [records, setRecords] = useState<StageBatchRequest[]>([]);
+  const [summary, setSummary] = useState<string>();
+  const [issues, setIssues] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function selectWorkbook(file?: File) {
+    if (!file) return;
+    setSummary(undefined); setIssues([]); setRecords([]);
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+      const mapped = mapMasterWorkbook(workbook);
+      setRecords(mapped.records);
+      setIssues(mapped.issues);
+      setSummary(`${mapped.records.length} active master-data records found: ${summariseBatch(mapped.records)}.`);
+    } catch {
+      setSummary('The master-data workbook could not be read.');
+    }
+  }
+
+  async function submit() {
+    setSubmitting(true);
+    try {
+      const accessToken = await token();
+      let created = 0; let existing = 0; let received = 0;
+      for (let index = 0; index < records.length; index += 500) {
+        const response = await api.stageBatch(records.slice(index, index + 500), accessToken);
+        created += response.created; existing += response.existing; received += response.received;
+      }
+      setSummary(`${received} records submitted to staging: ${created} new and ${existing} already present.`);
+      setRecords([]);
+    } catch (exception) {
+      setSummary(exception instanceof Error ? exception.message : 'Master-data import failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <div className="panel import-panel master-import"><h2>Import master-data workbook</h2><p>Upload the Transport Operations master workbook to stage drivers, vehicles, trailers, sites, market sellers and ETA contacts for review.</p><input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event => void selectWorkbook(event.target.files?.[0])} /><p className="hint">Planner order is retained from Driver Type and Driver Group: full-time drivers first, then casual, LTD and agency.</p>{summary && <p className="notice inline-notice">{summary}</p>}{issues.length > 0 && <div className="import-issues"><strong>Import notes</strong><ul>{issues.slice(0, 12).map(issue => <li key={issue}>{issue}</li>)}</ul>{issues.length > 12 && <small>{issues.length - 12} more notes hidden.</small>}</div>}{records.length > 0 && <button className="primary" disabled={submitting} onClick={() => void submit()}>{submitting ? 'Submitting...' : `Submit ${records.length} records to staging`}</button>}</div>;
+}
+
+function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchRequest[]; issues: string[] } {
+  const issues: string[] = [];
+  const records: StageBatchRequest[] = [];
+  const add = (entityType: string, key: string, payload: StageBatchRequest['payload']) => {
+    if (!key.trim()) return;
+    records.push({ entityType, idempotencyKey: `master:${entityType}:${key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, source: 'SLH Transport Operations Master Data workbook', payload });
+  };
+  const active = (row: SheetRow) => String(read(row, 'Active') || 'Yes').toLowerCase() !== 'no';
+
+  for (const row of sheetRows(workbook, 'Drivers', 1)) {
+    const employeeNumber = text(read(row, 'DriverID'));
+    const displayName = text(read(row, 'Driver'));
+    if (!employeeNumber || !displayName || !active(row)) continue;
+    add('driver', employeeNumber, { employeeNumber, displayName, tachoName: text(read(row, 'Tacho Name')), mobileNumber: normalisePhone(read(row, 'Phone Number')), driverType: text(read(row, 'Driver Type')) || 'Full Time', driverGroup: text(read(row, 'Driver Group')), skills: text(read(row, 'Driver Skills')), active: true });
+  }
+  for (const row of sheetRows(workbook, 'Vehicles & Fuel', 2)) {
+    const registration = text(read(row, 'Registration')).replace(/\s+/g, '').toUpperCase();
+    if (!registration || !active(row)) continue;
+    const fuelPin = text(read(row, 'Fuel PIN'));
+    add('vehicle', registration, { registration, fleetNumber: text(read(row, 'VehicleID')), abbreviation: text(read(row, 'Abbreviation')) || text(read(row, 'Reg Last 3')), transmission: text(read(row, 'Transmission')), dvsCompliant: yesNo(read(row, 'DVS')), fuelProvider: bestFuelProvider(row), fuelPinSecretName: fuelPin ? `vehicle-${registration.toLowerCase()}-fuel-pin` : undefined, fuelCardLastFour: lastFour(read(row, 'BP Plain Card') || read(row, 'BP Red Card') || read(row, 'Shell Card')), active: true });
+  }
+  for (const row of sheetRows(workbook, 'Trailers', 2)) {
+    const trailerNumber = text(read(row, 'Trailer'));
+    if (!trailerNumber || !active(row)) continue;
+    add('trailer', trailerNumber, { trailerNumber, type: text(read(row, 'Type')), standardCapacity: numberValue(read(row, 'Standard Capacity')), euroCapacity: numberValue(read(row, 'Euro Capacity')), active: true });
+  }
+  for (const row of sheetRows(workbook, 'Sites', 2)) {
+    const externalCode = text(read(row, 'SiteID'));
+    const name = text(read(row, 'Site'));
+    if (!externalCode || !name || !active(row)) continue;
+    add('site', externalCode, { externalCode, name, driverTextName: text(read(row, 'Driver Text Name')) || name, collectionAddress: text(read(row, 'Collection Address')), collectionInstructions: text(read(row, 'Collection Notes / Instructions')), mapLink: text(read(row, 'Map Link')), active: true });
+  }
+  for (const row of sheetRows(workbook, 'Customer Contacts', 2)) {
+    const customerCode = text(read(row, 'Customer'));
+    const name = text(read(row, 'Contact Name'));
+    const email = text(read(row, 'Email'));
+    if (!customerCode || !name || !active(row)) continue;
+    add('customercontact', `${customerCode}-${name}-${email}`, { customerCode, name, email, mobileNumber: normalisePhone(read(row, 'Phone')), receivesEtaUpdates: Boolean(email), active: true });
+  }
+  records.push(...marketContactRecords(workbook));
+  if (!workbook.SheetNames.includes('Drivers')) issues.push('Drivers sheet was not found.');
+  if (!workbook.SheetNames.includes('Vehicles & Fuel')) issues.push('Vehicles & Fuel sheet was not found.');
+  return { records, issues };
+}
+
+function sheetRows(workbook: XLSX.WorkBook, sheetName: string, headerIndex: number): SheetRow[] {
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return [];
+  return XLSX.utils.sheet_to_json<SheetRow>(sheet, { defval: '', range: headerIndex });
+}
+function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
+  const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets['Market Contacts'], { header: 1, defval: '', blankrows: false });
+  const records: StageBatchRequest[] = [];
+  const headers = (rows[0] || []).map(value => text(value));
+  rows.slice(1).forEach((row, rowIndex) => headers.forEach((market, columnIndex) => {
+    const name = text(row[columnIndex]);
+    if (!market || !name) return;
+    const match = name.match(/^(.*)\((.*)\)$/);
+    const cleanName = (match?.[1] || name).trim();
+    const standOrLocation = match?.[2]?.trim();
+    records.push({ entityType: 'marketcontact', idempotencyKey: `master:marketcontact:${market}-${cleanName}-${rowIndex}`.toLowerCase().replace(/[^a-z0-9]+/g, '-'), source: 'SLH Transport Operations Master Data workbook', payload: { market, name: cleanName, standOrLocation, active: true } });
+  }));
+  return records;
+}
+function summariseBatch(records: StageBatchRequest[]) { const counts = records.reduce<Record<string, number>>((total, record) => ({ ...total, [record.entityType]: (total[record.entityType] || 0) + 1 }), {}); return Object.entries(counts).map(([type, count]) => `${count} ${type}`).join(', '); }
+function read(row: SheetRow, key: string) { return row[key]; }
+function text(value: unknown) { return String(value ?? '').trim(); }
+function numberValue(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : undefined; }
+function yesNo(value: unknown) { const normalised = text(value).toLowerCase(); return normalised ? ['yes', 'y', 'true'].includes(normalised) : undefined; }
+function normalisePhone(value: unknown) { return text(value).replace(/[^\d+]/g, ''); }
+function lastFour(value: unknown) { const digits = text(value).replace(/\D/g, ''); return digits ? digits.slice(-4) : undefined; }
+function bestFuelProvider(row: SheetRow) { if (read(row, 'Shell Card')) return 'Shell'; if (read(row, 'BP Red Card') || read(row, 'BP Plain Card')) return 'BP'; return undefined; }
 function CoreMasterDataForm() {
   const token = useAccessToken(); const [entity, setEntity] = useState<MasterEntity>('customer'); const [first, setFirst] = useState(''); const [second, setSecond] = useState(''); const [optional, setOptional] = useState(''); const [message, setMessage] = useState<string>(); const [saving, setSaving] = useState(false);
   const labels: Record<MasterEntity, [string, string, string]> = { customer: ['Customer code', 'Customer name', 'Account note'], customercontact: ['Customer code', 'Contact name', 'ETA email address'], vehicle: ['Registration', 'Fleet number', 'Abbreviation'], driver: ['Employee number', 'Driver name', 'Mobile number'], trailer: ['Trailer number', 'Trailer type', 'Standard capacity'], marketcontact: ['Market', 'Contact name', 'Stand or location'] };
