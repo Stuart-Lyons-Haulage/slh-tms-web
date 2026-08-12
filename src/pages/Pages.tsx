@@ -249,7 +249,7 @@ export function StagingQueue() {
   async function approveBulk() { const pending = (data || []).filter(item => stagingStatus(item.status) === 'PendingReview' && item.entityType === bulkEntity); if (!pending.length) return; setReviewing('bulk'); setBulkMessage(undefined); try { const accessToken = await token(); for (const item of pending) await api.review(item.id, true, `Bulk approved ${bulkEntity} master data`, accessToken); setBulkMessage(`${pending.length} ${bulkEntity} record${pending.length === 1 ? '' : 's'} approved and promoted.`); await refresh(); } catch (exception) { setBulkMessage(exception instanceof Error ? exception.message : 'Bulk approval failed.'); } finally { setReviewing(undefined); } }
   const payload = selected ? (() => { try { return JSON.parse(selected.payloadJson) as Record<string, unknown>; } catch { return {}; } })() : undefined;
   const pendingCounts = (data || []).filter(item => stagingStatus(item.status) === 'PendingReview').reduce<Record<string, number>>((counts, item) => ({ ...counts, [item.entityType]: (counts[item.entityType] || 0) + 1 }), {});
-  return <section><div className="title-row"><div><p className="eyebrow">Control gate</p><h1>Staging review queue</h1></div><button onClick={() => void refresh()}>Refresh</button></div><State loading={loading} error={error} empty={!data?.length}><div className="bulk-review panel"><div><h2>Bulk approve master data</h2><p>Use this after checking the imported workbook. Vehicles must be promoted before Live Tracking can show the fleet.</p></div><label>Record type <select value={bulkEntity} onChange={event => setBulkEntity(event.target.value)}>{['vehicle', 'driver', 'trailer', 'site', 'customercontact', 'marketcontact', 'customer', 'order'].map(type => <option key={type} value={type}>{type} ({pendingCounts[type] || 0})</option>)}</select></label><button className="primary" disabled={!pendingCounts[bulkEntity] || reviewing === 'bulk'} onClick={() => void approveBulk()}>{reviewing === 'bulk' ? 'Approving...' : `Approve ${pendingCounts[bulkEntity] || 0}`}</button>{bulkMessage && <p className="notice inline-notice">{bulkMessage}</p>}</div><div className="table-wrap"><table><thead><tr><th>Received</th><th>Type</th><th>Source</th><th>Status</th><th>Action</th></tr></thead><tbody>{data?.map(item => <tr key={item.id}><td>{formatDate(item.receivedAtUtc)}</td><td>{item.entityType}</td><td>{item.source || '—'}</td><td><span className={`status ${statusClass(item.status)}`}>{stagingStatus(item.status)}</span></td><td><div className="actions"><button onClick={() => setSelected(item)}>Review details</button>{stagingStatus(item.status) === 'PendingReview' && <><button className="approve" disabled={reviewing === item.id || reviewing === 'bulk'} onClick={() => void review(item, true)}>Approve</button><button className="reject" disabled={reviewing === item.id || reviewing === 'bulk'} onClick={() => void review(item, false)}>Reject</button></>}{stagingStatus(item.status) !== 'PendingReview' && (item.reviewNote || '—')}</div></td></tr>)}</tbody></table></div>{selected && <aside className="review-panel"><div><p className="eyebrow">Reviewing {selected.entityType}</p><h2>{String(payload?.poNumber || payload?.name || payload?.externalCode || selected.id)}</h2></div><button onClick={() => setSelected(undefined)}>Close</button><dl>{Object.entries(payload || {}).map(([key, value]) => <div key={key}><dt>{key.replace(/([A-Z])/g, ' $1')}</dt><dd>{String(value || '—')}</dd></div>)}</dl></aside>}</State></section>;
+  return <section><div className="title-row"><div><p className="eyebrow">Control gate</p><h1>Staging review queue</h1></div><button onClick={() => void refresh()}>Refresh</button></div><State loading={loading} error={error} empty={!data?.length}><div className="bulk-review panel"><div><h2>Bulk approve master data</h2><p>Use this after checking the imported workbook. Vehicles must be promoted before Live Tracking can show the fleet.</p></div><label>Record type <select value={bulkEntity} onChange={event => setBulkEntity(event.target.value)}>{['vehicle', 'driver', 'trailer', 'site', 'customercontact', 'marketcontact', 'customer', 'order'].map(type => <option key={type} value={type}>{type} ({pendingCounts[type] || 0})</option>)}</select></label><button className="primary" disabled={!pendingCounts[bulkEntity] || reviewing === 'bulk'} onClick={() => void approveBulk()}>{reviewing === 'bulk' ? 'Approving...' : `Approve ${pendingCounts[bulkEntity] || 0}`}</button>{bulkMessage && <p className="notice inline-notice">{bulkMessage}</p>}</div>{selected && <div className="panel review-panel"><div><p className="eyebrow">Reviewing {selected.entityType}</p><h2>{String(payload?.poNumber || payload?.name || payload?.displayName || payload?.externalCode || selected.id)}</h2></div><button onClick={() => setSelected(undefined)}>Close</button><dl>{Object.entries(payload || {}).map(([key, value]) => <div key={key}><dt>{key.replace(/([A-Z])/g, ' $1')}</dt><dd>{String(value || '—')}</dd></div>)}</dl></div>}<div className="table-wrap"><table><thead><tr><th>Received</th><th>Type</th><th>Source</th><th>Status</th><th>Action</th></tr></thead><tbody>{data?.map(item => <tr key={item.id}><td>{formatDate(item.receivedAtUtc)}</td><td>{item.entityType}</td><td>{item.source || '—'}</td><td><span className={`status ${statusClass(item.status)}`}>{stagingStatus(item.status)}</span></td><td><div className="actions"><button onClick={() => setSelected(item)}>Review details</button>{stagingStatus(item.status) === 'PendingReview' && <><button className="approve" disabled={reviewing === item.id || reviewing === 'bulk'} onClick={() => void review(item, true)}>Approve</button><button className="reject" disabled={reviewing === item.id || reviewing === 'bulk'} onClick={() => void review(item, false)}>Reject</button></>}{stagingStatus(item.status) !== 'PendingReview' && (item.reviewNote || '—')}</div></td></tr>)}</tbody></table></div></State></section>;
 }
 
 async function loadFleetStatus(accessToken: string): Promise<FleetStatus> {
@@ -275,10 +275,10 @@ export function MasterData() {
   const trailers = useApi(useCallback(async () => api.trailers(await token()), [token]));
   const sites = useApi(useCallback(async () => api.sites(await token()), [token]));
   const contacts = useApi(useCallback(async () => api.marketContacts(await token()), [token]));
-  const error = customers.error || customerContacts.error || vehicles.error || drivers.error || trailers.error || sites.error || contacts.error;
+  const errors = [customers.error, customerContacts.error, vehicles.error, drivers.error, trailers.error, sites.error, contacts.error].filter(Boolean);
   const loading = customers.loading || customerContacts.loading || vehicles.loading || drivers.loading || trailers.loading || sites.loading || contacts.loading;
 
-  return <section><p className="eyebrow">Reference data</p><h1>Master data & CRM</h1><MasterWorkbookImport /><CoreMasterDataForm /><SiteSetupForm /><State loading={loading} error={error}><div className="master-grid">
+  return <section><p className="eyebrow">Reference data</p><h1>Master data & CRM</h1><MasterWorkbookImport /><CoreMasterDataForm /><SiteSetupForm />{errors.length > 0 && <p className="notice inline-notice">Some master-data lists could not refresh yet: {errors.join(' · ')}</p>}<State loading={loading} error={undefined}><div className="master-grid">
     <DataList title="Customers" data={customers.data} render={(item: Customer) => <><strong>{item.name}</strong><small>{item.code}</small></>} />
     <DataList title="Customer ETA contacts" data={customerContacts.data} render={(item: CustomerContact) => <><strong>{item.name}</strong><small>{item.customerCode} · {item.email || 'No ETA email'}{item.receivesEtaUpdates ? ' · ETA updates on' : ' · ETA updates off'}</small></>} />
     <DataList title="Vehicles" data={vehicles.data} render={(item: Vehicle) => <><strong>{item.registration}</strong><small>{item.fleetNumber || item.abbreviation || 'Fleet vehicle'}</small></>} />
@@ -357,14 +357,14 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
   };
   const active = (row: SheetRow) => String(read(row, 'Active') || read(row, 'Status') || 'Yes').toLowerCase() !== 'no';
 
-  const driverRows = sheetRows(workbook, ['Drivers', 'Driver Master', 'Driver List', 'Rota'], ['DriverID', 'Driver', 'Tacho Name']);
+  const driverRows = sheetRows(workbook, ['Drivers', 'Driver Master', 'Driver List', 'Rota', 'Driver Rota', 'Employees'], ['DriverID', 'Driver', 'Tacho Name', 'Employee Number', 'Employee No', 'Payroll Number']);
   const vehicleRows = sheetRows(workbook, ['Vehicles & Fuel', 'Vehicles', 'Fleet', 'Cab Phone Numbers', 'Fuel'], ['Registration', 'VehicleID', 'Reg Last 3']);
   const trailerRows = sheetRows(workbook, ['Trailers', 'Trailer Master'], ['Trailer', 'Type', 'Standard Capacity']);
-  const siteRows = sheetRows(workbook, ['Sites', 'Site Master', 'Customers', 'Collections'], ['SiteID', 'Site', 'Collection Address']);
-  const contactRows = sheetRows(workbook, ['Customer Contacts', 'CRM', 'Contacts', 'Customers'], ['Customer', 'Contact Name', 'Email']);
+  const siteRows = sheetRows(workbook, ['Sites', 'Site Master', 'Customers', 'Collections', 'Site Contacts'], ['SiteID', 'Site', 'Collection Address', 'Customer', 'Name']);
+  const contactRows = sheetRows(workbook, ['Customer Contacts', 'CRM', 'Contacts', 'Customers', 'Site Contacts'], ['Customer', 'Contact Name', 'Name', 'Email', 'E-mail']);
 
   for (const row of driverRows) {
-    const employeeNumber = firstText(row, ['DriverID', 'Driver ID', 'Employee Number', 'Employee No', 'EmployeeNumber', 'Payroll Number', 'Sage Employee Number']);
+    const employeeNumber = firstText(row, ['DriverID', 'Driver ID', 'Employee Number', 'Employee No', 'EmployeeNumber', 'Payroll Number', 'Payroll No', 'Sage Employee Number', 'Sage ID', 'Employee ID', 'Emp No']);
     const displayName = firstText(row, ['Driver', 'Driver Name', 'Name', 'Display Name']);
     if (!employeeNumber || !displayName || !active(row)) continue;
     add('driver', employeeNumber, { employeeNumber, displayName, tachoName: firstText(row, ['Tacho Name', 'TachoName']), mobileNumber: normalisePhone(firstText(row, ['Phone Number', 'Mobile Number', 'Mobile', 'Driver Phone', 'Text Number'])), driverType: firstText(row, ['Driver Type', 'Employment Type', 'Type']) || 'Full Time', driverGroup: firstText(row, ['Driver Group', 'Group', 'Agency', 'Planner Group']), skills: firstText(row, ['Driver Skills', 'Skills', 'Licence', 'Licence Type']), active: true });
@@ -381,15 +381,15 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
     add('trailer', trailerNumber, { trailerNumber, type: text(read(row, 'Type')), standardCapacity: numberValue(read(row, 'Standard Capacity')), euroCapacity: numberValue(read(row, 'Euro Capacity')), active: true });
   }
   for (const row of siteRows) {
-    const externalCode = text(read(row, 'SiteID'));
-    const name = text(read(row, 'Site'));
+    const externalCode = firstText(row, ['SiteID', 'Site ID', 'Customer Code', 'Customer', 'Account Code', 'Code']);
+    const name = firstText(row, ['Site', 'Site Name', 'Customer Name', 'Name', 'Collection Site']);
     if (!externalCode || !name || !active(row)) continue;
     add('site', externalCode, { externalCode, name, driverTextName: text(read(row, 'Driver Text Name')) || name, collectionAddress: text(read(row, 'Collection Address')), collectionInstructions: text(read(row, 'Collection Notes / Instructions')), mapLink: text(read(row, 'Map Link')), active: true });
   }
   for (const row of contactRows) {
-    const customerCode = text(read(row, 'Customer'));
-    const name = text(read(row, 'Contact Name'));
-    const email = text(read(row, 'Email'));
+    const customerCode = firstText(row, ['Customer', 'Customer Code', 'SiteID', 'Site ID', 'Account Code', 'Code']);
+    const name = firstText(row, ['Contact Name', 'Name', 'Customer Name', 'Site Contact']);
+    const email = firstText(row, ['Email', 'E-mail', 'Email Address', 'ETA Email']);
     if (!customerCode || !name || !active(row)) continue;
     add('customercontact', `${customerCode}-${name}-${email}`, { customerCode, name, email, mobileNumber: normalisePhone(read(row, 'Phone')), receivesEtaUpdates: Boolean(email), active: true });
   }
@@ -401,16 +401,19 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
 
 function sheetRows(workbook: XLSX.WorkBook, names: string[], requiredHeaders: string[]): SheetRow[] {
   const sheetName = findSheet(workbook, names);
-  if (!sheetName) return [];
-  const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets[sheetName], { header: 1, defval: '', blankrows: false });
+  const candidateSheets = sheetName ? [sheetName] : workbook.SheetNames;
   const wanted = requiredHeaders.map(normaliseHeader);
-  const headerIndex = rows.findIndex(row => {
-    const headers = row.map(normaliseHeader);
-    return wanted.filter(header => headers.includes(header)).length >= Math.min(2, wanted.length);
-  });
-  if (headerIndex < 0) return [];
-  const headers = rows[headerIndex].map(value => text(value));
-  return rows.slice(headerIndex + 1).map(row => Object.fromEntries(headers.map((header, index) => [header, row[index]])) as SheetRow).filter(row => Object.values(row).some(value => text(value)));
+  for (const candidate of candidateSheets) {
+    const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets[candidate], { header: 1, defval: '', blankrows: false });
+    const headerIndex = rows.findIndex(row => {
+      const headers = row.map(normaliseHeader);
+      return wanted.filter(header => headers.includes(header)).length >= 1;
+    });
+    if (headerIndex < 0) continue;
+    const headers = rows[headerIndex].map(value => text(value));
+    return rows.slice(headerIndex + 1).map(row => Object.fromEntries(headers.map((header, index) => [header, row[index]])) as SheetRow).filter(row => Object.values(row).some(value => text(value)));
+  }
+  return [];
 }
 function findSheet(workbook: XLSX.WorkBook, names: string[]) {
   const exact = names.map(normaliseHeader);
@@ -418,41 +421,43 @@ function findSheet(workbook: XLSX.WorkBook, names: string[]) {
 }
 function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
   const sheetName = findSheet(workbook, ['Market Contacts', 'Markets', 'Market Sellers', 'Market']);
-  if (!sheetName) return [];
-  const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets[sheetName], { header: 1, defval: '', blankrows: false });
   const records: StageBatchRequest[] = [];
   const seen = new Set<string>();
-  const headerIndex = rows.findIndex(row => row.map(value => marketLabel(text(value))).some(label => ['Western', 'Spit', 'Covent'].includes(label)) || row.map(value => normaliseHeader(text(value))).includes('sender'));
-  if (headerIndex < 0) return [];
-  const headings = (rows[headerIndex] || []).map(value => text(value));
-  const marketColumns = headings.flatMap((heading, index) => {
-    const label = marketLabel(heading);
-    return ['Western', 'Spit', 'Covent'].includes(label) ? [{ market: label, valueColumn: index, salesmanColumn: index + 1 }] : [];
-  });
-  const senderColumn = headings.findIndex(heading => normaliseHeader(heading) === 'sender');
-  rows.slice(headerIndex + 1).forEach((row, rowIndex) => {
-    for (const item of marketColumns) {
-      const sellerCell = text(row[item.valueColumn]);
-      const salesman = text(row[item.salesmanColumn]);
-      if (!sellerCell) continue;
-      const parsed = parseSellerStand(sellerCell);
-      const key = `master:marketcontact:${item.market}-${parsed.name}-${salesman}-${rowIndex}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      if (seen.has(key)) continue;
-      seen.add(key);
-      records.push({ entityType: 'marketcontact', idempotencyKey: key, source: 'SLH Transport Operations Master Data workbook', payload: { market: item.market, name: parsed.name, standOrLocation: parsed.standOrLocation, salesman, active: true } });
-    }
-    if (senderColumn >= 0) {
-      const sender = text(row[senderColumn]);
-      if (sender) {
-        const parsed = parseSellerStand(sender);
-        const key = `master:marketcontact:Sender-${parsed.name}-${rowIndex}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        if (!seen.has(key)) {
-          seen.add(key);
-          records.push({ entityType: 'marketcontact', idempotencyKey: key, source: 'SLH Transport Operations Master Data workbook', payload: { market: 'Sender', name: parsed.name, standOrLocation: parsed.standOrLocation, active: true } });
+  const candidateSheets = sheetName ? [sheetName] : workbook.SheetNames;
+  for (const candidate of candidateSheets) {
+    const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets[candidate], { header: 1, defval: '', blankrows: false });
+    const headerIndex = rows.findIndex(row => row.map(value => marketLabel(text(value))).some(label => ['Western', 'Spit', 'Covent'].includes(label)) || row.map(value => normaliseHeader(text(value))).includes('sender'));
+    if (headerIndex < 0) continue;
+    const headings = (rows[headerIndex] || []).map(value => text(value));
+    const marketColumns = headings.flatMap((heading, index) => {
+      const label = marketLabel(heading);
+      return ['Western', 'Spit', 'Covent'].includes(label) ? [{ market: label, valueColumn: index, salesmanColumn: index + 1 }] : [];
+    });
+    const senderColumn = headings.findIndex(heading => normaliseHeader(heading) === 'sender');
+    rows.slice(headerIndex + 1).forEach(row => {
+      for (const item of marketColumns) {
+        const sellerCell = text(row[item.valueColumn]);
+        const salesman = text(row[item.salesmanColumn]);
+        if (!sellerCell) continue;
+        const parsed = parseSellerStand(sellerCell);
+        const key = `master:marketcontact:${item.market}-${parsed.name}-${salesman}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        records.push({ entityType: 'marketcontact', idempotencyKey: key, source: 'SLH Transport Operations Master Data workbook', payload: { market: item.market, name: parsed.name, standOrLocation: parsed.standOrLocation, salesman, active: true } });
+      }
+      if (senderColumn >= 0) {
+        const sender = text(row[senderColumn]);
+        if (sender) {
+          const parsed = parseSellerStand(sender);
+          const key = `master:marketcontact:Sender-${parsed.name}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          if (!seen.has(key)) {
+            seen.add(key);
+            records.push({ entityType: 'marketcontact', idempotencyKey: key, source: 'SLH Transport Operations Master Data workbook', payload: { market: 'Sender', name: parsed.name, standOrLocation: parsed.standOrLocation, active: true } });
+          }
         }
       }
-    }
-  });
+    });
+  }
   return records;
 }
 function parseSellerStand(value: string) { const match = value.match(/^(.*)\((.*)\)$/); return { name: (match?.[1] || value).trim(), standOrLocation: match?.[2]?.trim() }; }
