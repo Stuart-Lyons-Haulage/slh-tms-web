@@ -10,4 +10,12 @@ const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
 const msal = new PublicClientApplication({ auth: { clientId: clientId || '00000000-0000-0000-0000-000000000000', authority: `https://login.microsoftonline.com/${tenantId || 'common'}`, redirectUri: window.location.origin }, cache: { cacheLocation: 'sessionStorage' } });
 
-createRoot(document.getElementById('root')!).render(<StrictMode><MsalProvider instance={msal}><App /></MsalProvider></StrictMode>);
+async function start() {
+  await msal.initialize();
+  const redirect = await msal.handleRedirectPromise();
+  const account = redirect?.account || msal.getAllAccounts()[0];
+  if (account) msal.setActiveAccount(account);
+  createRoot(document.getElementById('root')!).render(<StrictMode><MsalProvider instance={msal}><App /></MsalProvider></StrictMode>);
+}
+
+void start();
