@@ -7,6 +7,10 @@ code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
 .suggestions { display: flex; align-items: stretch; gap: 10px; margin: 0 0 18px; padding: 14px; border: 1px solid #cfe3de; border-radius: 10px; background: #f6fbf7; }
 .suggestions > div { min-width: 180px; } .suggestions h2 { margin: 4px 0 0; color: #073a5a; }
 .suggestions button { flex: 1; text-align: left; padding: 10px; background: #fff; }.suggestions button strong, .suggestions button span { display: block; }.suggestions button span { color: #607685; font-size: .78rem; margin-top: 4px; }.suggestions button.selected { border-color: #007878; background: #eaf7f2; }
+.selected-load-preview { display: grid; grid-template-columns: minmax(190px, .8fr) 1fr auto; gap: 12px; align-items: center; margin: 0 0 18px; padding: 14px; border: 1px solid #b9d9d1; border-radius: 10px; background: #f1faf7; }
+.selected-load-preview h2 { margin: 4px 0 0; color: #073a5a; }
+.selected-load-preview span, .selected-load-preview small { color: #46616f; }
+.selected-load-preview small { max-width: 260px; }
 .planner-toolbar label { font-weight: 700; color: #17344a; }
 .planner-toolbar input { margin-left: 8px; padding: .45rem; border: 1px solid #c8d5da; border-radius: 6px; font: inherit; }
 .planning-grid { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(280px, .8fr); gap: 18px; }
