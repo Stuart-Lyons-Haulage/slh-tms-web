@@ -91,9 +91,9 @@ header { height: 72px; padding: 0 30px; gap: 22px; box-shadow: 0 2px 12px #062a4
 .header-context { display: grid; border-left: 1px solid #ffffff35; padding-left: 22px; }
 .header-context small { color: #b9ccd7; font-size: .74rem; margin-top: 2px; }
 .primary, .header-actions .primary { background: #75d35c; color: #083851; border-color: #75d35c; }
-aside { width: 248px; top: 72px; padding: 18px 13px; }
+.side-nav { width: 248px; top: 72px; padding: 18px 13px; }
 .new-order { display: block; border-radius: 8px; background: #75d35c; color: #063b5c; padding: 11px 13px; font-weight: 800; text-decoration: none; margin: 0 5px 22px; }
-aside a:not(.new-order) { padding: 9px 12px; border-radius: 7px; }
+.side-nav a:not(.new-order) { padding: 9px 12px; border-radius: 7px; }
 .nav-title { font-size: .68rem; padding: 0 12px 9px; margin-top: 15px; }
 main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700px; }
 .planner-workspace { grid-template-columns: minmax(270px, .9fr) minmax(330px, 1.1fr) minmax(290px, .9fr); }
