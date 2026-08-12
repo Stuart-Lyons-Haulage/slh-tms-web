@@ -68,7 +68,7 @@ export const api = {
   updateLoadStops: (id: string, stops: Array<{ orderId?: string; name: string; address?: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string }>, token?: string) => request<Load>(`/api/v1/loads/${id}/stops`, token, { method: 'PUT', body: JSON.stringify(stops) }),
   route: (loadId: string, token?: string) => request<Record<string, unknown>>(`/api/v1/loads/${loadId}/route`, token),
   dispatch: (loadId: string, token?: string) => request<LoadDispatch>(`/api/v1/loads/${loadId}/dispatch`, token),
-  sendDispatchSms: (loadId: string, token?: string) => request<{ messageId: string; mobileSuffix: string; status: string }>(`/api/v1/loads/${loadId}/dispatch/sms`, token, { method: 'POST' }),
+  sendDispatchSms: (loadId: string, token?: string) => request<{ messageId: string; mobileSuffix: string; provider?: string; status: string }>(`/api/v1/loads/${loadId}/dispatch/sms`, token, { method: 'POST' }),
   geocode: (address: string, token?: string) => request<Record<string, unknown>>(`/api/v1/maps/geocode?address=${encodeURIComponent(address)}`, token),
   sageHrStatus: (token?: string) => request<SageHrStatus>('/api/v1/integrations/sage-hr/status', token),
   roadTechStatus: (token?: string) => request<RoadTechStatus>('/api/v1/integrations/roadtech/status', token),
