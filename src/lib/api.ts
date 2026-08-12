@@ -5,7 +5,7 @@ export type Driver = { id: string; employeeNumber: string; displayName: string; 
 export type Trailer = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; active: boolean };
 export type Site = { id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; mapLink?: string; active: boolean };
 export type MarketContact = { id: string; market: string; name: string; standOrLocation?: string; active: boolean };
-export type StagedImport = { id: string; entityType: string; idempotencyKey: string; payloadJson: string; status: string; source?: string; receivedAtUtc: string; reviewedAtUtc?: string; reviewedBy?: string; reviewNote?: string };
+export type StagedImport = { id: string; entityType: string; idempotencyKey: string; payloadJson: string; status: string | number; source?: string; receivedAtUtc: string; reviewedAtUtc?: string; reviewedBy?: string; reviewNote?: string };
 export type TransportOrder = { id: string; reference: string; customerCode: string; collectionDate: string; deliveryDate?: string; deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; pallets?: number; status: string; sellerName?: string; marketName?: string; stallNumber?: string; driverInstructions?: string; mapLink?: string };
 export type Telemetry = { provider: string; retrievedAtUtc: string; recordCount: number; records: Array<{ vehicleIdentifier: string; eventTimeUtc: string; latitude?: number; longitude?: number; speedKph?: number; isMoving?: boolean; status?: string }> };
 export type FleetStatus = { provider: string; retrievedAtUtc: string; vehicleCount: number; readyCount: number; attentionCount: number; vehicles: Array<{ vehicleId: string; registration: string; fleetNumber?: string; trackingIdentifier?: string; condition: 'Moving' | 'Started' | 'Stationary' | 'SignedOn' | 'Stale' | 'NotSignedOn'; lastEventTimeUtc?: string; ignitionOn?: boolean; isMoving?: boolean; speedKph?: number; latitude?: number; longitude?: number; ageMinutes?: number; loadReference?: string; loadStatus?: string; driverName?: string }> };
@@ -49,7 +49,7 @@ export const api = {
   trailers: (token?: string) => request<Trailer[]>('/api/v1/trailers', token),
   sites: (token?: string) => request<Site[]>('/api/v1/sites', token),
   marketContacts: (token?: string) => request<MarketContact[]>('/api/v1/market-contacts', token),
-  staging: (token?: string) => request<StagedImport[]>('/api/v1/staging?take=100', token),
+  staging: (token?: string) => request<StagedImport[]>('/api/v1/staging?take=500', token),
   orders: (from?: string, to?: string, token?: string) => request<TransportOrder[]>(`/api/v1/orders?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`, token),
   stageOrder: (payload: Record<string, string>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType: 'order', idempotencyKey, source: 'SLH TMS Web/CSV', payload }) }),
   stageRecord: (entityType: string, payload: Record<string, string | boolean | number | undefined>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType, idempotencyKey, source: 'SLH TMS Web', payload }) }),
