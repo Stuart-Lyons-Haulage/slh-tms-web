@@ -400,7 +400,7 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
     const name = firstText(row, ['Contact Name', 'Name', 'Customer Name', 'Site Contact']);
     const email = firstText(row, ['Email', 'E-mail', 'Email Address', 'ETA Email']);
     if (!customerCode || !name || !active(row)) continue;
-    add('customercontact', `${customerCode}-${name}-${email}`, { customerCode, name, email, mobileNumber: normalisePhone(read(row, 'Phone')), receivesEtaUpdates: Boolean(email), active: true });
+    add('customercontact', `${customerCode}-${name}-${email}`, { customerCode, customerName: customerCode, name, email, mobileNumber: normalisePhone(read(row, 'Phone')), receivesEtaUpdates: Boolean(email), active: true });
   }
   records.push(...marketContactRecords(workbook));
   if (!driverRows.length) issues.push('No driver rows recognised. Check the workbook has DriverID/Driver headings.');
@@ -453,6 +453,16 @@ function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
   const sheetName = findSheet(workbook, ['Market Contacts', 'Markets', 'Market Sellers', 'Market']);
   const records: StageBatchRequest[] = [];
   const seen = new Set<string>();
+  const addMarketContact = (source: string, market: string, sellerValue: string, salesmanValue?: string, senderValue?: string, palletsValue?: unknown) => {
+    const parsed = parseSellerStand(sellerValue);
+    if (!parsed.name || /^\d+$/.test(parsed.name) || ['total', 'totals', 'salesmen', 'salesman', 'seller', 'sellers'].includes(normaliseHeader(parsed.name))) return;
+    const sender = text(senderValue);
+    const salesman = text(salesmanValue) || parsed.name;
+    const key = `master:marketcontact:${market}-${parsed.name}-${sender || salesman}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    if (seen.has(key)) return;
+    seen.add(key);
+    records.push({ entityType: 'marketcontact', idempotencyKey: key, source, payload: { market, name: parsed.name, standOrLocation: parsed.standOrLocation, salesman, sender, pallets: numberValue(palletsValue), active: true } });
+  };
   for (const candidate of workbook.SheetNames) {
     const market = marketFromSheetName(candidate);
     if (!market) continue;
@@ -468,15 +478,7 @@ function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
     const senderColumn = headings.findIndex(heading => heading === 'sender');
     rows.slice(headerIndex + 1).forEach(row => {
       const sellerCell = text(row[sellerColumn]);
-      if (!sellerCell || ['total', 'totals', 'salesmen', 'salesman'].includes(normaliseHeader(sellerCell))) return;
-      const parsed = parseSellerStand(sellerCell);
-      if (!parsed.name || /^\d+$/.test(parsed.name)) return;
-      const sender = senderColumn >= 0 ? text(row[senderColumn]) : '';
-      const pallets = palletsColumn >= 0 ? numberValue(row[palletsColumn]) : undefined;
-      const key = `master:marketcontact:${market}-${parsed.name}-${sender}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      if (seen.has(key)) return;
-      seen.add(key);
-      records.push({ entityType: 'marketcontact', idempotencyKey: key, source: `SLH ${candidate} market tab`, payload: { market, name: parsed.name, standOrLocation: parsed.standOrLocation, salesman: parsed.name, sender, pallets, active: true } });
+      addMarketContact(`SLH ${candidate} market tab`, market, sellerCell, sellerCell, senderColumn >= 0 ? text(row[senderColumn]) : '', palletsColumn >= 0 ? row[palletsColumn] : undefined);
     });
   }
   const candidateSheets = sheetName ? [sheetName] : workbook.SheetNames;
@@ -494,12 +496,7 @@ function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
       for (const item of marketColumns) {
         const sellerCell = text(row[item.valueColumn]);
         const salesman = text(row[item.salesmanColumn]);
-        if (!sellerCell) continue;
-        const parsed = parseSellerStand(sellerCell);
-        const key = `master:marketcontact:${item.market}-${parsed.name}-${salesman}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        if (seen.has(key)) continue;
-        seen.add(key);
-        records.push({ entityType: 'marketcontact', idempotencyKey: key, source: 'SLH Transport Operations Master Data workbook', payload: { market: item.market, name: parsed.name, standOrLocation: parsed.standOrLocation, salesman, active: true } });
+        addMarketContact('SLH Transport Operations Master Data workbook', item.market, sellerCell, salesman);
       }
       if (senderColumn >= 0) {
         const sender = text(row[senderColumn]);
@@ -529,7 +526,7 @@ function summariseBatch(records: StageBatchRequest[]) { const counts = records.r
 function read(row: SheetRow, key: string) { const exact = row[key]; if (exact !== undefined) return exact; const wanted = normaliseHeader(key); const match = Object.entries(row).find(([header]) => normaliseHeader(header) === wanted); return match?.[1]; }
 function firstText(row: SheetRow, keys: string[]) { for (const key of keys) { const value = text(read(row, key)); if (value) return value; } return ''; }
 function driverDisplayName(row: SheetRow) {
-  const candidates = ['Driver Name', 'Driver', 'Drivers', 'Display Name', 'Employee Name', 'Full Name', 'Name'].map(key => firstText(row, [key])).filter(Boolean);
+  const candidates = ['Driver', 'Driver Name', 'Drivers', 'Display Name', 'Employee Name', 'Full Name', 'Name'].map(key => firstText(row, [key])).filter(Boolean);
   return candidates.find(value => !looksLikeEmployeeNumber(value)) || '';
 }
 function looksLikeEmployeeNumber(value: string) { const compact = value.replace(/\s+/g, ''); return /^\d+$/.test(compact) || /^e?mp?\d+$/i.test(compact) || /^[a-z]{0,4}\d{3,}$/i.test(compact); }
