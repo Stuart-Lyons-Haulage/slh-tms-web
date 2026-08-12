@@ -19,6 +19,9 @@ export type ReturnLoadSuggestion = { driverId: string; driverName: string; emplo
 export type ReturnLoadSuggestions = { planningDate: string; generatedAtUtc: string; suggestions: ReturnLoadSuggestion[] };
 export type SageHrStatus = { configured: boolean; connected: boolean; employeeCount: number; driverCandidateCount: number; message: string };
 export type SageHrSync = { sourceEmployeeCount: number; driverCandidateCount: number; created: number; updated: number; skipped: number; syncedAtUtc: string };
+export type DeliveryEta = { loadId: string; loadReference: string; loadStatus: string; stopId: string; sequence: number; stopName: string; orderReference?: string; customerCode?: string; vehicleRegistration?: string; etaUtc?: string; source: 'Live' | 'Planned' | 'Unavailable'; deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; risk: 'Pending' | 'Late' | 'AtRisk' | 'OnTrack'; trackingUpdatedAtUtc?: string };
+export type DeliveryEtas = { planningDate: string; calculatedAtUtc: string; records: DeliveryEta[] };
+export type IntegrationStatus = { roadTech: { configured: boolean; connected: boolean; latestEventUtc?: string }; azureMaps: { configured: boolean }; azureSms: { configured: boolean }; sageHr: { configured: boolean }; emailIntake: { configured: boolean; lastReceivedUtc?: string }; batchIntake: { configured: boolean; endpoint: string } };
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -48,6 +51,7 @@ export const api = {
   loads: (date?: string, token?: string) => request<Load[]>(`/api/v1/loads${date ? `?date=${date}` : ''}`, token),
   driverAssignments: (from: string, to: string, token?: string) => request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, token),
   returnLoadSuggestions: (date: string, token?: string) => request<ReturnLoadSuggestions>(`/api/v1/planning/return-load-suggestions?date=${encodeURIComponent(date)}`, token),
+  deliveryEtas: (date: string, token?: string) => request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(date)}`, token),
   createLoad: (payload: CreateLoad, token?: string) => request<Load>('/api/v1/loads', token, { method: 'POST', body: JSON.stringify(payload) }),
   allocateLoad: (id: string, payload: { vehicleId?: string; driverId?: string; trailerId?: string }, token?: string) => request<Load>(`/api/v1/loads/${id}/allocation`, token, { method: 'PUT', body: JSON.stringify(payload) }),
   updateLoadStatus: (id: string, status: string, token?: string) => request<Load>(`/api/v1/loads/${id}/status`, token, { method: 'PUT', body: JSON.stringify({ status }) }),
@@ -57,6 +61,7 @@ export const api = {
   sendDispatchSms: (loadId: string, token?: string) => request<{ messageId: string; mobileSuffix: string; status: string }>(`/api/v1/loads/${loadId}/dispatch/sms`, token, { method: 'POST' }),
   geocode: (address: string, token?: string) => request<Record<string, unknown>>(`/api/v1/maps/geocode?address=${encodeURIComponent(address)}`, token),
   sageHrStatus: (token?: string) => request<SageHrStatus>('/api/v1/integrations/sage-hr/status', token),
+  integrationStatus: (token?: string) => request<IntegrationStatus>('/api/v1/integrations/status', token),
   syncSageHrDrivers: (token?: string) => request<SageHrSync>('/api/v1/integrations/sage-hr/sync-drivers', token, { method: 'POST' }),
   review: (id: string, approved: boolean, note: string, token?: string) => request(`/api/v1/staging/${id}/${approved ? 'approve' : 'reject'}`, token, { method: 'POST', body: JSON.stringify({ note }) })
 };
