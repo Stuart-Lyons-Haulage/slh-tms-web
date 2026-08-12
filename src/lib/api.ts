@@ -74,5 +74,6 @@ export const api = {
   roadTechStatus: (token?: string) => request<RoadTechStatus>('/api/v1/integrations/roadtech/status', token),
   integrationStatus: (token?: string) => request<IntegrationStatus>('/api/v1/integrations/status', token),
   syncSageHrDrivers: (token?: string) => request<SageHrSync>('/api/v1/integrations/sage-hr/sync-drivers', token, { method: 'POST' }),
-  review: (id: string, approved: boolean, note: string, token?: string) => request(`/api/v1/staging/${id}/${approved ? 'approve' : 'reject'}`, token, { method: 'POST', body: JSON.stringify({ note }) })
+  review: (id: string, approved: boolean, note: string, token?: string) => request(`/api/v1/staging/${id}/${approved ? 'approve' : 'reject'}`, token, { method: 'POST', body: JSON.stringify({ note }) }),
+  clearPendingStaging: (token?: string) => request<{ deleted: number }>('/api/v1/staging/pending?confirm=CLEAR-PENDING', token, { method: 'DELETE' })
 };
