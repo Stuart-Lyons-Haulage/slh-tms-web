@@ -139,16 +139,21 @@ function QuickOrderForm() {
   const marketContacts = useApi(useCallback(async () => api.marketContacts(await token()), [token]));
   const customerContacts = useApi(useCallback(async () => api.customerContacts(await token()), [token]));
   const [orderKind, setOrderKind] = useState<'market' | 'customer'>('market');
-  const [form, setForm] = useState({ poNumber: '', customerCode: '', collectionDate: new Date().toISOString().slice(0, 10), deliveryDate: '', deliveryWindowStartUtc: '', deliveryWindowEndUtc: '', pallets: '', averagePalletWeightKg: '', estimatedWeightKg: '', sellerName: '', marketName: '', stallNumber: '', driverInstructions: '', mapLink: '' });
+  const [form, setForm] = useState({ poNumber: '', customerCode: '', collectionDate: new Date().toISOString().slice(0, 10), deliveryDate: '', deliveryWindowStartUtc: '', deliveryWindowEndUtc: '', pallets: '', averagePalletWeightKg: '', estimatedWeightKg: '', sellerName: '', marketName: '', stallNumber: '', senderName: '', driverInstructions: '', mapLink: '' });
   const [message, setMessage] = useState<string>();
   const [saving, setSaving] = useState(false);
-  const markets = useMemo(() => [...new Set((marketContacts.data || []).filter(contact => contact.active).map(contact => contact.market).filter(Boolean))].sort(), [marketContacts.data]);
+  const marketOrder = ['Western', 'Spit', 'Covent'];
+  const markets = useMemo(() => {
+    const imported = [...new Set((marketContacts.data || []).filter(contact => contact.active && contact.market !== 'Sender').map(contact => contact.market).filter(Boolean))];
+    return [...marketOrder.filter(market => imported.includes(market)), ...imported.filter(market => !marketOrder.includes(market)).sort()];
+  }, [marketContacts.data]);
   const sellers = useMemo(() => (marketContacts.data || []).filter(contact => contact.active && (!form.marketName || contact.market === form.marketName)).sort((left, right) => left.name.localeCompare(right.name)), [marketContacts.data, form.marketName]);
+  const senders = useMemo(() => (marketContacts.data || []).filter(contact => contact.active && contact.market === 'Sender').sort((left, right) => left.name.localeCompare(right.name)), [marketContacts.data]);
   const customerOptions = useMemo(() => [...(customers.data || []).filter(customer => customer.active).map(customer => ({ code: customer.code, label: `${customer.code} · ${customer.name}` })), ...(customerContacts.data || []).filter(contact => contact.active).map(contact => ({ code: contact.customerCode, label: `${contact.customerCode} · ${contact.name}` }))].filter((item, index, all) => all.findIndex(other => other.code === item.code) === index).sort((left, right) => left.label.localeCompare(right.label)), [customers.data, customerContacts.data]);
   const update = (name: keyof typeof form, value: string) => setForm(current => ({ ...current, [name]: value }));
   function chooseCustomer(customerCode: string) {
     const site = (sites.data || []).find(item => item.externalCode === customerCode || item.name === customerCode);
-    setForm(current => ({ ...current, customerCode, marketName: '', sellerName: '', stallNumber: '', mapLink: site?.mapLink || current.mapLink, driverInstructions: site?.collectionInstructions || current.driverInstructions }));
+    setForm(current => ({ ...current, customerCode, marketName: '', sellerName: '', stallNumber: '', senderName: '', mapLink: site?.mapLink || current.mapLink, driverInstructions: site?.collectionInstructions || current.driverInstructions }));
   }
   function chooseMarket(marketName: string) {
     setForm(current => ({ ...current, marketName, customerCode: marketName || current.customerCode, sellerName: '', stallNumber: '' }));
@@ -161,16 +166,16 @@ function QuickOrderForm() {
     event.preventDefault(); setSaving(true);
     try {
       const calculatedWeight = form.estimatedWeightKg || (Number(form.pallets) > 0 && Number(form.averagePalletWeightKg) > 0 ? String(Math.round(Number(form.pallets) * Number(form.averagePalletWeightKg))) : '');
-      const payload = { ...form, customerCode: form.customerCode || form.marketName || 'MARKET', estimatedWeightKg: calculatedWeight, driverInstructions: [calculatedWeight ? `Weight: ${calculatedWeight} kg` : '', form.driverInstructions].filter(Boolean).join(' · '), deliveryWindowStartUtc: form.deliveryWindowStartUtc ? new Date(form.deliveryWindowStartUtc).toISOString() : '', deliveryWindowEndUtc: form.deliveryWindowEndUtc ? new Date(form.deliveryWindowEndUtc).toISOString() : '' };
+      const payload = { ...form, customerCode: form.customerCode || form.marketName || 'MARKET', estimatedWeightKg: calculatedWeight, driverInstructions: [calculatedWeight ? `Weight: ${calculatedWeight} kg` : '', form.senderName ? `Sender: ${form.senderName}` : '', form.driverInstructions].filter(Boolean).join(' · '), deliveryWindowStartUtc: form.deliveryWindowStartUtc ? new Date(form.deliveryWindowStartUtc).toISOString() : '', deliveryWindowEndUtc: form.deliveryWindowEndUtc ? new Date(form.deliveryWindowEndUtc).toISOString() : '' };
       await api.stageOrder(payload, `web-manual:${form.poNumber}:${form.collectionDate}`, await token());
       setMessage('Order sent to staging review.');
-      setForm(current => ({ ...current, poNumber: '', customerCode: '', deliveryDate: '', deliveryWindowStartUtc: '', deliveryWindowEndUtc: '', pallets: '', averagePalletWeightKg: '', estimatedWeightKg: '', sellerName: '', marketName: '', stallNumber: '', driverInstructions: '', mapLink: '' }));
+      setForm(current => ({ ...current, poNumber: '', customerCode: '', deliveryDate: '', deliveryWindowStartUtc: '', deliveryWindowEndUtc: '', pallets: '', averagePalletWeightKg: '', estimatedWeightKg: '', sellerName: '', marketName: '', stallNumber: '', senderName: '', driverInstructions: '', mapLink: '' }));
     } catch (exception) { setMessage(exception instanceof Error ? exception.message : 'Order could not be submitted.'); }
     finally { setSaving(false); }
   }
-  return <form className="quick-order" onSubmit={event => void submit(event)}><div><p className="eyebrow">Quick entry</p><h2>Plan a market or customer order</h2><p className="hint">Master data now drives the dropdowns, so market orders carry seller, stall and map details into driver messages.</p></div><div className="field-grid"><label>Order type<select value={orderKind} onChange={event => { const value = event.target.value as 'market' | 'customer'; setOrderKind(value); setForm(current => ({ ...current, customerCode: '', marketName: '', sellerName: '', stallNumber: '' })); }}><option value="market">Market order</option><option value="customer">Customer / site order</option></select></label><label>Order / PO<input required value={form.poNumber} onChange={event => update('poNumber', event.target.value)} /></label>{orderKind === 'market' ? <><label>Market<select required value={form.marketName} onChange={event => chooseMarket(event.target.value)}><option value="">Select market…</option>{markets.map(market => <option key={market} value={market}>{market}</option>)}</select></label><label>Seller<select required value={form.sellerName} onChange={event => chooseSeller(event.target.value)} disabled={!form.marketName && markets.length > 0}><option value="">Select seller…</option>{sellers.map(seller => <option key={seller.id} value={seller.name}>{seller.name}{seller.standOrLocation ? ` · ${seller.standOrLocation}` : ''}</option>)}</select></label><label>Stall number<input value={form.stallNumber} onChange={event => update('stallNumber', event.target.value)} placeholder="Auto from seller" /></label></> : <><label>Customer<select required value={form.customerCode} onChange={event => chooseCustomer(event.target.value)}><option value="">Select customer…</option>{customerOptions.map(customer => <option key={customer.code} value={customer.code}>{customer.label}</option>)}</select></label><label>Site<select value={form.mapLink} onChange={event => { const site = sites.data?.find(item => item.id === event.target.value); if (site) setForm(current => ({ ...current, customerCode: current.customerCode || site.externalCode, mapLink: site.mapLink || '', driverInstructions: site.collectionInstructions || current.driverInstructions })); }}><option value="">Optional site/map…</option>{(sites.data || []).filter(site => site.active).map(site => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label></>}<label>Collection date<input required type="date" value={form.collectionDate} onChange={event => update('collectionDate', event.target.value)} /></label><label>Delivery date<input type="date" value={form.deliveryDate} onChange={event => update('deliveryDate', event.target.value)} /></label><label>Delivery window start<input type="datetime-local" value={form.deliveryWindowStartUtc} onChange={event => update('deliveryWindowStartUtc', event.target.value)} /></label><label>Delivery window end<input type="datetime-local" value={form.deliveryWindowEndUtc} onChange={event => update('deliveryWindowEndUtc', event.target.value)} /></label><label>Pallets<input inputMode="numeric" value={form.pallets} onChange={event => update('pallets', event.target.value)} /></label><label>Avg weight kg<input inputMode="decimal" value={form.averagePalletWeightKg} onChange={event => update('averagePalletWeightKg', event.target.value)} /></label><label>Estimated weight kg<input inputMode="decimal" value={form.estimatedWeightKg} onChange={event => update('estimatedWeightKg', event.target.value)} placeholder="Auto if blank" /></label><label className="wide">Map link<input type="url" value={form.mapLink} onChange={event => update('mapLink', event.target.value)} placeholder="https://maps.google.com/..." /></label><label className="wide">Driver instructions<textarea value={form.driverInstructions} onChange={event => update('driverInstructions', event.target.value)} placeholder="Collection point, access notes, goods handling…" /></label></div>{(marketContacts.error || customers.error || sites.error) && <p className="notice inline-notice">Some dropdown data could not load yet. Manual fields still save into staging once API access is available.</p>}<DriverMessagePreview form={form} /><button className="primary" disabled={saving}>{saving ? 'Saving…' : 'Send for review'}</button>{message && <p className="hint">{message}</p>}</form>;
+  return <form className="quick-order" onSubmit={event => void submit(event)}><div><p className="eyebrow">Quick entry</p><h2>Plan a market or customer order</h2><p className="hint">Master data now drives the dropdowns, so market orders carry seller, salesman, sender, stall and map details into driver messages.</p></div><div className="field-grid"><label>Order type<select value={orderKind} onChange={event => { const value = event.target.value as 'market' | 'customer'; setOrderKind(value); setForm(current => ({ ...current, customerCode: '', marketName: '', sellerName: '', stallNumber: '', senderName: '' })); }}><option value="market">Market order</option><option value="customer">Customer / site order</option></select></label><label>Order / PO<input required value={form.poNumber} onChange={event => update('poNumber', event.target.value)} /></label>{orderKind === 'market' ? <><label>Market<select required value={form.marketName} onChange={event => chooseMarket(event.target.value)}><option value="">Select market…</option>{markets.map(market => <option key={market} value={market}>{market}</option>)}</select></label><label>Seller<select required value={form.sellerName} onChange={event => chooseSeller(event.target.value)} disabled={!form.marketName && markets.length > 0}><option value="">Select seller…</option>{sellers.map(seller => <option key={seller.id} value={seller.name}>{seller.name}{seller.salesman ? ` · Salesman: ${seller.salesman}` : ''}{seller.standOrLocation ? ` · ${seller.standOrLocation}` : ''}</option>)}</select></label><label>Sender<select value={form.senderName} onChange={event => update('senderName', event.target.value)}><option value="">Select sender…</option>{senders.map(sender => <option key={sender.id} value={sender.name}>{sender.name}{sender.standOrLocation ? ` · ${sender.standOrLocation}` : ''}</option>)}</select></label><label>Stall number<input value={form.stallNumber} onChange={event => update('stallNumber', event.target.value)} placeholder="Auto from seller" /></label></> : <><label>Customer<select required value={form.customerCode} onChange={event => chooseCustomer(event.target.value)}><option value="">Select customer…</option>{customerOptions.map(customer => <option key={customer.code} value={customer.code}>{customer.label}</option>)}</select></label><label>Site<select value={form.mapLink} onChange={event => { const site = sites.data?.find(item => item.id === event.target.value); if (site) setForm(current => ({ ...current, customerCode: current.customerCode || site.externalCode, mapLink: site.mapLink || '', driverInstructions: site.collectionInstructions || current.driverInstructions })); }}><option value="">Optional site/map…</option>{(sites.data || []).filter(site => site.active).map(site => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label></>}<label>Collection date<input required type="date" value={form.collectionDate} onChange={event => update('collectionDate', event.target.value)} /></label><label>Delivery date<input type="date" value={form.deliveryDate} onChange={event => update('deliveryDate', event.target.value)} /></label><label>Delivery window start<input type="datetime-local" value={form.deliveryWindowStartUtc} onChange={event => update('deliveryWindowStartUtc', event.target.value)} /></label><label>Delivery window end<input type="datetime-local" value={form.deliveryWindowEndUtc} onChange={event => update('deliveryWindowEndUtc', event.target.value)} /></label><label>Pallets<input inputMode="numeric" value={form.pallets} onChange={event => update('pallets', event.target.value)} /></label><label>Avg weight kg<input inputMode="decimal" value={form.averagePalletWeightKg} onChange={event => update('averagePalletWeightKg', event.target.value)} /></label><label>Estimated weight kg<input inputMode="decimal" value={form.estimatedWeightKg} onChange={event => update('estimatedWeightKg', event.target.value)} placeholder="Auto if blank" /></label><label className="wide">Map link<input type="url" value={form.mapLink} onChange={event => update('mapLink', event.target.value)} placeholder="https://maps.google.com/..." /></label><label className="wide">Driver instructions<textarea value={form.driverInstructions} onChange={event => update('driverInstructions', event.target.value)} placeholder="Collection point, access notes, goods handling…" /></label></div>{(marketContacts.error || customers.error || sites.error) && <p className="notice inline-notice">Some dropdown data could not load yet. Manual fields still save into staging once API access is available.</p>}<DriverMessagePreview form={form} /><button className="primary" disabled={saving}>{saving ? 'Saving…' : 'Send for review'}</button>{message && <p className="hint">{message}</p>}</form>;
 }
-function DriverMessagePreview({ form }: { form: Record<string, string> }) { const lines = [`SLH run ${form.poNumber || '—'}`, form.marketName ? `${form.marketName}${form.stallNumber ? ` · Stall ${form.stallNumber}` : ''}` : form.customerCode || 'Customer to confirm', form.sellerName ? `Seller: ${form.sellerName}` : '', form.collectionDate ? `Collection: ${form.collectionDate}` : '', form.estimatedWeightKg || (Number(form.pallets) > 0 && Number(form.averagePalletWeightKg) > 0) ? `Weight: ${form.estimatedWeightKg || Math.round(Number(form.pallets) * Number(form.averagePalletWeightKg))} kg` : '', form.driverInstructions ? `Notes: ${form.driverInstructions}` : '', form.mapLink ? `Map: ${form.mapLink}` : ''].filter(Boolean); return <aside className="driver-message"><p className="eyebrow">Driver message preview</p><strong>Planner review required before send</strong><pre>{lines.join('\n')}</pre></aside>; }
+function DriverMessagePreview({ form }: { form: Record<string, string> }) { const lines = [`SLH run ${form.poNumber || '—'}`, form.marketName ? `${form.marketName}${form.stallNumber ? ` · Stall ${form.stallNumber}` : ''}` : form.customerCode || 'Customer to confirm', form.sellerName ? `Seller: ${form.sellerName}` : '', form.senderName ? `Sender: ${form.senderName}` : '', form.collectionDate ? `Collection: ${form.collectionDate}` : '', form.estimatedWeightKg || (Number(form.pallets) > 0 && Number(form.averagePalletWeightKg) > 0) ? `Weight: ${form.estimatedWeightKg || Math.round(Number(form.pallets) * Number(form.averagePalletWeightKg))} kg` : '', form.driverInstructions ? `Notes: ${form.driverInstructions}` : '', form.mapLink ? `Map: ${form.mapLink}` : ''].filter(Boolean); return <aside className="driver-message"><p className="eyebrow">Driver message preview</p><strong>Planner review required before send</strong><pre>{lines.join('\n')}</pre></aside>; }
 
 type PlanningOrder = { id: string; poNumber: string; customerCode: string; collectionDate: string; deliveryDate: string; pallets: string; status: string; marketName?: string; sellerName?: string; stallNumber?: string; driverInstructions?: string; mapLink?: string };
 function planningOrders(items?: TransportOrder[]): PlanningOrder[] { return (items || []).filter(item => item.status !== 'Cancelled').map(item => ({ id: item.id, poNumber: item.reference, customerCode: item.customerCode, collectionDate: item.collectionDate, deliveryDate: item.deliveryDate || '—', pallets: item.pallets?.toString() || '—', status: item.status, marketName: item.marketName, sellerName: item.sellerName, stallNumber: item.stallNumber, driverInstructions: item.driverInstructions, mapLink: item.mapLink })).sort((left, right) => left.collectionDate.localeCompare(right.collectionDate)); }
@@ -341,8 +346,13 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
   const issues: string[] = [];
   const records: StageBatchRequest[] = [];
   const add = (entityType: string, key: string, payload: StageBatchRequest['payload']) => {
-    if (!key.trim()) return;
-    records.push({ entityType, idempotencyKey: `master:${entityType}:${key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, source: 'SLH Transport Operations Master Data workbook', payload });
+    const normalKey = key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    if (!normalKey) return;
+    const idempotencyKey = `master:${entityType}:${normalKey}`;
+    const existingIndex = records.findIndex(record => record.idempotencyKey === idempotencyKey);
+    const record = { entityType, idempotencyKey, source: 'SLH Transport Operations Master Data workbook', payload };
+    if (existingIndex >= 0) records[existingIndex] = record;
+    else records.push(record);
   };
   const active = (row: SheetRow) => String(read(row, 'Active') || read(row, 'Status') || 'Yes').toLowerCase() !== 'no';
 
@@ -353,10 +363,10 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
   const contactRows = sheetRows(workbook, ['Customer Contacts', 'CRM', 'Contacts', 'Customers'], ['Customer', 'Contact Name', 'Email']);
 
   for (const row of driverRows) {
-    const employeeNumber = text(read(row, 'DriverID'));
-    const displayName = text(read(row, 'Driver'));
+    const employeeNumber = firstText(row, ['DriverID', 'Driver ID', 'Employee Number', 'Employee No', 'EmployeeNumber', 'Payroll Number', 'Sage Employee Number']);
+    const displayName = firstText(row, ['Driver', 'Driver Name', 'Name', 'Display Name']);
     if (!employeeNumber || !displayName || !active(row)) continue;
-    add('driver', employeeNumber, { employeeNumber, displayName, tachoName: text(read(row, 'Tacho Name')), mobileNumber: normalisePhone(read(row, 'Phone Number')), driverType: text(read(row, 'Driver Type')) || 'Full Time', driverGroup: text(read(row, 'Driver Group')), skills: text(read(row, 'Driver Skills')), active: true });
+    add('driver', employeeNumber, { employeeNumber, displayName, tachoName: firstText(row, ['Tacho Name', 'TachoName']), mobileNumber: normalisePhone(firstText(row, ['Phone Number', 'Mobile Number', 'Mobile', 'Driver Phone', 'Text Number'])), driverType: firstText(row, ['Driver Type', 'Employment Type', 'Type']) || 'Full Time', driverGroup: firstText(row, ['Driver Group', 'Group', 'Agency', 'Planner Group']), skills: firstText(row, ['Driver Skills', 'Skills', 'Licence', 'Licence Type']), active: true });
   }
   for (const row of vehicleRows) {
     const registration = text(read(row, 'Registration')).replace(/\s+/g, '').toUpperCase();
@@ -410,21 +420,45 @@ function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
   if (!sheetName) return [];
   const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets[sheetName], { header: 1, defval: '', blankrows: false });
   const records: StageBatchRequest[] = [];
-  const headers = (rows[0] || []).map(value => text(value));
-  rows.slice(1).forEach((row, rowIndex) => headers.forEach((market, columnIndex) => {
-    const name = text(row[columnIndex]);
-    if (!market || !name) return;
-    const match = name.match(/^(.*)\((.*)\)$/);
-    const cleanName = (match?.[1] || name).trim();
-    const standOrLocation = match?.[2]?.trim();
-    const marketName = marketLabel(market);
-    records.push({ entityType: 'marketcontact', idempotencyKey: `master:marketcontact:${marketName}-${cleanName}-${columnIndex}-${rowIndex}`.toLowerCase().replace(/[^a-z0-9]+/g, '-'), source: 'SLH Transport Operations Master Data workbook', payload: { market: marketName, name: cleanName, standOrLocation, active: true } });
-  }));
+  const seen = new Set<string>();
+  const headerIndex = rows.findIndex(row => row.map(value => marketLabel(text(value))).some(label => ['Western', 'Spit', 'Covent'].includes(label)) || row.map(value => normaliseHeader(text(value))).includes('sender'));
+  if (headerIndex < 0) return [];
+  const headings = (rows[headerIndex] || []).map(value => text(value));
+  const marketColumns = headings.flatMap((heading, index) => {
+    const label = marketLabel(heading);
+    return ['Western', 'Spit', 'Covent'].includes(label) ? [{ market: label, valueColumn: index, salesmanColumn: index + 1 }] : [];
+  });
+  const senderColumn = headings.findIndex(heading => normaliseHeader(heading) === 'sender');
+  rows.slice(headerIndex + 1).forEach((row, rowIndex) => {
+    for (const item of marketColumns) {
+      const sellerCell = text(row[item.valueColumn]);
+      const salesman = text(row[item.salesmanColumn]);
+      if (!sellerCell) continue;
+      const parsed = parseSellerStand(sellerCell);
+      const key = `master:marketcontact:${item.market}-${parsed.name}-${salesman}-${rowIndex}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      records.push({ entityType: 'marketcontact', idempotencyKey: key, source: 'SLH Transport Operations Master Data workbook', payload: { market: item.market, name: parsed.name, standOrLocation: parsed.standOrLocation, salesman, active: true } });
+    }
+    if (senderColumn >= 0) {
+      const sender = text(row[senderColumn]);
+      if (sender) {
+        const parsed = parseSellerStand(sender);
+        const key = `master:marketcontact:Sender-${parsed.name}-${rowIndex}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        if (!seen.has(key)) {
+          seen.add(key);
+          records.push({ entityType: 'marketcontact', idempotencyKey: key, source: 'SLH Transport Operations Master Data workbook', payload: { market: 'Sender', name: parsed.name, standOrLocation: parsed.standOrLocation, active: true } });
+        }
+      }
+    }
+  });
   return records;
 }
-function marketLabel(value: string) { const normalised = normaliseHeader(value); return normalised === 'coventsalesmen' ? 'Covent Garden' : normalised === 'spitsalesmen' ? 'Spitalfields' : normalised === 'westernsalesmen' ? 'Western International' : normalised === 'salesmen' ? 'Salesmen' : value.trim(); }
+function parseSellerStand(value: string) { const match = value.match(/^(.*)\((.*)\)$/); return { name: (match?.[1] || value).trim(), standOrLocation: match?.[2]?.trim() }; }
+function marketLabel(value: string) { const normalised = normaliseHeader(value); return normalised.includes('western') ? 'Western' : normalised.includes('spit') ? 'Spit' : normalised.includes('covent') ? 'Covent' : normalised === 'sender' ? 'Sender' : value.trim(); }
 function summariseBatch(records: StageBatchRequest[]) { const counts = records.reduce<Record<string, number>>((total, record) => ({ ...total, [record.entityType]: (total[record.entityType] || 0) + 1 }), {}); return Object.entries(counts).map(([type, count]) => `${count} ${type}`).join(', '); }
-function read(row: SheetRow, key: string) { return row[key]; }
+function read(row: SheetRow, key: string) { const exact = row[key]; if (exact !== undefined) return exact; const wanted = normaliseHeader(key); const match = Object.entries(row).find(([header]) => normaliseHeader(header) === wanted); return match?.[1]; }
+function firstText(row: SheetRow, keys: string[]) { for (const key of keys) { const value = text(read(row, key)); if (value) return value; } return ''; }
 function text(value: unknown) { return String(value ?? '').trim(); }
 function numberValue(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : undefined; }
 function yesNo(value: unknown) { const normalised = text(value).toLowerCase(); return normalised ? ['yes', 'y', 'true'].includes(normalised) : undefined; }
