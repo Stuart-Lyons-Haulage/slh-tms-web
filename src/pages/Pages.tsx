@@ -363,14 +363,14 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
   };
   const active = (row: SheetRow) => String(read(row, 'Active') || read(row, 'Status') || 'Yes').toLowerCase() !== 'no';
 
-  const driverRows = sheetRows(workbook, ['Drivers', 'Driver Master', 'Driver List', 'Rota', 'Driver Rota', 'Employees', 'Master Data'], ['DriverID', 'Driver', 'Drivers', 'Tacho Name', 'Employee Number', 'Employee No', 'Payroll Number']);
+  const driverRows = driverSheetRows(workbook);
   const vehicleRows = sheetRows(workbook, ['Vehicles & Fuel', 'Vehicles', 'Fleet', 'Cab Phone Numbers', 'Fuel'], ['Registration', 'VehicleID', 'Reg Last 3']);
   const trailerRows = sheetRows(workbook, ['Trailers', 'Trailer Master'], ['Trailer', 'Type', 'Standard Capacity']);
   const siteRows = sheetRows(workbook, ['Sites', 'Site Master', 'Customers', 'Collections', 'Site Contacts'], ['SiteID', 'Site', 'Collection Address', 'Customer', 'Name']);
   const contactRows = sheetRows(workbook, ['Customer Contacts', 'CRM', 'Contacts', 'Customers', 'Site Contacts'], ['Customer', 'Contact Name', 'Name', 'Email', 'E-mail']);
 
   for (const row of driverRows) {
-    const displayName = firstText(row, ['Driver', 'Drivers', 'Driver Name', 'Name', 'Display Name']);
+    const displayName = driverDisplayName(row);
     const employeeNumber = firstText(row, ['DriverID', 'Driver ID', 'Employee Number', 'Employee No', 'EmployeeNumber', 'Payroll Number', 'Payroll No', 'Sage Employee Number', 'Sage ID', 'Employee ID', 'Emp No']) || driverKey(displayName);
     if (!employeeNumber || !displayName || !active(row)) continue;
     add('driver', employeeNumber, { employeeNumber, displayName, tachoName: firstText(row, ['Tacho Name', 'TachoName']), mobileNumber: normalisePhone(firstText(row, ['Phone Number', 'Mobile Number', 'Mobile', 'Driver Phone', 'Text Number'])), driverType: firstText(row, ['Driver Type', 'Employment Type', 'Type']) || 'Full Time', driverGroup: firstText(row, ['Driver Group', 'Group', 'Agency', 'Planner Group']), skills: firstText(row, ['Driver Skills', 'Skills', 'Licence', 'Licence Type']), active: true });
@@ -420,6 +420,27 @@ function sheetRows(workbook: XLSX.WorkBook, names: string[], requiredHeaders: st
     return rows.slice(headerIndex + 1).map(row => Object.fromEntries(headers.map((header, index) => [header, row[index]])) as SheetRow).filter(row => Object.values(row).some(value => text(value)));
   }
   return [];
+}
+function driverSheetRows(workbook: XLSX.WorkBook): SheetRow[] {
+  const candidateSheet = findSheet(workbook, ['Drivers', 'Driver Master', 'Driver List', 'Rota', 'Driver Rota', 'Employees', 'Master Data']);
+  const candidateSheets = candidateSheet ? [candidateSheet] : workbook.SheetNames;
+  for (const candidate of candidateSheets) {
+    const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets[candidate], { header: 1, defval: '', blankrows: false });
+    const headerIndex = rows.findIndex(row => driverHeaderScore(row) >= 2);
+    if (headerIndex < 0) continue;
+    const headers = rows[headerIndex].map(value => text(value));
+    const mapped = rows.slice(headerIndex + 1).map(row => Object.fromEntries(headers.map((header, index) => [header, row[index]])) as SheetRow).filter(row => Object.values(row).some(value => text(value)));
+    const usable = mapped.filter(row => driverDisplayName(row));
+    if (usable.length) return usable;
+  }
+  return [];
+}
+function driverHeaderScore(row: Array<string | number | boolean | Date | undefined>) {
+  const headers = row.map(value => normaliseHeader(text(value)));
+  const hasName = headers.some(header => ['driver', 'drivers', 'drivername', 'displayname', 'name', 'fullname', 'employeename'].includes(header));
+  const hasEmployee = headers.some(header => ['driverid', 'employeeid', 'employeenumber', 'employeeno', 'empno', 'payrollnumber', 'payrollno', 'sageid', 'sageemployeenumber'].includes(header));
+  const hasDriverContext = headers.some(header => ['tachoname', 'drivertype', 'employmenttype', 'drivergroup', 'mobile', 'mobilenumber', 'phonenumber'].includes(header));
+  return Number(hasName) + Number(hasEmployee) + Number(hasDriverContext);
 }
 function findSheet(workbook: XLSX.WorkBook, names: string[]) {
   const exact = names.map(normaliseHeader);
@@ -504,6 +525,11 @@ function scopedImportKey(record: StageBatchRequest, importRun: string, index: nu
 function summariseBatch(records: StageBatchRequest[]) { const counts = records.reduce<Record<string, number>>((total, record) => ({ ...total, [record.entityType]: (total[record.entityType] || 0) + 1 }), {}); return Object.entries(counts).map(([type, count]) => `${count} ${type}`).join(', '); }
 function read(row: SheetRow, key: string) { const exact = row[key]; if (exact !== undefined) return exact; const wanted = normaliseHeader(key); const match = Object.entries(row).find(([header]) => normaliseHeader(header) === wanted); return match?.[1]; }
 function firstText(row: SheetRow, keys: string[]) { for (const key of keys) { const value = text(read(row, key)); if (value) return value; } return ''; }
+function driverDisplayName(row: SheetRow) {
+  const candidates = ['Driver Name', 'Driver', 'Drivers', 'Display Name', 'Employee Name', 'Full Name', 'Name'].map(key => firstText(row, [key])).filter(Boolean);
+  return candidates.find(value => !looksLikeEmployeeNumber(value)) || '';
+}
+function looksLikeEmployeeNumber(value: string) { const compact = value.replace(/\s+/g, ''); return /^\d+$/.test(compact) || /^e?mp?\d+$/i.test(compact) || /^[a-z]{0,4}\d{3,}$/i.test(compact); }
 function text(value: unknown) { return String(value ?? '').trim(); }
 function numberValue(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : undefined; }
 function yesNo(value: unknown) { const normalised = text(value).toLowerCase(); return normalised ? ['yes', 'y', 'true'].includes(normalised) : undefined; }
