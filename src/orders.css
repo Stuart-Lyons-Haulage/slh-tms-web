@@ -98,6 +98,10 @@ main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700
 .quick-order { background: white; border: 1px solid #dce7ea; border-radius: 12px; padding: 22px; margin-bottom: 18px; box-shadow: 0 2px 8px #082e470d; }
 .quick-order h2 { margin: 5px 0 18px; font-size: 1.25rem; }
 .export-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.eta-summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid #b9d9d1; border-radius: 12px; background: #f1faf7; }
+.eta-summary strong { color: #073a5a; }
+.eta-summary span { color: #46616f; }
+.eta-summary button { white-space: nowrap; }
 .export-card { background: #fff; border: 1px solid #dce7ea; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px #082e470d; display: flex; flex-direction: column; gap: 14px; }
 .export-card h2 { color: #073a5a; }
 .export-card p { color: #637985; margin: 0; min-height: 70px; }
