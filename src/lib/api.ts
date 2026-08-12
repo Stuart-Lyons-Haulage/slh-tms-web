@@ -23,7 +23,7 @@ export type DeliveryEta = { loadId: string; loadReference: string; loadStatus: s
 export type DeliveryEtas = { planningDate: string; calculatedAtUtc: string; records: DeliveryEta[] };
 export type IntegrationStatus = { roadTech: { configured: boolean; connected: boolean; latestEventUtc?: string }; azureMaps: { configured: boolean }; azureSms: { configured: boolean }; sageHr: { configured: boolean }; emailIntake: { configured: boolean; lastReceivedUtc?: string }; batchIntake: { configured: boolean; endpoint: string } };
 
-const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
+const baseUrl = (import.meta.env.VITE_API_BASE_URL || '/tms-api').replace(/\/$/, '');
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
 
 export async function request<T>(path: string, token?: string, init?: RequestInit): Promise<T> {
