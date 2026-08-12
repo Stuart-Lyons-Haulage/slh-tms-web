@@ -50,7 +50,7 @@ export const api = {
   trailers: (token?: string) => request<Trailer[]>('/api/v1/trailers', token),
   sites: (token?: string) => request<Site[]>('/api/v1/sites', token),
   marketContacts: (token?: string) => request<MarketContact[]>('/api/v1/market-contacts', token),
-  staging: (token?: string, status = 'PendingReview') => request<StagedImport[]>(`/api/v1/staging?take=500${status ? `&status=${encodeURIComponent(status)}` : ''}`, token),
+  staging: (token?: string, status = 'PendingReview', entityType = '', take = 1000) => request<StagedImport[]>(`/api/v1/staging?take=${take}${status ? `&status=${encodeURIComponent(status)}` : ''}${entityType ? `&entityType=${encodeURIComponent(entityType)}` : ''}`, token),
   orders: (from?: string, to?: string, token?: string) => request<TransportOrder[]>(`/api/v1/orders?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`, token),
   stageOrder: (payload: Record<string, string>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType: 'order', idempotencyKey, source: 'SLH TMS Web/CSV', payload }) }),
   stageRecord: (entityType: string, payload: Record<string, string | boolean | number | undefined>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType, idempotencyKey, source: 'SLH TMS Web', payload }) }),
