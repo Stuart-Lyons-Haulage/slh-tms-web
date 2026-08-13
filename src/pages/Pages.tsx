@@ -38,37 +38,66 @@ function fleetioStatusClass(status?: string) { const value = (status || '').toLo
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }) { return <article className="metric"><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>; }
 
 type ImportRow = Record<string, string>;
-const expectedColumns = ['poNumber', 'customerCode', 'collectionDate', 'deliveryDate', 'pallets'];
+const expectedColumns = ['poNumber', 'customerCode', 'collectionDate', 'pallets'];
 const marketColumns = ['deliveryWindowStartUtc', 'deliveryWindowEndUtc', 'sellerName', 'marketName', 'stallNumber', 'averagePalletWeightKg', 'estimatedWeightKg', 'driverInstructions', 'mapLink'];
 type SheetRow = Record<string, string | number | boolean | Date | undefined>;
 function parseCsv(text: string): ImportRow[] { const [header, ...lines] = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/); if (!header) return []; const fields = header.split(',').map(value => value.trim()); return lines.filter(Boolean).map(line => Object.fromEntries(fields.map((field, index) => [field, line.split(',')[index]?.trim() || '']))); }
-function validateImportRows(rows: ImportRow[]) { const seen = new Set<string>(); return rows.flatMap((row, index) => { const missing = expectedColumns.filter(column => !row[column]?.trim()); const dates = [row.collectionDate, row.deliveryDate].filter(Boolean).some(value => !/^\d{4}-\d{2}-\d{2}$/.test(value)); const pallets = Number(row.pallets); const key = `${row.poNumber}|${row.customerCode}|${row.collectionDate}`.toLowerCase(); const duplicate = seen.has(key); seen.add(key); const invalidMap = Boolean(row.mapLink && !/^https?:\/\//i.test(row.mapLink)); const issues = [missing.length ? `missing ${missing.join(', ')}` : '', dates ? 'dates must use YYYY-MM-DD' : '', !Number.isFinite(pallets) || pallets <= 0 ? 'pallets must be greater than zero' : '', duplicate ? 'duplicate order row' : '', invalidMap ? 'map link must start with http:// or https://' : ''].filter(Boolean); return issues.length ? [`Row ${index + 2}: ${issues.join('; ')}.`] : []; }); }
+function validateImportRows(rows: ImportRow[]) { const seen = new Set<string>(); return rows.flatMap((row, index) => { const missing = expectedColumns.filter(column => !row[column]?.trim()); const dates = [row.collectionDate, row.deliveryDate].filter(Boolean).some(value => !/^\d{4}-\d{2}-\d{2}$/.test(value)); const pallets = Number(row.pallets || 1); const key = `${row.poNumber}|${row.customerCode}|${row.collectionDate}`.toLowerCase(); const duplicate = seen.has(key); seen.add(key); const invalidMap = Boolean(row.mapLink && !/^https?:\/\//i.test(row.mapLink)); const issues = [missing.length ? `missing ${missing.join(', ')}` : '', dates ? 'dates must use YYYY-MM-DD' : '', !Number.isFinite(pallets) || pallets <= 0 ? 'pallets must be greater than zero' : '', duplicate ? 'duplicate order row' : '', invalidMap ? 'map link must start with http:// or https://' : ''].filter(Boolean); return issues.length ? [`Row ${index + 2}: ${issues.join('; ')}.`] : []; }); }
 const normaliseHeader = (value: unknown) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 type OrderField = 'poNumber' | 'customerCode' | 'collectionDate' | 'deliveryDate' | 'pallets' | 'deliveryWindowStartUtc' | 'deliveryWindowEndUtc' | 'sellerName' | 'marketName' | 'stallNumber' | 'averagePalletWeightKg' | 'estimatedWeightKg' | 'driverInstructions' | 'mapLink';
 const orderAliases: Record<OrderField, string[]> = {
-  poNumber: ['ponumber', 'po', 'ordernumber', 'orderref', 'reference', 'ref', 'load', 'loadreference', 'bookingref'],
-  customerCode: ['customercode', 'customer', 'account', 'accountcode', 'deliverylocation', 'site', 'destination', 'deliverystop', 'location'],
-  collectionDate: ['collectiondate', 'pickupdate', 'despatchdate', 'dispatchdate', 'planneddate', 'date', 'runoutdate'],
-  deliveryDate: ['deliverydate', 'deliverby', 'planneddate', 'date', 'duedate'],
-  pallets: ['pallets', 'pallet', 'palletsdelivered', 'palletqty', 'quantity', 'qty', 'spaces'],
+  poNumber: ['ponumber', 'po', 'poref', 'purchaseorder', 'ordernumber', 'orderno', 'orderref', 'reference', 'ref', 'load', 'loadreference', 'bookingref', 'bookingreference', 'du', 'label', 'depotref', 'runref'],
+  customerCode: ['customercode', 'customer', 'customername', 'account', 'accountcode', 'deliverylocation', 'site', 'sitename', 'destination', 'depot', 'deliverystop', 'deliveryaddress', 'location', 'consignee', 'receiver', 'deliveries'],
+  collectionDate: ['collectiondate', 'collectdate', 'collection', 'pickupdate', 'pickupdate', 'loadingdate', 'despatchdate', 'dispatchdate', 'planneddate', 'date', 'runoutdate', 'exfarm', 'fromdate'],
+  deliveryDate: ['deliverydate', 'deliverdate', 'delivery', 'deliverby', 'planneddate', 'date', 'duedate', 'marketdate'],
+  pallets: ['pallets', 'pallet', 'palletsdelivered', 'palletqty', 'quantity', 'qty', 'spaces', 'trays', 'dollies', 'stacks', 'plt', 'plts'],
   deliveryWindowStartUtc: ['deliverywindowstartutc', 'windowstart', 'from', 'deliveryfrom', 'slotstart'],
   deliveryWindowEndUtc: ['deliverywindowendutc', 'windowend', 'to', 'deliveryto', 'slotend'],
-  sellerName: ['sellername', 'seller', 'supplier', 'grower', 'vendor'],
-  marketName: ['marketname', 'market', 'wholesalemarket'],
-  stallNumber: ['stallnumber', 'stall', 'stand', 'standnumber'],
+  sellerName: ['sellername', 'seller', 'salesman', 'salesperson', 'supplier', 'grower', 'vendor', 'sender', 'haulier', 'farm', 'source'],
+  marketName: ['marketname', 'market', 'wholesalemarket', 'marketdestination'],
+  stallNumber: ['stallnumber', 'stall', 'stand', 'standnumber', 'standlocation', 'location', 'unit', 'arch'],
   averagePalletWeightKg: ['averagepalletweightkg', 'avgpalletweight', 'averageweight', 'avgweight', 'palletweight', 'weightperpallet'],
-  estimatedWeightKg: ['estimatedweightkg', 'totalweight', 'weightkg', 'grossweight', 'estimatedweight'],
-  driverInstructions: ['driverinstructions', 'instructions', 'notes', 'deliverynotes', 'collectionnotes'],
-  mapLink: ['maplink', 'map', 'maps', 'googlemaps', 'what3words']
+  estimatedWeightKg: ['estimatedweightkg', 'totalweight', 'weightkg', 'grossweight', 'estimatedweight', 'weight', 'kgs', 'kg'],
+  driverInstructions: ['driverinstructions', 'instructions', 'notes', 'deliverynotes', 'collectionnotes', 'specialinstructions', 'temperature', 'temp', 'product', 'goods'],
+  mapLink: ['maplink', 'map', 'maps', 'googlemaps', 'what3words', 'what3word']
 };
-function orderDate(value: unknown) { if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10); const text = String(value || '').trim(); if (!text) return ''; if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10); const parsed = new Date(text); return Number.isNaN(parsed.getTime()) ? text : parsed.toISOString().slice(0, 10); }
+function orderDate(value: unknown) { if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10); if (typeof value === 'number' && value > 25000 && value < 90000) return new Date(Math.round((value - 25569) * 86400 * 1000)).toISOString().slice(0, 10); const text = String(value || '').trim(); if (!text) return ''; if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10); const uk = text.match(/^(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?$/); if (uk) return `${uk[3] ? (uk[3].length === 2 ? `20${uk[3]}` : uk[3]) : new Date().getFullYear()}-${uk[2].padStart(2, '0')}-${uk[1].padStart(2, '0')}`; const parsed = new Date(text); return Number.isNaN(parsed.getTime()) ? text : parsed.toISOString().slice(0, 10); }
 function orderCell(value: unknown) { return value instanceof Date ? orderDate(value) : String(value ?? '').trim(); }
-function firstMapped(row: unknown[], headers: string[], field: OrderField) { const index = headers.findIndex(header => orderAliases[field].includes(header)); return index >= 0 ? orderCell(row[index]) : ''; }
+function firstMapped(row: unknown[], headers: string[], field: OrderField) { const index = headers.findIndex(header => orderAliases[field].some(alias => header === alias || header.includes(alias) || alias.includes(header))); return index >= 0 ? orderCell(row[index]) : ''; }
+function inferMarket(value: string) { const normalised = normaliseHeader(value); if (normalised.includes('covent')) return 'Covent'; if (normalised.includes('spit') || normalised.includes('spital')) return 'Spit'; if (normalised.includes('western')) return 'Western'; return ''; }
+function cleanOrderRow(row: ImportRow, index: number, source: string): ImportRow | undefined {
+  const marketName = row.marketName || inferMarket(`${source} ${row.customerCode} ${row.driverInstructions}`);
+  const collectionDate = orderDate(row.collectionDate) || orderDate(row.deliveryDate) || new Date().toISOString().slice(0, 10);
+  const deliveryDate = orderDate(row.deliveryDate) || collectionDate;
+  const customerCode = row.customerCode || marketName || row.sellerName || row.senderName || 'MARKET';
+  const pallets = row.pallets || '1';
+  const poNumber = row.poNumber || `${normaliseHeader(customerCode || source).toUpperCase().slice(0, 18) || 'ORDER'}-${collectionDate.replaceAll('-', '')}-${index + 1}`;
+  if (!customerCode || !collectionDate) return undefined;
+  const weight = row.estimatedWeightKg || (Number(pallets) > 0 && Number(row.averagePalletWeightKg) > 0 ? String(Math.round(Number(pallets) * Number(row.averagePalletWeightKg))) : '');
+  const driverInstructions = [row.senderName ? `Sender: ${row.senderName}` : '', weight ? `Weight: ${weight} kg` : '', row.driverInstructions].filter(Boolean).join(' · ');
+  return { ...row, poNumber, customerCode, collectionDate, deliveryDate, pallets, marketName, estimatedWeightKg: weight, driverInstructions, importSource: row.importSource || source };
+}
+function parsePositionOrderRows(rows: unknown[][], sheetName: string): ImportRow[] {
+  const marketName = inferMarket(sheetName);
+  if (!marketName) return [];
+  return rows.flatMap((row, index): ImportRow[] => {
+    const cells = row.map(orderCell).filter(Boolean);
+    if (cells.length < 3 || cells.some(cell => ['total', 'totals', 'salesman', 'salesmen', 'seller', 'sender'].includes(normaliseHeader(cell)))) return [];
+    const date = cells.map(orderDate).find(value => /^\d{4}-\d{2}-\d{2}$/.test(value)) || '';
+    const pallets = cells.find(value => /^\d+(\.\d+)?$/.test(value)) || '1';
+    const sellerName = cells.find(value => /[a-z]/i.test(value) && !/^https?:/i.test(value) && !orderDate(value)) || '';
+    const stallNumber = cells.find(value => /\b(stall|stand|arch|unit)\b/i.test(value)) || '';
+    const mapLink = cells.find(value => /^https?:\/\//i.test(value)) || '';
+    const notes = cells.filter(value => value !== sellerName && value !== pallets && value !== date && value !== stallNumber && value !== mapLink).join(' · ');
+    const cleaned = cleanOrderRow({ poNumber: '', customerCode: marketName, collectionDate: date, deliveryDate: date, pallets, sellerName, marketName, stallNumber, mapLink, driverInstructions: notes, importSource: sheetName }, index, sheetName);
+    return cleaned ? [cleaned] : [];
+  });
+}
 function parseOrderWorkbook(workbook: XLSX.WorkBook): ImportRow[] {
   return workbook.SheetNames.flatMap(sheetName => {
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: '', raw: false });
-    const headerIndex = rows.findIndex(row => row.map(normaliseHeader).filter(header => Object.values(orderAliases).some(aliases => aliases.includes(header))).length >= 2);
-    if (headerIndex < 0) return [];
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: '', raw: false, blankrows: false });
+    const headerIndex = rows.findIndex(row => row.map(normaliseHeader).filter(header => Object.values(orderAliases).some(aliases => aliases.some(alias => header === alias || header.includes(alias) || alias.includes(header)))).length >= 2);
+    if (headerIndex < 0) return parsePositionOrderRows(rows, sheetName);
     const headers = rows[headerIndex].map(normaliseHeader);
     const lowerSheet = sheetName.toLowerCase();
     const direction = lowerSheet.includes('inbound') || lowerSheet.includes('natures') ? 'Inbound' : lowerSheet.includes('outbound') ? 'Outbound' : 'Order';
@@ -77,7 +106,8 @@ function parseOrderWorkbook(workbook: XLSX.WorkBook): ImportRow[] {
       const collectionDate = orderDate(firstMapped(row, headers, 'collectionDate'));
       const deliveryDate = orderDate(firstMapped(row, headers, 'deliveryDate')) || collectionDate;
       const deliveryLocation = customer || firstMapped(row, headers, 'marketName');
-      return {
+      const senderName = firstMapped(row, headers, 'sellerName') && headers.some(header => header === 'sender') ? firstMapped(row, headers, 'sellerName') : '';
+      return cleanOrderRow({
         poNumber: firstMapped(row, headers, 'poNumber') || `${direction.toUpperCase()}-${sheetName.replace(/[^a-z0-9]/gi, '').slice(0, 14)}-${index + 1}`,
         customerCode: customer || (direction === 'Inbound' ? 'NATURES-WAY' : deliveryLocation),
         collectionDate,
@@ -85,8 +115,9 @@ function parseOrderWorkbook(workbook: XLSX.WorkBook): ImportRow[] {
         pallets: firstMapped(row, headers, 'pallets'),
         deliveryWindowStartUtc: firstMapped(row, headers, 'deliveryWindowStartUtc'),
         deliveryWindowEndUtc: firstMapped(row, headers, 'deliveryWindowEndUtc'),
-        sellerName: firstMapped(row, headers, 'sellerName'),
-        marketName: firstMapped(row, headers, 'marketName') || deliveryLocation,
+        sellerName: senderName ? '' : firstMapped(row, headers, 'sellerName'),
+        senderName,
+        marketName: firstMapped(row, headers, 'marketName') || inferMarket(sheetName) || deliveryLocation,
         stallNumber: firstMapped(row, headers, 'stallNumber'),
         averagePalletWeightKg: firstMapped(row, headers, 'averagePalletWeightKg'),
         estimatedWeightKg: firstMapped(row, headers, 'estimatedWeightKg') || (Number(firstMapped(row, headers, 'pallets')) > 0 && Number(firstMapped(row, headers, 'averagePalletWeightKg')) > 0 ? String(Math.round(Number(firstMapped(row, headers, 'pallets')) * Number(firstMapped(row, headers, 'averagePalletWeightKg')))) : ''),
@@ -94,7 +125,7 @@ function parseOrderWorkbook(workbook: XLSX.WorkBook): ImportRow[] {
         mapLink: firstMapped(row, headers, 'mapLink'),
         importSource: sheetName,
         orderDirection: direction
-      };
+      }, index, sheetName) || {};
     }).filter(row => Object.values(row).some(Boolean));
   });
 }
@@ -139,11 +170,11 @@ export function Orders() {
   const [submitting, setSubmitting] = useState(false);
   const [emailText, setEmailText] = useState('');
   function downloadTemplate() { const workbook = XLSX.utils.book_new(); const worksheet = XLSX.utils.json_to_sheet([{ poNumber: 'SLH-10001', customerCode: 'CUSTOMER-001', collectionDate: '2026-08-12', deliveryDate: '2026-08-13', deliveryWindowStartUtc: '2026-08-13T08:00:00+01:00', deliveryWindowEndUtc: '2026-08-13T10:00:00+01:00', pallets: '8', averagePalletWeightKg: '750', estimatedWeightKg: '6000', sellerName: 'Example seller', marketName: 'Example market', stallNumber: 'A12', driverInstructions: 'Gate access from 05:30', mapLink: 'https://maps.google.com/?q=53.4808,-2.2426' }]); worksheet['!cols'] = [...expectedColumns, ...marketColumns].map(column => ({ wch: Math.max(column.length + 3, 18) })); XLSX.utils.book_append_sheet(workbook, worksheet, 'Orders'); XLSX.writeFile(workbook, 'slh-order-import-template.xlsx'); }
-  function acceptRows(parsed: ImportRow[]) { const missing = expectedColumns.filter(column => !Object.keys(parsed[0] || {}).includes(column)); if (!parsed.length || missing.length) { setRows([]); setMessage(`The import needs these columns: ${expectedColumns.join(', ')}.`); return; } const validationIssues = validateImportRows(parsed); setRows(validationIssues.length ? [] : parsed); setIssues(validationIssues); setMessage(validationIssues.length ? undefined : `${parsed.length} order${parsed.length === 1 ? '' : 's'} ready to submit.`); }
-  async function selectFile(file?: File) { if (!file) return; setMessage(undefined); setIssues([]); try { const extension = file.name.split('.').pop()?.toLowerCase(); let parsed: ImportRow[] = []; if (extension === 'csv') parsed = parseCsv(await file.text()); else if (['xlsx', 'xls'].includes(extension || '')) { const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true }); parsed = parseOrderWorkbook(workbook); if (!parsed.length) { const sheet = workbook.Sheets[workbook.SheetNames[0]]; parsed = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' }).map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key.trim(), orderCell(value)]))); } } acceptRows(parsed); } catch { setRows([]); setMessage('The workbook could not be read. Use the first worksheet with a header row.'); } }
+  function acceptRows(parsed: ImportRow[]) { const cleaned = parsed.map((row, index) => cleanOrderRow(row, index, row.importSource || 'Uploaded order file')).filter((row): row is ImportRow => Boolean(row)); if (!cleaned.length) { setRows([]); setMessage('No usable orders were found. Check the sheet has a date plus customer, market, seller or delivery information.'); return; } const validationIssues = validateImportRows(cleaned); setRows(validationIssues.length ? [] : cleaned); setIssues(validationIssues); setMessage(validationIssues.length ? undefined : `${cleaned.length} order${cleaned.length === 1 ? '' : 's'} ready to submit.`); }
+  async function selectFile(file?: File) { if (!file) return; setMessage(undefined); setIssues([]); try { const extension = file.name.split('.').pop()?.toLowerCase(); let parsed: ImportRow[] = []; if (extension === 'csv') parsed = parseCsv(await file.text()); else if (['xlsx', 'xls', 'xlsm'].includes(extension || '')) { const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true }); parsed = parseOrderWorkbook(workbook); if (!parsed.length) { const sheet = workbook.Sheets[workbook.SheetNames[0]]; parsed = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' }).map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key.trim(), orderCell(value)]))); } } acceptRows(parsed); } catch { setRows([]); setMessage('The workbook could not be read. Use the first worksheet with a header row.'); } }
   function parseEmail() { setMessage(undefined); setIssues([]); const parsed = parseEmailOrders(emailText); acceptRows(parsed); }
   async function submit() { setSubmitting(true); setMessage(undefined); try { const accessToken = await token(); const results = await Promise.all(rows.map((row, index) => api.stageOrder(row, `web-import:${row.poNumber || 'row'}:${row.customerCode || 'unknown'}:${row.collectionDate || index}`, accessToken))); setMessage(`${results.length} order${results.length === 1 ? '' : 's'} submitted to staging for review.`); setRows([]); setEmailText(''); } catch (exception) { setMessage(exception instanceof Error ? exception.message : 'Order import failed.'); } finally { setSubmitting(false); } }
-  return <section><p className="eyebrow">Order intake</p><h1>New order</h1><QuickOrderForm /><div className="panel import-panel"><h2>Import Excel or CSV</h2><p>Upload an Excel workbook or CSV for batches. Each row is checked before it enters the review queue.</p><button type="button" onClick={downloadTemplate}>Download Excel template</button><input type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event => void selectFile(event.target.files?.[0])} /><p className="hint">Required: <code>{expectedColumns.join(', ')}</code>. Optional delivery window uses ISO time with an offset: <code>deliveryWindowStartUtc</code>, <code>deliveryWindowEndUtc</code>. Outbound/inbound planning sheets can also include <code>averagePalletWeightKg</code> or <code>estimatedWeightKg</code>.</p>{issues.length > 0 && <div className="import-issues"><strong>Correct the following before import</strong><ul>{issues.map(issue => <li key={issue}>{issue}</li>)}</ul></div>}{rows.length > 0 && <><p><strong>{rows.length}</strong> checked rows ready to submit.</p><button className="primary" onClick={() => void submit()} disabled={submitting}>{submitting ? 'Submitting…' : `Submit ${rows.length} order${rows.length === 1 ? '' : 's'} for review`}</button></>}{message && <p className="notice inline-notice">{message}</p>}</div><div className="panel import-panel"><h2>Email body intake</h2><p>Paste the body of a market/order email here. It recognises APS Covent-style lines, pallet counts, weights and delivery addresses, then stages each stop for review.</p><textarea className="email-import-box" value={emailText} onChange={event => setEmailText(event.target.value)} placeholder="Paste the customer email body here…" /><button type="button" onClick={parseEmail} disabled={!emailText.trim()}>Parse email body</button><p className="hint">PDF delivery notes stay attached in Outlook; the portal stages the order data from the email text. Power Automate can post the same normalised rows later.</p><a href="/staging">Open staging review →</a></div></section>;
+  return <section><p className="eyebrow">Order intake</p><h1>New order</h1><QuickOrderForm /><div className="panel import-panel"><h2>Import Excel or CSV</h2><p>Upload customer workbooks, market tabs or CSV batches. The portal now recognises common PO, customer, depot, market, seller, sender, stall, pallet and date headings before staging orders.</p><button type="button" onClick={downloadTemplate}>Download Excel template</button><input type="file" accept=".xlsx,.xls,.xlsm,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event => void selectFile(event.target.files?.[0])} /><p className="hint">Best columns are <code>{expectedColumns.join(', ')}</code>, but Barfoots/APS/market-style sheets are accepted if they include enough date, market/customer and quantity detail.</p>{issues.length > 0 && <div className="import-issues"><strong>Correct the following before import</strong><ul>{issues.map(issue => <li key={issue}>{issue}</li>)}</ul></div>}{rows.length > 0 && <><p><strong>{rows.length}</strong> checked rows ready to submit.</p><button className="primary" onClick={() => void submit()} disabled={submitting}>{submitting ? 'Submitting…' : `Submit ${rows.length} order${rows.length === 1 ? '' : 's'} for review`}</button></>}{message && <p className="notice inline-notice">{message}</p>}</div><div className="panel import-panel"><h2>Email body intake</h2><p>Paste the body of a market/order email here. It recognises APS Covent-style lines, pallet counts, weights and delivery addresses, then stages each stop for review.</p><textarea className="email-import-box" value={emailText} onChange={event => setEmailText(event.target.value)} placeholder="Paste the customer email body here…" /><button type="button" onClick={parseEmail} disabled={!emailText.trim()}>Parse email body</button><p className="hint">PDF delivery notes stay attached in Outlook; the portal stages the order data from the email text. Power Automate can post the same normalised rows later.</p><a href="/staging">Open staging review →</a></div></section>;
 }
 function QuickOrderForm() {
   const token = useAccessToken();
