@@ -1,6 +1,6 @@
 export type Customer = { id: string; code: string; name: string; active: boolean };
 export type CustomerContact = { id: string; customerCode: string; name: string; email?: string; mobileNumber?: string; receivesEtaUpdates: boolean; active: boolean };
-export type Vehicle = { id: string; registration: string; fleetNumber?: string; abbreviation?: string; transmission?: string; dvsCompliant?: boolean; fuelProvider?: string; fuelPinSecretName?: string; fuelCardLastFour?: string; active: boolean };
+export type Vehicle = { id: string; registration: string; fleetNumber?: string; abbreviation?: string; transmission?: string; dvsCompliant?: boolean; fuelProvider?: string; fuelPinSecretName?: string; fuelCardLastFour?: string; fleetioId?: string; fleetioName?: string; fleetioStatus?: string; active: boolean };
 export type Driver = { id: string; employeeNumber: string; displayName: string; tachoName?: string; mobileNumber?: string; driverType?: string; driverGroup?: string; skills?: string; active: boolean };
 export type Trailer = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; euroCapacity?: number; active: boolean };
 export type Site = { id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; collectionInstructions?: string; mapLink?: string; active: boolean };
@@ -28,6 +28,7 @@ export type DeliveryEta = { loadId: string; loadReference: string; loadStatus: s
 export type DeliveryEtas = { planningDate: string; calculatedAtUtc: string; records: DeliveryEta[] };
 export type IntegrationStatus = { roadTech: { configured: boolean; connected: boolean; latestEventUtc?: string }; azureMaps: { configured: boolean }; azureSms: { configured: boolean }; textBee?: { configured: boolean; dutyPhoneLabel?: string; missingSettings?: string[] }; fleetio?: { configured: boolean; missingSettings?: string[] }; sageHr: { configured: boolean }; emailIntake: { configured: boolean; lastReceivedUtc?: string }; batchIntake: { configured: boolean; endpoint: string } };
 export type FleetioStatus = { configured: boolean; connected: boolean; sampleVehicleCount: number; missingSettings?: string[]; message: string };
+export type FleetioSync = { sourceVehicleCount: number; tmsVehicleCount: number; updated: number; missingInFleetio: number; syncedAtUtc: string };
 export type FleetioVehicleAlignment = { configured: boolean; connected: boolean; matched: number; unmatchedFleetio: number; missingInFleetio: number; missingSettings?: string[]; message: string; records: Array<{ tmsVehicleId?: string; tmsRegistration?: string; tmsFleetNumber?: string; tmsAbbreviation?: string; fleetioId?: string; fleetioRegistration?: string; fleetioName?: string; fleetioFleetNumber?: string; fleetioStatus?: string; status: 'Matched' | 'MissingInFleetio' | 'UnmatchedFleetio' }> };
 export type DiagnosticsTables = Record<string, { ok: boolean; count?: number; error?: string }>;
 
@@ -83,6 +84,7 @@ export const api = {
   roadTechStatus: (token?: string) => request<RoadTechStatus>('/api/v1/integrations/roadtech/status', token),
   fleetioStatus: (token?: string) => request<FleetioStatus>('/api/v1/integrations/fleetio/status', token),
   fleetioVehicleAlignment: (token?: string) => request<FleetioVehicleAlignment>('/api/v1/integrations/fleetio/vehicle-alignment', token),
+  syncFleetioVehicles: (token?: string) => request<FleetioSync>('/api/v1/integrations/fleetio/sync-vehicles', token, { method: 'POST' }),
   integrationStatus: (token?: string) => request<IntegrationStatus>('/api/v1/integrations/status', token),
   diagnosticsTables: (token?: string) => request<DiagnosticsTables>('/api/v1/diagnostics/tables', token),
   syncSageHrDrivers: (token?: string) => request<SageHrSync>('/api/v1/integrations/sage-hr/sync-drivers', token, { method: 'POST' }),
