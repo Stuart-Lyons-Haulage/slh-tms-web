@@ -332,22 +332,36 @@ function MasterWorkbookImport() {
       const accessToken = await token();
       let applied = 0; let received = 0;
       const failures: string[] = [];
+      const applyRecords = async (entityType: string, batch: StageBatchRequest[]): Promise<void> => {
+        if (!batch.length) return;
+        try {
+          const response = await api.applyMasterData(batch, accessToken);
+          applied += response.applied; received += response.received;
+          failures.push(...response.results.filter(result => !result.applied).slice(0, 20).map(result => `${entityType}: ${result.error || 'record failed'}`));
+        } catch (exception) {
+          if (batch.length > 1) {
+            const middle = Math.ceil(batch.length / 2);
+            await applyRecords(entityType, batch.slice(0, middle));
+            await applyRecords(entityType, batch.slice(middle));
+            return;
+          }
+          received += 1;
+          const record = batch[0];
+          const label = String(record.payload.displayName || record.payload.name || record.payload.customerCode || record.payload.market || record.payload.registration || record.idempotencyKey);
+          failures.push(`${entityType} ${label}: ${exception instanceof Error ? exception.message : 'apply failed'}`);
+        }
+      };
       const grouped = records.reduce<Record<string, StageBatchRequest[]>>((result, record) => {
         (result[record.entityType] ||= []).push(record);
         return result;
       }, {});
       for (const [entityType, group] of Object.entries(grouped)) {
-        for (let index = 0; index < group.length; index += 200) {
-          try {
-            const response = await api.applyMasterData(group.slice(index, index + 200), accessToken);
-            applied += response.applied; received += response.received;
-            failures.push(...response.results.filter(result => !result.applied).slice(0, 10).map(result => `${entityType}: ${result.error || 'record failed'}`));
-          } catch (exception) {
-            failures.push(`${entityType}: ${exception instanceof Error ? exception.message : 'apply failed'}`);
-          }
+        for (let index = 0; index < group.length; index += 100) {
+          await applyRecords(entityType, group.slice(index, index + 100));
         }
       }
-      setSummary(`${applied}/${received} master-data records applied directly to the live cloud master data.${failures.length ? ` ${failures.length} issue${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 8).join('; ')}` : ''}`);
+      const attempted = records.length;
+      setSummary(`${applied}/${attempted} master-data records applied directly to the live cloud master data.${failures.length ? ` ${failures.length} issue${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 12).join('; ')}` : ''}`);
       if (!failures.length) setRecords([]);
     } catch (exception) {
       setSummary(exception instanceof Error ? exception.message : 'Master-data import failed.');
