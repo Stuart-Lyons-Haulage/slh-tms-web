@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import * as XLSX from 'xlsx';
 import * as atlas from 'azure-maps-control';
 import 'azure-maps-control/dist/atlas.min.css';
-import { api, type Customer, type CustomerContact, type Driver, type DriverAssignment, type FleetStatus, type Load, type LoadDispatch, type MarketContact, type ReturnLoadSuggestions, type Site, type StageBatchRequest, type StagedImport, type Telemetry, type Trailer, type TransportOrder, type Vehicle } from '../lib/api';
+import { api, type Customer, type CustomerContact, type DiagnosticsTables, type Driver, type DriverAssignment, type FleetStatus, type Load, type LoadDispatch, type MarketContact, type ReturnLoadSuggestions, type Site, type StageBatchRequest, type StagedImport, type Telemetry, type Trailer, type TransportOrder, type Vehicle } from '../lib/api';
 import { useAccessToken } from '../lib/auth';
 import { useApi } from '../lib/useApi';
 
@@ -290,10 +290,11 @@ export function MasterData() {
   const trailers = useApi(useCallback(async () => api.trailers(await token()), [token]));
   const sites = useApi(useCallback(async () => api.sites(await token()), [token]));
   const contacts = useApi(useCallback(async () => api.marketContacts(await token()), [token]));
-  const errors = [customers.error, customerContacts.error, vehicles.error, drivers.error, trailers.error, sites.error, contacts.error].filter(Boolean);
-  const loading = customers.loading || customerContacts.loading || vehicles.loading || drivers.loading || trailers.loading || sites.loading || contacts.loading;
+  const diagnostics = useApi(useCallback(async () => api.diagnosticsTables(await token()), [token]));
+  const errors = [customers.error, customerContacts.error, vehicles.error, drivers.error, trailers.error, sites.error, contacts.error, diagnostics.error].filter(Boolean);
+  const loading = customers.loading || customerContacts.loading || vehicles.loading || drivers.loading || trailers.loading || sites.loading || contacts.loading || diagnostics.loading;
 
-  return <section><p className="eyebrow">Reference data</p><h1>Master data & CRM</h1><MasterWorkbookImport /><CoreMasterDataForm /><SiteSetupForm />{errors.length > 0 && <p className="notice inline-notice">Some master-data lists could not refresh yet: {errors.join(' · ')}</p>}<State loading={loading} error={undefined}><div className="master-grid">
+  return <section><p className="eyebrow">Reference data</p><h1>Master data & CRM</h1><MasterWorkbookImport /><CoreMasterDataForm /><SiteSetupForm />{errors.length > 0 && <p className="notice inline-notice">Some master-data lists could not refresh yet: {errors.join(' · ')}</p>}<MasterDataCounts diagnostics={diagnostics.data} /><State loading={loading} error={undefined}><div className="master-grid">
     <DataList title="Customers" data={customers.data} render={(item: Customer) => <><strong>{item.name}</strong><small>{item.code}</small></>} />
     <DataList title="Customer ETA contacts" data={customerContacts.data} render={(item: CustomerContact) => <><strong>{item.name}</strong><small>{item.customerCode} · {item.email || 'No ETA email'}{item.receivesEtaUpdates ? ' · ETA updates on' : ' · ETA updates off'}</small></>} />
     <DataList title="Vehicles" data={vehicles.data} render={(item: Vehicle) => <><strong>{item.registration}</strong><small>{item.fleetNumber || item.abbreviation || 'Fleet vehicle'}</small></>} />
@@ -303,6 +304,18 @@ export function MasterData() {
     <DataList title="Market contacts" data={contacts.data} render={(item: MarketContact) => <><strong>{item.name}</strong><small>{item.market}{item.standOrLocation ? ` · ${item.standOrLocation}` : ''}</small></>} />
   </div></State></section>;
 }
+function MasterDataCounts({ diagnostics }: { diagnostics?: DiagnosticsTables }) {
+  const cards = [
+    ['Customers', diagnostics?.customers],
+    ['Customer contacts', diagnostics?.customerContacts],
+    ['Drivers', diagnostics?.drivers],
+    ['Vehicles', diagnostics?.vehicles],
+    ['Sites', diagnostics?.sites],
+    ['Market contacts', diagnostics?.marketContacts]
+  ] as const;
+  return <div className="master-counts">{cards.map(([label, value]) => <article key={label} className={value?.ok === false ? 'error' : ''}><span>{label}</span><strong>{value?.ok === false ? '!' : value?.count ?? '—'}</strong>{value?.error && <small>{value.error}</small>}</article>)}</div>;
+}
+
 type MasterEntity = 'customer' | 'customercontact' | 'vehicle' | 'driver' | 'trailer' | 'marketcontact';
 function MasterWorkbookImport() {
   const token = useAccessToken();
