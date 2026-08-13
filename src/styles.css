@@ -6,3 +6,8 @@
 .master-counts span { display: block; color: #637985; font-size: .78rem; }
 .master-counts strong { display: block; color: #073a5a; font-size: 1.6rem; margin-top: 4px; }
 .master-counts article.error { border-color: #dfa9a9; background: #fff6f6; }
+.rollout-card.clickable { width: 100%; text-align: left; border-radius: 10px; }
+.rollout-card.clickable.selected { outline: 3px solid #67c65b; border-color: #067a76; }
+.vehicle-detail-panel { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin: 12px 0 18px; padding: 16px 18px; border-radius: 10px; border: 1px solid #b9d9d6; background: #f4fbf6; }
+.vehicle-detail-panel strong, .vehicle-detail-panel span, .vehicle-detail-panel small { display: block; }
+.vehicle-detail-panel strong { color: #073a5a; font-size: 1.15rem; }
