@@ -12,7 +12,12 @@ const msal = new PublicClientApplication({ auth: { clientId: clientId || '000000
 
 async function start() {
   await msal.initialize();
-  const redirect = await msal.handleRedirectPromise();
+  let redirect;
+  try {
+    redirect = await msal.handleRedirectPromise();
+  } catch (error) {
+    console.error('Microsoft sign-in callback failed', error);
+  }
   const account = redirect?.account || msal.getAllAccounts()[0];
   if (account) msal.setActiveAccount(account);
   createRoot(document.getElementById('root')!).render(<StrictMode><MsalProvider instance={msal}><App /></MsalProvider></StrictMode>);

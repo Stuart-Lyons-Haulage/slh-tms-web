@@ -2,7 +2,8 @@ import type { AccountInfo } from '@azure/msal-browser';
 import { useMsal } from '@azure/msal-react';
 import { useCallback } from 'react';
 
-export const apiScope = import.meta.env.VITE_ENTRA_API_SCOPE;
+const productionApiScope = 'api://497f6ea5-9753-43ee-8ccf-afaa0a3869c2/Tms.Access';
+export const apiScope = import.meta.env.VITE_ENTRA_API_SCOPE || productionApiScope;
 let interactiveTokenRequest: Promise<string> | undefined;
 
 export function useAccessToken() {
