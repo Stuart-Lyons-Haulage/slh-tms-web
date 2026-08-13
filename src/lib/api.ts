@@ -1,6 +1,6 @@
 export type Customer = { id: string; code: string; name: string; active: boolean };
 export type CustomerContact = { id: string; customerCode: string; name: string; email?: string; mobileNumber?: string; receivesEtaUpdates: boolean; active: boolean };
-export type Vehicle = { id: string; registration: string; fleetNumber?: string; abbreviation?: string; transmission?: string; dvsCompliant?: boolean; fuelProvider?: string; fuelPinSecretName?: string; fuelCardLastFour?: string; fleetioId?: string; fleetioName?: string; fleetioStatus?: string; active: boolean };
+export type Vehicle = { id: string; registration: string; fleetNumber?: string; abbreviation?: string; transmission?: string; dvsCompliant?: boolean; fuelProvider?: string; cabMobile?: string; fuelPin?: string; shellCard?: string; bpRedCard?: string; bpPlainCard?: string; notes?: string; fuelPinSecretName?: string; fuelCardLastFour?: string; fleetioId?: string; fleetioName?: string; fleetioStatus?: string; active: boolean };
 export type Driver = { id: string; employeeNumber: string; displayName: string; tachoName?: string; mobileNumber?: string; driverType?: string; driverGroup?: string; skills?: string; active: boolean };
 export type Trailer = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; euroCapacity?: number; active: boolean };
 export type Site = { id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; collectionInstructions?: string; mapLink?: string; active: boolean };
