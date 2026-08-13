@@ -3,6 +3,7 @@ import { useMsal } from '@azure/msal-react';
 import { useCallback } from 'react';
 
 export const apiScope = import.meta.env.VITE_ENTRA_API_SCOPE;
+let interactiveTokenRequest: Promise<string> | undefined;
 
 export function useAccessToken() {
   const { instance, accounts } = useMsal();
@@ -12,7 +13,12 @@ export function useAccessToken() {
     if (!account) throw new Error('Your Microsoft sign-in has expired. Please sign in again.');
     try { return (await instance.acquireTokenSilent({ account, scopes: [apiScope] })).accessToken; }
     catch {
-      try { return (await instance.acquireTokenPopup({ account, scopes: [apiScope] })).accessToken; }
+      if (!interactiveTokenRequest) {
+        interactiveTokenRequest = instance.acquireTokenPopup({ account, scopes: [apiScope] })
+          .then(result => result.accessToken)
+          .finally(() => { interactiveTokenRequest = undefined; });
+      }
+      try { return await interactiveTokenRequest; }
       catch { throw new Error('Microsoft sign-in needs refreshing before live data can load. Use Refresh or sign in again.'); }
     }
   }, [accounts, instance]);
