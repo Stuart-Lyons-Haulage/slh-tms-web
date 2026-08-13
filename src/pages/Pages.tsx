@@ -420,7 +420,7 @@ function MasterWorkbookImport({ mode = 'all', onApplied }: { mode?: MasterImport
     setRecords(mapped.records.map((record, index) => ({ ...record, idempotencyKey: scopedImportKey(record, importRun, index) })));
     setIssues(mapped.issues);
     const scope = mode === 'all' ? 'master-data' : mode;
-    setSummary(`${mapped.records.length} ${scope} record${mapped.records.length === 1 ? '' : 's'} found${nextSheet ? ` from ${nextSheet}` : ''}: ${summariseBatch(mapped.records) || 'nothing recognised'}.`);
+    setSummary(`${mapped.records.length} ${scope} record${mapped.records.length === 1 ? '' : 's'} found${nextSheet ? ` from ${nextSheet}` : ''}: ${summariseBatch(mapped.records) || 'nothing recognised'}. If this count is wrong, choose a different sheet before applying.`);
   }
 
   async function selectWorkbook(file?: File) {
@@ -560,7 +560,7 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
     add('trailer', trailerNumber, { trailerNumber, type: text(read(row, 'Type')), standardCapacity: numberValue(read(row, 'Standard Capacity')), euroCapacity: numberValue(read(row, 'Euro Capacity')), active: true });
   }
   for (const row of siteRows) {
-    const externalCode = firstText(row, ['SiteID', 'Site ID', 'Customer Code', 'Customer', 'Account Code', 'Code']);
+    const externalCode = firstText(row, ['SiteID', 'Site ID', 'Site', 'Site Name', 'Customer Code', 'Customer', 'Account Code', 'Code']);
     const name = firstText(row, ['Site', 'Site Name', 'Customer Name', 'Name', 'Collection Site']);
     if (!externalCode || !name || !active(row)) continue;
     add('site', externalCode, { externalCode, name, driverTextName: text(read(row, 'Driver Text Name')) || name, collectionAddress: text(read(row, 'Collection Address')), collectionInstructions: text(read(row, 'Collection Notes / Instructions')), mapLink: text(read(row, 'Map Link')), active: true });
