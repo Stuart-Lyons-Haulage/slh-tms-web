@@ -479,37 +479,10 @@ function MasterWorkbookImport({ mode = 'all', onApplied }: { mode?: MasterImport
     setSubmitting(true);
     try {
       const accessToken = await token();
-      let applied = 0; let received = 0; let registered = 0;
-      const failures: string[] = [];
-      const applyRecords = async (entityType: string, batch: StageBatchRequest[]): Promise<void> => {
-        if (!batch.length) return;
-        try {
-          const response = await api.applyMasterData(batch, accessToken);
-          applied += response.applied; received += response.received;
-          registered += response.results.filter(result => result.registered).length;
-          failures.push(...response.results.filter(result => !result.applied).slice(0, 20).map(result => `${entityType}: ${result.error || 'record failed'}`));
-        } catch (exception) {
-          if (batch.length > 1) {
-            const middle = Math.ceil(batch.length / 2);
-            await applyRecords(entityType, batch.slice(0, middle));
-            await applyRecords(entityType, batch.slice(middle));
-            return;
-          }
-          received += 1;
-          const record = batch[0];
-          const label = String(record.payload.displayName || record.payload.name || record.payload.customerCode || record.payload.market || record.payload.registration || record.idempotencyKey);
-          failures.push(`${entityType} ${label}: ${exception instanceof Error ? exception.message : 'apply failed'}`);
-        }
-      };
-      const grouped = records.reduce<Record<string, StageBatchRequest[]>>((result, record) => {
-        (result[record.entityType] ||= []).push(record);
-        return result;
-      }, {});
-      for (const [entityType, group] of Object.entries(grouped)) {
-        for (let index = 0; index < group.length; index += 25) {
-          await applyRecords(entityType, group.slice(index, index + 25));
-        }
-      }
+      const response = await api.applyMasterData(records, accessToken);
+      const applied = response.applied;
+      const registered = response.results.filter(result => result.registered).length;
+      const failures = response.results.filter(result => !result.applied).slice(0, 20).map(result => `${result.entityType}: ${result.error || 'record failed'}`);
       const attempted = records.length;
       setSummary(`${applied}/${attempted} master-data records accepted by the live cloud register${registered ? ` (${registered} waiting to link into SQL tables)` : ''}.${failures.length ? ` ${failures.length} issue${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 12).join('; ')}` : ''}`);
       if (!failures.length) setRecords([]);
@@ -567,7 +540,10 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
     if (existingIndex >= 0) records[existingIndex] = record;
     else records.push(record);
   };
-  const active = (row: SheetRow) => String(read(row, 'Active') || read(row, 'Status') || 'Yes').toLowerCase() !== 'no';
+  const active = (row: SheetRow) => {
+    const value = text(read(row, 'Active') || read(row, 'Status') || 'Yes').toLowerCase();
+    return !['no', 'n', 'false', 'inactive', 'terminated', 'left', 'leaver', 'deleted'].includes(value);
+  };
 
   const driverRows = driverSheetRows(workbook);
   const vehicleRows = sheetRows(workbook, ['Vehicles & Fuel', 'Vehicles', 'Fleet', 'Cab Phone Numbers', 'Fuel'], ['Registration', 'VehicleID', 'Reg Last 3']);
@@ -596,14 +572,17 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
     const externalCode = firstText(row, ['SiteID', 'Site ID', 'Site', 'Site Name', 'Customer Code', 'Customer', 'Account Code', 'Code']);
     const name = firstText(row, ['Site', 'Site Name', 'Customer Name', 'Name', 'Collection Site']);
     if (!externalCode || !name || !active(row)) continue;
+    add('customer', externalCode, { code: externalCode, name, active: true });
     add('site', externalCode, { externalCode, name, driverTextName: text(read(row, 'Driver Text Name')) || name, collectionAddress: text(read(row, 'Collection Address')), collectionInstructions: text(read(row, 'Collection Notes / Instructions')), mapLink: text(read(row, 'Map Link')), active: true });
   }
   for (const row of contactRows) {
     const customerCode = firstText(row, ['Customer', 'Customer Code', 'SiteID', 'Site ID', 'Account Code', 'Code']);
-    const name = firstText(row, ['Contact Name', 'Name', 'Customer Name', 'Site Contact']);
+    const customerName = firstText(row, ['Customer Name', 'Site Name', 'Customer', 'Site', 'Account Name']) || customerCode;
+    const name = firstText(row, ['Contact Name', 'Contact', 'Name', 'Site Contact']) || customerName;
     const email = firstText(row, ['Email', 'E-mail', 'Email Address', 'ETA Email']);
     if (!customerCode || !name || !active(row)) continue;
-    add('customercontact', `${customerCode}-${name}-${email}`, { customerCode, customerName: customerCode, name, email, mobileNumber: normalisePhone(read(row, 'Phone')), receivesEtaUpdates: Boolean(email), active: true });
+    add('customer', customerCode, { code: customerCode, name: customerName, active: true });
+    add('customercontact', `${customerCode}-${name}-${email}`, { customerCode, customerName, name, email, mobileNumber: normalisePhone(firstText(row, ['Phone', 'Mobile', 'Mobile Number', 'Telephone'])), receivesEtaUpdates: Boolean(email), active: true });
   }
   records.push(...marketContactRecords(workbook));
   records.push(...fuelPriceRecords(workbook));
@@ -613,24 +592,25 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
 }
 
 function sheetRows(workbook: XLSX.WorkBook, names: string[], requiredHeaders: string[]): SheetRow[] {
-  const sheetName = findSheet(workbook, names);
-  const candidateSheets = sheetName ? [sheetName] : workbook.SheetNames;
+  const candidateSheets = matchingSheets(workbook, names);
   const wanted = requiredHeaders.map(normaliseHeader);
+  const minimumMatches = wanted.length > 1 ? 2 : 1;
+  const result: SheetRow[] = [];
   for (const candidate of candidateSheets) {
     const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets[candidate], { header: 1, defval: '', blankrows: false });
     const headerIndex = rows.findIndex(row => {
       const headers = row.map(normaliseHeader);
-      return wanted.filter(header => headers.includes(header)).length >= 1;
+      return wanted.filter(header => headers.includes(header)).length >= minimumMatches;
     });
     if (headerIndex < 0) continue;
     const headers = rows[headerIndex].map(value => text(value));
-    return rows.slice(headerIndex + 1).map(row => Object.fromEntries(headers.map((header, index) => [header, row[index]])) as SheetRow).filter(row => Object.values(row).some(value => text(value)));
+    result.push(...rows.slice(headerIndex + 1).map(row => Object.fromEntries(headers.map((header, index) => [header, row[index]])) as SheetRow).filter(row => Object.values(row).some(value => text(value))));
   }
-  return [];
+  return result;
 }
 function driverSheetRows(workbook: XLSX.WorkBook): SheetRow[] {
-  const candidateSheet = findSheet(workbook, ['Drivers', 'Driver Master', 'Driver List', 'Rota', 'Driver Rota', 'Employees', 'Master Data']);
-  const candidateSheets = candidateSheet ? [candidateSheet] : workbook.SheetNames;
+  const candidateSheets = matchingSheets(workbook, ['Drivers', 'Driver Master', 'Driver List', 'Rota', 'Driver Rota', 'Employees', 'Master Data']);
+  const result: SheetRow[] = [];
   for (const candidate of candidateSheets) {
     const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets[candidate], { header: 1, defval: '', blankrows: false });
     const headerIndex = rows.findIndex(row => driverHeaderScore(row) >= 2);
@@ -638,9 +618,9 @@ function driverSheetRows(workbook: XLSX.WorkBook): SheetRow[] {
     const headers = rows[headerIndex].map(value => text(value));
     const mapped = rows.slice(headerIndex + 1).map(row => Object.fromEntries(headers.map((header, index) => [header, row[index]])) as SheetRow).filter(row => Object.values(row).some(value => text(value)));
     const usable = mapped.filter(row => driverDisplayName(row));
-    if (usable.length) return usable;
+    result.push(...usable);
   }
-  return [];
+  return result;
 }
 function driverHeaderScore(row: Array<string | number | boolean | Date | undefined>) {
   const headers = row.map(value => normaliseHeader(text(value)));
@@ -653,6 +633,11 @@ function findSheet(workbook: XLSX.WorkBook, names: string[]) {
   const exact = names.map(normaliseHeader);
   return workbook.SheetNames.find(sheet => exact.includes(normaliseHeader(sheet))) || workbook.SheetNames.find(sheet => exact.some(name => normaliseHeader(sheet).includes(name) || name.includes(normaliseHeader(sheet))));
 }
+function matchingSheets(workbook: XLSX.WorkBook, names: string[]) {
+  const normalisedNames = names.map(normaliseHeader);
+  const matches = workbook.SheetNames.filter(sheet => normalisedNames.some(name => normaliseHeader(sheet) === name || normaliseHeader(sheet).includes(name) || name.includes(normaliseHeader(sheet))));
+  return matches.length ? matches : workbook.SheetNames;
+}
 function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
   const sheetName = findSheet(workbook, ['Market Contacts', 'Markets', 'Market Sellers', 'Market']);
   const records: StageBatchRequest[] = [];
@@ -662,7 +647,7 @@ function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
     if (!parsed.name || /^\d+$/.test(parsed.name) || ['total', 'totals', 'salesmen', 'salesman', 'seller', 'sellers'].includes(normaliseHeader(parsed.name))) return;
     const sender = text(senderValue);
     const salesman = text(salesmanValue) || parsed.name;
-    const key = `master:marketcontact:${market}-${parsed.name}-${sender || salesman}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const key = `master:marketcontact:${market}-${parsed.name}-${parsed.standOrLocation || ''}-${sender || salesman}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     if (seen.has(key)) return;
     seen.add(key);
     records.push({ entityType: 'marketcontact', idempotencyKey: key, source, payload: { market, name: parsed.name, standOrLocation: parsed.standOrLocation, salesman, sender, pallets: numberValue(palletsValue), active: true } });
@@ -673,19 +658,23 @@ function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
     const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets[candidate], { header: 1, defval: '', blankrows: false });
     const headerIndex = rows.findIndex(row => {
       const headings = row.map(value => normaliseHeader(text(value)));
-      return headings.some(heading => ['salesmen', 'salesman', 'seller', 'sellers'].includes(heading)) && headings.includes('sender');
+      return headings.some(heading => ['salesmen', 'salesman', 'salesperson', 'seller', 'sellername', 'sellers', 'grower', 'vendor', 'name'].includes(heading)) && headings.includes('sender');
     });
     if (headerIndex < 0) continue;
     const headings = rows[headerIndex].map(value => normaliseHeader(text(value)));
-    const sellerColumn = headings.findIndex(heading => ['salesmen', 'salesman', 'seller', 'sellers'].includes(heading));
+    const sellerColumn = headings.findIndex(heading => ['seller', 'sellername', 'sellers', 'grower', 'vendor', 'name'].includes(heading));
+    const salesmanColumn = headings.findIndex(heading => ['salesmen', 'salesman', 'salesperson'].includes(heading));
+    const stallColumn = headings.findIndex(heading => ['stall', 'stallnumber', 'stand', 'standnumber', 'standlocation', 'location'].includes(heading));
     const palletsColumn = headings.findIndex(heading => ['pallets', 'pallet', 'plt', 'plts'].includes(heading));
     const senderColumn = headings.findIndex(heading => heading === 'sender');
     rows.slice(headerIndex + 1).forEach(row => {
-      const sellerCell = text(row[sellerColumn]);
-      addMarketContact(`SLH ${candidate} market tab`, market, sellerCell, sellerCell, senderColumn >= 0 ? text(row[senderColumn]) : '', palletsColumn >= 0 ? row[palletsColumn] : undefined);
+      const sellerCell = text(row[sellerColumn >= 0 ? sellerColumn : salesmanColumn]);
+      const stall = stallColumn >= 0 ? text(row[stallColumn]) : '';
+      const sellerWithStall = sellerCell && stall && !sellerCell.includes(stall) ? `${sellerCell} (${stall})` : sellerCell;
+      addMarketContact(`SLH ${candidate} market tab`, market, sellerWithStall, salesmanColumn >= 0 ? text(row[salesmanColumn]) : '', senderColumn >= 0 ? text(row[senderColumn]) : '', palletsColumn >= 0 ? row[palletsColumn] : undefined);
     });
   }
-  const candidateSheets = sheetName ? [sheetName] : workbook.SheetNames;
+  const candidateSheets = matchingSheets(workbook, ['Market Contacts', 'Markets', 'Market Sellers', 'Market']);
   for (const candidate of candidateSheets) {
     const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | Date | undefined>>(workbook.Sheets[candidate], { header: 1, defval: '', blankrows: false });
     const headerIndex = rows.findIndex(row => row.map(value => marketLabel(text(value))).some(label => ['Western', 'Spit', 'Covent'].includes(label)) || row.map(value => normaliseHeader(text(value))).includes('sender'));
