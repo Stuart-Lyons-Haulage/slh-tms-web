@@ -9,6 +9,7 @@ import { useApi } from '../lib/useApi';
 function State({ loading, error, empty, children }: { loading: boolean; error?: string; empty?: boolean; children: ReactNode }) { if (loading) return <div className="state">Loading operational data…</div>; if (error) return <div className="state error">{error}</div>; if (empty) return <div className="state">No records are available for this view.</div>; return <>{children}</>; }
 const formatDate = (value?: string) => value ? new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
 const stagingStatuses = ['PendingReview', 'Approved', 'Rejected', 'Promoted', 'Failed'];
+const marketOrder = ['Western', 'Spit', 'Covent'];
 const stagingStatus = (value: string | number | undefined) => typeof value === 'number' ? stagingStatuses[value] || String(value) : value || 'PendingReview';
 const statusClass = (value: string | number | undefined) => stagingStatus(value).toLowerCase();
 
@@ -186,7 +187,6 @@ function QuickOrderForm() {
   const [form, setForm] = useState({ poNumber: '', customerCode: '', collectionDate: new Date().toISOString().slice(0, 10), deliveryDate: '', deliveryWindowStartUtc: '', deliveryWindowEndUtc: '', pallets: '', averagePalletWeightKg: '', estimatedWeightKg: '', sellerName: '', marketName: '', stallNumber: '', senderName: '', driverInstructions: '', mapLink: '' });
   const [message, setMessage] = useState<string>();
   const [saving, setSaving] = useState(false);
-  const marketOrder = ['Western', 'Spit', 'Covent'];
   const markets = useMemo(() => {
     const imported = [...new Set((marketContacts.data || []).filter(contact => contact.active && contact.market !== 'Sender').map(contact => contact.market).filter(Boolean))];
     return [...marketOrder.filter(market => imported.includes(market)), ...imported.filter(market => !marketOrder.includes(market)).sort()];
@@ -629,17 +629,12 @@ function driverHeaderScore(row: Array<string | number | boolean | Date | undefin
   const hasDriverContext = headers.some(header => ['tachoname', 'drivertype', 'employmenttype', 'drivergroup', 'mobile', 'mobilenumber', 'phonenumber'].includes(header));
   return Number(hasName) + Number(hasEmployee) + Number(hasDriverContext);
 }
-function findSheet(workbook: XLSX.WorkBook, names: string[]) {
-  const exact = names.map(normaliseHeader);
-  return workbook.SheetNames.find(sheet => exact.includes(normaliseHeader(sheet))) || workbook.SheetNames.find(sheet => exact.some(name => normaliseHeader(sheet).includes(name) || name.includes(normaliseHeader(sheet))));
-}
 function matchingSheets(workbook: XLSX.WorkBook, names: string[]) {
   const normalisedNames = names.map(normaliseHeader);
   const matches = workbook.SheetNames.filter(sheet => normalisedNames.some(name => normaliseHeader(sheet) === name || normaliseHeader(sheet).includes(name) || name.includes(normaliseHeader(sheet))));
   return matches.length ? matches : workbook.SheetNames;
 }
 function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
-  const sheetName = findSheet(workbook, ['Market Contacts', 'Markets', 'Market Sellers', 'Market']);
   const records: StageBatchRequest[] = [];
   const seen = new Set<string>();
   const addMarketContact = (source: string, market: string, sellerValue: string, salesmanValue?: string, senderValue?: string, palletsValue?: unknown) => {
