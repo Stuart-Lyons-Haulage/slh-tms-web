@@ -1,10 +1,11 @@
 export type Customer = { id: string; code: string; name: string; active: boolean };
 export type CustomerContact = { id: string; customerCode: string; name: string; email?: string; mobileNumber?: string; receivesEtaUpdates: boolean; active: boolean };
-export type Vehicle = { id: string; registration: string; fleetNumber?: string; abbreviation?: string; active: boolean };
-export type Driver = { id: string; employeeNumber: string; displayName: string; mobileNumber?: string; driverType?: string; active: boolean };
-export type Trailer = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; active: boolean };
+export type Vehicle = { id: string; registration: string; fleetNumber?: string; abbreviation?: string; transmission?: string; dvsCompliant?: boolean; fuelProvider?: string; fuelPinSecretName?: string; fuelCardLastFour?: string; active: boolean };
+export type Driver = { id: string; employeeNumber: string; displayName: string; tachoName?: string; mobileNumber?: string; driverType?: string; driverGroup?: string; skills?: string; active: boolean };
+export type Trailer = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; euroCapacity?: number; active: boolean };
 export type Site = { id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; collectionInstructions?: string; mapLink?: string; active: boolean };
 export type MarketContact = { id: string; market: string; name: string; standOrLocation?: string; salesman?: string; sender?: string; active: boolean };
+export type FuelPrice = { id: string; weekCommencing: string; provider: string; pricePencePerLitre: number; isPricingMaximum: boolean; source?: string; notes?: string; createdAtUtc: string };
 export type StagedImport = { id: string; entityType: string; idempotencyKey: string; payloadJson: string; status: string | number; source?: string; receivedAtUtc: string; reviewedAtUtc?: string; reviewedBy?: string; reviewNote?: string };
 export type TransportOrder = { id: string; reference: string; customerCode: string; collectionDate: string; deliveryDate?: string; deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; pallets?: number; status: string; sellerName?: string; marketName?: string; stallNumber?: string; driverInstructions?: string; mapLink?: string };
 export type Telemetry = { provider: string; retrievedAtUtc: string; recordCount: number; records: Array<{ vehicleIdentifier: string; eventTimeUtc: string; latitude?: number; longitude?: number; speedKph?: number; isMoving?: boolean; status?: string }> };
@@ -53,6 +54,8 @@ export const api = {
   trailers: (token?: string) => request<Trailer[]>('/api/v1/trailers', token),
   sites: (token?: string) => request<Site[]>('/api/v1/sites', token),
   marketContacts: (token?: string) => request<MarketContact[]>('/api/v1/market-contacts', token),
+  fuelPrices: (token?: string) => request<FuelPrice[]>('/api/v1/fuel-prices', token),
+  saveFuelPrice: (payload: { weekCommencing: string; provider: string; pricePencePerLitre: number; isPricingMaximum: boolean; source?: string; notes?: string }, token?: string) => request<FuelPrice>('/api/v1/fuel-prices', token, { method: 'POST', body: JSON.stringify(payload) }),
   staging: (token?: string, status = 'PendingReview', entityType = '', take = 1000) => request<StagedImport[]>(`/api/v1/staging?take=${take}${status ? `&status=${encodeURIComponent(status)}` : ''}${entityType ? `&entityType=${encodeURIComponent(entityType)}` : ''}`, token),
   orders: (from?: string, to?: string, token?: string) => request<TransportOrder[]>(`/api/v1/orders?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`, token),
   stageOrder: (payload: Record<string, string>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType: 'order', idempotencyKey, source: 'SLH TMS Web/CSV', payload }) }),
