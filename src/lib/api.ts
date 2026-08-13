@@ -51,6 +51,7 @@ export const api = {
   customers: (token?: string) => request<Customer[]>('/api/v1/customers', token),
   customerContacts: (token?: string) => request<CustomerContact[]>('/api/v1/customer-contacts', token),
   vehicles: (token?: string) => request<Vehicle[]>('/api/v1/vehicles', token),
+  updateVehicle: (id: string, payload: Omit<Vehicle, 'id'>, token?: string) => request<Vehicle>(`/api/v1/vehicles/${id}`, token, { method: 'PUT', body: JSON.stringify(payload) }),
   drivers: (token?: string) => request<Driver[]>('/api/v1/drivers', token),
   trailers: (token?: string) => request<Trailer[]>('/api/v1/trailers', token),
   sites: (token?: string) => request<Site[]>('/api/v1/sites', token),
