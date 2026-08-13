@@ -11,3 +11,7 @@
 .vehicle-detail-panel { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin: 12px 0 18px; padding: 16px 18px; border-radius: 10px; border: 1px solid #b9d9d6; background: #f4fbf6; }
 .vehicle-detail-panel strong, .vehicle-detail-panel span, .vehicle-detail-panel small { display: block; }
 .vehicle-detail-panel strong { color: #073a5a; font-size: 1.15rem; }
+.fleetio-chip { display: inline-flex !important; width: fit-content; margin-top: 6px; padding: 4px 8px; border-radius: 999px; font-size: .72rem; font-weight: 850; }
+.fleetio-good { background: #e1f4df; color: #24661f; }
+.fleetio-watch { background: #fff1c2; color: #775300; }
+.fleetio-bad { background: #ffe1e1; color: #9b2929; }
