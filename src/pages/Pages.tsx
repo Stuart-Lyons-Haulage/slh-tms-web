@@ -479,13 +479,14 @@ function MasterWorkbookImport({ mode = 'all', onApplied }: { mode?: MasterImport
     setSubmitting(true);
     try {
       const accessToken = await token();
-      let applied = 0; let received = 0;
+      let applied = 0; let received = 0; let registered = 0;
       const failures: string[] = [];
       const applyRecords = async (entityType: string, batch: StageBatchRequest[]): Promise<void> => {
         if (!batch.length) return;
         try {
           const response = await api.applyMasterData(batch, accessToken);
           applied += response.applied; received += response.received;
+          registered += response.results.filter(result => result.registered).length;
           failures.push(...response.results.filter(result => !result.applied).slice(0, 20).map(result => `${entityType}: ${result.error || 'record failed'}`));
         } catch (exception) {
           if (batch.length > 1) {
@@ -510,7 +511,7 @@ function MasterWorkbookImport({ mode = 'all', onApplied }: { mode?: MasterImport
         }
       }
       const attempted = records.length;
-      setSummary(`${applied}/${attempted} master-data records applied directly to the live cloud master data.${failures.length ? ` ${failures.length} issue${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 12).join('; ')}` : ''}`);
+      setSummary(`${applied}/${attempted} master-data records accepted by the live cloud register${registered ? ` (${registered} waiting to link into SQL tables)` : ''}.${failures.length ? ` ${failures.length} issue${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 12).join('; ')}` : ''}`);
       if (!failures.length) setRecords([]);
       onApplied?.();
     } catch (exception) {
