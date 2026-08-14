@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import * as XLSX from 'xlsx';
 import * as atlas from 'azure-maps-control';
 import 'azure-maps-control/dist/atlas.min.css';
-import { api, type Customer, type CustomerContact, type DiagnosticsTables, type Driver, type DriverAssignment, type FleetStatus, type Load, type LoadDispatch, type MarketContact, type ReturnLoadSuggestions, type Site, type StageBatchRequest, type StagedImport, type Telemetry, type Trailer, type TransportOrder, type Vehicle } from '../lib/api';
+import { api, type Customer, type CustomerContact, type DiagnosticsTables, type Driver, type DriverAssignment, type FleetStatus, type Load, type LoadDispatch, type MarketContact, type MasterApplyResponse, type ReturnLoadSuggestions, type Site, type StageBatchRequest, type StagedImport, type Telemetry, type Trailer, type TransportOrder, type Vehicle } from '../lib/api';
 import { useAccessToken } from '../lib/auth';
 import { useApi } from '../lib/useApi';
 
@@ -522,20 +522,32 @@ function MasterWorkbookImport({ mode = 'all', onApplied }: { mode?: MasterImport
 
   async function submit() {
     setSubmitting(true);
+    let completed = 0;
     try {
       const accessToken = await token();
-      const response = await api.applyMasterData(records, accessToken);
-      const applied = response.applied;
-      const registered = response.registered ?? response.results.filter(result => result.registered).length;
-      const failures = response.results.filter(result => !result.applied && !result.registered).slice(0, 20).map(result => `${result.entityType}: ${result.error || 'record failed'}`);
+      const responses: MasterApplyResponse[] = [];
+      const batchSize = 100;
+      for (let start = 0; start < records.length; start += batchSize) {
+        const batch = records.slice(start, start + batchSize);
+        setSummary(`Applying ${start + 1}-${start + batch.length} of ${records.length} records…`);
+        responses.push(await api.applyMasterData(batch, accessToken));
+        completed += batch.length;
+        setSummary(`${completed}/${records.length} records processed…`);
+      }
+      const applied = responses.reduce((total, response) => total + response.applied, 0);
+      const registered = responses.reduce((total, response) => total + (response.registered ?? response.results.filter(result => result.registered).length), 0);
+      const allResults = responses.flatMap(response => response.results);
+      const failedResults = allResults.filter(result => !result.applied && !result.registered);
+      const failures = failedResults.slice(0, 20).map(result => `${result.entityType}: ${result.error || 'record failed'}`);
       const attempted = records.length;
-      const linked = response.linked || 0;
+      const linked = responses.reduce((total, response) => total + (response.linked || 0), 0);
       const waiting = Math.max(0, registered - linked);
-      setSummary(`${applied}/${attempted} records are live${linked ? `; ${linked} recovery row${linked === 1 ? '' : 's'} linked` : ''}${waiting ? `; ${waiting} accepted but NOT LIVE because the SQL schema is incomplete` : ''}${failures.length ? `; ${failures.length} failed: ${failures.slice(0, 12).join('; ')}` : ''}.`);
-      if (!failures.length && !waiting) setRecords([]);
+      setSummary(`${applied}/${attempted} records are live${linked ? `; ${linked} recovery row${linked === 1 ? '' : 's'} linked` : ''}${waiting ? `; ${waiting} accepted but NOT LIVE because the SQL schema is incomplete` : ''}${failedResults.length ? `; ${failedResults.length} failed: ${failures.slice(0, 12).join('; ')}` : ''}.`);
+      if (!failedResults.length && !waiting) setRecords([]);
       onApplied?.();
     } catch (exception) {
-      setSummary(exception instanceof Error ? exception.message : 'Master-data import failed.');
+      const message = exception instanceof Error ? exception.message : 'Master-data import failed.';
+      setSummary(`${completed}/${records.length} records completed before the request stopped. ${message} You can safely retry; completed rows will be updated rather than duplicated.`);
     } finally {
       setSubmitting(false);
     }
