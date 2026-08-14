@@ -133,3 +133,30 @@ main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700
 .rollout-card.parked { border-color: #cfdbe0; background: #f7fafb; }
 .rollout-card.parked .condition-dot { background: #8aa0aa; box-shadow: 0 0 0 4px #edf2f4; }
 .rollout-card .rollout-driver { color: #006d6c; font-weight: 800; }
+.rollout-card { display: block; padding: 0; overflow: hidden; }
+.rollout-card.selected { outline: 3px solid #5bb9ae; outline-offset: 1px; }
+.rollout-select { width: 100%; display: grid; grid-template-columns: 12px minmax(90px, .7fr) 1.3fr; gap: 10px; align-items: center; padding: 12px; border: 0; border-radius: 0; background: transparent; text-align: left; }
+.rollout-select:hover { border: 0; background: #ffffff55; }
+.rollout-vehicle, .rollout-state, .live-driver-name, .driver-mismatch { display: block; }
+.live-driver-name { margin-top: 5px; color: #006d6c; font-weight: 850; }
+.driver-mismatch { margin-top: 4px; color: #a13a2f !important; font-weight: 800; }
+.rollout-job { display: flex; justify-content: space-between; gap: 10px; padding: 9px 12px; border-top: 1px solid #dce7ea; background: #fff; color: #006d6c; text-decoration: none; font-size: .78rem; }
+.rollout-job:hover, .job-link:hover { text-decoration: underline; }
+.rollout-job.empty { color: #7b8c94; background: #f5f8f9; }
+.job-link { display: block; width: fit-content; margin-top: 7px; color: #006d6c; font-weight: 850; text-decoration: none; }
+@media (max-width: 650px) { .rollout-select { grid-template-columns: 12px 1fr; }.rollout-state { grid-column: 2; } }
+.master-import { max-width: none; }
+.excel-sheet-tabs { display: flex; gap: 2px; max-width: 100%; margin-top: 18px; overflow-x: auto; border-bottom: 3px solid #217346; scrollbar-width: thin; }
+.excel-sheet-tabs button { flex: 0 0 auto; padding: 8px 14px; border: 1px solid #cbd6d0; border-bottom: 0; border-radius: 5px 5px 0 0; background: #eef2ef; color: #33483b; font-size: .78rem; font-weight: 750; }
+.excel-sheet-tabs button.active { background: #217346; border-color: #217346; color: #fff; }
+.excel-grid-wrap { width: 100%; max-height: 560px; overflow: auto; border: 1px solid #aebbb4; border-top: 0; background: #fff; box-shadow: inset 0 1px 2px #00000010; }
+.excel-grid { width: max-content; min-width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.excel-grid th, .excel-grid td { height: 28px; padding: 0; border: 0; border-right: 1px solid #d6ddd9; border-bottom: 1px solid #d6ddd9; white-space: nowrap; }
+.excel-grid thead th { position: sticky; top: 0; z-index: 3; min-width: 125px; background: #f0f3f1; color: #405448; text-align: center; font-size: .7rem; }
+.excel-grid tbody th, .excel-grid .excel-corner { position: sticky; left: 0; z-index: 2; width: 46px; min-width: 46px; background: #f0f3f1; color: #56675d; text-align: center; font-size: .7rem; }
+.excel-grid .excel-corner { top: 0; z-index: 4; }
+.excel-grid td input { width: 100%; min-width: 125px; height: 28px; padding: 4px 6px; border: 0; border-radius: 0; outline: none; background: #fff; color: #172b20; font: 500 .76rem/1.2 Inter, ui-sans-serif, system-ui, sans-serif; }
+.excel-grid td input:focus { position: relative; z-index: 1; box-shadow: inset 0 0 0 2px #217346; }
+.excel-grid tbody tr:first-child input { background: #f6faf7; font-weight: 800; color: #173f28; }
+.excel-apply-bar { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 12px 14px; border: 1px solid #a9c6b5; border-radius: 9px; background: #edf7f0; color: #275039; }
+@media (max-width: 650px) { .excel-apply-bar { align-items: stretch; flex-direction: column; }.excel-grid-wrap { max-height: 440px; } }
