@@ -33,6 +33,7 @@ export type FleetioStatus = { configured: boolean; connected: boolean; sampleVeh
 export type FleetioSync = { sourceVehicleCount: number; tmsVehicleCount: number; updated: number; created?: number; missingInFleetio: number; syncedAtUtc: string; connected?: boolean; message?: string };
 export type FleetioVehicleAlignment = { configured: boolean; connected: boolean; matched: number; unmatchedFleetio: number; missingInFleetio: number; missingSettings?: string[]; message: string; records: Array<{ tmsVehicleId?: string; tmsRegistration?: string; tmsFleetNumber?: string; tmsAbbreviation?: string; fleetioId?: string; fleetioRegistration?: string; fleetioName?: string; fleetioFleetNumber?: string; fleetioStatus?: string; status: 'Matched' | 'MissingInFleetio' | 'UnmatchedFleetio' }> };
 export type DiagnosticsTables = Record<string, { ok: boolean; count?: number; error?: string }>;
+export type MasterDataSuggestions = { generatedAtUtc: string; source: string; suggestions: Array<{ severity: string; entity: string; key: string; message: string }> };
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || '/tms-api').replace(/\/$/, '');
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -91,6 +92,7 @@ export const api = {
   syncFleetioVehicles: (token?: string) => request<FleetioSync>('/api/v1/integrations/fleetio/sync-vehicles', token, { method: 'POST' }),
   integrationStatus: (token?: string) => request<IntegrationStatus>('/api/v1/integrations/status', token),
   diagnosticsTables: (token?: string) => request<DiagnosticsTables>('/api/v1/diagnostics/tables', token),
+  masterDataSuggestions: (token?: string) => request<MasterDataSuggestions>('/api/v1/diagnostics/master-data-suggestions', token),
   syncSageHrDrivers: (token?: string) => request<SageHrSync>('/api/v1/integrations/sage-hr/sync-drivers', token, { method: 'POST' }),
   review: (id: string, approved: boolean, note: string, token?: string) => request(`/api/v1/staging/${id}/${approved ? 'approve' : 'reject'}`, token, { method: 'POST', body: JSON.stringify({ note }) }),
   clearPendingStaging: (token?: string) => request<{ deleted: number }>('/api/v1/staging/pending?confirm=CLEAR-PENDING', token, { method: 'DELETE' })
