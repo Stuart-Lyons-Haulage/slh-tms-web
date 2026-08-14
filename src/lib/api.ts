@@ -28,19 +28,31 @@ export type TachoMasterStatus = { configured: boolean; connected: boolean; match
 export type SageHrSync = { sourceEmployeeCount: number; driverCandidateCount: number; created: number; updated: number; skipped: number; syncedAtUtc: string; connected?: boolean; message?: string };
 export type DeliveryEta = { loadId: string; loadReference: string; loadStatus: string; stopId: string; sequence: number; stopName: string; orderReference?: string; customerCode?: string; vehicleRegistration?: string; etaUtc?: string; source: 'Live' | 'Planned' | 'Unavailable'; deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; risk: 'Pending' | 'Late' | 'AtRisk' | 'OnTrack'; trackingUpdatedAtUtc?: string };
 export type DeliveryEtas = { planningDate: string; calculatedAtUtc: string; records: DeliveryEta[] };
-export type IntegrationStatus = { roadTech: { configured: boolean; connected: boolean; latestEventUtc?: string }; tachoMaster?: { configured: boolean; missingSettings?: string[] }; azureMaps: { configured: boolean }; azureSms: { configured: boolean }; textBee?: { configured: boolean; dutyPhoneLabel?: string; missingSettings?: string[] }; fleetio?: { configured: boolean; missingSettings?: string[] }; sageHr: { configured: boolean }; emailIntake: { configured: boolean; lastReceivedUtc?: string }; batchIntake: { configured: boolean; endpoint: string } };
+export type IntegrationStatus = { roadTech: { configured: boolean; connected: boolean; latestEventUtc?: string }; tachoMaster?: { configured: boolean; missingSettings?: string[] }; azureMaps: { configured: boolean }; azureSms: { configured: boolean }; textBee?: { configured: boolean; dutyPhoneLabel?: string; missingSettings?: string[] }; fleetio?: { configured: boolean; missingSettings?: string[] }; sageHr: { configured: boolean }; emailIntake: { configured: boolean; lastReceivedUtc?: string }; assistant?: { configured: boolean; model: string; safeRulesAvailable: boolean }; batchIntake: { configured: boolean; endpoint: string } };
 export type FleetioStatus = { configured: boolean; connected: boolean; sampleVehicleCount: number; missingSettings?: string[]; message: string };
 export type FleetioSync = { sourceVehicleCount: number; tmsVehicleCount: number; updated: number; created?: number; missingInFleetio: number; syncedAtUtc: string; connected?: boolean; message?: string };
 export type FleetioVehicleAlignment = { configured: boolean; connected: boolean; matched: number; unmatchedFleetio: number; missingInFleetio: number; missingSettings?: string[]; message: string; records: Array<{ tmsVehicleId?: string; tmsRegistration?: string; tmsFleetNumber?: string; tmsAbbreviation?: string; fleetioId?: string; fleetioRegistration?: string; fleetioName?: string; fleetioFleetNumber?: string; fleetioStatus?: string; fleetioVor?: boolean; pmiDueUtc?: string; motDueUtc?: string; serviceStatus?: string; status: 'Matched' | 'MissingInFleetio' | 'UnmatchedFleetio' }> };
 export type DiagnosticsTables = Record<string, { ok: boolean; count?: number; error?: string }>;
 export type MasterDataSuggestions = { generatedAtUtc: string; source: string; suggestions: Array<{ severity: string; entity: string; key: string; message: string }> };
+export type AssistantSuggestion = { id: string; severity: 'high' | 'medium' | 'low' | 'info'; title: string; detail: string; area: string; autoFixAvailable: boolean };
+export type AssistantSnapshot = { planningDate: string; generatedAtUtc: string; source: string; aiConfigured: boolean; metrics: { orders: number; unplannedOrders: number; loads: number; unallocatedLoads: number; activeDrivers: number; activeVehicles: number; vehicleComplianceRisks: number }; suggestions: AssistantSuggestion[] };
+export type AssistantAdvice = { answer: string; source: string; suggestions: AssistantSuggestion[] };
+export type SafeFixResult = { applied: number; skipped: number; changes: string[]; skippedReasons: string[] };
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || '/tms-api').replace(/\/$/, '');
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
 
-export async function request<T>(path: string, token?: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, token?: string, init?: RequestInit, timeoutMs = 25000): Promise<T> {
   if (!baseUrl) throw new ApiError(0, 'Set VITE_API_BASE_URL to connect the TMS API.');
-  const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } });
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, { ...init, signal: controller.signal, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } });
+  } catch (exception) {
+    if (exception instanceof DOMException && exception.name === 'AbortError') throw new ApiError(0, 'The TMS service took too long to respond. The rest of the page is still available; retry this panel.');
+    throw exception;
+  } finally { window.clearTimeout(timer); }
   if (!response.ok) {
     const error = await response.json().catch(() => null);
     const message = response.status === 403
@@ -70,7 +82,7 @@ export const api = {
   stageOrder: (payload: Record<string, string>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType: 'order', idempotencyKey, source: 'SLH TMS Web/CSV', payload }) }),
   stageRecord: (entityType: string, payload: Record<string, string | boolean | number | undefined>, idempotencyKey: string, token?: string) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType, idempotencyKey, source: 'SLH TMS Web', payload }) }),
   stageBatch: (records: StageBatchRequest[], token?: string) => request<StageBatchResponse>('/api/v1/staging/batch', token, { method: 'POST', body: JSON.stringify(records) }),
-  applyMasterData: (records: StageBatchRequest[], token?: string) => request<MasterApplyResponse>('/api/v1/master-data/apply', token, { method: 'POST', body: JSON.stringify(records) }),
+  applyMasterData: (records: StageBatchRequest[], token?: string) => request<MasterApplyResponse>('/api/v1/master-data/apply', token, { method: 'POST', body: JSON.stringify(records) }, 60000),
   linkMasterRegister: (token?: string) => request<{ linked: number; message: string }>('/api/v1/master-data/register/link', token, { method: 'POST' }),
   telemetry: (token?: string) => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
   fleetStatus: (token?: string) => request<FleetStatus>('/api/v1/tracking/dot/fleet-status', token),
@@ -96,6 +108,9 @@ export const api = {
   integrationStatus: (token?: string) => request<IntegrationStatus>('/api/v1/integrations/status', token),
   diagnosticsTables: (token?: string) => request<DiagnosticsTables>('/api/v1/diagnostics/tables', token),
   masterDataSuggestions: (token?: string) => request<MasterDataSuggestions>('/api/v1/diagnostics/master-data-suggestions', token),
+  assistantSnapshot: (date: string, token?: string) => request<AssistantSnapshot>(`/api/v1/assistant/snapshot?date=${encodeURIComponent(date)}`, token),
+  assistantAdvice: (message: string, date: string, token?: string) => request<AssistantAdvice>('/api/v1/assistant/advice', token, { method: 'POST', body: JSON.stringify({ message, date }) }, 40000),
+  fixSafeValidations: (token?: string) => request<SafeFixResult>('/api/v1/assistant/fix-safe-validations', token, { method: 'POST' }, 60000),
   syncSageHrDrivers: (token?: string) => request<SageHrSync>('/api/v1/integrations/sage-hr/sync-drivers', token, { method: 'POST' }),
   review: (id: string, approved: boolean, note: string, token?: string) => request(`/api/v1/staging/${id}/${approved ? 'approve' : 'reject'}`, token, { method: 'POST', body: JSON.stringify({ note }) }),
   clearPendingStaging: (token?: string) => request<{ deleted: number }>('/api/v1/staging/pending?confirm=CLEAR-PENDING', token, { method: 'DELETE' })
