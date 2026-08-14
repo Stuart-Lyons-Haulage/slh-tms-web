@@ -616,7 +616,7 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
     const displayName = driverDisplayName(row);
     const employeeNumber = firstText(row, ['DriverID', 'Driver ID', 'Employee Number', 'Employee No', 'EmployeeNumber', 'Payroll Number', 'Payroll No', 'Sage Employee Number', 'Sage ID', 'Employee ID', 'Emp No']) || driverKey(displayName);
     if (!employeeNumber || !displayName || !active(row)) continue;
-    add('driver', employeeNumber, { employeeNumber, displayName, tachoName: firstText(row, ['Tacho Name', 'TachoName', 'Tachomaster Name', 'Tacho Master Name', 'Tacho', 'Card Name']), mobileNumber: normalisePhone(firstText(row, ['Phone Number', 'Mobile Number', 'Mobile', 'Driver Phone', 'Text Number'])), driverType: firstText(row, ['Driver Type', 'Employment Type', 'Type']) || 'Full Time', driverGroup: firstText(row, ['Driver Group', 'Group', 'Agency', 'Planner Group']), skills: firstText(row, ['Driver Skills', 'Skills', 'Licence', 'Licence Type']), active: true });
+    add('driver', employeeNumber, { employeeNumber, displayName, tachoName: firstText(row, ['Tacho Name', 'TachoName', 'Tachomaster Name', 'Tacho Master Name', 'Tacho', 'Card Name']), mobileNumber: normalisePhone(firstText(row, ['Phone Number', 'Mobile Number', 'Mobile', 'Driver Phone', 'Text Number'])), driverType: firstText(row, ['Driver Type', 'Employment Type', 'Type']) || 'Full Time', driverGroup: firstText(row, ['Driver Group', 'Group', 'Agency', 'Planner Group']), skills: firstText(row, ['Driver Skills', 'Skills', 'Licence', 'Licence Type']), coding: firstText(row, ['Coding', 'Driver Coding']), agencyName: firstText(row, ['Agency Name', 'Agency']), northEligible: yesNo(read(row, 'North Eligible')), preloadEligible: yesNo(read(row, 'Preload Eligible')), notes: firstText(row, ['Notes', 'Comments']), tachoMasterDriverId: firstText(row, ['Tachomaster Driver ID', 'TachoMaster Driver ID']), drivingLicenceNumber: firstText(row, ['Driving Licence Number', 'Licence Number']), licenceExpiry: orderDate(read(row, 'Licence Expiry')), licenceStatus: firstText(row, ['Licence Status']), active: true });
   }
   for (const row of vehicleRows) {
     const registration = firstText(row, ['Registration', 'Reg', 'Reg No', 'Registration Number', 'Vehicle Registration', 'Vehicle Reg', 'Number Plate', 'Plate'])
@@ -628,14 +628,14 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): { records: StageBatchReques
   for (const row of trailerRows) {
     const trailerNumber = text(read(row, 'Trailer'));
     if (!trailerNumber || !active(row)) continue;
-    add('trailer', trailerNumber, { trailerNumber, type: text(read(row, 'Type')), standardCapacity: numberValue(read(row, 'Standard Capacity')), euroCapacity: numberValue(read(row, 'Euro Capacity')), active: true });
+    add('trailer', trailerNumber, { trailerNumber, type: text(read(row, 'Type')), standardCapacity: numberValue(read(row, 'Standard Capacity')), euroCapacity: numberValue(read(row, 'Euro Capacity')), notes: firstText(row, ['Notes', 'Comments']), active: true });
   }
   for (const row of siteRows) {
     const externalCode = firstText(row, ['SiteID', 'Site ID', 'Site', 'Site Name', 'Customer Code', 'Customer', 'Account Code', 'Code']);
     const name = firstText(row, ['Site', 'Site Name', 'Customer Name', 'Name', 'Collection Site']);
     if (!externalCode || !name || !active(row)) continue;
     add('customer', externalCode, { code: externalCode, name, active: true });
-    add('site', externalCode, { externalCode, name, driverTextName: text(read(row, 'Driver Text Name')) || name, collectionAddress: text(read(row, 'Collection Address')), collectionInstructions: text(read(row, 'Collection Notes / Instructions')), mapLink: text(read(row, 'Map Link')), active: true });
+    add('site', externalCode, { externalCode, name, driverTextName: text(read(row, 'Driver Text Name')) || name, aliases: firstText(row, ['Aliases', 'Alternative Names']), collectionAddress: text(read(row, 'Collection Address')), collectionInstructions: text(read(row, 'Collection Notes / Instructions')), mapLink: text(read(row, 'Map Link')), customField1: text(read(row, 'Custom Field 1')), customField2: text(read(row, 'Custom Field 2')), customField3: text(read(row, 'Custom Field 3')), active: true });
   }
   for (const row of contactRows) {
     const customerCode = firstText(row, ['Customer', 'Customer Code', 'SiteID', 'Site ID', 'Account Code', 'Code']);
