@@ -8,9 +8,20 @@
 .master-counts article.error { border-color: #dfa9a9; background: #fff6f6; }
 .rollout-card.clickable { width: 100%; text-align: left; border-radius: 10px; }
 .rollout-card.clickable.selected { outline: 3px solid #67c65b; border-color: #067a76; }
-.vehicle-detail-panel { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin: 12px 0 18px; padding: 16px 18px; border-radius: 10px; border: 1px solid #b9d9d6; background: #f4fbf6; }
+.vehicle-detail-panel { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; margin: 12px 0 18px; padding: 16px 18px; border-radius: 10px; border: 1px solid #b9d9d6; background: #f4fbf6; }
 .vehicle-detail-panel strong, .vehicle-detail-panel span, .vehicle-detail-panel small { display: block; }
 .vehicle-detail-panel strong { color: #073a5a; font-size: 1.15rem; }
+.vehicle-detail-main { display: grid; grid-template-columns: minmax(220px, .7fr) minmax(440px, 1.3fr); gap: 24px; flex: 1; }
+.tacho-detail { padding-left: 20px; border-left: 1px solid #c9dfda; }
+.tacho-metrics { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.tacho-metrics article { padding: 10px; border: 1px solid #d7e7e3; border-radius: 8px; background: #fff; }
+.tacho-metrics span { color: #637985; font-size: .68rem; font-weight: 750; text-transform: uppercase; letter-spacing: .04em; }
+.tacho-metrics strong { margin-top: 4px; font-size: 1rem; }
+.tacho-metrics small, .tacho-detail > small { margin-top: 4px; color: #637985; }
+.tacho-valid { margin-top: 8px !important; color: #006d6c !important; font-weight: 750; }
+.tacho-unavailable { margin: 0; padding: 12px; border-radius: 8px; background: #edf2f4; color: #607685; }
+@media (max-width: 1100px) { .vehicle-detail-main { grid-template-columns: 1fr; }.tacho-detail { padding: 16px 0 0; border-left: 0; border-top: 1px solid #c9dfda; }.tacho-metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); } }
+@media (max-width: 650px) { .vehicle-detail-panel { flex-direction: column; }.vehicle-detail-main { min-width: 0; width: 100%; }.tacho-metrics { grid-template-columns: 1fr; } }
 .fleetio-chip { display: inline-flex !important; width: fit-content; margin-top: 6px; padding: 4px 8px; border-radius: 999px; font-size: .72rem; font-weight: 850; }
 .fleetio-good { background: #e1f4df; color: #24661f; }
 .fleetio-watch { background: #fff1c2; color: #775300; }
