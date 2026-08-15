@@ -182,7 +182,7 @@ main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700
 .assistant-heading h2 { margin-top: 4px; color: #073a5a; font-size: 1.25rem; }
 .assistant-heading > button { padding: 2px 8px; border: 0; background: transparent; font-size: 1.7rem; }
 .assistant-source { margin: 10px 0 12px; color: #637985; font-size: .74rem; }
-.assistant-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 12px; }
+.assistant-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 7px; margin-bottom: 12px; }
 .assistant-metrics span { padding: 9px; border-radius: 9px; background: #eaf3f4; color: #526b77; font-size: .68rem; text-align: center; }
 .assistant-metrics b { display: block; color: #073a5a; font-size: 1.1rem; }
 .assistant-suggestions { display: grid; gap: 8px; }
@@ -200,3 +200,14 @@ main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700
 .assistant-fix { width: 100%; margin: 10px 0; border-color: #80bd6e; background: #eaf7e5; color: #286328; }
 .assistant-panel > small { display: block; margin-top: 10px; color: #71838c; font-size: .68rem; line-height: 1.4; }
 @media (max-width: 700px) { .planner-health { grid-template-columns: 1fr; }.tms-assistant { right: 12px; bottom: 12px; }.assistant-launch strong { display: none; }.assistant-panel { right: -4px; } }
+.job-eta { display: grid; gap: 4px; margin-top: 10px; padding: 10px 12px; border-left: 4px solid #2b8b53; border-radius: 7px; background: #eef9f1; }
+.job-eta strong { color: #174f31; font-size: .85rem; }.job-eta span { color: #426555; font-size: .74rem; }.job-eta.critical { border-left-color: #c73d3d; background: #fff0f0; }.job-eta.critical strong, .job-eta.critical span { color: #922c2c; }
+.delivery-risk.tacho-critical { border-left-color: #a82222; box-shadow: 0 0 0 2px #f6caca inset; }
+.resource-board { margin: 0 0 20px; padding: 18px; border: 1px solid #b9d9d1; border-radius: 12px; background: linear-gradient(135deg, #f2faf7, #fff); box-shadow: 0 2px 8px #082e470d; }
+.resource-board-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }.resource-board-heading h2 { margin: 4px 0 0; color: #073a5a; }.resource-board-heading > span { color: #476772; font-size: .78rem; font-weight: 800; }
+.drag-loads { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 13px; }.drag-loads article { min-width: 190px; padding: 10px 12px; border: 1px solid #d6b56e; border-radius: 8px; background: #fff8e8; cursor: grab; }.drag-loads article.allocated { border-color: #8ac69b; background: #eef9f1; }.drag-loads strong, .drag-loads small { display: block; }.drag-loads small { margin-top: 4px; color: #637985; }
+.resource-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }.resource-columns h3 { margin: 8px 0; color: #17344a; font-size: .9rem; }.resource-targets { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 7px; max-height: 250px; overflow: auto; }.resource-targets article { min-height: 55px; padding: 9px; border: 1px dashed #88b9ae; border-radius: 7px; background: #fff; }.resource-targets article:hover { border-style: solid; background: #e9f7f2; }.resource-targets strong, .resource-targets small { display: block; }.resource-targets small { margin-top: 3px; color: #6b7e86; }
+.commercial-editor { margin: 12px 0; padding: 10px; border: 1px solid #dce7ea; border-radius: 8px; background: #f8fbfc; }.commercial-editor > strong { margin-left: 10px; color: #247040; }.commercial-editor > strong.negative-margin { color: #a52f2f; }.commercial-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }.commercial-fields label { display: grid; gap: 4px; color: #46616f; font-size: .72rem; font-weight: 800; }.commercial-fields input, .commercial-fields select { min-width: 0; padding: .42rem; border: 1px solid #c8d5da; border-radius: 6px; font: inherit; }.commercial-fields .primary, .commercial-fields .hint { grid-column: 1 / -1; }
+.forecast-panel { margin: 18px 0; }.forecast-table { min-width: 1100px; }.forecast-table td small { display: block; margin-top: 3px; color: #637985; }.forecast-table tr.forecast-risk { background: #fff9ed; }.forecast-table tr.forecast-risk td:first-child { border-left: 4px solid #dc8d1f; }
+.report-toolbar select { margin-left: 8px; padding: .45rem; border: 1px solid #c8d5da; border-radius: 6px; font: inherit; }
+@media (max-width: 850px) { .resource-columns, .commercial-fields { grid-template-columns: 1fr; }.resource-board-heading { align-items: flex-start; flex-direction: column; } }
