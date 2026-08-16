@@ -82,6 +82,8 @@ export type Site = {
   collectionAddress?: string;
   collectionInstructions?: string;
   mapLink?: string;
+  latitude?: number;
+  longitude?: number;
   customField1?: string;
   customField2?: string;
   customField3?: string;
@@ -576,6 +578,8 @@ export type AssistantSnapshot = {
     unpricedLoads: number;
     negativeMarginLoads: number;
     emptyMiles: number;
+    missingSiteMapPoints: number;
+    duplicateSiteGroups: number;
   };
   suggestions: AssistantSuggestion[];
 };
@@ -652,8 +656,18 @@ export async function request<T>(
 export const api = {
   customers: (token?: string) =>
     request<Customer[]>("/api/v1/customers", token),
+  updateCustomer: (id: string, payload: Omit<Customer, "id">, token?: string) =>
+    request<Customer>(`/api/v1/customers/${id}`, token, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   customerContacts: (token?: string) =>
     request<CustomerContact[]>("/api/v1/customer-contacts", token),
+  updateCustomerContact: (id: string, payload: Omit<CustomerContact, "id">, token?: string) =>
+    request<CustomerContact>(`/api/v1/customer-contacts/${id}`, token, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   vehicles: (token?: string) => request<Vehicle[]>("/api/v1/vehicles", token),
   updateVehicle: (id: string, payload: Omit<Vehicle, "id">, token?: string) =>
     request<Vehicle>(`/api/v1/vehicles/${id}`, token, {

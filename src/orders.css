@@ -191,6 +191,7 @@ main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700
 .assistant-suggestions span { color: #738791; font-size: .65rem; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
 .assistant-suggestions strong { display: block; margin: 2px 0; color: #17344a; font-size: .84rem; }
 .assistant-suggestions p { margin: 0; color: #5f7480; font-size: .76rem; line-height: 1.4; }
+.assistant-card-actions { display: flex; gap: 6px; margin-top: 8px; }.assistant-card-actions button { padding: 5px 8px; font-size: .7rem; }
 .assistant-answer { margin: 12px 0; padding: 12px; border: 1px solid #a9d1c8; border-radius: 10px; background: #edf8f4; }
 .assistant-answer strong { color: #006d6c; }.assistant-answer p { margin: 5px 0 0; color: #284c53; font-size: .82rem; }
 .assistant-panel form { display: grid; gap: 7px; margin-top: 14px; }

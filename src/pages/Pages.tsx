@@ -5341,37 +5341,61 @@ export function DriversMaster() {
         error={drivers.error}
         empty={!rows.length}
       >
-        <MasterTable
-          rows={rows}
-          rowKey={(row) => row.id}
-          columns={[
-            ["Employee", (row) => row.employeeNumber],
-            ["Driver", (row) => row.displayName],
-            ["Tacho name", (row) => row.tachoName],
-            ["Phone number", (row) => row.mobileNumber],
-            ["Driver type", (row) => effectiveType(row)],
-            ["Driver group", (row) => row.driverGroup],
-            ["Skills", (row) => row.skills],
-            ["Coding", (row) => row.coding],
-            ["Agency", (row) => row.agencyName],
-            ["North eligible", (row) => row.northEligible],
-            ["Preload eligible", (row) => row.preloadEligible],
-            ["Tacho member ID (auto)", (row) => row.tachoMasterDriverId],
-            ["Tacho card", (row) => row.tachoCardNumber],
-            ["Drive left today", (row) => formatMinutes(row.tachoDriveAvailableTodayMinutes)],
-            ["Drive left this week", (row) => formatMinutes(row.tachoDriveAvailableWeekMinutes)],
-            ["Tacho last sync", (row) => formatDate(row.lastTachoSyncUtc)],
-            ["Driving licence", (row) => row.drivingLicenceNumber],
-            ["Licence expiry", (row) => row.licenceExpiry],
-            ["Licence status", (row) => row.licenceStatus],
-            ["Notes", (row) => row.notes],
-            ["Active", (row) => row.active],
-          ]}
-        />
+        <EditableDriverTable rows={rows} onSaved={drivers.refresh} />
       </State>
       <DriverQuickAdd onSaved={drivers.refresh} />
     </section>
   );
+}
+function EditableDriverTable({ rows, onSaved }: { rows: Driver[]; onSaved: () => void }) {
+  const token = useAccessToken();
+  const [draft, setDraft] = useState<Driver>();
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string>();
+  const update = (field: keyof Driver, value: string | boolean) => setDraft((current) => current ? { ...current, [field]: value } : current);
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!draft) return;
+    setSaving(true); setMessage(undefined);
+    try {
+      const { id, lastTachoSyncUtc: _lastSync, ...payload } = draft;
+      void _lastSync;
+      await api.updateDriver(id, payload, await token());
+      setMessage(`${draft.displayName} updated.`); setDraft(undefined); onSaved();
+    } catch (exception) {
+      setMessage(exception instanceof Error ? exception.message : "Driver could not be updated.");
+    } finally { setSaving(false); }
+  }
+  return <div>
+    <div className="master-table-wrap"><table className="master-table editable-master-table"><thead><tr>
+      <th>Employee</th><th>Driver</th><th>Tacho name</th><th>Phone</th><th>Type</th><th>Group</th><th>Agency</th><th>Drive left</th><th>Licence</th><th>Actions</th>
+    </tr></thead><tbody>{rows.map((row) => <tr key={row.id}>
+      <td>{row.employeeNumber}</td><td><strong>{row.displayName}</strong></td><td>{normaliseTableValue(row.tachoName)}</td><td>{normaliseTableValue(row.mobileNumber)}</td><td>{normaliseTableValue(row.driverType || (row.agencyName ? "Agency" : ""))}</td><td>{normaliseTableValue(row.driverGroup)}</td><td>{normaliseTableValue(row.agencyName)}</td><td>{formatMinutes(row.tachoDriveAvailableTodayMinutes)}</td><td>{normaliseTableValue(row.licenceStatus)}</td><td><button onClick={() => setDraft({ ...row })}>Edit</button></td>
+    </tr>)}</tbody></table></div>
+    {draft && <form className="quick-order master-edit-form master-record-editor" onSubmit={(event) => void save(event)}>
+      <div className="title-row"><div><p className="eyebrow">Editing driver</p><h2>{draft.displayName}</h2></div><button type="button" onClick={() => setDraft(undefined)}>Cancel</button></div>
+      <div className="field-grid">
+        <label>Employee number<input required value={draft.employeeNumber} onChange={(event) => update("employeeNumber", event.target.value)} /></label>
+        <label>Driver name<input required value={draft.displayName} onChange={(event) => update("displayName", event.target.value)} /></label>
+        <label>Tacho name<input value={draft.tachoName || ""} onChange={(event) => update("tachoName", event.target.value)} /></label>
+        <label>Mobile number<input value={draft.mobileNumber || ""} onChange={(event) => update("mobileNumber", event.target.value)} /></label>
+        <label>Driver type<input value={draft.driverType || ""} onChange={(event) => update("driverType", event.target.value)} /></label>
+        <label>Driver group<input value={draft.driverGroup || ""} onChange={(event) => update("driverGroup", event.target.value)} /></label>
+        <label>Agency<input value={draft.agencyName || ""} onChange={(event) => update("agencyName", event.target.value)} /></label>
+        <label>Skills<input value={draft.skills || ""} onChange={(event) => update("skills", event.target.value)} /></label>
+        <label>Coding<input value={draft.coding || ""} onChange={(event) => update("coding", event.target.value)} /></label>
+        <label>Driving licence<input value={draft.drivingLicenceNumber || ""} onChange={(event) => update("drivingLicenceNumber", event.target.value)} /></label>
+        <label>Licence expiry<input type="date" value={draft.licenceExpiry || ""} onChange={(event) => update("licenceExpiry", event.target.value)} /></label>
+        <label>Licence status<input value={draft.licenceStatus || ""} onChange={(event) => update("licenceStatus", event.target.value)} /></label>
+        <label className="checkbox-label"><input type="checkbox" checked={Boolean(draft.northEligible)} onChange={(event) => update("northEligible", event.target.checked)} /> North eligible</label>
+        <label className="checkbox-label"><input type="checkbox" checked={Boolean(draft.preloadEligible)} onChange={(event) => update("preloadEligible", event.target.checked)} /> Preload eligible</label>
+        <label className="checkbox-label"><input type="checkbox" checked={draft.active} onChange={(event) => update("active", event.target.checked)} /> Active</label>
+        <label className="wide">Notes<textarea value={draft.notes || ""} onChange={(event) => update("notes", event.target.value)} /></label>
+      </div>
+      <button className="primary" disabled={saving}>{saving ? "Saving…" : "Save driver"}</button>
+    </form>}
+    {message && <p className="notice inline-notice">{message}</p>}
+  </div>;
 }
 function DriverQuickAdd({ onSaved }: { onSaved: () => void }) {
   const token = useAccessToken();
@@ -6436,6 +6460,58 @@ function FuelPriceForm({ onSaved }: { onSaved: () => void }) {
   );
 }
 
+export function CustomersMaster() {
+  const token = useAccessToken();
+  const customers = useApi(useCallback(async () => api.customers(await token()), [token]));
+  const contacts = useApi(useCallback(async () => api.customerContacts(await token()), [token]));
+  const [search, setSearch] = useState("");
+  const [customerDraft, setCustomerDraft] = useState<Customer>();
+  const [contactDraft, setContactDraft] = useState<CustomerContact>();
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string>();
+  const customerRows = (customers.data || []).filter((row) => !search || `${row.code} ${row.name}`.toLowerCase().includes(search.toLowerCase()));
+  const contactRows = (contacts.data || []).filter((row) => !search || `${row.customerCode} ${row.name} ${row.email || ""}`.toLowerCase().includes(search.toLowerCase()));
+  const refreshAll = () => { void customers.refresh(); void contacts.refresh(); };
+  async function saveCustomer(event: FormEvent) {
+    event.preventDefault(); if (!customerDraft) return; setSaving(true); setMessage(undefined);
+    try { const { id, ...payload } = customerDraft; await api.updateCustomer(id, payload, await token()); setMessage(`${customerDraft.name} updated.`); setCustomerDraft(undefined); refreshAll(); }
+    catch (exception) { setMessage(exception instanceof Error ? exception.message : "Customer could not be updated."); }
+    finally { setSaving(false); }
+  }
+  async function saveContact(event: FormEvent) {
+    event.preventDefault(); if (!contactDraft) return; setSaving(true); setMessage(undefined);
+    try { const { id, ...payload } = contactDraft; await api.updateCustomerContact(id, payload, await token()); setMessage(`${contactDraft.name} updated.`); setContactDraft(undefined); refreshAll(); }
+    catch (exception) { setMessage(exception instanceof Error ? exception.message : "Customer contact could not be updated."); }
+    finally { setSaving(false); }
+  }
+  return <section>
+    <div className="title-row"><div><p className="eyebrow">Master data & CRM</p><h1>Customers</h1></div><button onClick={refreshAll}>Refresh</button></div>
+    <p className="intro">Edit customer accounts and the contacts who receive ETA updates. Customer codes remain protected against duplicates.</p>
+    <div className="master-filters"><label className="master-filter">Customer / contact<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search code, name or email" /></label></div>
+    <State loading={customers.loading || contacts.loading} error={customers.error || contacts.error}>
+      <h2 className="master-subtitle">Customer accounts</h2>
+      <div className="master-table-wrap"><table className="master-table editable-master-table"><thead><tr><th>Code</th><th>Customer</th><th>Active</th><th>Actions</th></tr></thead><tbody>{customerRows.map((row) => <tr key={row.id}><td>{row.code}</td><td><strong>{row.name}</strong></td><td>{normaliseTableValue(row.active)}</td><td><button onClick={() => setCustomerDraft({ ...row })}>Edit</button></td></tr>)}</tbody></table></div>
+      {customerDraft && <form className="quick-order master-edit-form master-record-editor" onSubmit={(event) => void saveCustomer(event)}><div className="title-row"><h2>Edit customer</h2><button type="button" onClick={() => setCustomerDraft(undefined)}>Cancel</button></div><div className="field-grid">
+        <label>Customer code<input required value={customerDraft.code} onChange={(event) => setCustomerDraft({ ...customerDraft, code: event.target.value })} /></label>
+        <label>Customer name<input required value={customerDraft.name} onChange={(event) => setCustomerDraft({ ...customerDraft, name: event.target.value })} /></label>
+        <label className="checkbox-label"><input type="checkbox" checked={customerDraft.active} onChange={(event) => setCustomerDraft({ ...customerDraft, active: event.target.checked })} /> Active</label>
+      </div><button className="primary" disabled={saving}>{saving ? "Saving…" : "Save customer"}</button></form>}
+      <h2 className="master-subtitle">ETA and customer contacts</h2>
+      <div className="master-table-wrap"><table className="master-table editable-master-table"><thead><tr><th>Customer</th><th>Contact</th><th>Email</th><th>Phone</th><th>ETA updates</th><th>Actions</th></tr></thead><tbody>{contactRows.map((row) => <tr key={row.id}><td>{row.customerCode}</td><td><strong>{row.name}</strong></td><td>{normaliseTableValue(row.email)}</td><td>{normaliseTableValue(row.mobileNumber)}</td><td>{normaliseTableValue(row.receivesEtaUpdates)}</td><td><button onClick={() => setContactDraft({ ...row })}>Edit</button></td></tr>)}</tbody></table></div>
+      {contactDraft && <form className="quick-order master-edit-form master-record-editor" onSubmit={(event) => void saveContact(event)}><div className="title-row"><h2>Edit customer contact</h2><button type="button" onClick={() => setContactDraft(undefined)}>Cancel</button></div><div className="field-grid">
+        <label>Customer code<input required value={contactDraft.customerCode} onChange={(event) => setContactDraft({ ...contactDraft, customerCode: event.target.value })} /></label>
+        <label>Contact name<input required value={contactDraft.name} onChange={(event) => setContactDraft({ ...contactDraft, name: event.target.value })} /></label>
+        <label>Email<input type="email" value={contactDraft.email || ""} onChange={(event) => setContactDraft({ ...contactDraft, email: event.target.value })} /></label>
+        <label>Mobile<input value={contactDraft.mobileNumber || ""} onChange={(event) => setContactDraft({ ...contactDraft, mobileNumber: event.target.value })} /></label>
+        <label className="checkbox-label"><input type="checkbox" checked={contactDraft.receivesEtaUpdates} onChange={(event) => setContactDraft({ ...contactDraft, receivesEtaUpdates: event.target.checked })} /> Receives ETA updates</label>
+        <label className="checkbox-label"><input type="checkbox" checked={contactDraft.active} onChange={(event) => setContactDraft({ ...contactDraft, active: event.target.checked })} /> Active</label>
+      </div><button className="primary" disabled={saving}>{saving ? "Saving…" : "Save contact"}</button></form>}
+    </State>
+    {message && <p className="notice inline-notice">{message}</p>}
+    <CoreMasterDataForm />
+  </section>;
+}
+
 export function SitesMaster() {
   const token = useAccessToken();
   const sites = useApi(
@@ -6485,18 +6561,7 @@ export function SitesMaster() {
         error={sites.error || contacts.error}
       >
         <h2 className="master-subtitle">Sites</h2>
-        <MasterTable
-          rows={siteRows}
-          rowKey={(row) => row.id}
-          columns={[
-            ["Site", (row) => row.name],
-            ["Driver text name", (row) => row.driverTextName],
-            ["Address", (row) => row.collectionAddress],
-            ["Map link", (row) => (row.mapLink ? "Yes" : "No")],
-            ["Instructions", (row) => row.collectionInstructions],
-            ["Active", (row) => row.active],
-          ]}
-        />
+        <EditableSiteTable rows={siteRows} onSaved={refreshAll} />
         <h2 className="master-subtitle">Customer contacts</h2>
         <MasterTable
           rows={contactRows}
@@ -6514,6 +6579,35 @@ export function SitesMaster() {
       <SiteSetupForm />
     </section>
   );
+}
+function EditableSiteTable({ rows, onSaved }: { rows: Site[]; onSaved: () => void }) {
+  const token = useAccessToken();
+  const [draft, setDraft] = useState<Site>();
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string>();
+  const update = (field: keyof Site, value: string | boolean | number | undefined) => setDraft((current) => current ? { ...current, [field]: value } : current);
+  async function save(event: FormEvent) {
+    event.preventDefault(); if (!draft) return; setSaving(true); setMessage(undefined);
+    try { const { id, ...payload } = draft; await api.updateSite(id, payload, await token()); setMessage(`${draft.name} updated.`); setDraft(undefined); onSaved(); }
+    catch (exception) { setMessage(exception instanceof Error ? exception.message : "Site could not be updated."); }
+    finally { setSaving(false); }
+  }
+  return <div>
+    <div className="master-table-wrap"><table className="master-table editable-master-table"><thead><tr><th>Code</th><th>Site</th><th>Driver text</th><th>Address</th><th>Map point</th><th>Map link</th><th>Actions</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{row.externalCode}</td><td><strong>{row.name}</strong></td><td>{normaliseTableValue(row.driverTextName)}</td><td>{normaliseTableValue(row.collectionAddress)}</td><td>{row.latitude != null && row.longitude != null ? `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}` : <span className="capacity-warning">Missing</span>}</td><td>{row.mapLink ? <a href={row.mapLink} target="_blank" rel="noreferrer">Open</a> : "—"}</td><td><button onClick={() => setDraft({ ...row })}>Edit</button></td></tr>)}</tbody></table></div>
+    {draft && <form className="quick-order master-edit-form master-record-editor" onSubmit={(event) => void save(event)}><div className="title-row"><div><p className="eyebrow">Editing site</p><h2>{draft.name}</h2></div><button type="button" onClick={() => setDraft(undefined)}>Cancel</button></div><div className="field-grid">
+      <label>Site code<input required value={draft.externalCode} onChange={(event) => update("externalCode", event.target.value)} /></label>
+      <label>Site name<input required value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
+      <label>Driver text name<input value={draft.driverTextName || ""} onChange={(event) => update("driverTextName", event.target.value)} /></label>
+      <label>Aliases<input value={draft.aliases || ""} onChange={(event) => update("aliases", event.target.value)} /></label>
+      <label className="wide">Address<input value={draft.collectionAddress || ""} onChange={(event) => update("collectionAddress", event.target.value)} /></label>
+      <label>Latitude<input type="number" step="0.000001" min="-90" max="90" value={draft.latitude ?? ""} onChange={(event) => update("latitude", event.target.value ? Number(event.target.value) : undefined)} /></label>
+      <label>Longitude<input type="number" step="0.000001" min="-180" max="180" value={draft.longitude ?? ""} onChange={(event) => update("longitude", event.target.value ? Number(event.target.value) : undefined)} /></label>
+      <label className="wide">Map link<input type="url" value={draft.mapLink || ""} onChange={(event) => update("mapLink", event.target.value)} /></label>
+      <label className="wide">Driver instructions<textarea value={draft.collectionInstructions || ""} onChange={(event) => update("collectionInstructions", event.target.value)} /></label>
+      <label className="checkbox-label"><input type="checkbox" checked={draft.active} onChange={(event) => update("active", event.target.checked)} /> Active</label>
+    </div><button className="primary" disabled={saving}>{saving ? "Saving…" : "Save site & map point"}</button></form>}
+    {message && <p className="notice inline-notice">{message}</p>}
+  </div>;
 }
 
 export function MasterData() {
@@ -8152,6 +8246,8 @@ function SiteSetupForm() {
     collectionAddress: "",
     collectionInstructions: "",
     mapLink: "",
+    latitude: "",
+    longitude: "",
   });
   const [message, setMessage] = useState<string>();
   const [saving, setSaving] = useState(false);
@@ -8163,7 +8259,7 @@ function SiteSetupForm() {
     try {
       await api.stageRecord(
         "site",
-        { ...form, active: true },
+        { ...form, latitude: form.latitude ? Number(form.latitude) : undefined, longitude: form.longitude ? Number(form.longitude) : undefined, active: true },
         `web-site:${form.externalCode}`,
         await token(),
       );
@@ -8174,6 +8270,8 @@ function SiteSetupForm() {
         collectionAddress: "",
         collectionInstructions: "",
         mapLink: "",
+        latitude: "",
+        longitude: "",
       });
     } catch (exception) {
       setMessage(
@@ -8225,6 +8323,14 @@ function SiteSetupForm() {
             value={form.mapLink}
             onChange={(event) => update("mapLink", event.target.value)}
           />
+        </label>
+        <label>
+          Latitude
+          <input type="number" step="0.000001" min="-90" max="90" value={form.latitude} onChange={(event) => update("latitude", event.target.value)} />
+        </label>
+        <label>
+          Longitude
+          <input type="number" step="0.000001" min="-180" max="180" value={form.longitude} onChange={(event) => update("longitude", event.target.value)} />
         </label>
         <label className="wide">
           Driver instructions

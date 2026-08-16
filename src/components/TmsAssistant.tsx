@@ -151,6 +151,12 @@ export function TmsAssistant() {
               <span>
                 <b>{snapshot.metrics.negativeMarginLoads}</b> loss-making
               </span>
+              <span>
+                <b>{snapshot.metrics.missingSiteMapPoints}</b> map points
+              </span>
+              <span>
+                <b>{snapshot.metrics.duplicateSiteGroups}</b> duplicate sites
+              </span>
             </div>
           )}
           <div className="assistant-suggestions">
@@ -159,6 +165,12 @@ export function TmsAssistant() {
                 <span>{item.area}</span>
                 <strong>{item.title}</strong>
                 <p>{item.detail}</p>
+                <div className="assistant-card-actions">
+                  <button type="button" onClick={() => { const routes: Record<string, string> = { Sites: "/sites", Drivers: "/drivers", Vehicles: "/fleet-assets", Reporting: "/reporting", Planner: "/" }; window.location.assign(routes[item.area] || "/"); }}>
+                    Open {item.area}
+                  </button>
+                  {item.autoFixAvailable && <button type="button" className="primary" disabled={busy} onClick={() => void applyFixes()}>Fix safely</button>}
+                </div>
               </article>
             ))}
           </div>
