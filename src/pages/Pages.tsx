@@ -5144,12 +5144,24 @@ function normaliseTableValue(value: unknown) {
   if (value === false) return "No";
   return value == null || value === "" ? "—" : String(value);
 }
-function MasterValidation({ issues }: { issues: string[] }) {
+function MasterValidation({
+  issues,
+  entities,
+}: {
+  issues: string[];
+  entities?: string[];
+}) {
   const token = useAccessToken();
   const suggestions = useApi(
     useCallback(async () => api.masterDataSuggestions(await token()), [token]),
   );
-  const rules = suggestions.data?.suggestions || [];
+  const entitySet = useMemo(
+    () => new Set((entities || []).map((entity) => entity.toLowerCase())),
+    [entities],
+  );
+  const rules = (suggestions.data?.suggestions || []).filter(
+    (issue) => !entities || entitySet.has(issue.entity.toLowerCase()),
+  );
   const combined = [
     ...issues.map((message) => ({ message, severity: "warning" })),
     ...rules.slice(0, 8),
@@ -5334,7 +5346,7 @@ export function DriversMaster() {
         <MasterFilter label="TachoMaster link" value={tachoFilter} onChange={setTachoFilter} options={["Linked", "Not linked"]} />
       </div>
       {tachoMessage && <p className="notice inline-notice">{tachoMessage}</p>}
-      <MasterValidation issues={issues} />
+      <MasterValidation issues={issues} entities={["Driver"]} />
       <MasterWorkbookImport mode="drivers" onApplied={drivers.refresh} />
       <State
         loading={drivers.loading}
@@ -5617,7 +5629,7 @@ export function FleetAssetsMaster() {
           ])}
         />
       </div>
-      <MasterValidation issues={issues} />
+      <MasterValidation issues={issues} entities={["Vehicle", "Trailer"]} />
       <MasterWorkbookImport mode="vehicles" onApplied={refreshAll} />
       <FleetioAlignmentPanel
         data={fleetio.data}
@@ -6136,7 +6148,7 @@ export function MarketsMaster() {
         Market orders use this list for Covent, Spit and Western sellers, stall
         details, salesman and sender dropdowns.
       </p>
-      <MasterValidation issues={issues} />
+      <MasterValidation issues={issues} entities={["MarketContact"]} />
       <MasterWorkbookImport mode="markets" onApplied={contacts.refresh} />
       <State
         loading={contacts.loading}
@@ -6291,7 +6303,7 @@ export function FuelMaster() {
         Add weekly fuel prices here so pricing history stays in the cloud and
         can trend over time.
       </p>
-      <MasterValidation issues={issues} />
+      <MasterValidation issues={issues} entities={["FuelPrice"]} />
       <MasterWorkbookImport mode="fuel" onApplied={prices.refresh} />
       <div className="metrics">
         <Metric
@@ -6554,7 +6566,7 @@ export function SitesMaster() {
         All delivery and collection sites plus customer contacts for ETA updates
         and order communication.
       </p>
-      <MasterValidation issues={issues} />
+      <MasterValidation issues={issues} entities={["Site", "CustomerContact"]} />
       <MasterWorkbookImport mode="sites" onApplied={refreshAll} />
       <State
         loading={sites.loading || contacts.loading}
