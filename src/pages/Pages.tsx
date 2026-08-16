@@ -6118,7 +6118,7 @@ export function MarketsMaster() {
   const rows = contacts.data || [];
   const issues = rows.flatMap((contact) =>
     [
-      !contact.standOrLocation && contact.market !== "Sender"
+      !marketStandOrLocation(contact) && contact.market !== "Sender"
         ? `${contact.market} / ${contact.name} missing stall or stand.`
         : "",
       !contact.salesman && contact.market !== "Sender"
@@ -6163,7 +6163,7 @@ export function MarketsMaster() {
               rowKey={(row) => row.id}
               columns={[
                 [market === "Sender" ? "Sender" : "Seller", (row) => row.name],
-                ["Stall / stand", (row) => row.standOrLocation],
+                ["Stall / stand", (row) => marketStandOrLocation(row)],
                 ["Salesman", (row) => row.salesman],
                 ["Sender", (row) => row.sender],
                 ["Active", (row) => row.active],
@@ -6174,6 +6174,26 @@ export function MarketsMaster() {
       </State>
       <MarketQuickAdd onSaved={contacts.refresh} />
     </section>
+  );
+}
+function marketStandOrLocation(contact: MarketContact) {
+  return contact.standOrLocation || inferMarketStandFromName(contact.name);
+}
+function inferMarketStandFromName(value?: string) {
+  if (!value) return "";
+  const bracketed = value.match(/\(([^)]+)\)\s*$/)?.[1]?.trim();
+  if (bracketed && looksLikeMarketStand(bracketed)) return bracketed;
+  const inline = value.match(
+    /\b((?:block|unit|stand|stall|rail\s+arch)\s+[a-z]?\d[\w\s/-]*|\d{1,4}\s*[-/]\s*\d{1,4})\b/i,
+  )?.[1]?.trim();
+  return inline && looksLikeMarketStand(inline) ? inline : "";
+}
+function looksLikeMarketStand(value: string) {
+  const normalised = value.trim().toLowerCase();
+  return (
+    /\b(block|unit|stand|stall|rail\s+arch|flower\s*mkt|mkt)\b/.test(normalised) ||
+    /^[a-z]{1,4}\s*\d[\w\s/-]*$/i.test(value) ||
+    /^\d{1,4}\s*[-/]\s*\d{1,4}$/.test(normalised)
   );
 }
 function MarketQuickAdd({ onSaved }: { onSaved: () => void }) {
