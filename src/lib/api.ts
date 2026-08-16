@@ -151,6 +151,7 @@ export type Telemetry = {
   }>;
 };
 export type TachoVehicleDriverStatus = {
+  vehicleCode: string;
   memberCode: number;
   driverName: string;
   cardNumber?: string;
