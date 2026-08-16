@@ -35,3 +35,18 @@
 .capacity-warning { color: #a54b00 !important; background: #fff0d6; border-radius: 6px; padding: 3px 6px; }
 .master-record-editor { margin: 14px 0 24px; border: 2px solid #9bc7cf; box-shadow: 0 10px 28px #073a5a12; }
 .allocation-load-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; margin-top: 16px; }
+.tab-bar { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid #dce7ea; }
+.tab-bar .tab { border: 0; background: transparent; color: #607685; padding: 10px 18px; border-radius: 0; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.tab-bar .tab:hover { color: #063b5c; border-color: #c8d5da; }
+.tab-bar .tab.active { color: #063b5c; border-color: #006d6c; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 16px 0; }
+.form-grid label { display: flex; flex-direction: column; gap: 5px; font-size: .82rem; font-weight: 650; color: #607685; }
+.form-grid input, .form-grid select { padding: .5rem .65rem; border: 1px solid #c8d5da; border-radius: 7px; background: #fff; color: #17344a; font: inherit; }
+.data-table { background: white; border: 1px solid #dce7ea; border-radius: 10px; overflow: hidden; min-width: 600px; }
+.exception-list article { background: #fff; border: 1px solid #dce7ea; border-radius: 10px; padding: 14px 17px; margin-bottom: 10px; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+.exception-list article strong { grid-column: 1; }
+.exception-list article span { grid-column: 2; color: #607685; }
+.exception-list article small { grid-column: 1 / -1; color: #637985; }
+.exception-list .error { color: #9d2929; }
+.exception-list .warn { color: #a54b00; }
+.warn { color: #a54b00; }

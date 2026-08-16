@@ -8634,3 +8634,311 @@ export function Admin() {
     </section>
   );
 }
+
+export function OperationsControl() {
+  const token = useAccessToken();
+  const [date, setDate] = useState(localDate());
+  const [tab, setTab] = useState<"confidence" | "exceptions" | "reconciliation" | "mappings">("confidence");
+  const [mappingProvider, setMappingProvider] = useState("");
+  const [mappingExternalKey, setMappingExternalKey] = useState("");
+  const [mappingLabel, setMappingLabel] = useState("");
+  const [mappingEntityType, setMappingEntityType] = useState("Driver");
+  const [mappingEntityId, setMappingEntityId] = useState("");
+  const [mappingNotes, setMappingNotes] = useState("");
+  const [mappingError, setMappingError] = useState<string>();
+  const [mappingSaved, setMappingSaved] = useState(false);
+
+  const confidence = useApi(
+    useCallback(async () => api.operationsConfidence(await token()), [token]),
+  );
+  const exceptions = useApi(
+    useCallback(async () => api.operationsExceptions(date, await token()), [date, token]),
+  );
+  const reconciliation = useApi(
+    useCallback(async () => api.operationsReconciliation(date, await token()), [date, token]),
+  );
+  const mappings = useApi(
+    useCallback(async () => api.integrationMappings(undefined, await token()), [token]),
+  );
+
+  async function saveMapping() {
+    setMappingError(undefined);
+    setMappingSaved(false);
+    if (!mappingProvider || !mappingExternalKey || !mappingEntityId) {
+      setMappingError("Provider, External Key, and TMS Entity ID are required.");
+      return;
+    }
+    try {
+      await api.createMapping(
+        {
+          provider: mappingProvider,
+          externalKey: mappingExternalKey,
+          externalLabel: mappingLabel || undefined,
+          tmsEntityType: mappingEntityType,
+          tmsEntityId: mappingEntityId,
+          notes: mappingNotes || undefined,
+        },
+        await token(),
+      );
+      setMappingSaved(true);
+      setMappingExternalKey("");
+      setMappingLabel("");
+      setMappingNotes("");
+      await mappings.refresh();
+    } catch (exception) {
+      setMappingError(
+        exception instanceof Error ? exception.message : "Failed to save mapping.",
+      );
+    }
+  }
+
+  async function removeMapping(id: string) {
+    try {
+      await api.deleteMapping(id, await token());
+      await mappings.refresh();
+    } catch (exception) {
+      setMappingError(
+        exception instanceof Error ? exception.message : "Failed to delete mapping.",
+      );
+    }
+  }
+
+  const refreshAll = () => {
+    void confidence.refresh();
+    void exceptions.refresh();
+    void reconciliation.refresh();
+    void mappings.refresh();
+  };
+
+  const conf = confidence.data;
+  const exc = exceptions.data;
+  const rec = reconciliation.data;
+  const map = mappings.data;
+
+  return (
+    <section>
+      <div className="title-row">
+        <div>
+          <p className="eyebrow">Operational readiness</p>
+          <h1>Operations control</h1>
+        </div>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ padding: ".4rem .6rem", border: "1px solid #c8d5da", borderRadius: "7px" }} />
+          <button onClick={refreshAll}>Refresh all</button>
+        </div>
+      </div>
+      <div className="metrics">
+        <Metric
+          label="Integrations configured"
+          value={
+            conf
+              ? String(
+                  [conf.sageHr.configured, conf.tachoMaster.configured, conf.dotTracking.configured, conf.fleetio.configured].filter(Boolean).length,
+                )
+              : "—"
+          }
+          detail="Sage, TachoMaster, DOT, Fleetio"
+        />
+        <Metric
+          label="Open exceptions"
+          value={exc ? String(exc.summary.total) : "—"}
+          detail={exc ? `${exc.summary.high} high, ${exc.summary.medium} medium` : "Loading…"}
+        />
+        <Metric
+          label="Unallocated loads"
+          value={rec ? String(rec.loads.unallocated) : "—"}
+          detail={rec ? `${rec.loads.total} total loads today` : "Loading…"}
+        />
+        <Metric
+          label="Vehicles no signal"
+          value={rec ? String(rec.fleet.vehiclesNoSignal) : "—"}
+          detail={rec ? `${rec.fleet.vehiclesSeenToday} seen today` : "Loading…"}
+        />
+      </div>
+
+      <div className="tab-bar">
+        {(["confidence", "exceptions", "reconciliation", "mappings"] as const).map((t) => (
+          <button
+            key={t}
+            className={tab === t ? "tab active" : "tab"}
+            onClick={() => setTab(t)}
+          >
+            {t === "confidence" ? "Integration confidence" : t === "exceptions" ? "Exceptions" : t === "reconciliation" ? "Daily reconciliation" : "Manual mappings"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "confidence" && (
+        <State loading={confidence.loading} error={confidence.error} empty={!conf}>
+          {conf && (
+            <div className="admin-grid">
+              <article className="admin-card">
+                <span className={conf.sageHr.configured ? "integration-state ready" : "integration-state pending"}>
+                  {conf.sageHr.configured ? "Ready" : "Setup needed"}
+                </span>
+                <h2>Sage HR</h2>
+                <p>{conf.sageHr.activeDrivers} active drivers</p>
+                <small>{conf.sageHr.driversWithoutTachoName} without tacho name</small>
+                {conf.sageHr.lastSyncUtc && (
+                  <small>Last sync: {formatDate(conf.sageHr.lastSyncUtc)}</small>
+                )}
+              </article>
+              <article className="admin-card">
+                <span className={conf.tachoMaster.configured ? "integration-state ready" : "integration-state pending"}>
+                  {conf.tachoMaster.configured ? "Ready" : "Setup needed"}
+                </span>
+                <h2>TachoMaster</h2>
+                <p>{conf.tachoMaster.driversWithTachoSync} drivers with tacho sync</p>
+                <small>{conf.tachoMaster.driversWithoutTachoName} unmatched</small>
+                {conf.tachoMaster.lastSyncUtc && (
+                  <small>Last sync: {formatDate(conf.tachoMaster.lastSyncUtc)}</small>
+                )}
+              </article>
+              <article className="admin-card">
+                <span className={conf.dotTracking.configured ? "integration-state ready" : "integration-state pending"}>
+                  {conf.dotTracking.configured ? "Ready" : "Setup needed"}
+                </span>
+                <h2>DOT Tracking</h2>
+                <p>{conf.dotTracking.liveVehicleCount} live vehicles</p>
+                <small>{conf.dotTracking.staleVehicleCount} stale (30+ min)</small>
+                {conf.dotTracking.latestEventUtc && (
+                  <small>Latest: {formatDate(conf.dotTracking.latestEventUtc)}</small>
+                )}
+                {conf.dotTracking.trackingAgeMinutes != null && (
+                  <small>Age: {conf.dotTracking.trackingAgeMinutes} min</small>
+                )}
+              </article>
+              <article className="admin-card">
+                <span className={conf.fleetio.configured ? "integration-state ready" : "integration-state pending"}>
+                  {conf.fleetio.configured ? "Ready" : "Setup needed"}
+                </span>
+                <h2>Fleetio</h2>
+                <p>{conf.fleetio.matchedVehicles} matched vehicles</p>
+                <small>{conf.fleetio.unmatchedVehicles} unmatched</small>
+              </article>
+            </div>
+          )}
+        </State>
+      )}
+
+      {tab === "exceptions" && (
+        <State loading={exceptions.loading} error={exceptions.error} empty={!exc?.exceptions.length}>
+          {exc && (
+            <div className="exception-list">
+              {exc.exceptions.map((item, index) => (
+                <article key={index}>
+                  <strong className={item.severity === "High" ? "error" : item.severity === "Medium" ? "warn" : ""}>
+                    {item.type.replace(/([A-Z])/g, " $1").trim()}
+                  </strong>
+                  <span>{item.reference} · {item.severity}</span>
+                  <small>{item.description}</small>
+                </article>
+              ))}
+            </div>
+          )}
+        </State>
+      )}
+
+      {tab === "reconciliation" && (
+        <State loading={reconciliation.loading} error={reconciliation.error} empty={!rec}>
+          {rec && (
+            <div>
+              <table className="data-table">
+                <thead>
+                  <tr><th>Category</th><th>Metric</th><th>Value</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Orders</td><td>Total</td><td>{rec.orders.total}</td></tr>
+                  <tr><td>Orders</td><td>Ready to plan</td><td>{rec.orders.readyToPlan}</td></tr>
+                  <tr><td>Orders</td><td>Planned</td><td>{rec.orders.planned}</td></tr>
+                  <tr><td>Orders</td><td>In transit</td><td>{rec.orders.inTransit}</td></tr>
+                  <tr><td>Orders</td><td>Delivered</td><td>{rec.orders.delivered}</td></tr>
+                  <tr><td>Loads</td><td>Total</td><td>{rec.loads.total}</td></tr>
+                  <tr><td>Loads</td><td>Planned</td><td>{rec.loads.planned}</td></tr>
+                  <tr><td>Loads</td><td>Dispatched</td><td>{rec.loads.dispatched}</td></tr>
+                  <tr><td>Loads</td><td>Completed</td><td>{rec.loads.completed}</td></tr>
+                  <tr><td>Loads</td><td>Unallocated</td><td>{rec.loads.unallocated}</td></tr>
+                  <tr><td>Fleet</td><td>Active drivers</td><td>{rec.fleet.activeDrivers}</td></tr>
+                  <tr><td>Fleet</td><td>Assigned drivers</td><td>{rec.fleet.assignedDrivers}</td></tr>
+                  <tr><td>Fleet</td><td>Unassigned drivers</td><td>{rec.fleet.unassignedDrivers}</td></tr>
+                  <tr><td>Fleet</td><td>Active vehicles</td><td>{rec.fleet.activeVehicles}</td></tr>
+                  <tr><td>Fleet</td><td>Vehicles seen today</td><td>{rec.fleet.vehiclesSeenToday}</td></tr>
+                  <tr><td>Fleet</td><td>Vehicles no signal</td><td>{rec.fleet.vehiclesNoSignal}</td></tr>
+                  <tr><td>Staging</td><td>Pending review</td><td>{rec.staging.pendingReview}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </State>
+      )}
+
+      {tab === "mappings" && (
+        <div>
+          <div className="panel">
+            <h2>Add integration mapping</h2>
+            <p className="intro">
+              Manually link an external provider key to a TMS driver or vehicle.
+              This overrides fuzzy matching for the linked entity.
+            </p>
+            <div className="form-grid">
+              <label>Provider
+                <select value={mappingProvider} onChange={(e) => setMappingProvider(e.target.value)}>
+                  <option value="">Select…</option>
+                  <option value="SageHR">Sage HR</option>
+                  <option value="TachoMaster">TachoMaster</option>
+                  <option value="DotTracking">DOT Tracking</option>
+                  <option value="Fleetio">Fleetio</option>
+                </select>
+              </label>
+              <label>External key
+                <input value={mappingExternalKey} onChange={(e) => setMappingExternalKey(e.target.value)} placeholder="e.g. EMP001 or REG61ABC" />
+              </label>
+              <label>External label
+                <input value={mappingLabel} onChange={(e) => setMappingLabel(e.target.value)} placeholder="e.g. John Smith" />
+              </label>
+              <label>TMS entity type
+                <select value={mappingEntityType} onChange={(e) => setMappingEntityType(e.target.value)}>
+                  <option value="Driver">Driver</option>
+                  <option value="Vehicle">Vehicle</option>
+                </select>
+              </label>
+              <label>TMS entity ID
+                <input value={mappingEntityId} onChange={(e) => setMappingEntityId(e.target.value)} placeholder="GUID from master data" />
+              </label>
+              <label>Notes
+                <input value={mappingNotes} onChange={(e) => setMappingNotes(e.target.value)} placeholder="Optional" />
+              </label>
+            </div>
+            {mappingError && <p className="state error">{mappingError}</p>}
+            {mappingSaved && <p className="notice">Mapping saved.</p>}
+            <button className="primary" onClick={() => void saveMapping()}>Save mapping</button>
+          </div>
+
+          <State loading={mappings.loading} error={mappings.error} empty={!map?.length}>
+            {map && map.length > 0 && (
+              <table className="data-table">
+                <thead>
+                  <tr><th>Provider</th><th>External key</th><th>Label</th><th>Type</th><th>Entity ID</th><th>Updated</th><th>By</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {map.filter(m => m.active).map((m) => (
+                    <tr key={m.id}>
+                      <td>{m.provider}</td>
+                      <td>{m.externalKey}</td>
+                      <td>{m.externalLabel || "—"}</td>
+                      <td>{m.tmsEntityType}</td>
+                      <td><code>{m.tmsEntityId.slice(0, 8)}</code></td>
+                      <td>{formatDate(m.updatedAtUtc)}</td>
+                      <td>{m.updatedBy || "—"}</td>
+                      <td><button onClick={() => void removeMapping(m.id)}>Remove</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </State>
+        </div>
+      )}
+    </section>
+  );
+}
