@@ -1,0 +1,41 @@
+name: CI - Lint and Build
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Build
+        run: pnpm run build
+        env:
+          VITE_API_BASE_URL: http://localhost:5173
+          VITE_ENTRA_TENANT_ID: test
+          VITE_ENTRA_CLIENT_ID: test
+          VITE_ENTRA_API_SCOPE: api://test/Tms.Access
+          VITE_AZURE_MAPS_CLIENT_ID: test
