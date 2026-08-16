@@ -595,6 +595,109 @@ export type SafeFixResult = {
   changes: string[];
   skippedReasons: string[];
 };
+export type IntegrationConfidence = {
+  generatedAtUtc: string;
+  sageHr: {
+    configured: boolean;
+    activeDrivers: number;
+    driversWithoutTachoName: number;
+    lastSyncUtc?: string;
+    lastSyncSummary?: string;
+  };
+  tachoMaster: {
+    configured: boolean;
+    driversWithTachoSync: number;
+    driversWithoutTachoName: number;
+    lastSyncUtc?: string;
+  };
+  dotTracking: {
+    configured: boolean;
+    liveVehicleCount: number;
+    staleVehicleCount: number;
+    latestEventUtc?: string;
+    trackingAgeMinutes?: number;
+  };
+  fleetio: {
+    configured: boolean;
+    matchedVehicles: number;
+    unmatchedVehicles: number;
+  };
+  emailIntake: {
+    lastReceivedUtc?: string;
+    pendingReview: number;
+  };
+};
+export type ExceptionRecord = {
+  type: string;
+  severity: "High" | "Medium" | "Low";
+  reference: string;
+  description: string;
+  loadId?: string;
+};
+export type OperationsExceptions = {
+  planningDate: string;
+  generatedAtUtc: string;
+  summary: {
+    total: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  byType: Record<string, number>;
+  exceptions: ExceptionRecord[];
+};
+export type Reconciliation = {
+  planningDate: string;
+  generatedAtUtc: string;
+  orders: {
+    total: number;
+    readyToPlan: number;
+    planned: number;
+    inTransit: number;
+    delivered: number;
+  };
+  loads: {
+    total: number;
+    planned: number;
+    dispatched: number;
+    completed: number;
+    unallocated: number;
+  };
+  fleet: {
+    activeDrivers: number;
+    assignedDrivers: number;
+    unassignedDrivers: number;
+    activeVehicles: number;
+    assignedVehicles: number;
+    vehiclesSeenToday: number;
+    vehiclesNoSignal: number;
+  };
+  staging: {
+    pendingReview: number;
+  };
+};
+export type IntegrationMapping = {
+  id: string;
+  provider: string;
+  externalKey: string;
+  externalLabel?: string;
+  tmsEntityType: string;
+  tmsEntityId: string;
+  active: boolean;
+  notes?: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+  updatedBy?: string;
+};
+export type DriverStatusLog = {
+  id: string;
+  loadId: string;
+  driverId?: string;
+  status: string;
+  notes?: string;
+  capturedBy?: string;
+  capturedAtUtc: string;
+};
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || "/tms-api").replace(
   /\/$/,
@@ -968,5 +1071,59 @@ export const api = {
       "/api/v1/staging/pending?confirm=CLEAR-PENDING",
       token,
       { method: "DELETE" },
+    ),
+  operationsConfidence: (token?: string) =>
+    request<IntegrationConfidence>(
+      "/api/v1/operations/confidence",
+      token,
+    ),
+  operationsExceptions: (date: string, token?: string) =>
+    request<OperationsExceptions>(
+      `/api/v1/operations/exceptions?date=${encodeURIComponent(date)}`,
+      token,
+    ),
+  operationsReconciliation: (date: string, token?: string) =>
+    request<Reconciliation>(
+      `/api/v1/operations/reconciliation?date=${encodeURIComponent(date)}`,
+      token,
+    ),
+  integrationMappings: (provider: string | undefined, token?: string) =>
+    request<IntegrationMapping[]>(
+      `/api/v1/operations/mappings${provider ? `?provider=${encodeURIComponent(provider)}` : ""}`,
+      token,
+    ),
+  createMapping: (
+    payload: {
+      provider: string;
+      externalKey: string;
+      externalLabel?: string;
+      tmsEntityType: string;
+      tmsEntityId: string;
+      notes?: string;
+    },
+    token?: string,
+  ) =>
+    request<IntegrationMapping>("/api/v1/operations/mappings", token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteMapping: (id: string, token?: string) =>
+    request<{ deleted: boolean }>(`/api/v1/operations/mappings/${id}`, token, {
+      method: "DELETE",
+    }),
+  driverStatusLogs: (loadId: string, token?: string) =>
+    request<DriverStatusLog[]>(
+      `/api/v1/operations/loads/${loadId}/driver-status`,
+      token,
+    ),
+  captureDriverStatus: (
+    loadId: string,
+    payload: { status: string; driverId?: string; notes?: string },
+    token?: string,
+  ) =>
+    request<DriverStatusLog>(
+      `/api/v1/operations/loads/${loadId}/driver-status`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) },
     ),
 };
