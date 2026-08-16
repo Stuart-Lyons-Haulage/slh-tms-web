@@ -271,6 +271,13 @@ export type Load = {
   emptyMiles?: number;
   invoiceStatus?: string;
   commercialNotes?: string;
+  palletSpacesUsed?: number;
+  totalPalletSpaces?: number;
+  capacityType?: string;
+  depotSplits?: string;
+  temperatureC?: number;
+  plannerNotes?: string;
+  utilisationPercent?: number;
   stops: LoadStop[];
 };
 export type LoadDispatch = {
@@ -305,6 +312,12 @@ export type CreateLoad = {
   vehicleId?: string;
   driverId?: string;
   trailerId?: string;
+  palletSpacesUsed?: number;
+  totalPalletSpaces?: number;
+  capacityType?: string;
+  depotSplits?: string;
+  temperatureC?: number;
+  plannerNotes?: string;
   stops: Array<{
     orderId?: string;
     name: string;
@@ -800,6 +813,22 @@ export const api = {
     token?: string,
   ) =>
     request<Load>(`/api/v1/loads/${id}/commercial`, token, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  updateLoadUtilisation: (
+    id: string,
+    payload: {
+      palletSpacesUsed?: number;
+      totalPalletSpaces?: number;
+      capacityType?: string;
+      depotSplits?: string;
+      temperatureC?: number;
+      plannerNotes?: string;
+    },
+    token?: string,
+  ) =>
+    request<Load>(`/api/v1/loads/${id}/utilisation`, token, {
       method: "PUT",
       body: JSON.stringify(payload),
     }),

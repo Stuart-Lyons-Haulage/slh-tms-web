@@ -1955,6 +1955,8 @@ type PlanningOrder = {
   customerCode: string;
   collectionDate: string;
   deliveryDate: string;
+  deliveryWindowStartUtc?: string;
+  deliveryWindowEndUtc?: string;
   pallets: string;
   status: string;
   marketName?: string;
@@ -1972,6 +1974,8 @@ function planningOrders(items?: TransportOrder[]): PlanningOrder[] {
       customerCode: item.customerCode,
       collectionDate: item.collectionDate,
       deliveryDate: item.deliveryDate || "—",
+      deliveryWindowStartUtc: item.deliveryWindowStartUtc,
+      deliveryWindowEndUtc: item.deliveryWindowEndUtc,
       pallets: item.pallets?.toString() || "—",
       status: item.status,
       marketName: item.marketName,
@@ -2033,6 +2037,11 @@ export function PlanningBoard() {
         {
           reference: `LOAD-${date.replaceAll("-", "")}-${String(planned.length + 1).padStart(2, "0")}`,
           planningDate: date,
+          palletSpacesUsed: chosen.reduce(
+            (total, order) => total + (Number(order.pallets) || 0),
+            0,
+          ),
+          capacityType: "Standard pallets",
           stops: chosen.map((order) => ({
             orderId: order.id,
             name: `${order.poNumber} · ${order.customerCode}`,
@@ -2819,6 +2828,12 @@ function LoadCard({
         dispatch.driver ? `Driver: ${dispatch.driver.displayName}` : "",
         dispatch.vehicle ? `Vehicle: ${dispatch.vehicle.registration}` : "",
         dispatch.trailer ? `Trailer: ${dispatch.trailer.trailerNumber}` : "",
+        load.palletSpacesUsed != null
+          ? `Load: ${load.palletSpacesUsed}${load.totalPalletSpaces ? ` / ${load.totalPalletSpaces}` : ""} ${load.capacityType || "pallet spaces"}${load.utilisationPercent != null ? ` · ${load.utilisationPercent}% utilised` : ""}`
+          : "",
+        load.depotSplits ? `Depot split: ${load.depotSplits}` : "",
+        load.temperatureC != null ? `Temperature: ${load.temperatureC > 0 ? "+" : ""}${load.temperatureC}°C` : "",
+        load.plannerNotes ? `Planner notes: ${load.plannerNotes}` : "",
         "",
         stops,
       ]
@@ -2872,6 +2887,12 @@ function LoadCard({
         {load.stops.map((stop) => stop.name).join(" → ") ||
           "No map points added yet"}
       </small>
+      {load.palletSpacesUsed != null && (
+        <strong className={load.utilisationPercent != null && load.utilisationPercent > 100 ? "negative-margin" : ""}>
+          {load.palletSpacesUsed}{load.totalPalletSpaces ? ` / ${load.totalPalletSpaces}` : ""} {load.capacityType || "pallet spaces"}
+          {load.utilisationPercent != null ? ` · ${load.utilisationPercent}% utilised` : " · capacity needed"}
+        </strong>
+      )}
       <div className="allocation-fields">
         <select
           value={vehicleId}
@@ -2973,9 +2994,94 @@ function LoadCard({
         </aside>
       )}
       {dispatchMessage && <p className="hint">{dispatchMessage}</p>}
+      <UtilisationEditor load={load} onSaved={onSaved} />
       <CommercialEditor load={load} onSaved={onSaved} />
       <StopEditor load={load} onSaved={onSaved} />
       <em className={`status ${load.status.toLowerCase()}`}>{load.status}</em>
+    </div>
+  );
+}
+function UtilisationEditor({
+  load,
+  onSaved,
+}: {
+  load: Load;
+  onSaved: () => Promise<void>;
+}) {
+  const token = useAccessToken();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string>();
+  const [form, setForm] = useState({
+    palletSpacesUsed: load.palletSpacesUsed?.toString() || "",
+    totalPalletSpaces: load.totalPalletSpaces?.toString() || "",
+    capacityType: load.capacityType || "Standard pallets",
+    depotSplits: load.depotSplits || "",
+    temperatureC: load.temperatureC?.toString() || "",
+    plannerNotes: load.plannerNotes || "",
+  });
+  const used = Number(form.palletSpacesUsed || 0);
+  const capacity = Number(form.totalPalletSpaces || 0);
+  const utilisation = capacity > 0 ? (used / capacity) * 100 : undefined;
+  const numberOrUndefined = (value: string) =>
+    value.trim() === "" ? undefined : Number(value);
+  async function saveUtilisation() {
+    setSaving(true);
+    setMessage(undefined);
+    try {
+      await api.updateLoadUtilisation(
+        load.id,
+        {
+          palletSpacesUsed: numberOrUndefined(form.palletSpacesUsed),
+          totalPalletSpaces: numberOrUndefined(form.totalPalletSpaces),
+          capacityType: form.capacityType,
+          depotSplits: form.depotSplits,
+          temperatureC: numberOrUndefined(form.temperatureC),
+          plannerNotes: form.plannerNotes,
+        },
+        await token(),
+      );
+      await onSaved();
+      setMessage("Utilisation and load details saved.");
+    } catch (exception) {
+      setMessage(exception instanceof Error ? exception.message : "Utilisation could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="commercial-editor">
+      <button type="button" onClick={() => setOpen((value) => !value)}>
+        {open ? "Hide utilisation" : "Utilisation, depot split & temperature"}
+      </button>
+      {utilisation != null && (
+        <strong className={utilisation > 100 ? "negative-margin" : ""}>
+          {utilisation.toFixed(1)}% full · {(capacity - used).toFixed(1)} spaces free
+        </strong>
+      )}
+      {open && (
+        <div className="commercial-fields">
+          <label>
+            Capacity type
+            <select value={form.capacityType} onChange={(event) => setForm((current) => ({ ...current, capacityType: event.target.value }))}>
+              <option>Standard pallets</option>
+              <option>Euro pallets</option>
+              <option>Trolleys</option>
+              <option>Mixed load</option>
+            </select>
+          </label>
+          <label>Spaces used<input type="number" min="0" step="0.1" value={form.palletSpacesUsed} onChange={(event) => setForm((current) => ({ ...current, palletSpacesUsed: event.target.value }))} /></label>
+          <label>Total capacity<input type="number" min="0" step="0.1" value={form.totalPalletSpaces} onChange={(event) => setForm((current) => ({ ...current, totalPalletSpaces: event.target.value }))} /></label>
+          <label>Temperature °C<input type="number" step="0.5" value={form.temperatureC} onChange={(event) => setForm((current) => ({ ...current, temperatureC: event.target.value }))} /></label>
+          <label>Depot split<input type="text" placeholder="Drayton 17 · Merston 5" value={form.depotSplits} onChange={(event) => setForm((current) => ({ ...current, depotSplits: event.target.value }))} /></label>
+          <label>Planner / customer notes<input type="text" value={form.plannerNotes} onChange={(event) => setForm((current) => ({ ...current, plannerNotes: event.target.value }))} /></label>
+          <button type="button" className="primary" disabled={saving || (capacity > 0 && used > capacity)} onClick={() => void saveUtilisation()}>
+            {saving ? "Saving…" : "Save utilisation"}
+          </button>
+          {capacity > 0 && used > capacity && <p className="hint">This load is over capacity. Split the work or confirm a larger capacity before saving.</p>}
+          {message && <p className="hint">{message}</p>}
+        </div>
+      )}
     </div>
   );
 }
@@ -3744,6 +3850,83 @@ export function ExportCentre() {
       customerEtaMessage || "No customer ETA records available for this date.",
     );
   }
+  function downloadCustomerPlanningWorkbook() {
+    const workbook = XLSX.utils.book_new();
+    const selectedLoads = (loads.data || []).filter((load) => load.planningDate === date);
+    const orderById = new Map(orders.map((order) => [order.id, order]));
+    const selectedOrders = orders.filter((order) => {
+      const deliveryDate = order.deliveryDate === "—" ? order.collectionDate : order.deliveryDate;
+      return deliveryDate === date && (!selectedCustomer || order.customerCode === selectedCustomer);
+    });
+    const depotRows = selectedLoads.flatMap((load) => {
+      const linked = load.stops.map((stop) => ({ stop, order: stop.orderId ? orderById.get(stop.orderId) : undefined }));
+      const matches = linked.filter(({ order }) => !selectedCustomer || order?.customerCode === selectedCustomer);
+      if (selectedCustomer && !matches.length) return [];
+      return (matches.length ? matches : linked.length ? linked : [{ stop: undefined, order: undefined }]).map(({ stop, order }) => ({
+        "Planning date": load.planningDate,
+        "Load reference": load.reference,
+        Customer: order?.customerCode || "",
+        "Order / SO": order?.poNumber || "",
+        Destination: stop?.name || "",
+        "Spaces used": load.palletSpacesUsed ?? "",
+        "Total capacity": load.totalPalletSpaces ?? "",
+        "Utilisation %": load.utilisationPercent ?? "",
+        "Capacity type": load.capacityType || "",
+        "Depot split": load.depotSplits || "",
+        "Temperature °C": load.temperatureC ?? "",
+        "Planner notes": load.plannerNotes || "",
+        Vehicle: vehicleById.get(load.vehicleId || "")?.registration || "",
+        Driver: driverById.get(load.driverId || "")?.displayName || "",
+      }));
+    });
+    const bookingRows = selectedOrders.map((order) => {
+      const load = selectedLoads.find((item) => item.stops.some((stop) => stop.orderId === order.id));
+      const stop = load?.stops.find((item) => item.orderId === order.id);
+      return {
+        Market: order.marketName || "",
+        Customer: order.customerCode,
+        "Delivery address": stop?.address || "",
+        "Delivery date": order.deliveryDate === "—" ? date : order.deliveryDate,
+        "Delivery time from": order.deliveryWindowStartUtc || "",
+        "Delivery time to": order.deliveryWindowEndUtc || "",
+        "Temperature °C": load?.temperatureC ?? "",
+        "No. of pallets": order.pallets ?? "",
+        "SO / order reference": order.poNumber,
+        "Load reference": load?.reference || "",
+        Seller: order.sellerName || "",
+        "Stall / location": order.stallNumber || "",
+      };
+    });
+    const selectedDate = new Date(`${date}T12:00:00`);
+    const sunday = new Date(selectedDate);
+    sunday.setDate(selectedDate.getDate() - selectedDate.getDay());
+    const weekDates = Array.from({ length: 7 }, (_, index) => {
+      const value = new Date(sunday);
+      value.setDate(sunday.getDate() + index);
+      return value.toISOString().slice(0, 10);
+    });
+    const marketMap = new Map<string, Record<string, string | number>>();
+    orders.filter((order) => {
+      const deliveryDate = order.deliveryDate === "—" ? order.collectionDate : order.deliveryDate;
+      return weekDates.includes(deliveryDate) && Boolean(order.marketName) && (!selectedCustomer || order.customerCode === selectedCustomer);
+    }).forEach((order) => {
+      const destination = [order.marketName, order.sellerName, order.stallNumber].filter(Boolean).join(" · ");
+      const row = marketMap.get(destination) || { Destination: destination };
+      const deliveryDate = order.deliveryDate === "—" ? order.collectionDate : order.deliveryDate;
+      row[deliveryDate] = Number(row[deliveryDate] || 0) + (Number(order.pallets) || 0);
+      row.Total = Number(row.Total || 0) + (Number(order.pallets) || 0);
+      marketMap.set(destination, row);
+    });
+    const append = (name: string, rows: Array<Record<string, unknown>>) => {
+      const sheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Status: "No matching records" }]);
+      sheet["!cols"] = Object.keys(rows[0] || { Status: "" }).map((key) => ({ wch: Math.max(14, Math.min(36, key.length + 4)) }));
+      XLSX.utils.book_append_sheet(workbook, sheet, name);
+    };
+    append("Depot Splits", depotRows);
+    append("Wholesale Booking", bookingRows);
+    append("Weekly Market", [...marketMap.values()]);
+    XLSX.writeFile(workbook, `SLH-customer-planning-${selectedCustomer || "all"}-${date}.xlsx`);
+  }
   return (
     <section>
       <div className="title-row">
@@ -3815,6 +3998,17 @@ export function ExportCentre() {
           </button>
         </div>
         <div className="export-grid">
+          <article className="export-card">
+            <h2>Customer planning workbook</h2>
+            <p>
+              One Excel file with depot splits and utilisation, wholesale booking
+              lines, and the weekly market pallet summary based on the attached
+              customer formats.
+            </p>
+            <button onClick={downloadCustomerPlanningWorkbook} disabled={!loads.data?.length && !orders.length}>
+              Download customer workbook
+            </button>
+          </article>
           <article className="export-card">
             <h2>Customer ETA update</h2>
             <p>
@@ -3905,6 +4099,12 @@ export function ExportCentre() {
                     "Driver",
                     "Trailer ID",
                     "Stops",
+                    "Spaces used",
+                    "Total capacity",
+                    "Utilisation %",
+                    "Capacity type",
+                    "Depot split",
+                    "Temperature °C",
                   ],
                   ...(loads.data || []).map((load) => [
                     load.planningDate,
@@ -3914,6 +4114,12 @@ export function ExportCentre() {
                     driverById.get(load.driverId || "")?.displayName,
                     load.trailerId,
                     load.stops.length,
+                    load.palletSpacesUsed,
+                    load.totalPalletSpaces,
+                    load.utilisationPercent,
+                    load.capacityType,
+                    load.depotSplits,
+                    load.temperatureC,
                   ]),
                 ])
               }
