@@ -158,6 +158,10 @@ export function Dashboard() {
       item.risk === "AtRisk" ||
       item.tachoStatus === "InsufficientDriveTime",
   ).length;
+  const utilisedSpaces = (loads.data || []).reduce((total, load) => total + (load.palletSpacesUsed || 0), 0);
+  const availableSpaces = (loads.data || []).reduce((total, load) => total + (load.totalPalletSpaces || 0), 0);
+  const utilisationPercent = availableSpaces > 0 ? (utilisedSpaces / availableSpaces) * 100 : undefined;
+  const overCapacity = (loads.data || []).filter((load) => load.totalPalletSpaces && (load.palletSpacesUsed || 0) > load.totalPalletSpaces).length;
   return (
     <section>
       <div className="title-row">
@@ -205,6 +209,11 @@ export function Dashboard() {
             label="Delivery risks"
             value={String(urgent)}
             detail="Late or close to window"
+          />
+          <Metric
+            label="Utilisation"
+            value={utilisationPercent == null ? "—" : `${utilisationPercent.toFixed(1)}%`}
+            detail={`${overCapacity} over-capacity warning${overCapacity === 1 ? "" : "s"}`}
           />
         </div>
         <FleetRollout fleet={fleet.data} etas={deliveryRisks} />
@@ -278,12 +287,21 @@ function FleetRollout({
   etas?: DeliveryEta[];
 }) {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>();
+  const [fleetFilter, setFleetFilter] = useState<"live" | "all" | "attention" | "allocated">("live");
   const dueTime = (value?: string) =>
     value ? new Date(value).getTime() : Number.MAX_SAFE_INTEGER;
-  const vehicles = [...(fleet?.vehicles || [])].sort(
+  const conditionPriority: Record<string, number> = { Moving: 0, Started: 1, SignedOn: 2, Stationary: 3, Parked: 4, Stale: 5, NotSignedOn: 6 };
+  const allVehicles = [...(fleet?.vehicles || [])].sort(
     (left, right) =>
+      (conditionPriority[left.condition] ?? 9) - (conditionPriority[right.condition] ?? 9) ||
       dueTime(left.plannedDutyUtc) - dueTime(right.plannedDutyUtc) ||
       left.registration.localeCompare(right.registration),
+  );
+  const vehicles = allVehicles.filter((vehicle) =>
+    fleetFilter === "all" ? true
+      : fleetFilter === "attention" ? ["Stale", "NotSignedOn"].includes(vehicle.condition)
+      : fleetFilter === "allocated" ? Boolean(vehicle.loadId)
+      : ["Moving", "Started", "SignedOn", "Stationary"].includes(vehicle.condition),
   );
   const selected =
     vehicles.find((vehicle) => vehicle.vehicleId === selectedVehicleId) ||
@@ -306,7 +324,15 @@ function FleetRollout({
           <p className="eyebrow">Live vehicle status</p>
           <h2>Vehicle, card-holder and current job</h2>
         </div>
-        <span>{fleet?.attentionCount || 0} to watch</span>
+        <div className="fleet-view-filter">
+          <label>Show <select value={fleetFilter} onChange={(event) => setFleetFilter(event.target.value as typeof fleetFilter)}>
+            <option value="live">Live / active first</option>
+            <option value="all">All vehicles</option>
+            <option value="allocated">With current jobs</option>
+            <option value="attention">Needs attention</option>
+          </select></label>
+          <span>{vehicles.length} shown · {fleet?.attentionCount || 0} to watch</span>
+        </div>
       </div>
       {selected && (
         <div className="vehicle-detail-panel">
@@ -1989,7 +2015,7 @@ function planningOrders(items?: TransportOrder[]): PlanningOrder[] {
     );
 }
 
-export function PlanningBoard() {
+function FullPlanningBoard() {
   const token = useAccessToken();
   const [date, setDate] = useState(localDate());
   const ordersApi = useApi(
@@ -2006,6 +2032,15 @@ export function PlanningBoard() {
       async () => api.returnLoadSuggestions(date, await token()),
       [date, token],
     ),
+  );
+  const vehicles = useApi(
+    useCallback(async () => api.vehicles(await token()), [token]),
+  );
+  const drivers = useApi(
+    useCallback(async () => api.drivers(await token()), [token]),
+  );
+  const trailers = useApi(
+    useCallback(async () => api.trailers(await token()), [token]),
   );
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -2026,6 +2061,9 @@ export function PlanningBoard() {
     void ordersApi.refresh();
     void loads.refresh();
     void returns.refresh();
+    void vehicles.refresh();
+    void drivers.refresh();
+    void trailers.refresh();
   };
   async function buildLoad() {
     const chosen = today.filter((order) => selected.includes(order.id));
@@ -2131,7 +2169,7 @@ export function PlanningBoard() {
       />
       <SelectedLoadPreview orders={selectedOrders} />
       {message && <p className="notice inline-notice">{message}</p>}
-      <ResourceAllocationBoard loads={planned} onSaved={loads.refresh} />
+      <ResourceAllocationBoard loads={planned} vehicles={vehicles.data || []} drivers={drivers.data || []} onSaved={loads.refresh} />
       <div className="planner-workspace">
         <article className="lane unallocated">
           <h2>
@@ -2181,7 +2219,7 @@ export function PlanningBoard() {
             </div>
           ) : planned.length ? (
             planned.map((load) => (
-              <LoadCard key={load.id} load={load} onSaved={loads.refresh} />
+              <LoadCard key={load.id} load={load} vehicles={vehicles.data || []} drivers={drivers.data || []} trailers={trailers.data || []} onSaved={loads.refresh} />
             ))
           ) : (
             <p className="hint">
@@ -2194,26 +2232,57 @@ export function PlanningBoard() {
     </section>
   );
 }
+
+export function AllocationBoard() {
+  const token = useAccessToken();
+  const [date, setDate] = useState(localDate());
+  const loads = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
+  const vehicles = useApi(useCallback(async () => api.vehicles(await token()), [token]));
+  const drivers = useApi(useCallback(async () => api.drivers(await token()), [token]));
+  const trailers = useApi(useCallback(async () => api.trailers(await token()), [token]));
+  const planned = loads.data || [];
+  const refresh = () => { void loads.refresh(); void vehicles.refresh(); void drivers.refresh(); void trailers.refresh(); };
+  return (
+    <section>
+      <div className="title-row">
+        <div><p className="eyebrow">Fast allocation</p><h1>Driver, vehicle & trailer allocation</h1><p className="intro">A lighter allocation view with one shared master-data refresh.</p></div>
+        <button onClick={refresh}>Refresh allocation</button>
+      </div>
+      <div className="planner-toolbar">
+        <label>Plan date <input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        <span>{planned.length} load{planned.length === 1 ? "" : "s"} · {planned.filter((load) => !load.driverId || !load.vehicleId).length} need allocation</span>
+      </div>
+      <State loading={loads.loading || vehicles.loading || drivers.loading || trailers.loading} error={loads.error || vehicles.error || drivers.error || trailers.error} empty={!planned.length}>
+        <ResourceAllocationBoard loads={planned} vehicles={vehicles.data || []} drivers={drivers.data || []} onSaved={loads.refresh} />
+        <div className="allocation-load-list">
+          {planned.map((load) => <LoadCard key={load.id} load={load} vehicles={vehicles.data || []} drivers={drivers.data || []} trailers={trailers.data || []} onSaved={loads.refresh} />)}
+        </div>
+      </State>
+    </section>
+  );
+}
+
+export function PlanningBoard() {
+  return window.location.pathname === "/allocation" ? <AllocationBoard /> : <FullPlanningBoard />;
+}
 function ResourceAllocationBoard({
   loads,
+  vehicles,
+  drivers,
   onSaved,
 }: {
   loads: Load[];
+  vehicles: Vehicle[];
+  drivers: Driver[];
   onSaved: () => Promise<void>;
 }) {
   const token = useAccessToken();
-  const vehicles = useApi(
-    useCallback(async () => api.vehicles(await token()), [token]),
-  );
-  const drivers = useApi(
-    useCallback(async () => api.drivers(await token()), [token]),
-  );
   const [message, setMessage] = useState<string>();
   const [saving, setSaving] = useState(false);
-  const activeVehicles = (vehicles.data || []).filter(
+  const activeVehicles = vehicles.filter(
     (item) => item.active && item.fleetioVor !== true,
   );
-  const activeDrivers = (drivers.data || []).filter((item) => item.active);
+  const activeDrivers = drivers.filter((item) => item.active);
   function startDrag(event: DragEvent<HTMLElement>, loadId: string) {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/slh-load-id", loadId);
@@ -2732,27 +2801,24 @@ function OrderCard({
 }
 function LoadCard({
   load,
+  vehicles,
+  drivers,
+  trailers,
   onSaved,
 }: {
   load: Load;
+  vehicles: Vehicle[];
+  drivers: Driver[];
+  trailers: Trailer[];
   onSaved: () => Promise<void>;
 }) {
   const token = useAccessToken();
-  const vehicles = useApi(
-    useCallback(async () => api.vehicles(await token()), [token]),
-  );
-  const drivers = useApi(
-    useCallback(async () => api.drivers(await token()), [token]),
-  );
-  const trailers = useApi(
-    useCallback(async () => api.trailers(await token()), [token]),
-  );
   const [vehicleId, setVehicleId] = useState(load.vehicleId || "");
   const [driverId, setDriverId] = useState(load.driverId || "");
   const [trailerId, setTrailerId] = useState(load.trailerId || "");
   const [saving, setSaving] = useState(false);
   const [dispatchMessage, setDispatchMessage] = useState<string>();
-  const selectedDriver = drivers.data?.find((driver) => driver.id === driverId);
+  const selectedDriver = drivers.find((driver) => driver.id === driverId);
   async function save() {
     setSaving(true);
     try {
@@ -2888,7 +2954,7 @@ function LoadCard({
           "No map points added yet"}
       </small>
       {load.palletSpacesUsed != null && (
-        <strong className={load.utilisationPercent != null && load.utilisationPercent > 100 ? "negative-margin" : ""}>
+        <strong className={load.utilisationPercent != null && load.utilisationPercent > 100 ? "capacity-warning" : ""}>
           {load.palletSpacesUsed}{load.totalPalletSpaces ? ` / ${load.totalPalletSpaces}` : ""} {load.capacityType || "pallet spaces"}
           {load.utilisationPercent != null ? ` · ${load.utilisationPercent}% utilised` : " · capacity needed"}
         </strong>
@@ -2899,8 +2965,8 @@ function LoadCard({
           onChange={(event) => setVehicleId(event.target.value)}
         >
           <option value="">Vehicle</option>
-          {vehicles.data
-            ?.filter((item) => item.active)
+          {vehicles
+            .filter((item) => item.active)
             .map((item) => (
               <option key={item.id} value={item.id}>
                 {item.registration}
@@ -2912,8 +2978,8 @@ function LoadCard({
           onChange={(event) => setDriverId(event.target.value)}
         >
           <option value="">Driver</option>
-          {drivers.data
-            ?.filter((item) => item.active)
+          {drivers
+            .filter((item) => item.active)
             .map((item) => (
               <option key={item.id} value={item.id}>
                 {item.displayName}
@@ -2925,8 +2991,8 @@ function LoadCard({
           onChange={(event) => setTrailerId(event.target.value)}
         >
           <option value="">Trailer</option>
-          {trailers.data
-            ?.filter((item) => item.active)
+          {trailers
+            .filter((item) => item.active)
             .map((item) => (
               <option key={item.id} value={item.id}>
                 {item.trailerNumber}
@@ -3055,8 +3121,8 @@ function UtilisationEditor({
         {open ? "Hide utilisation" : "Utilisation, depot split & temperature"}
       </button>
       {utilisation != null && (
-        <strong className={utilisation > 100 ? "negative-margin" : ""}>
-          {utilisation.toFixed(1)}% full · {(capacity - used).toFixed(1)} spaces free
+        <strong className={utilisation > 100 ? "capacity-warning" : ""}>
+          {utilisation.toFixed(1)}% full · {utilisation > 100 ? `${(used - capacity).toFixed(1)} spaces over — review pallet split` : `${(capacity - used).toFixed(1)} spaces free`}
         </strong>
       )}
       {open && (
@@ -3075,10 +3141,10 @@ function UtilisationEditor({
           <label>Temperature °C<input type="number" step="0.5" value={form.temperatureC} onChange={(event) => setForm((current) => ({ ...current, temperatureC: event.target.value }))} /></label>
           <label>Depot split<input type="text" placeholder="Drayton 17 · Merston 5" value={form.depotSplits} onChange={(event) => setForm((current) => ({ ...current, depotSplits: event.target.value }))} /></label>
           <label>Planner / customer notes<input type="text" value={form.plannerNotes} onChange={(event) => setForm((current) => ({ ...current, plannerNotes: event.target.value }))} /></label>
-          <button type="button" className="primary" disabled={saving || (capacity > 0 && used > capacity)} onClick={() => void saveUtilisation()}>
+          <button type="button" className="primary" disabled={saving} onClick={() => void saveUtilisation()}>
             {saving ? "Saving…" : "Save utilisation"}
           </button>
-          {capacity > 0 && used > capacity && <p className="hint">This load is over capacity. Split the work or confirm a larger capacity before saving.</p>}
+          {capacity > 0 && used > capacity && <p className="notice inline-notice">Over capacity is allowed because pallets may be split down. Review and confirm the physical loading plan.</p>}
           {message && <p className="hint">{message}</p>}
         </div>
       )}
@@ -4878,6 +4944,7 @@ export function Reporting() {
   const dispatched = reportLoads.filter(
     (load) => load.status === "Dispatched" || load.status === "InProgress",
   ).length;
+  const dayUtilisation = forecast.data?.days.find((day) => day.date === date);
   function exportDay() {
     const rows = [
       [
@@ -4980,6 +5047,11 @@ export function Reporting() {
             value={formatCurrency(forecast.data?.totals.margin)}
             detail={`${forecast.data?.totals.loads || 0} forecast loads`}
           />
+          <Metric
+            label="Load utilisation"
+            value={dayUtilisation?.utilisationPercent == null ? "—" : `${dayUtilisation.utilisationPercent}%`}
+            detail={`${dayUtilisation?.overCapacityLoads || 0} over-capacity warning${dayUtilisation?.overCapacityLoads === 1 ? "" : "s"}`}
+          />
         </div>
         <section className="forecast-panel">
           <div className="resource-board-heading">
@@ -5006,7 +5078,7 @@ export function Reporting() {
               <table className="forecast-table">
                 <thead>
                   <tr>
-                    <th>Date</th><th>Loads</th><th>Drivers</th><th>Vehicles</th><th>Pallet capacity</th><th>Revenue</th><th>Cost</th><th>Margin</th><th>Empty miles</th><th>Exceptions</th>
+                    <th>Date</th><th>Loads</th><th>Drivers</th><th>Vehicles</th><th>Pallet capacity</th><th>Utilisation</th><th>Revenue</th><th>Cost</th><th>Margin</th><th>Empty miles</th><th>Exceptions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5017,6 +5089,7 @@ export function Reporting() {
                       <td>{day.assignedDrivers}/{day.availableDrivers}</td>
                       <td>{day.assignedVehicles}/{day.availableVehicles}</td>
                       <td>{day.plannedPallets}/{day.availableTrailerPallets || "—"}</td>
+                      <td className={day.overCapacityLoads ? "capacity-warning" : ""}>{day.utilisationPercent == null ? "—" : `${day.utilisationPercent}%`}<small>{day.overCapacityLoads ? `${day.overCapacityLoads} over` : ""}</small></td>
                       <td>{formatCurrency(day.revenue)}</td>
                       <td>{formatCurrency(day.cost)}</td>
                       <td><strong>{formatCurrency(day.margin)}</strong><small>{day.marginPercent == null ? "Unpriced" : `${day.marginPercent}%`}</small></td>
@@ -5176,8 +5249,7 @@ function MasterFilter({
       {label}
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">All</option>
-        {options
-          .filter(Boolean)
+        {[...new Set(options.filter(Boolean))]
           .sort()
           .map((option) => (
             <option key={option} value={option}>
@@ -5194,15 +5266,36 @@ export function DriversMaster() {
   const drivers = useApi(
     useCallback(async () => api.drivers(await token()), [token]),
   );
-  const [driverFilter, setDriverFilter] = useState("");
+  const [nameFilter, setNameFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [groupFilter, setGroupFilter] = useState("");
+  const [agencyFilter, setAgencyFilter] = useState("");
+  const [tachoFilter, setTachoFilter] = useState("");
+  const [tachoSyncing, setTachoSyncing] = useState(false);
+  const [tachoMessage, setTachoMessage] = useState<string>();
   const allRows = drivers.data || [];
+  const effectiveType = (row: Driver) => row.driverType || (row.agencyName ? "Agency" : "");
   const rows = allRows.filter(
     (row) =>
-      !driverFilter ||
-      row.displayName === driverFilter ||
-      row.driverType === driverFilter ||
-      row.driverGroup === driverFilter,
+      (!nameFilter || [row.displayName, row.employeeNumber, row.tachoName].some((value) => value?.toLowerCase().includes(nameFilter.toLowerCase()))) &&
+      (!typeFilter || effectiveType(row) === typeFilter) &&
+      (!groupFilter || row.driverGroup === groupFilter) &&
+      (!agencyFilter || row.agencyName === agencyFilter) &&
+      (!tachoFilter || (tachoFilter === "Linked" ? Boolean(row.tachoMasterDriverId) : !row.tachoMasterDriverId)),
   );
+  async function syncTachoDrivers() {
+    setTachoSyncing(true);
+    setTachoMessage(undefined);
+    try {
+      const result = await api.syncTachoMasterDrivers(await token());
+      setTachoMessage(result.message);
+      await drivers.refresh();
+    } catch (exception) {
+      setTachoMessage(exception instanceof Error ? exception.message : "TachoMaster driver details could not be refreshed.");
+    } finally {
+      setTachoSyncing(false);
+    }
+  }
   const issues = rows.flatMap((driver) =>
     [
       !driver.employeeNumber
@@ -5221,7 +5314,12 @@ export function DriversMaster() {
           <p className="eyebrow">Master data</p>
           <h1>Drivers</h1>
         </div>
-        <button onClick={() => void drivers.refresh()}>Refresh</button>
+        <div className="title-actions">
+          <button onClick={() => void drivers.refresh()}>Refresh</button>
+          <button className="primary" onClick={() => void syncTachoDrivers()} disabled={tachoSyncing}>
+            {tachoSyncing ? "Matching Tacho names…" : "Sync TachoMaster details"}
+          </button>
+        </div>
       </div>
       <p className="intro">
         One live row per driver. Sage and TachoMaster should sync into this page
@@ -5229,17 +5327,13 @@ export function DriversMaster() {
         stay together.
       </p>
       <div className="master-filters">
-        <MasterFilter
-          label="Driver / group / type"
-          value={driverFilter}
-          onChange={setDriverFilter}
-          options={allRows.flatMap((row) => [
-            row.displayName || "",
-            row.driverType || "",
-            row.driverGroup || "",
-          ])}
-        />
+        <label className="master-filter">Driver / employee / Tacho name<input value={nameFilter} onChange={(event) => setNameFilter(event.target.value)} placeholder="Search names or ID" /></label>
+        <MasterFilter label="Driver type" value={typeFilter} onChange={setTypeFilter} options={allRows.map(effectiveType)} />
+        <MasterFilter label="Driver group" value={groupFilter} onChange={setGroupFilter} options={allRows.map((row) => row.driverGroup || "")} />
+        <MasterFilter label="Agency" value={agencyFilter} onChange={setAgencyFilter} options={allRows.map((row) => row.agencyName || "")} />
+        <MasterFilter label="TachoMaster link" value={tachoFilter} onChange={setTachoFilter} options={["Linked", "Not linked"]} />
       </div>
+      {tachoMessage && <p className="notice inline-notice">{tachoMessage}</p>}
       <MasterValidation issues={issues} />
       <MasterWorkbookImport mode="drivers" onApplied={drivers.refresh} />
       <State
@@ -5255,14 +5349,18 @@ export function DriversMaster() {
             ["Driver", (row) => row.displayName],
             ["Tacho name", (row) => row.tachoName],
             ["Phone number", (row) => row.mobileNumber],
-            ["Driver type", (row) => row.driverType],
+            ["Driver type", (row) => effectiveType(row)],
             ["Driver group", (row) => row.driverGroup],
             ["Skills", (row) => row.skills],
             ["Coding", (row) => row.coding],
             ["Agency", (row) => row.agencyName],
             ["North eligible", (row) => row.northEligible],
             ["Preload eligible", (row) => row.preloadEligible],
-            ["TachoMaster ID", (row) => row.tachoMasterDriverId],
+            ["Tacho member ID (auto)", (row) => row.tachoMasterDriverId],
+            ["Tacho card", (row) => row.tachoCardNumber],
+            ["Drive left today", (row) => formatMinutes(row.tachoDriveAvailableTodayMinutes)],
+            ["Drive left this week", (row) => formatMinutes(row.tachoDriveAvailableWeekMinutes)],
+            ["Tacho last sync", (row) => formatDate(row.lastTachoSyncUtc)],
             ["Driving licence", (row) => row.drivingLicenceNumber],
             ["Licence expiry", (row) => row.licenceExpiry],
             ["Licence status", (row) => row.licenceStatus],

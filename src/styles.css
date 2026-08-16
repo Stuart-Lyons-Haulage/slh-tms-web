@@ -28,4 +28,9 @@
 .fleetio-bad { background: #ffe1e1; color: #9b2929; }
 .master-filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 18px; padding: 12px 14px; border: 1px solid #dce7ea; border-radius: 10px; background: #fff; }
 .master-filter { display: flex; align-items: center; gap: 8px; color: #607685; font-size: .82rem; font-weight: 750; }
-.master-filter select { min-width: 150px; padding: .5rem .65rem; border: 1px solid #c8d5da; border-radius: 7px; background: #fff; color: #17344a; font: inherit; }
+.master-filter select, .master-filter input { min-width: 150px; padding: .5rem .65rem; border: 1px solid #c8d5da; border-radius: 7px; background: #fff; color: #17344a; font: inherit; }
+.title-actions, .fleet-view-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.fleet-view-filter label { display: flex; align-items: center; gap: 6px; color: #607685; font-weight: 750; }
+.fleet-view-filter select { padding: .45rem .6rem; border: 1px solid #c8d5da; border-radius: 7px; background: #fff; color: #17344a; }
+.capacity-warning { color: #a54b00 !important; background: #fff0d6; border-radius: 6px; padding: 3px 6px; }
+.allocation-load-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; margin-top: 16px; }

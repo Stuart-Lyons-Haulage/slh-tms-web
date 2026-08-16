@@ -54,6 +54,10 @@ export type Driver = {
   preloadEligible?: boolean;
   notes?: string;
   tachoMasterDriverId?: string;
+  tachoCardNumber?: string;
+  tachoDriveAvailableTodayMinutes?: number;
+  tachoDriveAvailableWeekMinutes?: number;
+  tachoWorkAvailableWeekMinutes?: number;
   drivingLicenceNumber?: string;
   licenceExpiry?: string;
   licenceStatus?: string;
@@ -445,6 +449,8 @@ export type ForecastDay = {
   unpricedLoads: number;
   uninvoicedLoads: number;
   exceptions: number;
+  utilisationPercent?: number;
+  overCapacityLoads: number;
 };
 export type OperationsForecast = {
   from: string;
@@ -460,6 +466,10 @@ export type OperationsForecast = {
     margin: number;
     emptyMiles: number;
     exceptions: number;
+    plannedPallets: number;
+    availableTrailerPallets: number;
+    utilisationPercent?: number;
+    overCapacityLoads: number;
   };
 };
 export type IntegrationStatus = {
@@ -919,6 +929,18 @@ export const api = {
     ),
   syncSageHrDrivers: (token?: string) =>
     request<SageHrSync>("/api/v1/integrations/sage-hr/sync-drivers", token, {
+      method: "POST",
+    }),
+  syncTachoMasterDrivers: (token?: string) =>
+    request<{
+      configured: boolean;
+      connected: boolean;
+      sourceDrivers: number;
+      matched: number;
+      unmatched: number;
+      syncedAtUtc: string;
+      message: string;
+    }>("/api/v1/integrations/tachomaster/sync-drivers", token, {
       method: "POST",
     }),
   review: (id: string, approved: boolean, note: string, token?: string) =>
