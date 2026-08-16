@@ -5052,6 +5052,15 @@ export function DriversMaster() {
             ["Driver type", (row) => row.driverType],
             ["Driver group", (row) => row.driverGroup],
             ["Skills", (row) => row.skills],
+            ["Coding", (row) => row.coding],
+            ["Agency", (row) => row.agencyName],
+            ["North eligible", (row) => row.northEligible],
+            ["Preload eligible", (row) => row.preloadEligible],
+            ["TachoMaster ID", (row) => row.tachoMasterDriverId],
+            ["Driving licence", (row) => row.drivingLicenceNumber],
+            ["Licence expiry", (row) => row.licenceExpiry],
+            ["Licence status", (row) => row.licenceStatus],
+            ["Notes", (row) => row.notes],
             ["Active", (row) => row.active],
           ]}
         />
@@ -5777,9 +5786,15 @@ export function MarketsMaster() {
         : "",
     ].filter(Boolean),
   );
-  const grouped = ["Covent", "Spit", "Western", "Sender"].map(
-    (market) => [market, rows.filter((row) => row.market === market)] as const,
-  );
+  const marketOrder = ["Covent", "Spit", "Western", "Sender"];
+  const grouped = Array.from(new Set([...marketOrder, ...rows.map((row) => row.market)]))
+    .filter((market) => rows.some((row) => row.market === market))
+    .sort((left, right) => {
+      const leftIndex = marketOrder.indexOf(left);
+      const rightIndex = marketOrder.indexOf(right);
+      return (leftIndex < 0 ? 99 : leftIndex) - (rightIndex < 0 ? 99 : rightIndex) || left.localeCompare(right);
+    })
+    .map((market) => [market, rows.filter((row) => row.market === market)] as const);
   return (
     <section>
       <div className="title-row">
@@ -5838,13 +5853,17 @@ function MarketQuickAdd({ onSaved }: { onSaved: () => void }) {
     event.preventDefault();
     setSaving(true);
     try {
-      await api.stageRecord(
-        "marketcontact",
-        { ...form, active: true },
-        `web-market:${form.market}:${form.name}`,
+      const result = await api.applyMasterData(
+        [{
+          entityType: "marketcontact",
+          payload: { ...form, active: true },
+          idempotencyKey: `web-market:${form.market}:${form.name}:${Date.now()}`,
+          source: "SLH Markets editor",
+        }],
         await token(),
       );
-      setMessage("Market record sent to staging review.");
+      if (!result.applied) throw new Error(result.results[0]?.error || "Market record could not be applied.");
+      setMessage("Market record saved live.");
       setForm({
         market: "Covent",
         name: "",
@@ -6763,10 +6782,12 @@ function filterMasterRecords(
   const records = mapped.records.filter((record) =>
     allowed[mode].includes(record.entityType),
   );
-  const issues = mapped.issues.filter(
-    (issue) =>
-      records.length === 0 ||
-      !/No (driver|vehicle) rows recognised/i.test(issue),
+  const issues = mapped.issues.filter((issue) =>
+    mode === "drivers"
+      ? /driver/i.test(issue)
+      : mode === "vehicles"
+        ? /vehicle/i.test(issue)
+        : false,
   );
   return { records, issues };
 }
@@ -6917,7 +6938,7 @@ function mapMasterWorkbook(workbook: XLSX.WorkBook): {
     ])
       .replace(/\s+/g, "")
       .toUpperCase();
-    if (!registration || !active(row)) continue;
+    if (!registration || /^C\d{5,}$/i.test(registration) || !active(row)) continue;
     const fuelPin = firstText(row, [
       "Fuel PIN",
       "Fuel Pin",

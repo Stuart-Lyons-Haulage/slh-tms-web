@@ -56,6 +56,17 @@ export function TmsAssistant() {
             }
           : current,
       );
+      if (/\b(fix safe|apply safe|correct safe|resolve safe)\b/i.test(question)) {
+        const result = await api.fixSafeValidations(await token());
+        const actionMessage =
+          result.applied
+            ? `${result.applied} safe validation fix${result.applied === 1 ? "" : "es"} applied. ${result.skipped ? `${result.skipped} item${result.skipped === 1 ? "" : "s"} still need human review.` : ""}`
+            : "The checks found no safe automatic change to make. Driver/TachoMaster identity matching needs confirmed master data and is never guessed.";
+        await refresh();
+        setMessage(actionMessage);
+      } else {
+        setMessage("Advice only—no records were changed. Ask “fix safe validations” to apply the available low-risk corrections.");
+      }
     } catch (exception) {
       setMessage(
         exception instanceof Error
@@ -190,8 +201,9 @@ export function TmsAssistant() {
           )}
           {message && <p className="notice inline-notice">{message}</p>}
           <small>
-            AI advice never dispatches, allocates or overrides compliance.
-            Planners stay in control.
+            Asking normally gives advice only. Ask “fix safe validations” or
+            use the fix button to apply low-risk corrections. Driver identity,
+            dispatch, allocation and compliance overrides always require a person.
           </small>
         </aside>
       )}
