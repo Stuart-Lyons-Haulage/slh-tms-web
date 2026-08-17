@@ -218,6 +218,7 @@ export type FleetStatus = {
     fleetioPmiDueUtc?: string;
     fleetioMotDueUtc?: string;
     fleetioServiceStatus?: string;
+    driverMatchReason?: string;
   }>;
 };
 export type StageImportResponse = {
