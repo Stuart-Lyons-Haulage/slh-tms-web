@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { api, type Driver } from "../lib/api";
+import { api, request, type Driver } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 
@@ -17,6 +17,26 @@ function dateTime(input?: string) {
   const parsed = new Date(input);
   return Number.isNaN(parsed.getTime()) ? input : parsed.toLocaleString("en-GB");
 }
+
+type TachoRefreshResult = {
+  configured: boolean;
+  connected: boolean;
+  sourceDrivers: number;
+  profilesWithHours: number;
+  matched: number;
+  matchedWithHours: number;
+  unmatched: number;
+  currentVehicleDuties: number;
+  matchReasons?: {
+    memberId: number;
+    cardNumber: number;
+    employeeNumber: number;
+    tachoName: number;
+    displayName: number;
+  };
+  syncedAtUtc?: string;
+  message: string;
+};
 
 export function DriversUnified() {
   const token = useAccessToken();
@@ -66,8 +86,13 @@ export function DriversUnified() {
     setSyncing(true);
     setMessage(undefined);
     try {
-      const result = await api.syncTachoMasterDrivers(await token());
-      setMessage(result.message || `${result.matched} drivers matched to TachoMaster.`);
+      const result = await request<TachoRefreshResult>(
+        "/api/v1/operational-recovery/tachomaster/refresh-drivers",
+        await token(),
+        { method: "POST" },
+        60000,
+      );
+      setMessage(result.message);
       await drivers.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "TachoMaster sync failed.");
