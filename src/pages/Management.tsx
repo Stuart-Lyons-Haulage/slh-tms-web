@@ -31,7 +31,7 @@ function Kpi({ label, value, detail, tone = "normal" }: { label: string; value: 
 
 export function Management() {
   const token = useAccessToken(); const [from, setFrom] = useState(daysAgo(6)); const [to, setTo] = useState(iso(new Date())); const [customer, setCustomer] = useState("All");
-  const report = useApi(useCallback(async () => request<ManagementSummary>(`/api/v1/management/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, await token(), undefined, 40000), [from, to, token]));
+  const report = useApi(useCallback(async () => request<ManagementSummary>(`/api/v1/management/resilient-summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, await token(), undefined, 40000), [from, to, token]));
   const precision = useApi(useCallback(async () => request<EtaPrecision>(`/api/v1/management/eta-precision?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, await token(), undefined, 40000), [from, to, token]));
   const eta = precision.data || report.data?.etaPrecision; const customerOptions = useMemo(() => ["All", ...(report.data?.customers.map(item => item.customerCode) || [])], [report.data]); const customers = useMemo(() => customer === "All" ? (report.data?.customers || []) : (report.data?.customers || []).filter(item => item.customerCode === customer), [customer, report.data]);
   const applyPreset = (days: number) => { setTo(iso(new Date())); setFrom(daysAgo(days - 1)); }; const refreshAll = () => { void report.refresh(); void precision.refresh(); };
