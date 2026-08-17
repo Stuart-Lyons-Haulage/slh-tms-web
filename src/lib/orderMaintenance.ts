@@ -26,7 +26,9 @@ export const orderMaintenance = {
       body: JSON.stringify(payload),
     }),
   cancel: (id: string, token?: string) =>
-    request<{ id: string; reference: string; status: string; removedStops: number }>(`/api/v1/orders/${id}`, token, {
-      method: "DELETE",
-    }),
+    request<{ id: string; reference: string; status: string; removedStops: number; warning?: string }>(
+      `/api/v1/operational-recovery/orders/${id}`,
+      token,
+      { method: "DELETE" },
+    ),
 };
