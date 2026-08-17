@@ -87,7 +87,8 @@ export function FuelCardsOperational() {
       if (!records.length) throw new Error("No vehicle fuel records were found in the workbook.");
       const result = await api.applyMasterData(records, await token());
       await vehicles.refresh();
-      setMessage(`${result.applied + result.registered} of ${records.length} fuel-card vehicle records accepted. ${result.failed ? `${result.failed} need review.` : "Fuel card register refreshed."}`);
+      const accepted = result.applied + (result.registered || 0);
+      setMessage(`${accepted} of ${records.length} fuel-card vehicle records accepted. ${result.failed ? `${result.failed} need review.` : "Fuel card register refreshed."}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The fuel-card master could not be imported.");
     } finally { setImporting(false); }
