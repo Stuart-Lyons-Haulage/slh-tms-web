@@ -5,6 +5,7 @@ import { PublicClientApplication } from '@azure/msal-browser';
 import { App } from './App';
 import './styles.css';
 import './orders.css';
+import './fuel-top.css';
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
