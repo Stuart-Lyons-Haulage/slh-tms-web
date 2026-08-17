@@ -47,7 +47,18 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, RouteErrorBo
   componentDidCatch(error: Error, info: ErrorInfo) { console.error('TMS route failed', error, info); }
   render() {
     if (!this.state.error) return this.props.children;
-    return <section className="sign-in-panel"><p className="eyebrow">Planner recovery</p><h1>This page needs a refresh</h1><p>The navigation shell is still available. Refresh the page to retry the live planner without signing you out.</p><button className="primary" onClick={() => window.location.reload()}>Refresh planner</button></section>;
+    const error = this.state.error;
+    return <section className="sign-in-panel">
+      <p className="eyebrow">Planner recovery</p>
+      <h1>The Planner hit an application error</h1>
+      <p>The navigation shell is still available and you have not been signed out.</p>
+      <div style={{ width: '100%', maxWidth: 900, textAlign: 'left', margin: '16px 0', padding: 16, border: '1px solid #d0d7de', borderRadius: 8, background: '#fff' }}>
+        <strong>Error detail</strong>
+        <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginTop: 8 }}>{error.name}: {error.message}</pre>
+      </div>
+      <p>Please take a screenshot of the error detail if the Planner still fails after this revision is deployed.</p>
+      <button className="primary" onClick={() => window.location.reload()}>Refresh planner</button>
+    </section>;
   }
 }
 
