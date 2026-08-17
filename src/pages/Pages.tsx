@@ -347,9 +347,11 @@ function FleetRollout({
               </span>
               {selected.driverName && (
                 <small className="live-driver-name">
-                  {selected.driverSource === "TachoMaster"
-                    ? "TachoMaster driver"
-                    : "Planned driver"}
+                {selected.driverSource === "TachoMaster"
+  ? "TachoMaster driver"
+  : selected.driverSource === "DOT/Falcon"
+    ? "Live DOT driver"
+    : "Planned driver"}
                   : {selected.driverName}
                   {selected.driverMatchReason === "Unmatched" && selected.tachoName && (
                     <span className="driver-mismatch"> — Tacho driver not linked to TMS</span>
@@ -517,9 +519,11 @@ function FleetRollout({
                     <b>{fleetConditionLabel(vehicle.condition)}</b>
                     {vehicle.driverName && (
                       <small className="rollout-driver">
-                        {vehicle.driverSource === "TachoMaster"
-                          ? "Tacho"
-                          : "Planned"}
+                     {vehicle.driverSource === "TachoMaster"
+  ? "Tacho"
+  : vehicle.driverSource === "DOT/Falcon"
+    ? "DOT"
+    : "Planned"}
                         : {vehicle.driverName}
                         {vehicle.driverMatchReason === "Unmatched" && vehicle.tachoName && (
                           <span className="driver-mismatch"> — not linked</span>
