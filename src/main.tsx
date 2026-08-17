@@ -8,6 +8,7 @@ import './fleetioSyncPatch';
 import './operationalPresentationPatch';
 import './managementFallbackPatch';
 import './planLockFetchPatch';
+import './marketNormalizationPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
