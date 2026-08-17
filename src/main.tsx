@@ -8,6 +8,7 @@ import './fleetioSyncPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
+import './management.css';
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
