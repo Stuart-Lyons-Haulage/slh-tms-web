@@ -8,6 +8,13 @@ function textValue(value: unknown, fallback = "") {
   return valueText || fallback;
 }
 
+function safeDateText(value: unknown) {
+  const text = textValue(value, "");
+  if (!text) return "";
+  const timestamp = Date.parse(text);
+  return Number.isNaN(timestamp) ? "" : text;
+}
+
 function normaliseRecord(input: JsonRecord): JsonRecord {
   const record: JsonRecord = { ...input };
 
@@ -20,8 +27,10 @@ function normaliseRecord(input: JsonRecord): JsonRecord {
     record.id = textValue(record.id, `legacy-order-${Math.random().toString(36).slice(2)}`);
     record.reference = textValue(record.reference, "Reference missing");
     record.customerCode = textValue(record.customerCode, "Customer missing");
-    record.collectionDate = textValue(record.collectionDate, "");
-    record.deliveryDate = textValue(record.deliveryDate, textValue(record.collectionDate, ""));
+    record.collectionDate = safeDateText(record.collectionDate);
+    record.deliveryDate = safeDateText(record.deliveryDate) || safeDateText(record.collectionDate);
+    record.deliveryWindowStartUtc = safeDateText(record.deliveryWindowStartUtc);
+    record.deliveryWindowEndUtc = safeDateText(record.deliveryWindowEndUtc);
     record.status = textValue(record.status, "ReadyToPlan");
   }
 
@@ -33,12 +42,36 @@ function normaliseRecord(input: JsonRecord): JsonRecord {
     ("vehicleId" in record || "driverId" in record || "stops" in record);
   if (looksLikeLoad) {
     record.reference = textValue(record.reference, "Load reference missing");
-    record.planningDate = textValue(record.planningDate, "");
+    record.planningDate = safeDateText(record.planningDate);
     record.status = textValue(record.status, "Planned");
     if (!Array.isArray(record.stops)) record.stops = [];
   }
 
-  // Any status that is present must be safe for existing .toLowerCase() calls.
+  // Stop/ETA/tracking timestamps are rendered by Intl.DateTimeFormat. Invalid
+  // imported strings throw RangeError during React render, which used to take
+  // down the entire Planner route. Blank invalid values so the UI shows its
+  // existing fallback instead.
+  for (const key of [
+    "plannedArrivalUtc",
+    "plannedDutyUtc",
+    "eventTimeUtc",
+    "lastEventTimeUtc",
+    "etaUtc",
+    "trackingUpdatedAtUtc",
+    "receivedAtUtc",
+    "reviewedAtUtc",
+    "createdAtUtc",
+    "updatedAtUtc",
+    "lastTachoSyncUtc",
+    "fleetioLastSyncedUtc",
+    "fleetioPmiDueUtc",
+    "fleetioMotDueUtc",
+  ]) {
+    if (key in record) record[key] = safeDateText(record[key]);
+  }
+
+  if ("name" in record) record.name = textValue(record.name, "Stop name missing");
+  if ("reference" in record) record.reference = textValue(record.reference, "Reference missing");
   if ("status" in record) record.status = textValue(record.status, "Unknown");
 
   return record;
