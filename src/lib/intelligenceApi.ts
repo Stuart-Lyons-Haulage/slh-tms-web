@@ -27,6 +27,12 @@ function freshnessSource(name: string, lastUpdatedUtc: string | undefined, now: 
   return { name, lastUpdatedUtc, ageMinutes: ageMinutes == null ? undefined : Math.round(ageMinutes * 10) / 10, state };
 }
 
+function severityRank(value: AttentionItem['severity']): number {
+  if (value === 'High') return 0;
+  if (value === 'Medium') return 1;
+  return 2;
+}
+
 async function freshness(token?: string): Promise<FreshnessResponse> {
   const confidence = await request<ConfidenceResponse>('/api/v1/operations/confidence', token);
   const now = Date.now();
@@ -62,7 +68,7 @@ async function attention(date: string, token?: string): Promise<AttentionRespons
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.severity] - ({ High: 0, Medium: 1, Low: 2 }[b.severity]));
+  }).sort((a, b) => severityRank(a.severity) - severityRank(b.severity));
   return { ...core, count: items.length, items };
 }
 
