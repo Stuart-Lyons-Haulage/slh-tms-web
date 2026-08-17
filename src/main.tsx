@@ -16,6 +16,7 @@ import './management.css';
 import './operational-status.css';
 import './navigation-scroll.css';
 import './intelligence.css';
+import './mobile.css';
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
