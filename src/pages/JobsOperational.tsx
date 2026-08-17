@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { api, type TransportOrder } from "../lib/api";
+import { api, request, type TransportOrder } from "../lib/api";
 import { orderMaintenance, type OrderUpdatePayload } from "../lib/orderMaintenance";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
@@ -90,12 +90,32 @@ export function JobsOperational() {
     }
   }
 
+  async function clearAllOpenJobs() {
+    if (!window.confirm("Clear ALL open jobs currently in the TMS? Delivered history will be retained, but every other open job will be cancelled and removed from planning.")) return;
+    setSaving(true);
+    setMessage(undefined);
+    try {
+      const result = await request<{ cancelled: number; removedStops: number; message: string }>("/api/v1/orders/open", await token(), { method: "DELETE" });
+      setEditingId(undefined);
+      setForm(undefined);
+      await orders.refresh();
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Open jobs could not be cleared.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const set = (name: keyof OrderUpdatePayload, value: string) => setForm((current) => current ? ({ ...current, [name]: name === "pallets" ? (value === "" ? undefined : Number(value)) : value }) : current);
 
   return <section>
     <div className="title-row">
       <div><p className="eyebrow">Order control</p><h1>Manage imported jobs</h1><p className="intro">Amend imported work or remove it from planning without destroying the audit record.</p></div>
-      <button onClick={() => void orders.refresh()} disabled={orders.loading}>Refresh jobs</button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => void orders.refresh()} disabled={orders.loading || saving}>Refresh jobs</button>
+        <button onClick={() => void clearAllOpenJobs()} disabled={saving}>Clear all open jobs</button>
+      </div>
     </div>
     <div className="planner-toolbar">
       <label>Job date <input type="date" value={date} onChange={(event) => { setDate(event.target.value); setEditingId(undefined); }} /></label>
