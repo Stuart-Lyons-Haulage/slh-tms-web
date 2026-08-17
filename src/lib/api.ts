@@ -206,7 +206,7 @@ export type FleetStatus = {
     driverId?: string;
     driverName?: string;
     tachoName?: string;
-    driverSource?: "TachoMaster" | "Allocation";
+    driverSource?: "TachoMaster" | "DOT/Falcon" | "Allocation";
     allocatedDriverName?: string;
     driverMismatch?: boolean;
     plannedDutyUtc?: string;
