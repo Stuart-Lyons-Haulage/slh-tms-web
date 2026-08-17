@@ -21,8 +21,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+  const url = new URL(request.url);
   // Never cache API calls or authentication
-  if (request.url.includes('/api/') || request.url.includes('login.microsoftonline.com')) {
+  if (url.pathname.includes('/api/') || url.hostname === 'login.microsoftonline.com' || url.hostname.endsWith('.login.microsoftonline.com')) {
     return;
   }
   // Network-first for navigation, falling back to cache
