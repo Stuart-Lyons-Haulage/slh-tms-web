@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { api, request } from "../lib/api";
+import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 
