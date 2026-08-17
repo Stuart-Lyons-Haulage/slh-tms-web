@@ -18,6 +18,8 @@ type ConfidenceResponse = {
   dotTracking: { latestEventUtc?: string };
   emailIntake: { lastReceivedUtc?: string };
 };
+type ExistingException = { type: string; severity: 'High' | 'Medium' | 'Low'; reference: string; description: string; loadId?: string };
+type ExistingExceptionsResponse = { planningDate: string; generatedAtUtc: string; exceptions: ExistingException[] };
 
 function freshnessSource(name: string, lastUpdatedUtc: string | undefined, now: number, amberAfter: number, redAfter: number): FreshnessSource {
   const ageMinutes = lastUpdatedUtc ? Math.max(0, (now - new Date(lastUpdatedUtc).getTime()) / 60000) : undefined;
@@ -39,8 +41,33 @@ async function freshness(token?: string): Promise<FreshnessResponse> {
   };
 }
 
+async function attention(date: string, token?: string): Promise<AttentionResponse> {
+  const [core, existing] = await Promise.all([
+    request<AttentionResponse>(`/api/v1/intelligence/attention?date=${encodeURIComponent(date)}`, token, undefined, 40000),
+    request<ExistingExceptionsResponse>(`/api/v1/operations/exceptions?date=${encodeURIComponent(date)}`, token, undefined, 40000).catch(() => null),
+  ]);
+  const extras: AttentionItem[] = (existing?.exceptions ?? []).map((item, index) => ({
+    id: `ops-${item.type}-${item.loadId ?? item.reference}-${index}`,
+    severity: item.severity,
+    type: item.type,
+    title: item.type === 'LateEta' ? 'Late delivery ETA' : item.type === 'AtRiskEta' ? 'Delivery ETA at risk' : item.type === 'StaleTelemetry' ? 'Tracking signal stale' : item.type === 'ImportIssue' ? 'Import requires review' : item.type === 'UnallocatedLoad' ? 'Run is not fully allocated' : item.type === 'MissingGeocode' ? 'Stop mapping incomplete' : item.type,
+    detail: item.description,
+    entityId: item.loadId,
+    entityType: item.loadId ? 'run' : undefined,
+    href: item.loadId ? `/timeline/run/${item.loadId}` : item.type === 'ImportIssue' ? '/staging' : item.type === 'StaleTelemetry' ? '/tracking' : '/operations-control',
+  }));
+  const seen = new Set<string>();
+  const items = [...core.items, ...extras].filter(item => {
+    const key = `${item.type}|${item.entityId ?? ''}|${item.detail}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.severity] - ({ High: 0, Medium: 1, Low: 2 }[b.severity]));
+  return { ...core, count: items.length, items };
+}
+
 export const intelligenceApi = {
-  attention: (date: string, token?: string) => request<AttentionResponse>(`/api/v1/intelligence/attention?date=${encodeURIComponent(date)}`, token, undefined, 40000),
+  attention,
   search: (q: string, token?: string) => request<SearchResult[]>(`/api/v1/intelligence/search?q=${encodeURIComponent(q)}`, token),
   freshness,
   runTimeline: (id: string, token?: string) => request<TimelineResponse>(`/api/v1/intelligence/timeline/run/${encodeURIComponent(id)}`, token, undefined, 40000),
