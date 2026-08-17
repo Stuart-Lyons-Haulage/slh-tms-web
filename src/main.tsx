@@ -11,6 +11,7 @@ import './orders.css';
 import './fuel-top.css';
 import './management.css';
 import './operational-status.css';
+import './navigation-scroll.css';
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
