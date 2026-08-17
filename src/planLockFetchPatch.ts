@@ -1,3 +1,5 @@
+export {};
+
 const originalFetch = window.fetch.bind(window);
 
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
