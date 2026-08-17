@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api, type AssistantSnapshot } from "../lib/api";
+import { api, request, type AssistantSnapshot } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 
 const localDate = () => {
@@ -7,10 +7,34 @@ const localDate = () => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
+type EfficiencySuggestion = {
+  driverId: string;
+  driverName: string;
+  previousRun: string;
+  previousEnd: string;
+  orderId: string;
+  orderReference: string;
+  collection: string;
+  destination: string;
+  estimatedRepositionMiles?: number;
+  reason: string;
+};
+
+type EfficiencyResponse = {
+  planningDate: string;
+  previousDate: string;
+  previousDayAllocatedDrivers: number;
+  unplannedOrders: number;
+  suggestedContinuations: number;
+  suggestions: EfficiencySuggestion[];
+  message: string;
+};
+
 export function TmsAssistant() {
   const token = useAccessToken();
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<AssistantSnapshot>();
+  const [efficiency, setEfficiency] = useState<EfficiencyResponse>();
   const [question, setQuestion] = useState(
     "What needs attention before we dispatch?",
   );
@@ -23,7 +47,13 @@ export function TmsAssistant() {
     setBusy(true);
     setMessage(undefined);
     try {
-      setSnapshot(await api.assistantSnapshot(date, await token()));
+      const accessToken = await token();
+      const [nextSnapshot, nextEfficiency] = await Promise.all([
+        api.assistantSnapshot(date, accessToken),
+        request<EfficiencyResponse>(`/api/v1/assistant/efficiency?date=${encodeURIComponent(date)}`, accessToken),
+      ]);
+      setSnapshot(nextSnapshot);
+      setEfficiency(nextEfficiency);
     } catch (exception) {
       setMessage(
         exception instanceof Error
@@ -111,7 +141,7 @@ export function TmsAssistant() {
       >
         <span>✦</span>
         <strong>SLH Assistant</strong>
-        {snapshot?.suggestions.some((item) => item.severity === "high") && (
+        {(snapshot?.suggestions.some((item) => item.severity === "high") || (efficiency?.suggestedContinuations || 0) > 0) && (
           <i />
         )}
       </button>
@@ -157,6 +187,25 @@ export function TmsAssistant() {
               <span>
                 <b>{snapshot.metrics.duplicateSiteGroups}</b> duplicate sites
               </span>
+            </div>
+          )}
+          {efficiency && (
+            <div className="assistant-suggestions">
+              <article className="info">
+                <span>Efficiency</span>
+                <strong>Previous-day continuity</strong>
+                <p>{efficiency.message}</p>
+              </article>
+              {efficiency.suggestions.slice(0, 5).map((item) => (
+                <article className="medium" key={`${item.driverId}-${item.orderId}`}>
+                  <span>Driver continuation</span>
+                  <strong>{item.driverName}: {item.collection} → {item.destination}</strong>
+                  <p>Yesterday ended at {item.previousEnd}. {item.reason}</p>
+                  <div className="assistant-card-actions">
+                    <button type="button" onClick={() => window.location.assign("/")}>Open Planner</button>
+                  </div>
+                </article>
+              ))}
             </div>
           )}
           <div className="assistant-suggestions">
@@ -213,9 +262,7 @@ export function TmsAssistant() {
           )}
           {message && <p className="notice inline-notice">{message}</p>}
           <small>
-            Asking normally gives advice only. Ask “fix safe validations” or
-            use the fix button to apply low-risk corrections. Driver identity,
-            dispatch, allocation and compliance overrides always require a person.
+            The Assistant now compares yesterday’s final mapped driver stops with today’s collection points before showing continuity suggestions. Asking normally gives advice only. Driver identity, dispatch, allocation and compliance overrides still require a planner.
           </small>
         </aside>
       )}
