@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import { api, type Driver } from "../lib/api";
+import { api, request, type Driver } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 import { DriversMaster } from "./Pages";
@@ -49,6 +49,15 @@ type TachoMatch = {
   confidence: "Exact" | "Strong";
 };
 
+type IdentityImportResult = {
+  source: number;
+  matched: number;
+  updated?: number;
+  ambiguous: number;
+  unmatched: number;
+  message: string;
+};
+
 function parseCsvLine(line: string) {
   const fields: string[] = [];
   let current = "";
@@ -73,10 +82,17 @@ function parseCsvLine(line: string) {
   return fields;
 }
 
-function parseTachoAvailabilityCsv(text: string): TachoCsvDriver[] {
+function csvTable(text: string) {
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
-  if (!lines.length) return [];
-  const headers = parseCsvLine(lines[0]).map((header) => header.trim().toLowerCase());
+  if (!lines.length) return { headers: [] as string[], rows: [] as string[][] };
+  return {
+    headers: parseCsvLine(lines[0]).map((header) => header.trim().toLowerCase()),
+    rows: lines.slice(1).map(parseCsvLine),
+  };
+}
+
+function parseTachoAvailabilityCsv(text: string): TachoCsvDriver[] {
+  const { headers, rows } = csvTable(text);
   const indexOf = (name: string) => headers.indexOf(name);
   const surnameIndex = indexOf("s_name");
   const givenIndex = indexOf("c_name");
@@ -84,8 +100,7 @@ function parseTachoAvailabilityCsv(text: string): TachoCsvDriver[] {
     throw new Error("This does not look like a TachoMaster Driver Availability CSV. Expected s_name and c_name columns.");
   const siteIndex = indexOf("site_name");
   const readIndex = indexOf("tacho_card_last_read_csv");
-  return lines.slice(1).flatMap((line) => {
-    const cells = parseCsvLine(line);
+  return rows.flatMap((cells) => {
     const surname = (cells[surnameIndex] || "").trim();
     const givenNames = (cells[givenIndex] || "").trim();
     if (!surname || !givenNames) return [];
@@ -95,6 +110,46 @@ function parseTachoAvailabilityCsv(text: string): TachoCsvDriver[] {
       tachoName: `${givenNames} ${surname}`.replace(/\s+/g, " ").trim(),
       siteName: siteIndex >= 0 ? cells[siteIndex] : undefined,
       lastRead: readIndex >= 0 ? cells[readIndex] : undefined,
+    }];
+  });
+}
+
+function parseWorkerList(text: string) {
+  const { headers, rows } = csvTable(text);
+  const at = (name: string) => headers.indexOf(name);
+  const member = at("member code");
+  const worker = at("worker name");
+  const employee = at("employee number");
+  const card = at("driver card no.");
+  if (member < 0 || worker < 0 || card < 0)
+    throw new Error("This does not look like a TachoMaster Worker List. Expected Member Code, Worker Name and Driver Card No. columns.");
+  return rows.flatMap((cells) => {
+    if (!(cells[worker] || "").trim()) return [];
+    return [{
+      memberCode: (cells[member] || "").trim(),
+      workerName: (cells[worker] || "").trim(),
+      employeeNumber: employee >= 0 ? (cells[employee] || "").trim() : "",
+      driverCardNumber: (cells[card] || "").trim(),
+    }];
+  });
+}
+
+function parseVehicleList(text: string) {
+  const { headers, rows } = csvTable(text);
+  const at = (name: string) => headers.indexOf(name);
+  const vehicle = at("vehicle");
+  const site = at("site");
+  const ownerType = at("owner type");
+  const vin = at("vin");
+  if (vehicle < 0 || vin < 0)
+    throw new Error("This does not look like a TachoMaster Vehicle List. Expected Vehicle and VIN columns.");
+  return rows.flatMap((cells) => {
+    if (!(cells[vehicle] || "").trim()) return [];
+    return [{
+      vehicle: (cells[vehicle] || "").trim(),
+      site: site >= 0 ? (cells[site] || "").trim() : "",
+      ownerType: ownerType >= 0 ? (cells[ownerType] || "").trim() : "",
+      vin: (cells[vin] || "").trim(),
     }];
   });
 }
@@ -150,22 +205,9 @@ function DriverTachoOverview({ rows }: { rows: Driver[] }) {
         <table className="master-table driver-tacho-table">
           <thead>
             <tr>
-              <th>Employee</th>
-              <th>Driver</th>
-              <th>Mobile</th>
-              <th>Type</th>
-              <th>Group</th>
-              <th>Agency</th>
-              <th>Tacho name</th>
-              <th>Tacho card</th>
-              <th>Tacho link</th>
-              <th>Drive left today</th>
-              <th>Drive left week</th>
-              <th>Work left week</th>
-              <th>Last Tacho sync</th>
-              <th>Licence</th>
-              <th>Licence expiry</th>
-              <th>Active</th>
+              <th>Employee</th><th>Driver</th><th>Mobile</th><th>Type</th><th>Group</th><th>Agency</th>
+              <th>Tacho name</th><th>Tacho card</th><th>Tacho link</th><th>Drive left today</th><th>Drive left week</th>
+              <th>Work left week</th><th>Last Tacho sync</th><th>Licence</th><th>Licence expiry</th><th>Active</th>
             </tr>
           </thead>
           <tbody>
@@ -218,7 +260,47 @@ export function DriversOperational() {
     }
   }
 
-  async function importTachoCsv(event: ChangeEvent<HTMLInputElement>) {
+  async function importWorkerList(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    setMessage(undefined);
+    try {
+      const rows = parseWorkerList(await file.text());
+      const result = await request<IdentityImportResult>("/api/v1/integrations/tachomaster/identity/workers", await token(), {
+        method: "POST", body: JSON.stringify(rows),
+      });
+      setMessage(result.message);
+      await api.syncTachoMasterDrivers(await token()).catch(() => undefined);
+      await drivers.refresh();
+    } catch (exception) {
+      setMessage(exception instanceof Error ? exception.message : "TachoMaster Worker List import failed.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function importVehicleList(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    setMessage(undefined);
+    try {
+      const rows = parseVehicleList(await file.text());
+      const result = await request<IdentityImportResult>("/api/v1/integrations/tachomaster/identity/vehicles", await token(), {
+        method: "POST", body: JSON.stringify(rows),
+      });
+      setMessage(result.message);
+    } catch (exception) {
+      setMessage(exception instanceof Error ? exception.message : "TachoMaster Vehicle List import failed.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function importAvailabilityCsv(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file || !drivers.data?.length) return;
@@ -243,14 +325,12 @@ export function DriversOperational() {
       const exactCount = matches.filter((match) => match.confidence === "Exact").length;
       const strongCount = matches.filter((match) => match.confidence === "Strong").length;
       const unmatched = Math.max(sourceRows.length - matches.length, 0);
-      setMessage(
-        `TachoMaster file read: ${sourceRows.length} drivers. ${matches.length} confidently matched (${exactCount} exact, ${strongCount} strong), ${updated} Tacho names updated, ${unmatched} left unchanged for manual review. No new driver records were created.`,
-      );
+      setMessage(`Availability file: ${sourceRows.length} drivers, ${matches.length} confidently matched (${exactCount} exact, ${strongCount} strong), ${updated} Tacho names updated and ${unmatched} left for review.`);
       await drivers.refresh();
       await api.syncTachoMasterDrivers(accessToken).catch(() => undefined);
       await drivers.refresh();
     } catch (exception) {
-      setMessage(exception instanceof Error ? exception.message : "TachoMaster CSV import failed.");
+      setMessage(exception instanceof Error ? exception.message : "TachoMaster availability import failed.");
     } finally {
       setImporting(false);
     }
@@ -265,8 +345,16 @@ export function DriversOperational() {
         </div>
         <div className="title-actions">
           <label className={`button-like ${importing ? "disabled" : ""}`}>
-            {importing ? "Importing Tacho CSV…" : "Import TachoMaster CSV"}
-            <input type="file" accept=".csv,text/csv" hidden disabled={importing} onChange={(event) => void importTachoCsv(event)} />
+            Import Worker List
+            <input type="file" accept=".csv,text/csv" hidden disabled={importing} onChange={(event) => void importWorkerList(event)} />
+          </label>
+          <label className={`button-like ${importing ? "disabled" : ""}`}>
+            Import Vehicle List
+            <input type="file" accept=".csv,text/csv" hidden disabled={importing} onChange={(event) => void importVehicleList(event)} />
+          </label>
+          <label className={`button-like ${importing ? "disabled" : ""}`}>
+            Import Availability
+            <input type="file" accept=".csv,text/csv" hidden disabled={importing} onChange={(event) => void importAvailabilityCsv(event)} />
           </label>
           <button onClick={() => void drivers.refresh()} disabled={drivers.loading}>Refresh</button>
           <button className="primary" onClick={() => void syncTacho()} disabled={syncing}>
@@ -274,7 +362,7 @@ export function DriversOperational() {
           </button>
         </div>
       </div>
-      <p className="hint">TachoMaster Driver Availability CSVs update only existing driver Tacho names when the identity match is confident. Unmatched rows are left untouched to prevent duplicate or incorrect drivers.</p>
+      <p className="hint">Worker List is the preferred identity import because it carries TachoMaster member code and driver card number. Vehicle List links the TachoMaster/DOT registration to the existing vehicle master. Imports never auto-create drivers or vehicles.</p>
       {message && <p className="notice inline-notice">{message}</p>}
       {drivers.error ? <div className="state error"><p>{drivers.error}</p></div> : drivers.loading && !drivers.data ? <div className="state">Loading driver and Tacho data…</div> : <DriverTachoOverview rows={drivers.data || []} />}
       <div className="driver-maintenance-section">
