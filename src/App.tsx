@@ -14,43 +14,46 @@ import { StablePlanner } from './pages/StablePlanner';
 import { OperationalPlanner } from './pages/OperationalPlanner';
 import { PlannerV2 } from './pages/PlannerV2';
 import { PlannerV3 } from './pages/PlannerV3';
+import { AttentionCentre, MorningReadiness, PlanStability, TimelinePage } from './pages/OperationsIntelligence';
 import { apiScope } from './lib/auth';
 import { TmsAssistant } from './components/TmsAssistant';
+import { GlobalSearch } from './components/GlobalSearch';
+import { HeaderIntelligence } from './components/HeaderIntelligence';
+import { ManagementStabilityBanner } from './components/ManagementStabilityBanner';
 
 const dailyNavigation = [
-  ['/dashboard', 'Dashboard'],
-  ['/order-intake', 'Orders'],
-  ['/jobs', 'Manage jobs'],
-  ['/staging', 'Order review'],
-  ['/', 'Planner'],
-  ['/loads', 'Runs'],
-  ['/tracking', 'Live tracking'],
+  ['/dashboard', 'Dashboard'], ['/order-intake', 'Orders'], ['/jobs', 'Manage jobs'], ['/staging', 'Order review'], ['/', 'Planner'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'], ['/readiness', 'Morning readiness'],
 ];
-
 const masterNavigation = [
-  ['/customers', 'Customers'],
-  ['/drivers', 'Drivers'],
-  ['/fleet-assets', 'Vehicles / trailers'],
-  ['/fuel-cards', 'Fuel cards & PINs'],
-  ['/fuel', 'Fuel prices'],
-  ['/markets', 'Markets'],
-  ['/sites', 'Sites & contacts'],
-  ['/master-data', 'Master data overview'],
+  ['/customers', 'Customers'], ['/drivers', 'Drivers'], ['/fleet-assets', 'Vehicles / trailers'], ['/fuel-cards', 'Fuel cards & PINs'], ['/fuel', 'Fuel prices'], ['/markets', 'Markets'], ['/sites', 'Sites & contacts'], ['/master-data', 'Master data overview'],
+];
+const insightNavigation = [
+  ['/attention', 'Needs attention'], ['/management', 'Management'], ['/plan-stability', 'Plan stability'], ['/exceptions', 'Exceptions'], ['/operations-control', 'Ops control'], ['/reporting', 'Reporting'], ['/exports', 'Exports'], ['/admin', 'Admin'],
 ];
 
-const insightNavigation = [
-  ['/management', 'Management'],
-  ['/exceptions', 'Exceptions'],
-  ['/operations-control', 'Ops control'],
-  ['/reporting', 'Reporting'],
-  ['/exports', 'Exports'],
-  ['/admin', 'Admin'],
-];
+type NavItem = string[];
+function pathActive(current: string, path: string) { return path === '/' ? current === '/' : current === path || current.startsWith(`${path}/`); }
+function NavSection({ title, storageKey, items, current, closeMobile }: { title: string; storageKey: string; items: NavItem[]; current: string; closeMobile: () => void }) {
+  const active = items.some(([path]) => pathActive(current, path));
+  const [open, setOpen] = useState(() => localStorage.getItem(storageKey) !== 'closed');
+  const expanded = open || active;
+  const toggle = () => { const next = !open; setOpen(next); localStorage.setItem(storageKey, next ? 'open' : 'closed'); };
+  return <div className="nav-section"><button className="nav-title nav-toggle" onClick={toggle} aria-expanded={expanded}><span>{title}</span><b>{expanded ? '−' : '+'}</b></button>{expanded && <div className="nav-links">{items.map(([path,label]) => <NavLink key={path} to={path} end={path === '/'} onClick={closeMobile}>{label}</NavLink>)}</div>}</div>;
+}
 
 function Shell() {
   const authenticated = useIsAuthenticated(); const { instance, accounts } = useMsal(); const [open, setOpen] = useState(false); const location = useLocation();
-  const signIn = () => instance.loginRedirect({ scopes: apiScope ? [apiScope] : [] });
-  return <div className="app-shell"><header><button className="menu" onClick={() => setOpen(!open)} aria-label="Toggle navigation">☰</button><NavLink className="brand" to="/dashboard"><span>SLH</span><small>Transport management</small></NavLink><div className="header-context"><b>Daily transport control</b><small>Orders → planning → runs → live operations</small></div><div className="header-actions">{authenticated ? <><span className="user">{accounts[0]?.name}</span><button onClick={() => instance.logoutRedirect()}>Sign out</button></> : <button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button>}</div></header><aside className={`side-nav ${open ? 'open' : ''}`}><NavLink className="new-order" to="/order-intake" onClick={() => setOpen(false)}>＋ New order</NavLink><div className="nav-title">Daily workflow</div>{dailyNavigation.map(([path, label]) => <NavLink key={path} to={path} end={path === '/'} onClick={() => setOpen(false)}>{label}</NavLink>)}<div className="nav-title">Master data</div>{masterNavigation.map(([path, label]) => <NavLink key={path} to={path} onClick={() => setOpen(false)}>{label}</NavLink>)}<div className="nav-title">Control & insight</div>{insightNavigation.map(([path, label]) => <NavLink key={path} to={path} onClick={() => setOpen(false)}>{label}</NavLink>)}</aside><main>{authenticated ? <RouteErrorBoundary key={location.pathname}><Routes><Route path="/" element={<StablePlanner />} /><Route path="/dashboard" element={<Dashboard />} /><Route path="/order-intake" element={<OrdersOperationalV2 />} /><Route path="/jobs" element={<JobsOperational />} /><Route path="/loads" element={<RunsOperational />} /><Route path="/allocation" element={<StablePlanner />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderReviewOperational />} /><Route path="/management" element={<Management />} /><Route path="/exceptions" element={<Exceptions />} /><Route path="/operations-control" element={<OperationsControl />} /><Route path="/driver" element={<DriverMobile />} /><Route path="/customers" element={<CustomersMaster />} /><Route path="/drivers" element={<DriversUnified />} /><Route path="/fleet-assets" element={<FleetAssetsOperational />} /><Route path="/fuel-cards" element={<FuelCardsOperational />} /><Route path="/fuel" element={<FuelMaster />} /><Route path="/markets" element={<MarketsMaster />} /><Route path="/sites" element={<SitesMaster />} /><Route path="/reporting" element={<Reporting />} /><Route path="/exports" element={<ExportCentre />} /><Route path="/master-data" element={<MasterData />} /><Route path="/admin" element={<Admin />} /></Routes></RouteErrorBoundary> : <section className="sign-in-panel"><p className="eyebrow">Secure operations portal</p><h1>Sign in to Stuart Lyons Haulage TMS</h1><p>Use your Lyons Microsoft account to open live planning, fleet tracking, orders and master data.</p><button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button></section>}</main>{authenticated && <TmsAssistant />}</div>;
+  const signIn = () => instance.loginRedirect({ scopes: apiScope ? [apiScope] : [] }); const closeMobile = () => setOpen(false);
+  return <div className={`app-shell ${authenticated ? 'with-system-strip' : ''}`}>
+    <header><button className="menu" onClick={() => setOpen(!open)} aria-label="Toggle navigation">☰</button><NavLink className="brand" to="/dashboard"><span>SLH</span><small>Transport management</small></NavLink>{authenticated ? <GlobalSearch /> : <div className="header-context"><b>Daily transport control</b><small>Orders → planning → runs → live operations</small></div>}<div className="header-actions">{authenticated ? <><span className="user">{accounts[0]?.name}</span><button onClick={() => instance.logoutRedirect()}>Sign out</button></> : <button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button>}</div></header>
+    {authenticated && <div className="system-strip"><HeaderIntelligence /></div>}
+    <aside className={`side-nav ${open ? 'open' : ''}`}><NavLink className="new-order" to="/order-intake" onClick={closeMobile}>＋ New order</NavLink><NavSection title="Daily workflow" storageKey="slh-nav-daily" items={dailyNavigation} current={location.pathname} closeMobile={closeMobile}/><NavSection title="Master data" storageKey="slh-nav-master" items={masterNavigation} current={location.pathname} closeMobile={closeMobile}/><NavSection title="Control & insight" storageKey="slh-nav-insight" items={insightNavigation} current={location.pathname} closeMobile={closeMobile}/></aside>
+    <main>{authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
+      <Route path="/" element={<StablePlanner />} /><Route path="/dashboard" element={<Dashboard />} /><Route path="/order-intake" element={<OrdersOperationalV2 />} /><Route path="/jobs" element={<JobsOperational />} /><Route path="/loads" element={<RunsOperational />} /><Route path="/allocation" element={<StablePlanner />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderReviewOperational />} />
+      <Route path="/attention" element={<AttentionCentre />} /><Route path="/readiness" element={<MorningReadiness />} /><Route path="/plan-stability" element={<PlanStability />} /><Route path="/timeline/run/:id" element={<TimelinePage kind="run" />} /><Route path="/timeline/order/:id" element={<TimelinePage kind="order" />} />
+      <Route path="/management" element={<Management />} /><Route path="/exceptions" element={<Exceptions />} /><Route path="/operations-control" element={<OperationsControl />} /><Route path="/driver" element={<DriverMobile />} /><Route path="/customers" element={<CustomersMaster />} /><Route path="/drivers" element={<DriversUnified />} /><Route path="/fleet-assets" element={<FleetAssetsOperational />} /><Route path="/fuel-cards" element={<FuelCardsOperational />} /><Route path="/fuel" element={<FuelMaster />} /><Route path="/markets" element={<MarketsMaster />} /><Route path="/sites" element={<SitesMaster />} /><Route path="/reporting" element={<Reporting />} /><Route path="/exports" element={<ExportCentre />} /><Route path="/master-data" element={<MasterData />} /><Route path="/admin" element={<Admin />} />
+    </Routes></RouteErrorBoundary></> : <section className="sign-in-panel"><p className="eyebrow">Secure operations portal</p><h1>Sign in to Stuart Lyons Haulage TMS</h1><p>Use your Lyons Microsoft account to open live planning, fleet tracking, orders and master data.</p><button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button></section>}</main>{authenticated && <TmsAssistant />}
+  </div>;
 }
 
 type RouteErrorBoundaryState = { error?: Error };
@@ -58,20 +61,7 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, RouteErrorBo
   state: RouteErrorBoundaryState = {};
   static getDerivedStateFromError(error: Error): RouteErrorBoundaryState { return { error }; }
   componentDidCatch(error: Error, info: ErrorInfo) { console.error('TMS route failed', error, info); }
-  render() {
-    if (!this.state.error) return this.props.children;
-    const error = this.state.error;
-    return <section className="sign-in-panel">
-      <p className="eyebrow">Application recovery</p>
-      <h1>This screen hit an application error</h1>
-      <p>The navigation shell is still available and you have not been signed out.</p>
-      <div style={{ width: '100%', maxWidth: 900, textAlign: 'left', margin: '16px 0', padding: 16, border: '1px solid #d0d7de', borderRadius: 8, background: '#fff' }}>
-        <strong>Error detail</strong>
-        <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginTop: 8 }}>{error.name}: {error.message}</pre>
-      </div>
-      <button className="primary" onClick={() => window.location.reload()}>Refresh screen</button>
-    </section>;
-  }
+  render() { if (!this.state.error) return this.props.children; const error = this.state.error; return <section className="sign-in-panel"><p className="eyebrow">Application recovery</p><h1>This screen hit an application error</h1><p>The navigation shell is still available and you have not been signed out.</p><div style={{ width: '100%', maxWidth: 900, textAlign: 'left', margin: '16px 0', padding: 16, border: '1px solid #d0d7de', borderRadius: 8, background: '#fff' }}><strong>Error detail</strong><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginTop: 8 }}>{error.name}: {error.message}</pre></div><button className="primary" onClick={() => window.location.reload()}>Refresh screen</button></section>; }
 }
 
 export function App() { return <BrowserRouter><Shell /></BrowserRouter>; }
