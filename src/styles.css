@@ -50,3 +50,30 @@
 .exception-list .error { color: #9d2929; }
 .exception-list .warn { color: #a54b00; }
 .warn { color: #a54b00; }
+.driver-mobile { max-width: 600px; margin: 0 auto; padding: 0; }
+.mobile-header { text-align: center; margin-bottom: 24px; }
+.mobile-header h1 { font-size: 1.5rem; margin: 4px 0; }
+.mobile-header small { color: #607685; }
+.mobile-loads { display: flex; flex-direction: column; gap: 16px; }
+.mobile-load-card { background: #fff; border: 1px solid #dce7ea; border-radius: 14px; padding: 18px; box-shadow: 0 2px 8px #082e4709; }
+.load-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.load-card-header strong { font-size: 1.2rem; color: #073a5a; }
+.load-vehicle, .load-destination { margin: 6px 0; color: #007878; font-weight: 650; font-size: .95rem; }
+.status-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.status-btn { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 12px; border: 2px solid #c8d5da; border-radius: 12px; background: #fff; font: inherit; font-weight: 700; font-size: .9rem; cursor: pointer; min-height: 80px; }
+.status-btn:hover { border-color: #006d6c; background: #f3f7f8; }
+.status-btn:disabled { opacity: .5; cursor: not-allowed; }
+.status-btn.warn { border-color: #dda9a9; color: #9b2929; }
+.status-btn.warn:hover { border-color: #9b2929; background: #fff6f6; }
+.btn-icon { font-size: 1.6rem; }
+.btn-label { font-size: .82rem; }
+.status-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #063b5c; color: #fff; padding: 12px 24px; border-radius: 10px; font-weight: 650; box-shadow: 0 4px 16px #082e4740; z-index: 100; }
+.match-reason { color: #007878; font-weight: 600; }
+@media (max-width: 700px) {
+  .status-buttons { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+  .data-table { min-width: 0; font-size: .82rem; }
+  th, td { padding: 10px 8px; }
+  .tab-bar .tab { padding: 8px 12px; font-size: .82rem; }
+  .driver-mobile { padding: 0 4px; }
+}

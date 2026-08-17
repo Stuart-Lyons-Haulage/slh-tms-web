@@ -351,6 +351,12 @@ function FleetRollout({
                     ? "TachoMaster driver"
                     : "Planned driver"}
                   : {selected.driverName}
+                  {selected.driverMatchReason === "Unmatched" && selected.tachoName && (
+                    <span className="driver-mismatch"> — Tacho driver not linked to TMS</span>
+                  )}
+                  {selected.driverMatchReason && selected.driverMatchReason !== "Unmatched" && (
+                    <span className="match-reason"> — matched by {selected.driverMatchReason}</span>
+                  )}
                 </small>
               )}
               {selected.tacho?.cardNumber && (
@@ -515,6 +521,9 @@ function FleetRollout({
                           ? "Tacho"
                           : "Planned"}
                         : {vehicle.driverName}
+                        {vehicle.driverMatchReason === "Unmatched" && vehicle.tachoName && (
+                          <span className="driver-mismatch"> — not linked</span>
+                        )}
                       </small>
                     )}
                     {vehicle.driverMismatch && (
@@ -8660,6 +8669,12 @@ export function OperationsControl() {
   const mappings = useApi(
     useCallback(async () => api.integrationMappings(undefined, await token()), [token]),
   );
+  const driversList = useApi(
+    useCallback(async () => api.drivers(await token()), [token]),
+  );
+  const vehiclesList = useApi(
+    useCallback(async () => api.vehicles(await token()), [token]),
+  );
 
   async function saveMapping() {
     setMappingError(undefined);
@@ -8902,8 +8917,16 @@ export function OperationsControl() {
                   <option value="Vehicle">Vehicle</option>
                 </select>
               </label>
-              <label>TMS entity ID
-                <input value={mappingEntityId} onChange={(e) => setMappingEntityId(e.target.value)} placeholder="GUID from master data" />
+              <label>TMS {mappingEntityType === "Driver" ? "driver" : "vehicle"}
+                <select value={mappingEntityId} onChange={(e) => setMappingEntityId(e.target.value)}>
+                  <option value="">Select {mappingEntityType === "Driver" ? "driver" : "vehicle"}…</option>
+                  {mappingEntityType === "Driver" && driversList.data?.filter(d => d.active).map((d) => (
+                    <option key={d.id} value={d.id}>{d.displayName} ({d.employeeNumber}){d.tachoName ? ` — Tacho: ${d.tachoName}` : ""}</option>
+                  ))}
+                  {mappingEntityType === "Vehicle" && vehiclesList.data?.filter(v => v.active).map((v) => (
+                    <option key={v.id} value={v.id}>{v.registration}{v.fleetNumber ? ` (${v.fleetNumber})` : ""}</option>
+                  ))}
+                </select>
               </label>
               <label>Notes
                 <input value={mappingNotes} onChange={(e) => setMappingNotes(e.target.value)} placeholder="Optional" />
@@ -8918,7 +8941,7 @@ export function OperationsControl() {
             {map && map.length > 0 && (
               <table className="data-table">
                 <thead>
-                  <tr><th>Provider</th><th>External key</th><th>Label</th><th>Type</th><th>Entity ID</th><th>Updated</th><th>By</th><th></th></tr>
+                  <tr><th>Provider</th><th>External key</th><th>Label</th><th>Type</th><th>TMS entity</th><th>Updated</th><th>By</th><th></th></tr>
                 </thead>
                 <tbody>
                   {map.filter(m => m.active).map((m) => (
@@ -8927,7 +8950,10 @@ export function OperationsControl() {
                       <td>{m.externalKey}</td>
                       <td>{m.externalLabel || "—"}</td>
                       <td>{m.tmsEntityType}</td>
-                      <td><code>{m.tmsEntityId.slice(0, 8)}</code></td>
+                      <td>{m.tmsEntityType === "Driver"
+                        ? (driversList.data?.find(d => d.id === m.tmsEntityId)?.displayName ?? <code>{m.tmsEntityId.slice(0, 8)}</code>)
+                        : (vehiclesList.data?.find(v => v.id === m.tmsEntityId)?.registration ?? <code>{m.tmsEntityId.slice(0, 8)}</code>)}
+                      </td>
                       <td>{formatDate(m.updatedAtUtc)}</td>
                       <td>{m.updatedBy || "—"}</td>
                       <td><button onClick={() => void removeMapping(m.id)}>Remove</button></td>
@@ -8939,6 +8965,97 @@ export function OperationsControl() {
           </State>
         </div>
       )}
+    </section>
+  );
+}
+
+export function DriverMobile() {
+  const token = useAccessToken();
+  const { accounts } = useMsal();
+  const account = accounts[0];
+  const today = localDate();
+  const [submitting, setSubmitting] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string>();
+
+  const assignments = useApi(
+    useCallback(
+      async () => api.driverAssignments(today, today, await token()),
+      [today, token],
+    ),
+  );
+
+  const myName = (account?.name ?? "").toLowerCase().trim();
+  const myAssignments = myName.length > 0
+    ? (assignments.data || []).filter(
+        (a) => a.driver?.displayName?.toLowerCase() === myName,
+      )
+    : [];
+
+  const statusButtons: Array<{ status: string; label: string }> = [
+    { status: "Accepted", label: "Accepted" },
+    { status: "ArrivedCollection", label: "Arrived at collection" },
+    { status: "Loaded", label: "Loaded" },
+    { status: "ArrivedDelivery", label: "Arrived at delivery" },
+    { status: "Delivered", label: "Delivered" },
+    { status: "IssueReported", label: "Report issue" },
+  ];
+
+  async function submitStatus(loadId: string, status: string) {
+    setSubmitting(status);
+    setStatusMsg(undefined);
+    try {
+      await api.captureDriverStatus(loadId, { status, notes: undefined }, await token());
+      setStatusMsg(`${status} recorded`);
+    } catch (e) {
+      setStatusMsg(e instanceof Error ? e.message : "Failed to update status");
+    } finally {
+      setSubmitting(null);
+      setTimeout(() => setStatusMsg(undefined), 4000);
+    }
+  }
+
+  return (
+    <section className="driver-mobile">
+      <div className="mobile-header">
+        <p className="eyebrow">Driver</p>
+        <h1>{account?.name ?? "Driver"}</h1>
+        <small>{today}</small>
+      </div>
+
+      <State loading={assignments.loading} error={assignments.error} empty={!myAssignments.length}>
+        {myAssignments.length > 0 && (
+          <div className="mobile-loads">
+            {myAssignments.map((assignment) => (
+              <article key={assignment.loadId} className="mobile-load-card">
+                <div className="load-card-header">
+                  <strong>{assignment.loadReference}</strong>
+                  <span className={`status ${assignment.status.toLowerCase()}`}>{assignment.status}</span>
+                </div>
+                {assignment.vehicle && (
+                  <p className="load-vehicle">{assignment.vehicle.registration}{assignment.vehicle.fleetNumber ? ` · ${assignment.vehicle.fleetNumber}` : ""}</p>
+                )}
+                {assignment.finalStop && (
+                  <p className="load-destination">{assignment.finalStop}</p>
+                )}
+                <div className="status-buttons">
+                  {statusButtons.map((btn) => (
+                    <button
+                      key={btn.status}
+                      className={`status-btn ${btn.status === "IssueReported" ? "warn" : ""}`}
+                      disabled={submitting !== null}
+                      onClick={() => void submitStatus(assignment.loadId, btn.status)}
+                    >
+                      <span className="btn-label">{btn.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </State>
+
+      {statusMsg && <div className="status-toast">{statusMsg}</div>}
     </section>
   );
 }
