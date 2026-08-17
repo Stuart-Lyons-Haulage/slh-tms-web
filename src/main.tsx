@@ -6,6 +6,7 @@ import { App } from './App';
 import './runtimeGuards';
 import './fleetioSyncPatch';
 import './operationalPresentationPatch';
+import './managementFallbackPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
