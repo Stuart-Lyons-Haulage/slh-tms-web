@@ -11,10 +11,38 @@ export type PlanLockInfo = { planningDate: string; lockedAtUtc: string; lockedBy
 export type ReadinessResponse = { planningDate: string; generatedAtUtc: string; ready: boolean; runs: number; assignedDrivers: number; activeDrivers: number; assignedVehicles: number; activeVehicles: number; missingAllocations: number; vorConflicts: number; tachoConcerns: number; geofenceGaps: number; unreviewedOrders: number; planLock?: PlanLockInfo };
 export type PlanStabilityResponse = { from: string; to: string; lockedDays: number; baselineRuns: number; changedRuns: number; stabilityPercent?: number; driverSwaps: number; vehicleSwaps: number; routeAmendments: number; runChanges: number };
 
+type ConfidenceResponse = {
+  generatedAtUtc: string;
+  sageHr: { lastSyncUtc?: string };
+  tachoMaster: { lastSyncUtc?: string };
+  dotTracking: { latestEventUtc?: string };
+  emailIntake: { lastReceivedUtc?: string };
+};
+
+function freshnessSource(name: string, lastUpdatedUtc: string | undefined, now: number, amberAfter: number, redAfter: number): FreshnessSource {
+  const ageMinutes = lastUpdatedUtc ? Math.max(0, (now - new Date(lastUpdatedUtc).getTime()) / 60000) : undefined;
+  const state: FreshnessSource['state'] = ageMinutes == null ? 'red' : ageMinutes <= amberAfter ? 'green' : ageMinutes <= redAfter ? 'amber' : 'red';
+  return { name, lastUpdatedUtc, ageMinutes: ageMinutes == null ? undefined : Math.round(ageMinutes * 10) / 10, state };
+}
+
+async function freshness(token?: string): Promise<FreshnessResponse> {
+  const confidence = await request<ConfidenceResponse>('/api/v1/operations/confidence', token);
+  const now = Date.now();
+  return {
+    generatedAtUtc: confidence.generatedAtUtc,
+    sources: [
+      freshnessSource('Tracking', confidence.dotTracking.latestEventUtc, now, 10, 30),
+      freshnessSource('Tacho', confidence.tachoMaster.lastSyncUtc, now, 30, 120),
+      freshnessSource('Info mailbox', confidence.emailIntake.lastReceivedUtc, now, 15, 60),
+      freshnessSource('Sage HR', confidence.sageHr.lastSyncUtc, now, 180, 720),
+    ],
+  };
+}
+
 export const intelligenceApi = {
   attention: (date: string, token?: string) => request<AttentionResponse>(`/api/v1/intelligence/attention?date=${encodeURIComponent(date)}`, token, undefined, 40000),
   search: (q: string, token?: string) => request<SearchResult[]>(`/api/v1/intelligence/search?q=${encodeURIComponent(q)}`, token),
-  freshness: (token?: string) => request<FreshnessResponse>('/api/v1/intelligence/freshness', token),
+  freshness,
   runTimeline: (id: string, token?: string) => request<TimelineResponse>(`/api/v1/intelligence/timeline/run/${encodeURIComponent(id)}`, token, undefined, 40000),
   orderTimeline: (id: string, token?: string) => request<TimelineResponse>(`/api/v1/intelligence/timeline/order/${encodeURIComponent(id)}`, token, undefined, 40000),
   planLock: (date: string, token?: string) => request<PlanLockInfo | null>(`/api/v1/intelligence/plan-lock/${encodeURIComponent(date)}`, token),
