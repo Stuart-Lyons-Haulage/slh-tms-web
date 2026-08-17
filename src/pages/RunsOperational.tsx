@@ -1,3 +1,4 @@
+import { PilotRunHealth } from "../components/PilotRunHealth";
 import { Loads } from "./Pages";
 
 export function RunsOperational() {
@@ -23,6 +24,7 @@ export function RunsOperational() {
           Driver text controls appear against each allocated run below. The message is generated from the run, driver, vehicle, trailer and stop/order data so the planner can review it before sending.
         </p>
       </section>
+      <PilotRunHealth />
       <Loads />
     </div>
   );
