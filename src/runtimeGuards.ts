@@ -52,12 +52,11 @@ function normaliseRecord(input: JsonRecord): JsonRecord {
     record.status = textValue(record.status, "ReadyToPlan");
   }
 
-  // Legacy load rows have also existed without a populated Stops collection or
-  // with numeric/null enum values. Keep the board usable and let the planner
-  // correct the record rather than throwing during React render.
-  const looksLikeLoad =
-    "planningDate" in record && "reference" in record &&
-    ("vehicleId" in record || "driverId" in record || "stops" in record);
+  // Any record with planningDate + reference is treated as a load. Older API
+  // versions sometimes omitted vehicleId, driverId and even stops entirely,
+  // which meant the earlier guard failed to recognise the object and React
+  // later crashed on load.stops.length/map/filter.
+  const looksLikeLoad = "planningDate" in record && "reference" in record;
   if (looksLikeLoad) {
     record.id = textValue(record.id, `legacy-load-${Math.random().toString(36).slice(2)}`);
     record.reference = textValue(record.reference, "Load reference missing");
@@ -67,6 +66,12 @@ function normaliseRecord(input: JsonRecord): JsonRecord {
     record.stops = stops
       .map((stop, index) => normaliseStop(stop, index))
       .filter((stop): stop is JsonRecord => Boolean(stop));
+  }
+
+  // Planner helper endpoints are also rendered directly. Never allow a null
+  // collection from an older/fallback API payload to take down the whole route.
+  for (const key of ["suggestions", "records", "days", "routes", "legs", "points"]) {
+    if (key in record && !Array.isArray(record[key])) record[key] = [];
   }
 
   // Stop/ETA/tracking timestamps are rendered by Intl.DateTimeFormat. Invalid
