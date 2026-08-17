@@ -20,6 +20,7 @@ type ImportOrder = {
   customerRef: string;
   palletName: string;
   poRef: string;
+  orderType: string;
 };
 
 function clean(value: unknown) { return String(value ?? "").trim(); }
@@ -79,19 +80,25 @@ function mapRow(row: Record<string, string>, index: number): ImportOrder | undef
   const deliveryAddress = first(row, "Delivery Address", "Address", "Postcode", "Delivery Postcode");
   const salesOrder = first(row, "Sales Order ID", "Sales Order", "Order Number", "Order Ref");
   const customerRef = first(row, "CustomerRef", "Customer Ref", "Customer Reference");
-  const palletName = first(row, "Pallet Name", "Pallet Type", "Goods", "Product");
-  const pallets = first(row, "PalletQty", "Pallet Qty", "Pallets", "Quantity", "Qty") || "1";
+  const palletName = first(row, "Pallet Name", "Pallet Type", "Goods", "Product", "Crate Type");
+  const crateQty = first(row, "CrateQty", "Crate Qty", "Crates", "Crate Quantity");
+  const palletQty = first(row, "PalletQty", "Pallet Qty", "Pallets", "Quantity", "Qty");
+  const explicitType = first(row, "Order Type", "Job Type", "Type", "Movement Type");
+  const typeEvidence = `${explicitType} ${palletName} ${first(row, "Description", "Notes")}`;
+  const orderType = explicitType || (crateQty || /\bcrate(s)?\b/i.test(typeEvidence) ? "Crates" : "Pallets");
+  const pallets = orderType.toLowerCase().includes("crate") ? (crateQty || palletQty || "1") : (palletQty || "1");
   const poRef = first(row, "PO REF", "PO Ref", "PO", "Purchase Order");
   const reference = salesOrder || poRef || customerRef || `ORDER-${index + 1}`;
   if (!requestedDate || !customer) return undefined;
   const notes = [
+    `Order type: ${orderType}`,
     collectionSite ? `Collection site: ${collectionSite}` : "",
     depotId ? `Depot ID: ${depotId}` : "",
     depotDescription ? `Depot: ${depotDescription}` : "",
     deliveryAddress ? `Delivery address: ${deliveryAddress}` : "",
     customerRef ? `Customer ref: ${customerRef}` : "",
     poRef ? `PO ref: ${poRef}` : "",
-    palletName ? `Pallet: ${palletName}` : "",
+    palletName ? `${orderType.toLowerCase().includes("crate") ? "Product" : "Pallet"}: ${palletName}` : "",
   ].filter(Boolean).join(" · ");
   return {
     rowIndex: index,
@@ -109,6 +116,7 @@ function mapRow(row: Record<string, string>, index: number): ImportOrder | undef
     customerRef,
     palletName,
     poRef,
+    orderType,
   };
 }
 
@@ -131,7 +139,10 @@ export function OrdersOperationalV2() {
       return item ? [item] : [];
     });
     setRows(mapped);
-    setMessage(mapped.length ? `${mapped.length} jobs recognised and ready to send to Order Review.` : "No valid orders were recognised.");
+    const crates = mapped.filter((item) => item.orderType.toLowerCase().includes("crate")).length;
+    setMessage(mapped.length
+      ? `${mapped.length} jobs recognised and ready to send to Order Review.${crates ? ` ${crates} identified as crate work.` : ""}`
+      : "No valid orders were recognised.");
   }
 
   async function submitRows() {
@@ -141,10 +152,7 @@ export function OrdersOperationalV2() {
     try {
       const records: StageBatchRequest[] = rows.map((row) => ({
         entityType: "order",
-        // V2 key includes the source row and delivery identity. This prevents separate
-        // lines sharing one Sales Order ID from collapsing into a single staged item,
-        // while still deduplicating a repeated import of the same file layout.
-        idempotencyKey: `structured-csv-v2:${row.collectionDate}:${row.poNumber}:${row.marketName}:${row.customerRef}:${row.palletName}:${row.rowIndex}`.slice(0, 200),
+        idempotencyKey: `structured-csv-v3:${row.collectionDate}:${row.poNumber}:${row.marketName}:${row.customerRef}:${row.orderType}:${row.palletName}:${row.rowIndex}`.slice(0, 200),
         source: `Customer CSV · ${fileName || "upload"}`,
         payload: {
           poNumber: row.poNumber,
@@ -178,11 +186,11 @@ export function OrdersOperationalV2() {
     </div>
     <article className="panel structured-import">
       <p className="eyebrow">Customer file</p><h2>Import CSV</h2>
-      <p>Recognises Requested Ship Date, Collection Site, Customer, Depot, Delivery Address, Sales Order, Customer Ref, Pallets and PO Ref.</p>
+      <p>Recognises pallet and crate work, requested date, collection site, customer, depot, delivery address, sales order, customer ref, quantity and PO ref.</p>
       <label className="file-drop"><strong>Choose customer CSV</strong><span>{fileName || "CSV files with quoted addresses are supported"}</span><input type="file" accept=".csv,text/csv" onChange={(event) => void selectFile(event)} /></label>
       {rows.length > 0 && <button className="primary" disabled={submitting} onClick={() => void submitRows()}>{submitting ? "Submitting…" : `Send ${rows.length} to Order Review`}</button>}
     </article>
     {message && <p className="notice inline-notice">{message}</p>}
-    {rows.length > 0 && <div className="structured-preview"><div className="preview-heading"><h2>Import preview</h2><span>{rows.length} jobs</span></div><div className="table-scroll"><table><thead><tr><th>Order</th><th>Customer</th><th>Collection</th><th>Depot</th><th>Destination</th><th>Address</th><th>Pallets</th><th>Customer ref</th></tr></thead><tbody>{rows.slice(0, 250).map((row) => <tr key={`${row.rowIndex}-${row.poNumber}`}><td><strong>{row.poNumber}</strong></td><td>{row.customerCode}</td><td>{row.sellerName || "—"}</td><td>{row.marketName || "—"}</td><td>{row.stallNumber || "—"}</td><td>{row.deliveryAddress || "—"}</td><td>{row.pallets}</td><td>{row.customerRef || "—"}</td></tr>)}</tbody></table></div></div>}
+    {rows.length > 0 && <div className="structured-preview"><div className="preview-heading"><h2>Import preview</h2><span>{rows.length} jobs</span></div><div className="table-scroll"><table><thead><tr><th>Order</th><th>Type</th><th>Customer</th><th>Collection</th><th>Depot</th><th>Destination</th><th>Address</th><th>Qty</th><th>Customer ref</th></tr></thead><tbody>{rows.slice(0, 250).map((row) => <tr key={`${row.rowIndex}-${row.poNumber}`}><td><strong>{row.poNumber}</strong></td><td>{row.orderType}</td><td>{row.customerCode}</td><td>{row.sellerName || "—"}</td><td>{row.marketName || "—"}</td><td>{row.stallNumber || "—"}</td><td>{row.deliveryAddress || "—"}</td><td>{row.pallets}</td><td>{row.customerRef || "—"}</td></tr>)}</tbody></table></div></div>}
   </section>;
 }
