@@ -15,6 +15,24 @@ function safeDateText(value: unknown) {
   return Number.isNaN(timestamp) ? "" : text;
 }
 
+function safeNumber(value: unknown) {
+  if (value == null || value === "") return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function normaliseStop(value: unknown, index: number): JsonRecord | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const stop = normaliseRecord(value as JsonRecord);
+  stop.id = textValue(stop.id, `legacy-stop-${index + 1}`);
+  stop.name = textValue(stop.name, `Stop ${index + 1}`);
+  stop.sequence = safeNumber(stop.sequence) ?? index + 1;
+  stop.latitude = safeNumber(stop.latitude);
+  stop.longitude = safeNumber(stop.longitude);
+  stop.plannedArrivalUtc = safeDateText(stop.plannedArrivalUtc);
+  return stop;
+}
+
 function normaliseRecord(input: JsonRecord): JsonRecord {
   const record: JsonRecord = { ...input };
 
@@ -41,10 +59,14 @@ function normaliseRecord(input: JsonRecord): JsonRecord {
     "planningDate" in record && "reference" in record &&
     ("vehicleId" in record || "driverId" in record || "stops" in record);
   if (looksLikeLoad) {
+    record.id = textValue(record.id, `legacy-load-${Math.random().toString(36).slice(2)}`);
     record.reference = textValue(record.reference, "Load reference missing");
     record.planningDate = safeDateText(record.planningDate);
     record.status = textValue(record.status, "Planned");
-    if (!Array.isArray(record.stops)) record.stops = [];
+    const stops = Array.isArray(record.stops) ? record.stops : [];
+    record.stops = stops
+      .map((stop, index) => normaliseStop(stop, index))
+      .filter((stop): stop is JsonRecord => Boolean(stop));
   }
 
   // Stop/ETA/tracking timestamps are rendered by Intl.DateTimeFormat. Invalid
@@ -78,7 +100,10 @@ function normaliseRecord(input: JsonRecord): JsonRecord {
 }
 
 function normalisePayload(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalisePayload);
+  if (Array.isArray(value))
+    return value
+      .map(normalisePayload)
+      .filter((item) => item !== undefined && item !== null);
   if (!value || typeof value !== "object") return value;
 
   const record = normaliseRecord(value as JsonRecord);
