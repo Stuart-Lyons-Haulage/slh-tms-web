@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { MsalProvider } from '@azure/msal-react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { App } from './App';
+import './runtimeGuards';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
