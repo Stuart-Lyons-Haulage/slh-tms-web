@@ -4,12 +4,13 @@
 .bulk-select-all input { width: 18px; height: 18px; }
 .bulk-selection-count { margin-left: auto; color: #526c78; }
 .bulk-selection-count strong { color: #073a5a; }
-.bulk-order-list { display: grid; gap: 7px; max-height: 620px; overflow: auto; padding-right: 3px; }
-.bulk-order-row { display: grid; grid-template-columns: auto minmax(190px, 1.05fr) minmax(250px, 1.6fr) 80px minmax(150px, .8fr); gap: 12px; align-items: center; padding: 11px 13px; border: 1px solid #d7e3e6; border-radius: 9px; background: #fff; }
-.bulk-order-row.selectable { cursor: pointer; }
+.order-review-explainer { margin: 0; padding: 10px 12px; border: 1px solid #e5c879; border-radius: 9px; background: #fff9e9; color: #695119; }
+.bulk-order-list { display: grid; gap: 8px; max-height: 760px; overflow: auto; padding-right: 3px; }
+.bulk-order-row { display: grid; grid-template-columns: auto minmax(180px, 1.05fr) minmax(230px, 1.45fr) 72px minmax(160px, .95fr) auto; gap: 11px; align-items: center; padding: 12px 13px; border: 1px solid #d7e3e6; border-radius: 9px; background: #fff; }
 .bulk-order-row.selectable:hover { border-color: #77b9b4; background: #f8fcfb; }
 .bulk-order-row.selected { border-color: #0c7c76; background: #edf9f7; box-shadow: inset 3px 0 0 #0c7c76; }
 .bulk-order-row.held { background: #fafafa; color: #73828a; }
+.bulk-order-row.editing { border-color: #0c7c76; background: #fbfefd; }
 .bulk-order-row > input { width: 19px; height: 19px; }
 .bulk-order-row span { min-width: 0; }
 .bulk-order-row strong, .bulk-order-row small { display: block; }
@@ -20,19 +21,27 @@
 .bulk-order-pallets strong { font-size: 1.2rem; }
 .bulk-order-status { justify-self: end; display: inline-flex; align-items: center; min-height: 28px; padding: 4px 9px; border-radius: 999px; font-size: .76rem; font-weight: 800; text-align: center; }
 .bulk-order-status.ready { background: #e5f5e5; color: #247126; }
-.bulk-order-status.held { background: #fff1cf; color: #805900; }
-.bulk-detail-hint { margin: 0; }
+.bulk-order-status.review { background: #fff1cf; color: #805900; }
+.bulk-order-status.blocked { background: #ffe4e4; color: #9d2e2e; }
+.bulk-order-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.bulk-order-actions button { min-height: 34px; }
+.bulk-row-warning { grid-column: 2 / -1; display: grid; gap: 4px; padding: 9px 11px; border: 1px solid #ead091; border-radius: 8px; background: #fff9ea; color: #705617; }
+.bulk-row-warning strong { color: #705617; font-size: .8rem; }
+.bulk-row-warning span { font-size: .82rem; }
+.bulk-order-editor { grid-column: 1 / -1; display: grid; gap: 11px; padding-top: 12px; border-top: 1px solid #dfe8ea; }
+.bulk-editor-grid { display: grid; grid-template-columns: repeat(5, minmax(135px, 1fr)); gap: 9px; }
+.bulk-editor-grid label, .bulk-editor-notes { display: grid; gap: 5px; font-size: .76rem; font-weight: 800; color: #5e7480; text-transform: uppercase; letter-spacing: .02em; }
+.bulk-editor-grid input, .bulk-editor-notes textarea { width: 100%; box-sizing: border-box; }
+.bulk-editor-notes { margin-top: 2px; }
+.bulk-source-line { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding-top: 4px; color: #647985; font-size: .8rem; }
+.bulk-source-line strong { display: inline; color: #3e5966; }
+.bulk-source-line a { margin-left: auto; font-weight: 800; }
 
-/* Order Control owns the page heading and metrics now. Hide the legacy nested Order Review heading/summary. */
-.order-selection-panel + .order-review-page > .title-row,
-.order-selection-panel + .order-review-page > .review-metrics { display: none; }
-
-/* The old fallback chips rendered as "Review / Order" when source metadata was sparse. */
-.order-selection-panel + .order-review-page .review-badges { display: none; }
-
-@media (max-width: 950px) {
-  .bulk-order-row { grid-template-columns: auto minmax(160px, 1fr) minmax(210px, 1.3fr) 70px; }
-  .bulk-order-status { grid-column: 2 / -1; justify-self: start; }
+@media (max-width: 1100px) {
+  .bulk-order-row { grid-template-columns: auto minmax(160px, 1fr) minmax(210px, 1.3fr) 70px minmax(150px, .8fr); }
+  .bulk-order-actions { grid-column: 2 / -1; justify-content: flex-start; }
+  .bulk-order-status { justify-self: start; }
+  .bulk-editor-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
 }
 
 @media (max-width: 700px) {
@@ -40,7 +49,10 @@
   .bulk-selection-toolbar button { flex: 1 1 150px; }
   .bulk-order-list { max-height: none; }
   .bulk-order-row { grid-template-columns: auto 1fr; align-items: start; }
-  .bulk-order-row > span { grid-column: 2; }
+  .bulk-order-row > span, .bulk-order-actions, .bulk-row-warning { grid-column: 2; }
   .bulk-order-pallets { text-align: left; }
-  .bulk-order-status { grid-column: 2; }
+  .bulk-order-status { grid-column: 2; justify-self: start; }
+  .bulk-editor-grid { grid-template-columns: 1fr; }
+  .bulk-source-line { display: grid; }
+  .bulk-source-line a { margin-left: 0; }
 }
