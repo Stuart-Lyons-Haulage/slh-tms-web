@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FuelMaster } from './Pages';
+import { DriversUnified } from './DriversUnified';
 import { FuelCardsOperational } from './FuelCardsOperational';
 import { MarketsMasterClean } from './MarketsMasterClean';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
@@ -7,9 +8,9 @@ import { MasterDataOperational, type MasterDataTab } from './MasterDataOperation
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
 
 const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
-  { key: 'drivers', label: 'Drivers', detail: 'Driver identities, employee links, Tacho names and contact details' },
+  { key: 'drivers', label: 'Drivers', detail: 'Full driver register including employee number, skills, code, Tacho details, driving licence and live hours' },
   { key: 'vehicles', label: 'Vehicles', detail: 'Registrations, fleet numbers, cab phones and vehicle identifiers' },
-  { key: 'trailers', label: 'Trailers', detail: 'Trailer numbers, types and capacities' },
+  { key: 'trailers', label: 'Trailers', detail: 'Canonical SLH trailer numbers, types and capacities' },
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Vehicle fuel cards, PINs and fuel register' },
   { key: 'customers', label: 'Customers', detail: 'Customer names and master codes' },
   { key: 'sites', label: 'Sites', detail: 'Collection and delivery locations and driver instructions' },
@@ -42,7 +43,8 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       <p className="hint" style={{ marginBottom: 0 }}><strong>{active.label}:</strong> {active.detail}</p>
     </div>
 
-    {(section === 'drivers' || section === 'vehicles' || section === 'trailers' || section === 'customers' || section === 'sites' || section === 'geofences') &&
+    {section === 'drivers' && <DriversUnified />}
+    {(section === 'vehicles' || section === 'trailers' || section === 'customers' || section === 'sites' || section === 'geofences') &&
       <MasterDataOperational initialTab={section} showCategoryButtons={false} showHeading={false} />}
     {section === 'fuel-cards' && <FuelCardsOperational />}
     {section === 'markets' && <MarketsMasterClean />}
