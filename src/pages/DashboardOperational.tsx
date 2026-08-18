@@ -5,6 +5,7 @@ import { useAccessToken } from "../lib/auth";
 import { todayIsoDate, formatDateLong } from "../lib/dateUtils";
 import { useApi } from "../lib/useApi";
 import { Dashboard as CoreDashboard } from "./Pages";
+import { LiveRunsBoard } from "./LiveRunsBoard";
 
 export function DashboardOperational() {
   const token = useAccessToken();
@@ -12,7 +13,8 @@ export function DashboardOperational() {
   const readiness = useApi(useCallback(async () => intelligenceApi.readiness(date, await token()), [date, token]));
 
   return <>
-    <section className="dashboard-readiness panel">
+    <LiveRunsBoard />
+    <section className="dashboard-readiness panel" style={{ marginTop: 20 }}>
       <div className="title-row">
         <div>
           <p className="eyebrow">Morning readiness · {formatDateLong(date)}</p>
