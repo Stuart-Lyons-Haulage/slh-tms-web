@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode, useState } from 'react';
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { CustomersMaster, Dashboard, DriverAssignments, DriverMobile, ExportCentre, FuelMaster, LiveTracking, MasterData, Reporting, SitesMaster } from './pages/Pages';
+import { CustomersMaster, Dashboard, DriverAssignments, DriverMobile, ExportCentre, FuelMaster, LiveTracking, Reporting, SitesMaster } from './pages/Pages';
 import { DriversUnified } from './pages/DriversUnified';
 import { FleetAssetsOperational } from './pages/FleetAssetsOperational';
 import { FuelCardsOperational } from './pages/FuelCardsOperational';
@@ -18,6 +18,7 @@ import { OperationalPlanner } from './pages/OperationalPlanner';
 import { PlannerPlanImport } from './pages/PlannerPlanImport';
 import { PlannerV2 } from './pages/PlannerV2';
 import { PlannerV3 } from './pages/PlannerV3';
+import { MasterDataOperational } from './pages/MasterDataOperational';
 import { MorningReadiness, PlanStability, TimelinePage } from './pages/OperationsIntelligence';
 import { AttentionAndExceptions } from './pages/AttentionAndExceptions';
 import { apiScope } from './lib/auth';
@@ -30,7 +31,7 @@ const dailyNavigation = [
   ['/dashboard', 'Dashboard'], ['/order-intake', 'Orders'], ['/jobs', 'Manage jobs'], ['/staging', 'Order review'], ['/', 'Planner'], ['/planner-import', 'Import planner plan'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'], ['/readiness', 'Morning readiness'],
 ];
 const masterNavigation = [
-  ['/customers', 'Customers'], ['/drivers', 'Drivers'], ['/fleet-assets', 'Vehicles / trailers'], ['/fuel-cards', 'Fuel cards & PINs'], ['/fuel', 'Fuel prices'], ['/markets', 'Markets'], ['/sites', 'Sites & contacts'], ['/master-data', 'Master data overview'],
+  ['/customers', 'Customers'], ['/drivers', 'Drivers'], ['/fleet-assets', 'Vehicles / trailers'], ['/fuel-cards', 'Fuel cards & PINs'], ['/fuel', 'Fuel prices'], ['/markets', 'Markets'], ['/sites', 'Sites & contacts'], ['/master-data', 'Master data control'],
 ];
 const insightNavigation = [
   ['/attention', 'Needs attention'], ['/management', 'Management'], ['/plan-stability', 'Plan stability'], ['/control-centre', 'Control centre'], ['/reporting', 'Reporting'], ['/exports', 'Exports'],
@@ -56,7 +57,7 @@ function Shell() {
     <main>{authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
       <Route path="/" element={<StablePlanner />} /><Route path="/dashboard" element={<Dashboard />} /><Route path="/order-intake" element={<OrdersOperationalV2 />} /><Route path="/jobs" element={<JobsOperational />} /><Route path="/loads" element={<RunsOperational />} /><Route path="/allocation" element={<StablePlanner />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<PlannerPlanImport />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderReviewOperational />} />
       <Route path="/attention" element={<AttentionAndExceptions />} /><Route path="/exceptions" element={<AttentionAndExceptions />} /><Route path="/readiness" element={<MorningReadiness />} /><Route path="/plan-stability" element={<PlanStability />} /><Route path="/timeline/run/:id" element={<TimelinePage kind="run" />} /><Route path="/timeline/order/:id" element={<TimelinePage kind="order" />} />
-      <Route path="/management" element={<Management />} /><Route path="/control-centre" element={<ControlCentre />} /><Route path="/operations-control" element={<ControlCentre />} /><Route path="/admin" element={<ControlCentre />} /><Route path="/driver" element={<DriverMobile />} /><Route path="/customers" element={<CustomersMaster />} /><Route path="/drivers" element={<DriversUnified />} /><Route path="/fleet-assets" element={<FleetAssetsOperational />} /><Route path="/fuel-cards" element={<FuelCardsOperational />} /><Route path="/admin/fuel-card-migration" element={<FuelCardMigration />} /><Route path="/fuel" element={<FuelMaster />} /><Route path="/markets" element={<MarketsMasterClean />} /><Route path="/sites" element={<SitesMaster />} /><Route path="/reporting" element={<Reporting />} /><Route path="/exports" element={<ExportCentre />} /><Route path="/master-data" element={<MasterData />} />
+      <Route path="/management" element={<Management />} /><Route path="/control-centre" element={<ControlCentre />} /><Route path="/operations-control" element={<ControlCentre />} /><Route path="/admin" element={<ControlCentre />} /><Route path="/driver" element={<DriverMobile />} /><Route path="/customers" element={<CustomersMaster />} /><Route path="/drivers" element={<DriversUnified />} /><Route path="/fleet-assets" element={<FleetAssetsOperational />} /><Route path="/fuel-cards" element={<FuelCardsOperational />} /><Route path="/admin/fuel-card-migration" element={<FuelCardMigration />} /><Route path="/fuel" element={<FuelMaster />} /><Route path="/markets" element={<MarketsMasterClean />} /><Route path="/sites" element={<SitesMaster />} /><Route path="/reporting" element={<Reporting />} /><Route path="/exports" element={<ExportCentre />} /><Route path="/master-data" element={<MasterDataOperational />} />
     </Routes></RouteErrorBoundary></> : <section className="sign-in-panel"><p className="eyebrow">Secure operations portal</p><h1>Sign in to Stuart Lyons Haulage TMS</h1><p>Use your Lyons Microsoft account to open live planning, fleet tracking, orders and master data.</p><button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button></section>}</main>{authenticated && <TmsAssistant />}
   </div>;
 }
