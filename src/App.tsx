@@ -3,11 +3,10 @@ import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { Dashboard, DriverAssignments, DriverMobile, ExportCentre, LiveTracking, Reporting } from './pages/Pages';
 import { FuelCardMigration } from './pages/FuelCardMigration';
-import { JobsOperational } from './pages/JobsOperational';
 import { Management } from './pages/Management';
 import { NightOutReport } from './pages/NightOutReport';
 import { ControlCentre } from './pages/ControlCentre';
-import { OrderReviewBulk } from './pages/OrderReviewBulk';
+import { OrderControl } from './pages/OrderControl';
 import { OrdersOperationalV2 } from './pages/OrdersOperationalV2';
 import { RunsOperational } from './pages/RunsOperational';
 import { StablePlanner } from './pages/StablePlanner';
@@ -27,7 +26,7 @@ import { HeaderIntelligence } from './components/HeaderIntelligence';
 import { ManagementStabilityBanner } from './components/ManagementStabilityBanner';
 
 const dailyNavigation = [
-  ['/dashboard', 'Dashboard'], ['/order-intake', 'Orders'], ['/jobs', 'Manage jobs'], ['/staging', 'Order review'], ['/', 'Planner'], ['/pallet-control', 'Pallet control'], ['/planner-import', 'Import planner plan'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'], ['/readiness', 'Morning readiness'],
+  ['/dashboard', 'Dashboard'], ['/order-intake', 'Orders'], ['/staging', 'Order control'], ['/', 'Planner'], ['/pallet-control', 'Pallet control'], ['/planner-import', 'Import planner plan'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'], ['/readiness', 'Morning readiness'],
 ];
 const masterNavigation = [
   ['/master-data', 'Master data'],
@@ -54,7 +53,7 @@ function Shell() {
     {authenticated && <div className="system-strip"><HeaderIntelligence /></div>}
     <aside className={`side-nav ${open ? 'open' : ''}`}><NavLink className="new-order" to="/order-intake" onClick={closeMobile}>＋ New order</NavLink><NavSection title="Daily workflow" storageKey="slh-nav-daily" items={dailyNavigation} current={location.pathname} closeMobile={closeMobile}/><NavSection title="Master data" storageKey="slh-nav-master" items={masterNavigation} current={location.pathname} closeMobile={closeMobile}/><NavSection title="Control & insight" storageKey="slh-nav-insight" items={insightNavigation} current={location.pathname} closeMobile={closeMobile}/></aside>
     <main>{authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
-      <Route path="/" element={<PlannerEnhanced />} /><Route path="/dashboard" element={<Dashboard />} /><Route path="/order-intake" element={<OrdersOperationalV2 />} /><Route path="/jobs" element={<JobsOperational />} /><Route path="/loads" element={<RunsOperational />} /><Route path="/allocation" element={<PlannerEnhanced />} /><Route path="/pallet-control" element={<PalletPlanningControl />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<PlannerPlanImport />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderReviewBulk />} />
+      <Route path="/" element={<PlannerEnhanced />} /><Route path="/dashboard" element={<Dashboard />} /><Route path="/order-intake" element={<OrdersOperationalV2 />} /><Route path="/jobs" element={<OrderControl initialTab="live" />} /><Route path="/loads" element={<RunsOperational />} /><Route path="/allocation" element={<PlannerEnhanced />} /><Route path="/pallet-control" element={<PalletPlanningControl />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<PlannerPlanImport />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderControl />} />
       <Route path="/attention" element={<AttentionAndExceptions />} /><Route path="/exceptions" element={<AttentionAndExceptions />} /><Route path="/readiness" element={<MorningReadiness />} /><Route path="/plan-stability" element={<PlanStability />} /><Route path="/timeline/run/:id" element={<TimelinePage kind="run" />} /><Route path="/timeline/order/:id" element={<TimelinePage kind="order" />} />
       <Route path="/management" element={<Management />} /><Route path="/night-outs" element={<NightOutReport />} /><Route path="/control-centre" element={<ControlCentre />} /><Route path="/operations-control" element={<ControlCentre />} /><Route path="/admin" element={<ControlCentre />} /><Route path="/driver" element={<DriverMobile />} />
       <Route path="/master-data" element={<MasterDataHub />} /><Route path="/drivers" element={<MasterDataHub initialSection="drivers" />} /><Route path="/fleet-assets" element={<MasterDataHub initialSection="vehicles" />} /><Route path="/fuel-cards" element={<MasterDataHub initialSection="fuel-cards" />} /><Route path="/customers" element={<MasterDataHub initialSection="customers" />} /><Route path="/sites" element={<MasterDataHub initialSection="sites" />} /><Route path="/markets" element={<MasterDataHub initialSection="markets" />} /><Route path="/fuel" element={<MasterDataHub initialSection="fuel-prices" />} />
