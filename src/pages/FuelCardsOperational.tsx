@@ -23,8 +23,7 @@ export function FuelCardsOperational() {
 
   const rows = useMemo(() => (vehicles.data || []).filter((vehicle) => {
     const q = query.trim().toLowerCase();
-    return !q || [vehicle.registration, vehicle.abbreviation, vehicle.cabMobile, vehicle.fuelPin, vehicle.shellCard, vehicle.bpRedCard, vehicle.bpPlainCard, vehicle.notes]
-      .some((value) => text(value).toLowerCase().includes(q));
+    return !q || [vehicle.registration, vehicle.abbreviation, vehicle.cabMobile, vehicle.fuelProvider, vehicle.fuelPin, vehicle.shellCard, vehicle.bpRedCard, vehicle.bpPlainCard, vehicle.notes].some((value) => text(value).toLowerCase().includes(q));
   }), [query, vehicles.data]);
 
   async function copy(value: string, label: string) {
@@ -32,19 +31,15 @@ export function FuelCardsOperational() {
     setMessage(`${label} copied.`);
   }
 
-  function driverText(vehicle: Vehicle) {
-    return `Vehicle ${vehicle.registration}${vehicle.abbreviation ? ` (${vehicle.abbreviation})` : ""} fuel PIN: ${vehicle.fuelPin || "PIN NOT SET"}`;
-  }
-
   async function save() {
     if (!editing) return;
-    setSaving(true); setMessage(undefined);
+    setSaving(true);
     try {
       const { id, ...payload } = editing;
       await api.updateVehicle(id, payload, await token());
       setEditing(undefined);
       await vehicles.refresh();
-      setMessage("Fuel card details saved to the Live TMS Master Database.");
+      setMessage("Fuel card register updated in the Live TMS Master Database.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Fuel card details could not be saved.");
     } finally { setSaving(false); }
@@ -53,9 +48,9 @@ export function FuelCardsOperational() {
   return <section>
     <div className="title-row">
       <div>
-        <p className="eyebrow">Fuel control</p>
+        <p className="eyebrow">Fuel control register</p>
         <h1>Fuel cards & PINs</h1>
-        <p className="intro">The TMS is the live master. Amend fuel cards, PINs and cab mobiles here; operational Excel imports have been removed.</p>
+        <p className="intro">Live register of vehicle fuel information. The TMS remains the master record; amendments are completed here.</p>
       </div>
       <div className="title-actions">
         <span className="status approved">Live TMS Master Database</span>
@@ -66,11 +61,12 @@ export function FuelCardsOperational() {
 
     {editing && <div className="panel" style={{ marginBottom: 18 }}>
       <div className="title-row">
-        <div><p className="eyebrow">Amend live master record</p><h2>{editing.registration}</h2></div>
+        <div><p className="eyebrow">Amend register record</p><h2>{editing.registration}</h2></div>
         <button onClick={() => setEditing(undefined)}>Close</button>
       </div>
       <div className="form-grid">
         <label>Cab mobile<input value={editing.cabMobile || ""} onChange={(e) => setEditing({ ...editing, cabMobile: e.target.value })} /></label>
+        <label>Fuel provider<input value={editing.fuelProvider || ""} onChange={(e) => setEditing({ ...editing, fuelProvider: e.target.value })} /></label>
         <label>Fuel PIN<input value={editing.fuelPin || ""} onChange={(e) => setEditing({ ...editing, fuelPin: e.target.value })} /></label>
         <label>Shell card<input value={editing.shellCard || ""} onChange={(e) => setEditing({ ...editing, shellCard: e.target.value })} /></label>
         <label>BP red card<input value={editing.bpRedCard || ""} onChange={(e) => setEditing({ ...editing, bpRedCard: e.target.value })} /></label>
@@ -82,19 +78,25 @@ export function FuelCardsOperational() {
 
     {message && <p className="notice inline-notice">{message}</p>}
     {vehicles.error && <p className="notice inline-notice">{vehicles.error}</p>}
+
     <div className="planner-toolbar">
-      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search registration, PIN, card or notes…" />
-      <span>{rows.length} active vehicle{rows.length === 1 ? "" : "s"}</span>
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search vehicle, card, PIN or notes…" />
+      <span>{rows.length} vehicle records</span>
     </div>
+
     <div className="master-table-wrap" style={{ overflowX: "auto" }}>
-      <table className="master-table" style={{ minWidth: 1450 }}>
-        <thead><tr><th>Vehicle</th><th>Cab mobile</th><th>Fuel PIN</th><th>Shell card</th><th>BP red card</th><th>BP plain card</th><th>Notes</th><th>Driver text</th><th>Edit</th></tr></thead>
+      <table className="master-table" style={{ minWidth: 1600 }}>
+        <thead><tr><th>Vehicle</th><th>Status</th><th>Cab mobile</th><th>Fuel provider</th><th>Fuel PIN</th><th>Shell card</th><th>BP red card</th><th>BP plain card</th><th>Notes</th><th>Edit</th></tr></thead>
         <tbody>{rows.map((vehicle) => <tr key={vehicle.id}>
-          <td><strong>{vehicle.registration}</strong><br /><small>{vehicle.abbreviation || "—"}</small></td>
+          <td><strong>{vehicle.registration}</strong><br/><small>{vehicle.fleetNumber || vehicle.abbreviation || "—"}</small></td>
+          <td>{vehicle.active ? "Active" : "Inactive"}</td>
           <td>{vehicle.cabMobile || "—"}</td>
-          <td><strong>{vehicle.fuelPin || "—"}</strong>{vehicle.fuelPin && <><br /><button onClick={() => void copy(vehicle.fuelPin!, `${vehicle.registration} PIN`)}>Copy PIN</button></>}</td>
-          <td>{maskCard(vehicle.shellCard)}</td><td>{maskCard(vehicle.bpRedCard)}</td><td>{maskCard(vehicle.bpPlainCard)}</td><td>{vehicle.notes || "—"}</td>
-          <td><button className="primary" onClick={() => void copy(driverText(vehicle), "Driver fuel text")}>Copy driver text</button></td>
+          <td>{vehicle.fuelProvider || "—"}</td>
+          <td>{vehicle.fuelPin || "—"}</td>
+          <td>{maskCard(vehicle.shellCard)}</td>
+          <td>{maskCard(vehicle.bpRedCard)}</td>
+          <td>{maskCard(vehicle.bpPlainCard)}</td>
+          <td>{vehicle.notes || "—"}</td>
           <td><button onClick={() => { setEditing({ ...vehicle }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Edit</button></td>
         </tr>)}</tbody>
       </table>
