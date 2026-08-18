@@ -1,5 +1,5 @@
 import { PilotRunHealth } from "../components/PilotRunHealth";
-import { Loads } from "./Pages";
+import { AllocationBoard } from "./Pages";
 
 export function RunsOperational() {
   return (
@@ -17,15 +17,15 @@ export function RunsOperational() {
         <div className="metrics run-workflow-steps">
           <article className="metric"><span>1</span><strong>Run built</strong><small>Accepted orders grouped into the run</small></article>
           <article className="metric"><span>2</span><strong>Allocate</strong><small>Driver · vehicle · trailer · start time</small></article>
-          <article className="metric"><span>3</span><strong>Driver text</strong><small>Preview route, stops, notes and map links</small></article>
-          <article className="metric"><span>4</span><strong>Dispatch</strong><small>Copy or send SMS, then move into live operations</small></article>
+          <article className="metric"><span>3</span><strong>Driver text</strong><small>Copy the driver brief or send SMS from the run card</small></article>
+          <article className="metric"><span>4</span><strong>Dispatch</strong><small>Copy/send after checking the run, then move into live operations</small></article>
         </div>
         <p className="hint">
-          Driver text controls appear against each allocated run below. The message is generated from the run, driver, vehicle, trailer and stop/order data so the planner can review it before sending.
+          Use the allocation cards below the live health panel. Each run card has driver, vehicle and trailer dropdowns, then Copy for MightyText and Send driver SMS once the run is ready.
         </p>
       </section>
       <PilotRunHealth />
-      <Loads />
+      <AllocationBoard />
     </div>
   );
 }
