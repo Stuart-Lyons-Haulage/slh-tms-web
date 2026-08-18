@@ -68,10 +68,21 @@ type TachoDuty = {
   driveMinutes: number;
   breakCount: number;
   breakMinutes?: number;
+  metricsValidAtUtc?: string;
+  dailyDriverPeriodsAvailable?: number;
+  driveAvailableTodayMinutes?: number;
+  driveAvailableTomorrowMinutes?: number;
+  driveAvailableWeekMinutes?: number;
+  driveAvailableFortnightMinutes?: number;
+  longDaysWorkedThisWeek?: number;
+  shortDailyRestTakenThisWeek?: number;
+  workAvailableWeekMinutes?: number;
 };
 
 type TachoHistory = {
   configured: boolean;
+  connected?: boolean;
+  checkedAtUtc?: string;
   driverId: string;
   driverName: string;
   employeeNumber: string;
@@ -80,6 +91,16 @@ type TachoHistory = {
   from: string;
   to: string;
   profile?: TachoProfile;
+  live?: {
+    status: "Live" | "Delayed" | "Stale" | "Unknown";
+    sourceTimestampUtc?: string;
+    sourceAgeMinutes?: number;
+    stale: boolean;
+    delayed: boolean;
+    hasCurrentDuty: boolean;
+    currentDuty?: TachoDuty;
+    explanation: string;
+  };
   summary: {
     dutyCount: number;
     daysWithDuty: number;
@@ -187,7 +208,7 @@ export function DriversUnified() {
         <div>
           <p className="eyebrow">Master data + live TachoMaster</p>
           <h1>Drivers</h1>
-          <p className="hint">One driver, one row. Scroll horizontally for all driver, licence and Tacho information. History uses the linked Tacho member/card first, so vehicle changes do not lose a driver&apos;s duty records.</p>
+          <p className="hint">One driver, one row. History now overlays the live TachoMaster duty for today and keeps completed duty history separately.</p>
         </div>
         <div className="title-actions">
           <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search driver…" />
@@ -236,7 +257,7 @@ export function DriversUnified() {
                     <td>{isEditing ? <input value={row.notes || ""} onChange={(e) => edit("notes", e.target.value)} /> : value(row.notes)}</td>
                     <td>{isEditing ? <input type="checkbox" checked={row.active} onChange={(e) => edit("active", e.target.checked)} /> : row.active ? "Yes" : "No"}</td>
                     <td>
-                      {isEditing ? <div className="actions"><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button><button onClick={() => { setEditingId(undefined); setDraft(undefined); }}>Cancel</button></div> : <div className="actions"><button onClick={() => startEdit(driver)}>Edit</button><button onClick={() => void loadHistory(driver)} disabled={historyLoading}>{historyLoading ? "Loading…" : "History"}</button></div>}
+                      {isEditing ? <div className="actions"><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button><button onClick={() => { setEditingId(undefined); setDraft(undefined); }}>Cancel</button></div> : <div className="actions"><button onClick={() => startEdit(driver)}>Edit</button><button onClick={() => void loadHistory(driver)} disabled={historyLoading}>{historyLoading ? "Loading…" : "Live / History"}</button></div>}
                     </td>
                   </tr>
                 );
@@ -250,15 +271,40 @@ export function DriversUnified() {
       {history && <div id="tacho-history" className="panel" style={{ marginTop: 20 }}>
         <div className="title-row">
           <div>
-            <p className="eyebrow">TachoMaster duty history</p>
+            <p className="eyebrow">TachoMaster live duty + history</p>
             <h2>{history.driverName}</h2>
             <p className="hint">{history.from} to {history.to} · Member {value(history.linkedTachoMemberId)} · Card {value(history.linkedTachoCard)}</p>
           </div>
           <button onClick={() => setHistory(undefined)}>Close</button>
         </div>
 
+        {history.live && <div className="panel" style={{ marginBottom: 16, borderColor: history.live.stale ? "#b42318" : history.live.delayed ? "#b7791f" : "#2f855a" }}>
+          <div className="title-row" style={{ alignItems: "flex-start" }}>
+            <div>
+              <p className="eyebrow">Current TachoMaster feed</p>
+              <h3 style={{ marginTop: 0 }}>{history.live.status}</h3>
+              <p className="hint">{history.live.explanation}</p>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <strong>{history.live.sourceAgeMinutes == null ? "Age unknown" : `${history.live.sourceAgeMinutes.toFixed(0)} min old`}</strong><br/>
+              <small>Source {dateTime(history.live.sourceTimestampUtc)}</small>
+            </div>
+          </div>
+          {history.live.currentDuty ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+            <div><small>Vehicle</small><br/><strong>{value(history.live.currentDuty.vehicleCode)}</strong></div>
+            <div><small>Duty started</small><br/><strong>{dateTime(history.live.currentDuty.dutyStartUtc)}</strong></div>
+            <div><small>Duty end</small><br/><strong>{history.live.currentDuty.dutyEndUtc ? dateTime(history.live.currentDuty.dutyEndUtc) : "Open duty"}</strong></div>
+            <div><small>Driving</small><br/><strong>{minutes(history.live.currentDuty.driveMinutes)}</strong></div>
+            <div><small>Other work</small><br/><strong>{minutes(history.live.currentDuty.workMinutes)}</strong></div>
+            <div><small>Rest</small><br/><strong>{minutes(history.live.currentDuty.restMinutes)}</strong></div>
+            <div><small>Drive left today</small><br/><strong>{minutes(history.live.currentDuty.driveAvailableTodayMinutes ?? history.profile?.driveAvailableTodayMinutes)}</strong></div>
+            <div><small>Drive left week</small><br/><strong>{minutes(history.live.currentDuty.driveAvailableWeekMinutes ?? history.profile?.driveAvailableWeekMinutes)}</strong></div>
+            <div><small>Work left week</small><br/><strong>{minutes(history.live.currentDuty.workAvailableWeekMinutes ?? history.profile?.workAvailableWeekMinutes)}</strong></div>
+          </div> : <div className="state">No current open TachoMaster duty was returned for this driver. Completed duty history is still shown below.</div>}
+        </div>}
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginBottom: 16 }}>
-          <div className="notice"><strong>{history.summary.dutyCount}</strong><br/><small>Duty records</small></div>
+          <div className="notice"><strong>{history.summary.dutyCount}</strong><br/><small>Completed/history duty records</small></div>
           <div className="notice"><strong>{history.summary.daysWithDuty}</strong><br/><small>Days with duty</small></div>
           <div className="notice"><strong>{minutes(history.summary.driveMinutes)}</strong><br/><small>Driving</small></div>
           <div className="notice"><strong>{minutes(history.summary.workMinutes)}</strong><br/><small>Other work</small></div>
@@ -290,7 +336,7 @@ export function DriversUnified() {
               <td>{duty.breakCount}</td><td>{minutes(duty.breakMinutes)}</td><td>{duty.memberCode}</td>
             </tr>)}</tbody>
           </table>
-          {history.duties.length === 0 && <div className="state">No TachoMaster duty records were returned for this linked driver in the selected period.</div>}
+          {history.duties.length === 0 && <div className="state">No completed TachoMaster duty records were returned for this linked driver in the selected period.</div>}
         </div>
       </div>}
     </section>
