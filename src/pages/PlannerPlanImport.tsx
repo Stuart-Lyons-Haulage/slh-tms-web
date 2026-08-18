@@ -1,5 +1,6 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useAccessToken } from "../lib/auth";
+import { formatDate } from "../lib/dateUtils";
 
 type ImportStop = { sequence?: number; collectionSite?: string; deliverySite?: string; pallets?: number; palletType?: string };
 type ImportRun = { runRef?: string; plannerRun?: string; runType?: string; planningDate?: string; driver?: string; vehicle?: string; trailer?: string; includeInImport?: boolean; reconciliationStatus?: string; capacityStatus?: string; mixedUtilisationPercent?: number; stops?: ImportStop[] };
@@ -44,7 +45,7 @@ export function PlannerPlanImport() {
     const file = event.target.files?.[0]; if (!file) return; setFileName(file.name);
     try {
       const parsed = JSON.parse(await file.text()) as PlannerPlanPayload;
-      if (!parsed?.planningDate || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.planningDate)) throw new Error("The planner file needs a valid planningDate (YYYY-MM-DD).");
+      if (!parsed?.planningDate || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.planningDate)) throw new Error("The planner file needs a valid planningDate (YYYY-MM-DD). It will display as DD/MM/YYYY after upload.");
       if (!Array.isArray(parsed.runs) || parsed.runs.length === 0) throw new Error("The planner file contains no runs.");
       const refs = parsed.runs.map((run) => String(run.runRef || "").trim().toUpperCase());
       if (refs.some((ref) => !ref)) throw new Error("Every planner run must have a runRef.");
@@ -56,7 +57,7 @@ export function PlannerPlanImport() {
 
   async function importPlan() {
     if (!payload || busy) return;
-    if (!window.confirm(`Import planner plan for ${payload.planningDate}?\n\n${preview.included} runs will be submitted. ${preview.held} held/excluded runs will remain excluded.`)) return;
+    if (!window.confirm(`Import planner plan for ${formatDate(payload.planningDate)}?\n\n${preview.included} runs will be submitted. ${preview.held} held/excluded runs will remain excluded.`)) return;
     setBusy(true); setError(undefined); setSummary(undefined);
     try {
       const accessToken = await token();
@@ -75,10 +76,10 @@ export function PlannerPlanImport() {
     <div className="card" style={{ maxWidth: 1100, display: "grid", gap: 18 }}>
       <label style={{ display: "grid", gap: 8, maxWidth: 560 }}><strong>Planner JSON file</strong><input type="file" accept="application/json,.json" onChange={(event) => void chooseFile(event)} disabled={busy} /></label>
       {fileName && <p><strong>Selected:</strong> {fileName}</p>}
-      {payload && <><div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}><span className="badge"><strong>{payload.planningDate}</strong> planning date</span><span className="badge"><strong>{preview.total}</strong> source runs</span><span className="badge"><strong>{preview.included}</strong> to import</span><span className="badge"><strong>{preview.held}</strong> held / excluded</span><span className="badge"><strong>{preview.stops}</strong> stops</span><span className="badge"><strong>{preview.red}</strong> red</span><span className="badge"><strong>{preview.amber}</strong> amber</span></div>
+      {payload && <><div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}><span className="badge"><strong>{formatDate(payload.planningDate)}</strong> planning date</span><span className="badge"><strong>{preview.total}</strong> source runs</span><span className="badge"><strong>{preview.included}</strong> to import</span><span className="badge"><strong>{preview.held}</strong> held / excluded</span><span className="badge"><strong>{preview.stops}</strong> stops</span><span className="badge"><strong>{preview.red}</strong> red</span><span className="badge"><strong>{preview.amber}</strong> amber</span></div>
       <div style={{ overflowX: "auto" }}><table><thead><tr><th>Run</th><th>Type</th><th>Driver</th><th>Vehicle</th><th>Trailer</th><th>Stops</th><th>Capacity</th><th>Import</th><th>Reconciliation</th></tr></thead><tbody>{safeRuns(payload).map((run, index) => <tr key={`${run.runRef}-${index}`}><td><strong>{run.runRef || "—"}</strong></td><td>{run.runType || "—"}</td><td>{run.driver || "Unallocated"}</td><td>{run.vehicle || "—"}</td><td>{run.trailer || "—"}</td><td>{run.stops?.length || 0}</td><td>{run.capacityStatus || "—"}{typeof run.mixedUtilisationPercent === "number" ? ` · ${run.mixedUtilisationPercent.toFixed(1)}%` : ""}</td><td>{run.includeInImport === false ? "Held" : "Yes"}</td><td>{run.reconciliationStatus || "—"}</td></tr>)}</tbody></table></div>
       <button className="primary" disabled={busy || preview.included === 0} onClick={() => void importPlan()}>{busy ? "Importing…" : `Confirm import of ${preview.included} runs`}</button></>}
       {error && <div className="notice inline-notice"><strong>Import failed</strong><div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{error}</div></div>}
-      {summary && <div style={{ display: "grid", gap: 12 }}><h2>Import complete · {summary.planningDate}</h2><div>{summary.created} created · {summary.updated} updated · {summary.unchanged} unchanged · {summary.held} held</div>{summary.unresolvedDrivers.length > 0 && <div>Drivers: {summary.unresolvedDrivers.join(", ")}</div>}{summary.unresolvedVehicles.length > 0 && <div>Vehicles: {summary.unresolvedVehicles.join(", ")}</div>}{summary.unresolvedTrailers.length > 0 && <div>Trailers: {summary.unresolvedTrailers.join(", ")}</div>}{summary.warnings.length > 0 && <ul>{summary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}</div>}
+      {summary && <div style={{ display: "grid", gap: 12 }}><h2>Import complete · {formatDate(summary.planningDate)}</h2><div>{summary.created} created · {summary.updated} updated · {summary.unchanged} unchanged · {summary.held} held</div>{summary.unresolvedDrivers.length > 0 && <div>Drivers: {summary.unresolvedDrivers.join(", ")}</div>}{summary.unresolvedVehicles.length > 0 && <div>Vehicles: {summary.unresolvedVehicles.join(", ")}</div>}{summary.unresolvedTrailers.length > 0 && <div>Trailers: {summary.unresolvedTrailers.join(", ")}</div>}{summary.warnings.length > 0 && <ul>{summary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}</div>}
     </div></section>;
 }
