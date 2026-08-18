@@ -10,6 +10,7 @@ import './managementFallbackPatch';
 import './planLockFetchPatch';
 import './marketNormalizationPatch';
 import './preferredVehicleAllocationPatch';
+import './commercialRemovalPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
@@ -18,6 +19,7 @@ import './operational-status.css';
 import './navigation-scroll.css';
 import './intelligence.css';
 import './mobile.css';
+import './ops-cleanup.css';
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
