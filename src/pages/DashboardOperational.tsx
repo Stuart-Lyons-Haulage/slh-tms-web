@@ -37,7 +37,7 @@ export function DashboardOperational() {
             <article className={readiness.data.planLock ? "good" : "neutral"}><span>Plan baseline</span><strong>{readiness.data.planLock ? "Locked" : "Open"}</strong><small>{readiness.data.planLock ? `${readiness.data.planLock.baselineRuns} runs` : "lock from Runs"}</small></article>
           </div>
         </div>
-        <div className="readiness-links"><Link to="/loads">Open Runs / lock plan →</Link>{!readiness.data.ready && <Link to="/attention">Open Needs Attention →</Link>}</div>
+        <div className="readiness-links"><Link to="/loads">Open Runs / lock plan →</Link></div>
       </>}
     </section>
     <CoreDashboard />
