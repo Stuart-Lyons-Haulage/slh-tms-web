@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { api, request, type StagedImport } from "../lib/api";
+import { useCallback, useMemo, useState, type ChangeEvent } from "react";
+import { api, request, type StageBatchRequest, type StagedImport } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 import "../order-review.css";
@@ -94,6 +94,30 @@ function setField(payload: IntakePayload, name: string, value: unknown): IntakeP
   return { ...payload, [name]: value };
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseBatchFile(raw: unknown): StageBatchRequest[] {
+  const candidate = Array.isArray(raw)
+    ? raw
+    : isObject(raw) && Array.isArray(raw.records)
+      ? raw.records
+      : undefined;
+
+  if (!candidate) throw new Error("This is not a TMS order staging batch. Select the JSON batch created for Order Review.");
+  if (candidate.length === 0) throw new Error("The selected batch contains no orders.");
+  if (candidate.length > 500) throw new Error("A manual batch can contain a maximum of 500 orders.");
+
+  return candidate.map((item, index) => {
+    if (!isObject(item)) throw new Error(`Record ${index + 1} is not a valid object.`);
+    if (text(item.entityType).toLowerCase() !== "order") throw new Error(`Record ${index + 1} is not an order staging record.`);
+    if (!text(item.idempotencyKey)) throw new Error(`Record ${index + 1} is missing its idempotency key.`);
+    if (!isObject(item.payload)) throw new Error(`Record ${index + 1} is missing its order payload.`);
+    return item as unknown as StageBatchRequest;
+  });
+}
+
 export function OrderReviewOperational() {
   const token = useAccessToken();
   const [dateFilter, setDateFilter] = useState(tomorrowDate());
@@ -106,6 +130,10 @@ export function OrderReviewOperational() {
   const [resetPreview, setResetPreview] = useState<ResetPreview>();
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
+  const [importFileName, setImportFileName] = useState<string>();
+  const [importRecords, setImportRecords] = useState<StageBatchRequest[]>([]);
+  const [importError, setImportError] = useState<string>();
+  const [importBusy, setImportBusy] = useState(false);
 
   const queue = useApi(useCallback(async () =>
     api.staging(await token(), "PendingReview", "order", 2000), [token]));
@@ -124,6 +152,43 @@ export function OrderReviewOperational() {
 
   const cleanCount = rows.filter((row) => confidence(row.payload) === "high" && warnings(row.payload).length === 0).length;
   const attentionCount = rows.length - cleanCount;
+
+  const importSummary = useMemo(() => {
+    const keys = importRecords.map((record) => text(record.idempotencyKey));
+    const duplicateKeys = keys.length - new Set(keys.map((key) => key.toLowerCase())).size;
+    let missingPo = 0;
+    let missingCustomer = 0;
+    let missingDate = 0;
+    let warningCount = 0;
+    const dates = new Set<string>();
+
+    for (const record of importRecords) {
+      const payload = record.payload as unknown as Record<string, unknown>;
+      if (!text(payload.poNumber)) missingPo++;
+      if (!text(payload.customerCode)) missingCustomer++;
+      const collectionDate = text(payload.collectionDate);
+      if (!collectionDate) missingDate++;
+      else dates.add(collectionDate);
+      if (Array.isArray(payload.intakeWarnings)) warningCount += payload.intakeWarnings.length;
+    }
+
+    const needsChecking = importRecords.filter((record) => {
+      const payload = record.payload as unknown as Record<string, unknown>;
+      return !text(payload.poNumber) || !text(payload.customerCode) || !text(payload.collectionDate)
+        || (Array.isArray(payload.intakeWarnings) && payload.intakeWarnings.length > 0);
+    }).length;
+
+    return {
+      total: importRecords.length,
+      duplicateKeys,
+      missingPo,
+      missingCustomer,
+      missingDate,
+      warningCount,
+      needsChecking,
+      dates: [...dates].sort(),
+    };
+  }, [importRecords]);
 
   async function review(row: ReviewRow, approved: boolean) {
     setBusyId(row.item.id);
@@ -184,6 +249,49 @@ export function OrderReviewOperational() {
     }
   }
 
+  async function selectImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setImportFileName(file.name);
+    setImportRecords([]);
+    setImportError(undefined);
+    setNotice(undefined);
+    try {
+      const raw = JSON.parse(await file.text()) as unknown;
+      const records = parseBatchFile(raw);
+      setImportRecords(records);
+      const dates = [...new Set(records
+        .map((record) => text((record.payload as unknown as Record<string, unknown>).collectionDate))
+        .filter(Boolean))];
+      if (dates.length === 1) {
+        setDateFilter(dates[0]);
+        setShowAll(false);
+      }
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "The selected file could not be read.");
+    }
+  }
+
+  async function stageImportedOrders() {
+    if (!importRecords.length || importSummary.duplicateKeys > 0) return;
+    setImportBusy(true);
+    setImportError(undefined);
+    setNotice(undefined);
+    try {
+      const result = await api.stageBatch(importRecords, await token());
+      await queue.refresh();
+      setNotice(`Batch staged successfully: ${result.created} new order${result.created === 1 ? "" : "s"}, ${result.existing} already present. Nothing was auto-approved.`);
+      setImportRecords([]);
+      setImportFileName(undefined);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "The order batch could not be staged.");
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
   async function previewReset() {
     setResetBusy(true);
     setNotice(undefined);
@@ -240,6 +348,43 @@ export function OrderReviewOperational() {
       <article><span>Waiting</span><strong>{rows.length}</strong><small>Pending customer orders</small></article>
       <article><span>Clean</span><strong>{cleanCount}</strong><small>High-confidence, no warnings</small></article>
       <article className={attentionCount ? "attention" : ""}><span>Needs checking</span><strong>{attentionCount}</strong><small>Missing or uncertain source fields</small></article>
+    </div>
+
+    <div className="panel import-panel">
+      <div className="import-copy">
+        <p className="eyebrow">Manual contingency intake</p>
+        <h2>Import orders</h2>
+        <p className="hint">Use this for an occasional batch when orders need loading outside the normal Info mailbox automation. The file is previewed first and every record is staged into Order Review — nothing is accepted into planning automatically.</p>
+      </div>
+      <div className="import-actions">
+        <label className="file-picker">Choose JSON batch
+          <input type="file" accept=".json,application/json" onChange={(event) => void selectImportFile(event)} disabled={importBusy} />
+        </label>
+        {importFileName && <span className="import-file-name">{importFileName}</span>}
+      </div>
+
+      {importError && <p className="review-error import-message">{importError}</p>}
+
+      {importRecords.length > 0 && <div className="import-preview">
+        <div className="import-preview-metrics">
+          <article><span>Orders in file</span><strong>{importSummary.total}</strong></article>
+          <article className={importSummary.needsChecking ? "attention" : ""}><span>Need checking</span><strong>{importSummary.needsChecking}</strong></article>
+          <article className={importSummary.missingPo ? "attention" : ""}><span>Missing PO/ref</span><strong>{importSummary.missingPo}</strong></article>
+          <article className={importSummary.missingCustomer ? "attention" : ""}><span>Missing customer</span><strong>{importSummary.missingCustomer}</strong></article>
+          <article className={importSummary.warningCount ? "attention" : ""}><span>Source warnings</span><strong>{importSummary.warningCount}</strong></article>
+        </div>
+        <div className="import-preview-detail">
+          <div>
+            <strong>{importFileName}</strong>
+            <span>{importSummary.dates.length ? `Operating date${importSummary.dates.length === 1 ? "" : "s"}: ${importSummary.dates.join(", ")}` : "No collection date found"}</span>
+            <span>{importSummary.duplicateKeys ? `${importSummary.duplicateKeys} duplicate idempotency key${importSummary.duplicateKeys === 1 ? "" : "s"} must be corrected before staging.` : "Batch keys are unique."}</span>
+            {importSummary.missingDate > 0 && <span>{importSummary.missingDate} record{importSummary.missingDate === 1 ? " is" : "s are"} missing a collection date and will require correction before acceptance.</span>}
+          </div>
+          <button className="primary" onClick={() => void stageImportedOrders()} disabled={importBusy || importSummary.duplicateKeys > 0}>
+            {importBusy ? "Staging…" : `Stage ${importSummary.total} order${importSummary.total === 1 ? "" : "s"} for review`}
+          </button>
+        </div>
+      </div>}
     </div>
 
     <div className="panel reset-panel">
