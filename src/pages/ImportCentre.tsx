@@ -12,13 +12,13 @@ export function ImportCentre({ initialTab = "planner" }: { initialTab?: ImportTa
       <div className="title-row">
         <div>
           <p className="eyebrow">Single import point</p>
-          <h1>Import centre</h1>
-          <p className="intro">All manual and contingency imports are kept here. Normal Info-mailbox automation continues to feed Order Control without planner intervention.</p>
+          <h1>Import planner plan</h1>
+          <p className="intro">Planner plan, customer orders and manual contingency imports are managed together here. Normal Info-mailbox automation can continue to feed Order Control without planner intervention.</p>
         </div>
       </div>
       <div className="import-centre-tabs" role="tablist" aria-label="Import type">
         <button type="button" className={tab === "planner" ? "primary" : ""} onClick={() => setTab("planner")}>Planner plan</button>
-        <button type="button" className={tab === "orders" ? "primary" : ""} onClick={() => setTab("orders")}>Customer orders</button>
+        <button type="button" className={tab === "orders" ? "primary" : ""} onClick={() => setTab("orders")}>Orders</button>
         <button type="button" className={tab === "contingency" ? "primary" : ""} onClick={() => setTab("contingency")}>Manual contingency</button>
       </div>
     </section>
