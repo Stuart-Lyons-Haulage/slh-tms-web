@@ -38,12 +38,27 @@ export function TmsAssistant() {
     setBusy(true); setMessage(undefined);
     try {
       const accessToken = await token();
-      const [nextSnapshot, nextEfficiency, nextDuplicates] = await Promise.all([
+      const [snapshotResult, efficiencyResult, duplicateResult] = await Promise.allSettled([
         api.assistantSnapshot(date, accessToken),
         request<EfficiencyResponse>(`/api/v1/assistant/efficiency?date=${encodeURIComponent(date)}`, accessToken),
         request<DuplicateOrderStatus>(`/api/v1/assistant/order-duplicates?date=${encodeURIComponent(date)}`, accessToken),
       ]);
-      setSnapshot(nextSnapshot); setEfficiency(nextEfficiency); setDuplicates(nextDuplicates);
+
+      const warnings: string[] = [];
+      if (snapshotResult.status === "fulfilled") setSnapshot(snapshotResult.value);
+      else warnings.push(`Core checks: ${snapshotResult.reason instanceof Error ? snapshotResult.reason.message : "unavailable"}`);
+
+      if (efficiencyResult.status === "fulfilled") setEfficiency(efficiencyResult.value);
+      else { setEfficiency(undefined); warnings.push("Previous-day continuity check unavailable"); }
+
+      if (duplicateResult.status === "fulfilled") setDuplicates(duplicateResult.value);
+      else { setDuplicates(undefined); warnings.push("Duplicate-order check unavailable"); }
+
+      if (warnings.length) {
+        setMessage(snapshotResult.status === "fulfilled"
+          ? `SLH Assistant is available. ${warnings.join(" · ")}. The available checks are shown below.`
+          : `SLH Assistant could not load its core snapshot. ${warnings.join(" · ")}.`);
+      }
     } catch (exception) {
       setMessage(exception instanceof Error ? exception.message : "Assistant checks could not load.");
     } finally { setBusy(false); }
@@ -52,7 +67,14 @@ export function TmsAssistant() {
 
   async function runSafeFixes() {
     const accessToken = await token();
-    const masterResult = await api.fixSafeValidations(accessToken) as SafeFixResult;
+    let masterResult: SafeFixResult = { applied: 0, skipped: 0 };
+    let masterError = "";
+    try {
+      masterResult = await api.fixSafeValidations(accessToken) as SafeFixResult;
+    } catch (exception) {
+      masterError = exception instanceof Error ? exception.message : "Master-data repair could not run.";
+    }
+
     let duplicateResult: SafeFixResult = { applied: 0, skipped: 0 };
     let duplicateError = "";
     try {
@@ -63,19 +85,24 @@ export function TmsAssistant() {
 
     const result: SafeFixResult = {
       applied: masterResult.applied + duplicateResult.applied,
-      skipped: masterResult.skipped + duplicateResult.skipped,
+      skipped: masterResult.skipped + duplicateResult.skipped + (masterError ? 1 : 0) + (duplicateError ? 1 : 0),
       changes: [...(masterResult.changes || []), ...(duplicateResult.changes || [])],
-      skippedReasons: [...(masterResult.skippedReasons || []), ...(duplicateResult.skippedReasons || []), ...(duplicateError ? [`Duplicate orders: ${duplicateError}`] : [])],
+      skippedReasons: [
+        ...(masterResult.skippedReasons || []),
+        ...(duplicateResult.skippedReasons || []),
+        ...(masterError ? [`Master data: ${masterError}`] : []),
+        ...(duplicateError ? [`Duplicate orders: ${duplicateError}`] : []),
+      ],
     };
     const detail = (result.changes || []).slice(0, 16).join("\n");
     const skipped = (result.skippedReasons || []).slice(0, 10).join("\n");
     setAnswer([
-      result.applied ? `${result.applied} safe correction${result.applied === 1 ? "" : "s"} applied to the live TMS.` : "No deterministic correction was needed.",
+      result.applied ? `${result.applied} safe correction${result.applied === 1 ? "" : "s"} applied to the live TMS.` : "No deterministic correction was applied.",
       detail,
-      result.skipped ? `${result.skipped} item${result.skipped === 1 ? "" : "s"} deliberately left for review because the Assistant could not prove a safe change.` : "",
+      result.skipped ? `${result.skipped} item${result.skipped === 1 ? "" : "s"} left for review or temporarily unavailable.` : "",
       skipped,
     ].filter(Boolean).join("\n"));
-    setMessage(result.applied ? "Corrections were written to the TMS and the validation checks have been refreshed." : "No safe automatic change was required. Any remaining items need review.");
+    setMessage(result.applied ? "Corrections were written to the TMS and the available validation checks have been refreshed." : "No safe automatic change was applied. Any remaining items stay visible for review.");
     await refresh();
     return result;
   }
