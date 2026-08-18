@@ -1,6 +1,6 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useAccessToken } from "../lib/auth";
-import { formatDate } from "../lib/dateUtils";
+import { formatDate, ukTodayIso } from "../lib/dateUtils";
 
 type ImportStop = {
   sequence?: number;
@@ -56,6 +56,9 @@ export function PlannerPlanImport() {
   const [payload, setPayload] = useState<PlannerPlanPayload>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetDate, setResetDate] = useState(ukTodayIso());
+  const [resetMessage, setResetMessage] = useState<string>();
   const [summary, setSummary] = useState<ImportSummary>();
 
   const preview = useMemo(() => {
@@ -81,7 +84,27 @@ export function PlannerPlanImport() {
       const duplicate = refs.find((ref, index) => refs.indexOf(ref) !== index); if (duplicate) throw new Error(`Duplicate run reference in file: ${duplicate}.`);
       if (parsed.runs.some((run) => run.planningDate && run.planningDate !== parsed.planningDate)) throw new Error("One or more runs use a different planning date from the file header.");
       setPayload(parsed);
+      setResetDate(parsed.planningDate);
     } catch (exception) { setError(exception instanceof Error ? exception.message : "The planner file could not be read."); }
+  }
+
+  async function resetPlanningDay() {
+    if (resetBusy || busy) return;
+    const date = resetDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { setResetMessage("Enter a reset date in YYYY-MM-DD format."); return; }
+    if (!window.confirm(`Reset planning day ${formatDate(date)}?\n\nThis clears imported runs/orders/staged planning rows for that date only. Master data, drivers, vehicles, trailers, Sage, DOT, Tachomaster and Fleetio are not cleared.`)) return;
+    setResetBusy(true); setResetMessage(undefined); setError(undefined); setSummary(undefined);
+    try {
+      const accessToken = await token();
+      const response = await fetch(`/tms-api/api/v1/planning-day/${date}?confirm=RESET-${date}`, {
+        method: "DELETE",
+        headers: { Accept: "application/json", ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      const text = await response.text();
+      setResetMessage(text ? `Planning day ${formatDate(date)} reset complete. ${text}` : `Planning day ${formatDate(date)} reset complete. You can now import the corrected plan.`);
+    } catch (exception) { setResetMessage(exception instanceof Error ? exception.message : "The planning day could not be reset."); }
+    finally { setResetBusy(false); }
   }
 
   async function importPlan() {
@@ -103,11 +126,18 @@ export function PlannerPlanImport() {
 
   return <section><div className="page-heading"><div><p className="eyebrow">Planner control</p><h1>Import planner plan</h1><p>Load the reconciled planner JSON, review the control totals, then confirm the authenticated import into the TMS.</p></div></div>
     <div className="card" style={{ maxWidth: 1100, display: "grid", gap: 18 }}>
-      <label style={{ display: "grid", gap: 8, maxWidth: 560 }}><strong>Planner JSON file</strong><input type="file" accept="application/json,.json" onChange={(event) => void chooseFile(event)} disabled={busy} /></label>
+      <div className="notice inline-notice" style={{ display: "grid", gap: 10 }}>
+        <strong>Reset before re-import</strong>
+        <span>Use this before importing a corrected plan. It clears only the selected planning day, not master data or integrations.</span>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>Planning date <input type="date" value={resetDate} onChange={(event) => setResetDate(event.target.value)} disabled={busy || resetBusy} /></label>
+        <button type="button" className="danger" onClick={() => void resetPlanningDay()} disabled={busy || resetBusy}>{resetBusy ? "Resetting…" : `Reset ${formatDate(resetDate)} planning day`}</button>
+        {resetMessage && <span style={{ whiteSpace: "pre-wrap" }}>{resetMessage}</span>}
+      </div>
+      <label style={{ display: "grid", gap: 8, maxWidth: 560 }}><strong>Planner JSON file</strong><input type="file" accept="application/json,.json" onChange={(event) => void chooseFile(event)} disabled={busy || resetBusy} /></label>
       {fileName && <p><strong>Selected:</strong> {fileName}</p>}
       {payload && <><div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}><span className="badge"><strong>{formatDate(payload.planningDate)}</strong> planning date</span><span className="badge"><strong>{preview.total}</strong> source runs</span><span className="badge"><strong>{preview.included}</strong> to import</span><span className="badge"><strong>{preview.held}</strong> held / excluded</span><span className="badge"><strong>{preview.stops}</strong> source lines</span><span className="badge"><strong>{preview.actuals}</strong> manual actual/ETA lines</span><span className="badge"><strong>{preview.red}</strong> red</span><span className="badge"><strong>{preview.amber}</strong> amber</span></div>
       <div style={{ overflowX: "auto" }}><table><thead><tr><th>Run</th><th>Type</th><th>Driver</th><th>Vehicle</th><th>Trailer</th><th>Source lines</th><th>First collect window</th><th>Deliver by</th><th>Manual actuals/ETAs</th><th>Capacity</th><th>Import</th><th>Reconciliation</th></tr></thead><tbody>{safeRuns(payload).map((run, index) => <tr key={`${run.runRef}-${index}`}><td><strong>{run.runRef || "—"}</strong></td><td>{run.runType || "—"}</td><td>{run.driver || "Unallocated"}</td><td>{run.vehicle || "—"}</td><td>{run.trailer || "—"}</td><td>{run.stops?.length || 0}</td><td>{firstCollect(run)}</td><td>{finalDeadline(run)}</td><td>{manualActualCount(run)}</td><td>{run.capacityStatus || "—"}{typeof run.mixedUtilisationPercent === "number" ? ` · ${run.mixedUtilisationPercent.toFixed(1)}%` : ""}</td><td>{run.includeInImport === false ? "Held" : "Yes"}</td><td>{run.reconciliationStatus || "—"}</td></tr>)}</tbody></table></div>
-      <button className="primary" disabled={busy || preview.included === 0} onClick={() => void importPlan()}>{busy ? "Importing…" : `Confirm import of ${preview.included} runs`}</button></>}
+      <button className="primary" disabled={busy || resetBusy || preview.included === 0} onClick={() => void importPlan()}>{busy ? "Importing…" : `Confirm import of ${preview.included} runs`}</button></>}
       {error && <div className="notice inline-notice"><strong>Import failed</strong><div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{error}</div></div>}
       {summary && <div style={{ display: "grid", gap: 12 }}><h2>Import complete · {formatDate(summary.planningDate)}</h2><div>{summary.created} created · {summary.updated} updated · {summary.unchanged} unchanged · {summary.held} held</div>{summary.unresolvedDrivers.length > 0 && <div>Drivers: {summary.unresolvedDrivers.join(", ")}</div>}{summary.unresolvedVehicles.length > 0 && <div>Vehicles: {summary.unresolvedVehicles.join(", ")}</div>}{summary.unresolvedTrailers.length > 0 && <div>Trailers: {summary.unresolvedTrailers.join(", ")}</div>}{summary.warnings.length > 0 && <ul>{summary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}</div>}
     </div></section>;
