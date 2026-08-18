@@ -32,7 +32,7 @@ export function NightOutReport() {
   const [weekStart,setWeekStart] = useState(monday());
   const [filter,setFilter] = useState<"all"|"review"|"nights">("all");
   const [openDriver,setOpenDriver] = useState<string>();
-  const report = useApi(useCallback(async () => request<Report>(`/api/v1/driver-timesheets/weekly?weekStart=${weekStart}`, await token(), undefined, 60000), [weekStart,token]));
+  const report = useApi(useCallback(async () => request<Report>(`/api/v1/driver-timesheets/weekly-resilient?weekStart=${weekStart}`, await token(), undefined, 60000), [weekStart,token]));
 
   const drivers = useMemo(() => (report.data?.drivers || []).filter(driver =>
     filter === "review" ? driver.discrepancyCount > 0 : filter === "nights" ? driver.nightsOut > 0 : true
