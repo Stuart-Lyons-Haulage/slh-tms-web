@@ -5,7 +5,6 @@ import { useAccessToken } from "../lib/auth";
 import { todayIsoDate, formatDateLong } from "../lib/dateUtils";
 import { useApi } from "../lib/useApi";
 import { Dashboard as CoreDashboard } from "./Pages";
-import { LiveRunsBoard } from "./LiveRunsBoard";
 
 export function DashboardOperational() {
   const token = useAccessToken();
@@ -13,8 +12,7 @@ export function DashboardOperational() {
   const readiness = useApi(useCallback(async () => intelligenceApi.readiness(date, await token()), [date, token]));
 
   return <>
-    <LiveRunsBoard />
-    <section className="dashboard-readiness panel" style={{ marginTop: 20 }}>
+    <section className="dashboard-readiness panel">
       <div className="title-row">
         <div>
           <p className="eyebrow">Morning readiness · {formatDateLong(date)}</p>
@@ -39,7 +37,7 @@ export function DashboardOperational() {
             <article className={readiness.data.planLock ? "good" : "neutral"}><span>Plan baseline</span><strong>{readiness.data.planLock ? "Locked" : "Open"}</strong><small>{readiness.data.planLock ? `${readiness.data.planLock.baselineRuns} runs` : "lock from Runs"}</small></article>
           </div>
         </div>
-        <div className="readiness-links"><Link to="/loads">Open Runs / lock plan →</Link></div>
+        <div className="readiness-links"><Link to="/loads">Open Runs / lock plan →</Link><Link to="/live-runs">Open Live Runs →</Link></div>
       </>}
     </section>
     <CoreDashboard />

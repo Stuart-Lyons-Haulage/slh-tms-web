@@ -229,8 +229,8 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
         <div><p>LIVE OPERATIONS</p><h1>Live Runs</h1></div>
       </div>
       <div className="live-runs-actions">
-        {!tvMode && <Link className="live-runs-tv-link" to="/live-runs">Open office TV view</Link>}
-        {tvMode && <><Link className="live-runs-tv-link subtle" to="/dashboard">Back to dashboard</Link><button type="button" onClick={() => void toggleFullscreen()}>Full screen</button></>}
+        {!tvMode && <Link className="live-runs-tv-link" to="/live-runs/tv" target="_blank" rel="noopener noreferrer">Open office TV view ↗</Link>}
+        {tvMode && <><Link className="live-runs-tv-link subtle" to="/live-runs">Back to Live Runs</Link><button type="button" onClick={() => void toggleFullscreen()}>Full screen</button></>}
         <div className="live-runs-clock"><strong>{timeFormatter.format(clock)}</strong><span>{dateFormatter.format(clock)}</span></div>
       </div>
     </div>
