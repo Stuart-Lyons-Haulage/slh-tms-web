@@ -4,6 +4,7 @@ import { DriversUnified } from './DriversUnified';
 import { FuelCardsOperational } from './FuelCardsOperational';
 import { MarketsMasterClean } from './MarketsMasterClean';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
+import { SitePlanningProfiles } from './SitePlanningProfiles';
 
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
 
@@ -13,7 +14,7 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
   { key: 'trailers', label: 'Trailers', detail: 'Canonical SLH trailer numbers, types and capacities' },
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Vehicle fuel cards, PINs and fuel register' },
   { key: 'customers', label: 'Customers', detail: 'Customer names and master codes' },
-  { key: 'sites', label: 'Sites', detail: 'Collection and delivery locations and driver instructions' },
+  { key: 'sites', label: 'Sites', detail: 'Collection and delivery locations, driver instructions, default temperatures and planning regions' },
   { key: 'geofences', label: 'Geofences', detail: 'Operational site geofences, site links, dwell thresholds and entry/exit confirmation rules' },
   { key: 'markets', label: 'Markets', detail: 'Market master records and contacts' },
   { key: 'fuel-prices', label: 'Fuel prices', detail: 'Fuel pricing reference data' },
@@ -46,6 +47,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
     {section === 'drivers' && <DriversUnified />}
     {(section === 'vehicles' || section === 'trailers' || section === 'customers' || section === 'sites' || section === 'geofences') &&
       <MasterDataOperational initialTab={section} showCategoryButtons={false} showHeading={false} />}
+    {section === 'sites' && <SitePlanningProfiles />}
     {section === 'fuel-cards' && <FuelCardsOperational />}
     {section === 'markets' && <MarketsMasterClean />}
     {section === 'fuel-prices' && <FuelMaster />}
