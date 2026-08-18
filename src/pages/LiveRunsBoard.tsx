@@ -43,9 +43,9 @@ function formatTime(value?: string) {
   return Number.isNaN(parsed.getTime()) ? "—" : timeFormatter.format(parsed);
 }
 
-function formatAge(value?: string, now = new Date()) {
+function formatAge(value?: string | Date, now = new Date()) {
   if (!value) return "No live update";
-  const parsed = new Date(value);
+  const parsed = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(parsed.getTime())) return "No live update";
   const seconds = Math.max(0, Math.round((now.getTime() - parsed.getTime()) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
@@ -65,7 +65,7 @@ function statusFor(vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
   if (!vehicle || ["Parked", "Stale", "NotSignedOn"].includes(vehicle.condition)) {
     return {
       status: "upcoming" as const,
-      label: "UPCOMING",
+      label: vehicle?.condition === "Stale" ? "TRACKING STALE" : "UPCOMING",
       detail: vehicle?.condition === "Stale" ? "Waiting for fresh tracking" : "Awaiting start / movement",
     };
   }
@@ -78,10 +78,19 @@ function statusFor(vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
     };
   }
 
+  const hasUsableEta = etas.some((eta) => Boolean(eta.etaUtc) && eta.source !== "Unavailable");
+  if (vehicle.condition === "Moving" && hasUsableEta) {
+    return {
+      status: "on-time" as const,
+      label: "ON TIME",
+      detail: "Live ETA inside planned window",
+    };
+  }
+
   return {
-    status: "on-time" as const,
-    label: "ON TIME",
-    detail: "Live ETA inside planned window",
+    status: "upcoming" as const,
+    label: vehicle.condition === "Moving" ? "ETA PENDING" : "UPCOMING",
+    detail: vehicle.condition === "Moving" ? "Vehicle moving; ETA still calculating" : "Awaiting live movement",
   };
 }
 
@@ -125,43 +134,61 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
 
-  const loads = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
-  const fleet = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));
-  const etas = useApi(useCallback(async () => api.deliveryEtas(date, await token()), [date, token]));
-  const assignments = useApi(useCallback(async () => api.driverAssignments(date, date, await token()), [date, token]));
+  const {
+    data: loadData,
+    error: loadError,
+    loading: loadLoading,
+    refresh: refreshLoads,
+  } = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
+  const {
+    data: fleetData,
+    error: fleetError,
+    refresh: refreshFleet,
+  } = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));
+  const {
+    data: etaData,
+    error: etaError,
+    refresh: refreshEtas,
+  } = useApi(useCallback(async () => api.deliveryEtas(date, await token()), [date, token]));
+  const {
+    data: assignmentData,
+    error: assignmentError,
+    refresh: refreshAssignments,
+  } = useApi(useCallback(async () => api.driverAssignments(date, date, await token()), [date, token]));
 
   useEffect(() => {
     const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
     const refreshTimer = window.setInterval(() => {
-      void Promise.all([loads.refresh(), fleet.refresh(), etas.refresh(), assignments.refresh()]).then(() => setLastRefresh(new Date()));
+      void Promise.all([refreshLoads(), refreshFleet(), refreshEtas(), refreshAssignments()]).then(() => setLastRefresh(new Date()));
     }, 20000);
     return () => {
       window.clearInterval(clockTimer);
       window.clearInterval(refreshTimer);
     };
-  }, [assignments.refresh, etas.refresh, fleet.refresh, loads.refresh]);
+  }, [refreshAssignments, refreshEtas, refreshFleet, refreshLoads]);
 
   const rows = useMemo<LiveRunRow[]>(() => {
     const now = clock;
-    const fleetById = new Map((fleet.data?.vehicles || []).map((vehicle) => [vehicle.vehicleId, vehicle]));
-    const fleetByLoad = new Map((fleet.data?.vehicles || []).filter((vehicle) => vehicle.loadId).map((vehicle) => [vehicle.loadId!, vehicle]));
-    const assignmentByLoad = new Map((assignments.data || []).map((assignment) => [assignment.loadId, assignment]));
+    const fleetById = new Map((fleetData?.vehicles || []).map((vehicle) => [vehicle.vehicleId, vehicle]));
+    const fleetByLoad = new Map((fleetData?.vehicles || []).filter((vehicle) => vehicle.loadId).map((vehicle) => [vehicle.loadId!, vehicle]));
+    const assignmentByLoad = new Map((assignmentData || []).map((assignment) => [assignment.loadId, assignment]));
     const etaByLoad = new Map<string, DeliveryEta[]>();
-    for (const eta of etas.data?.records || []) {
+    for (const eta of etaData?.records || []) {
       const existing = etaByLoad.get(eta.loadId) || [];
       existing.push(eta);
       etaByLoad.set(eta.loadId, existing);
     }
 
-    return (loads.data || []).map((load) => {
+    return (loadData || []).map((load) => {
       const assignment = assignmentByLoad.get(load.id);
       const vehicle = fleetByLoad.get(load.id) || (load.vehicleId ? fleetById.get(load.vehicleId) : undefined);
       const runEtas = [...(etaByLoad.get(load.id) || [])].sort((left, right) => left.sequence - right.sequence);
       const nextEta = pickNextEta(runEtas, now);
+      const relevantEtas = nextEta ? runEtas.filter((eta) => eta.sequence >= nextEta.sequence) : runEtas;
       const finalEta = runEtas.at(-1);
       const firstStop = [...(load.stops || [])].sort((left, right) => left.sequence - right.sequence)[0];
       const firstPlannedUtc = firstStop?.plannedArrivalUtc || vehicle?.plannedDutyUtc;
-      const state = statusFor(vehicle, runEtas);
+      const state = statusFor(vehicle, relevantEtas);
       return {
         load,
         vehicle,
@@ -181,14 +208,14 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       const rightTime = right.firstPlannedUtc ? new Date(right.firstPlannedUtc).getTime() : Number.MAX_SAFE_INTEGER;
       return leftTime - rightTime || left.load.reference.localeCompare(right.load.reference);
     });
-  }, [assignments.data, clock, etas.data, fleet.data, loads.data]);
+  }, [assignmentData, clock, etaData, fleetData, loadData]);
 
   const onTime = rows.filter((row) => row.status === "on-time").length;
   const stationary = rows.filter((row) => row.status === "stationary").length;
   const atRisk = rows.filter((row) => row.status === "at-risk").length;
-  const vehiclesOut = rows.filter((row) => row.status !== "upcoming").length;
-  const onTimePercent = rows.length ? Math.round((onTime / rows.length) * 100) : 0;
-  const refreshError = loads.error || fleet.error || etas.error || assignments.error;
+  const vehiclesOut = rows.filter((row) => row.vehicle && ["Moving", "Started", "SignedOn", "Stationary"].includes(row.vehicle.condition)).length;
+  const onTimePercent = vehiclesOut ? Math.round((onTime / vehiclesOut) * 100) : 0;
+  const refreshError = loadError || fleetError || etaError || assignmentError;
 
   async function toggleFullscreen() {
     if (document.fullscreenElement) await document.exitFullscreen();
@@ -228,8 +255,8 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
     </div>
 
     <div className="live-runs-list">
-      {!loads.data && loads.loading && <div className="live-runs-empty">Loading today’s runs…</div>}
-      {loads.data && rows.length === 0 && <div className="live-runs-empty">No runs have been generated for today yet.</div>}
+      {!loadData && loadLoading && <div className="live-runs-empty">Loading today’s runs…</div>}
+      {loadData && rows.length === 0 && <div className="live-runs-empty">No runs have been generated for today yet.</div>}
       {rows.map((row) => {
         const tracking = currentTracking(row.vehicle, clock);
         const sortedStops = [...(row.load.stops || [])].sort((left, right) => left.sequence - right.sequence);
