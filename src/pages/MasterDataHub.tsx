@@ -14,7 +14,7 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Vehicle fuel cards, PINs and fuel register' },
   { key: 'customers', label: 'Customers', detail: 'Customer names and master codes' },
   { key: 'sites', label: 'Sites', detail: 'Collection and delivery locations and driver instructions' },
-  { key: 'geofences', label: 'Geofences', detail: 'Operational site geofences and dwell rules' },
+  { key: 'geofences', label: 'Geofences', detail: 'Operational site geofences, site links, dwell thresholds and entry/exit confirmation rules' },
   { key: 'markets', label: 'Markets', detail: 'Market master records and contacts' },
   { key: 'fuel-prices', label: 'Fuel prices', detail: 'Fuel pricing reference data' },
 ];
@@ -37,7 +37,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
     </div>
 
     <div className="panel" style={{ marginBottom: 18 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: 8 }}>
         {sections.map(item => <button key={item.key} className={section === item.key ? 'primary' : ''} onClick={() => setSection(item.key)}>{item.label}</button>)}
       </div>
       <p className="hint" style={{ marginBottom: 0 }}><strong>{active.label}:</strong> {active.detail}</p>
