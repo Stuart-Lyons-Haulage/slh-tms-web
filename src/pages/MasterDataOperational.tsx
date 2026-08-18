@@ -64,6 +64,12 @@ function isoDate(value?: string) {
   return value ? new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
 }
 
+function matchesQuery(row: Row, query: string) {
+  const value = query.trim().toLowerCase();
+  if (!value) return true;
+  return Object.values(row).some(item => item != null && String(item).toLowerCase().includes(value));
+}
+
 export function MasterDataOperational({ initialTab = 'drivers', showCategoryButtons = true, showHeading = true }: { initialTab?: MasterDataTab; showCategoryButtons?: boolean; showHeading?: boolean }) {
   const token = useAccessToken();
   const [tab, setTab] = useState<MasterDataTab>(initialTab);
@@ -87,11 +93,17 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
     setLoading(true); setError(undefined);
     try {
       const access = await token();
-      const params = new URLSearchParams({ q: query, includeInactive: String(includeInactive) });
-      setRows(await request<Row[]>(`${endpoint}/search?${params}`, access));
+      const params = new URLSearchParams({ includeInactive: String(includeInactive) });
+      if (query.trim()) params.set('q', query.trim());
+      try {
+        setRows(await request<Row[]>(`${endpoint}/search?${params}`, access));
+      } catch {
+        const fallback = await request<Row[]>(`/api/v1/${tab}`, access);
+        setRows(fallback.filter(row => (includeInactive || row.active !== false) && matchesQuery(row, query)));
+      }
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not load master data.'); }
     finally { setLoading(false); }
-  }, [endpoint, includeInactive, query, token]);
+  }, [endpoint, includeInactive, query, tab, token]);
 
   useEffect(() => { const handle = window.setTimeout(() => void load(), 180); return () => window.clearTimeout(handle); }, [load]);
 
@@ -102,7 +114,7 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
     try {
       const access = await token();
       setAudit(await request<Audit[]>(`/api/v1/operational-master-data/audit/${current.entityType}/${row.id}`, access));
-    } catch { /* history can remain empty if the audit table has not been migrated yet */ }
+    } catch { /* history can remain empty until the operational master-data API deployment is current */ }
   };
 
   const save = async () => {
@@ -110,8 +122,12 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
     setSaving(true); setError(undefined); setNotice(undefined);
     try {
       const access = await token();
-      await request(`${endpoint}/${selected.id}`, access, { method: 'PUT', body: JSON.stringify(draft) });
-      setNotice(`${current.entityType} updated and audit history recorded.`);
+      try {
+        await request(`${endpoint}/${selected.id}`, access, { method: 'PUT', body: JSON.stringify(draft) });
+      } catch {
+        await request(`/api/v1/${tab}/${selected.id}`, access, { method: 'PUT', body: JSON.stringify(draft) });
+      }
+      setNotice(`${current.entityType} updated in the Live TMS Master Database.`);
       setSelected(undefined); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Update failed.'); }
     finally { setSaving(false); }
@@ -124,7 +140,7 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
       const access = await token();
       await request(`${endpoint}/${row.id}/${active ? 'restore' : 'archive'}`, access, { method: 'POST' });
       setNotice(`${current.entityType} ${active ? 'restored' : 'archived'}.`); await load();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Action failed.'); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'Archive/restore is not available until the latest master-data API deployment is live.'); }
     finally { setSaving(false); }
   };
 

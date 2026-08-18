@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { request, type Load } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 
@@ -34,14 +34,19 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     try {
       setData(await request<Intelligence>(`/api/v1/planning-intelligence/loads/${load.id}`, await token(), undefined, 40000));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Planning intelligence could not load.");
     }
-  }
-  useEffect(() => { setDriverId(load.driverId || ""); setVehicleId(load.vehicleId || ""); void refresh(); }, [load.id]);
+  }, [load.id, token]);
+
+  useEffect(() => {
+    setDriverId(load.driverId || "");
+    setVehicleId(load.vehicleId || "");
+    void refresh();
+  }, [load.driverId, load.vehicleId, refresh]);
 
   const drivers = useMemo(() => {
     const q = driverQuery.trim().toLowerCase();
@@ -118,10 +123,9 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12, alignItems: "center" }}>
       <button type="button" className="primary" disabled={busy || !driverId || !vehicleId} onClick={() => void allocate()}>Save allocation</button>
       <span style={{ marginLeft: 8 }}><strong>Night out required?</strong></span>
-      <button type="button" className={data?.nightOutRequired === true ? "primary" : ""} disabled={busy} onClick={() => void setNightOut(true)}>Yes</button>
-      <button type="button" className={data?.nightOutRequired === false ? "primary" : ""} disabled={busy} onClick={() => void setNightOut(false)}>No</button>
-      {data?.nightOutRequired == null && <small>Planner confirmation required</small>}
+      <button type="button" disabled={busy} className={data?.nightOutRequired === true ? "primary" : ""} onClick={() => void setNightOut(true)}>Yes</button>
+      <button type="button" disabled={busy} className={data?.nightOutRequired === false ? "primary" : ""} onClick={() => void setNightOut(false)}>No</button>
+      {message && <small>{message}</small>}
     </div>
-    {message && <p className="notice inline-notice" style={{ marginTop: 8 }}>{message}</p>}
   </section>;
 }
