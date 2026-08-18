@@ -17,18 +17,18 @@ export function PlannerEnhanced() {
   const loads = useMemo(() => (loadsApi.data || []).filter(Boolean), [loadsApi.data]);
   const selected = loads.find(x => x.id === selectedId) || loads[0];
 
-  return <>
-    <div className="panel" style={{ marginBottom: 14, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-      <div><p className="eyebrow" style={{ marginBottom: 3 }}>Two-screen planning</p><strong>Screen 1: Run Planner</strong><br/><small>Build and allocate runs here. Use Screen 2 for the live pallet/order matrix and outstanding quantities.</small></div>
-      <Link className="button-like primary" to="/pallet-control">Open Planning Screen 2 · Pallet Control</Link>
+  return <section className="planner-enhanced-page">
+    <div className="panel planner-screen-switcher" style={{ marginBottom: 14, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+      <div><p className="eyebrow" style={{ marginBottom: 3 }}>Planning workspace</p><strong>Run Planner</strong><br/><small>Build runs here. Pallet Control remains available for the live order/outstanding matrix.</small></div>
+      <Link className="button-like primary" to="/pallet-control">Open Pallet Control</Link>
     </div>
     <StablePlanner />
-    <section style={{ marginTop: 18, paddingTop: 18, borderTop: "3px solid #d8e5e9" }}>
+    <section className="planner-desktop-secondary" style={{ marginTop: 18, paddingTop: 18, borderTop: "3px solid #d8e5e9" }}>
       <div className="title-row">
         <div><p className="eyebrow">Allocation & compliance</p><h2>Driver, vehicle and night-out control</h2><p>Search drivers by name and vehicles by registration or last three. Suggestions use previous-run position, DOT live position and Tachomaster availability.</p></div>
         <label>Planning date <input type="date" value={date} onChange={e => { setDate(e.target.value); setSelectedId(undefined); }} /></label>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(220px,0.35fr) minmax(0,1fr)", gap: 14 }}>
+      <div className="planner-intelligence-layout" style={{ display: "grid", gridTemplateColumns: "minmax(220px,0.35fr) minmax(0,1fr)", gap: 14 }}>
         <div className="panel" style={{ maxHeight: 600, overflow: "auto" }}>
           <strong>Runs · {ukDate(date)}</strong>
           {!loads.length && <p>No runs are saved for this date.</p>}
@@ -39,5 +39,6 @@ export function PlannerEnhanced() {
         <div>{selected ? <RunPlanningIntelligence load={selected} onChanged={loadsApi.refresh} /> : <div className="panel">Select or create a run to see planning intelligence.</div>}</div>
       </div>
     </section>
-  </>;
+    <div className="mobile-planner-handoff"><strong>Allocation and dispatch are on Runs.</strong><span>Use the Runs button below after building the plan to assign the driver, vehicle and trailer.</span><Link to="/loads">Open Runs →</Link></div>
+  </section>;
 }
