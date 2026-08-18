@@ -172,10 +172,9 @@ export function OrderReviewOperational() {
       if (Array.isArray(payload.intakeWarnings)) warningCount += payload.intakeWarnings.length;
     }
 
-    const needsChecking = importRecords.filter((record) => {
+    const needsCorrection = importRecords.filter((record) => {
       const payload = record.payload as unknown as Record<string, unknown>;
-      return !text(payload.poNumber) || !text(payload.customerCode) || !text(payload.collectionDate)
-        || (Array.isArray(payload.intakeWarnings) && payload.intakeWarnings.length > 0);
+      return !text(payload.poNumber) || !text(payload.customerCode) || !text(payload.collectionDate);
     }).length;
 
     return {
@@ -185,7 +184,7 @@ export function OrderReviewOperational() {
       missingCustomer,
       missingDate,
       warningCount,
-      needsChecking,
+      needsCorrection,
       dates: [...dates].sort(),
     };
   }, [importRecords]);
@@ -368,7 +367,7 @@ export function OrderReviewOperational() {
       {importRecords.length > 0 && <div className="import-preview">
         <div className="import-preview-metrics">
           <article><span>Orders in file</span><strong>{importSummary.total}</strong></article>
-          <article className={importSummary.needsChecking ? "attention" : ""}><span>Need checking</span><strong>{importSummary.needsChecking}</strong></article>
+          <article className={importSummary.needsCorrection ? "attention" : ""}><span>Need correction</span><strong>{importSummary.needsCorrection}</strong></article>
           <article className={importSummary.missingPo ? "attention" : ""}><span>Missing PO/ref</span><strong>{importSummary.missingPo}</strong></article>
           <article className={importSummary.missingCustomer ? "attention" : ""}><span>Missing customer</span><strong>{importSummary.missingCustomer}</strong></article>
           <article className={importSummary.warningCount ? "attention" : ""}><span>Source warnings</span><strong>{importSummary.warningCount}</strong></article>
@@ -378,6 +377,7 @@ export function OrderReviewOperational() {
             <strong>{importFileName}</strong>
             <span>{importSummary.dates.length ? `Operating date${importSummary.dates.length === 1 ? "" : "s"}: ${importSummary.dates.join(", ")}` : "No collection date found"}</span>
             <span>{importSummary.duplicateKeys ? `${importSummary.duplicateKeys} duplicate idempotency key${importSummary.duplicateKeys === 1 ? "" : "s"} must be corrected before staging.` : "Batch keys are unique."}</span>
+            {importSummary.warningCount > 0 && <span>Source warnings are retained for planner context but do not by themselves block staging.</span>}
             {importSummary.missingDate > 0 && <span>{importSummary.missingDate} record{importSummary.missingDate === 1 ? " is" : "s are"} missing a collection date and will require correction before acceptance.</span>}
           </div>
           <button className="primary" onClick={() => void stageImportedOrders()} disabled={importBusy || importSummary.duplicateKeys > 0}>
