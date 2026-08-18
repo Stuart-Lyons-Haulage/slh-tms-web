@@ -1,0 +1,46 @@
+.order-selection-panel { display: grid; gap: 14px; }
+.bulk-selection-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid #b8d8d5; border-radius: 10px; background: #f7fcfb; }
+.bulk-select-all { display: inline-flex; align-items: center; gap: 9px; font-weight: 800; color: #173d50; cursor: pointer; }
+.bulk-select-all input { width: 18px; height: 18px; }
+.bulk-selection-count { margin-left: auto; color: #526c78; }
+.bulk-selection-count strong { color: #073a5a; }
+.bulk-order-list { display: grid; gap: 7px; max-height: 620px; overflow: auto; padding-right: 3px; }
+.bulk-order-row { display: grid; grid-template-columns: auto minmax(190px, 1.05fr) minmax(250px, 1.6fr) 80px minmax(150px, .8fr); gap: 12px; align-items: center; padding: 11px 13px; border: 1px solid #d7e3e6; border-radius: 9px; background: #fff; }
+.bulk-order-row.selectable { cursor: pointer; }
+.bulk-order-row.selectable:hover { border-color: #77b9b4; background: #f8fcfb; }
+.bulk-order-row.selected { border-color: #0c7c76; background: #edf9f7; box-shadow: inset 3px 0 0 #0c7c76; }
+.bulk-order-row.held { background: #fafafa; color: #73828a; }
+.bulk-order-row > input { width: 19px; height: 19px; }
+.bulk-order-row span { min-width: 0; }
+.bulk-order-row strong, .bulk-order-row small { display: block; }
+.bulk-order-row strong { color: #173d50; overflow-wrap: anywhere; }
+.bulk-order-row small { margin-top: 2px; color: #71838c; overflow-wrap: anywhere; }
+.bulk-order-ref strong { color: #073a5a; }
+.bulk-order-pallets { text-align: center; }
+.bulk-order-pallets strong { font-size: 1.2rem; }
+.bulk-order-status { justify-self: end; display: inline-flex; align-items: center; min-height: 28px; padding: 4px 9px; border-radius: 999px; font-size: .76rem; font-weight: 800; text-align: center; }
+.bulk-order-status.ready { background: #e5f5e5; color: #247126; }
+.bulk-order-status.held { background: #fff1cf; color: #805900; }
+.bulk-detail-hint { margin: 0; }
+
+/* Order Control owns the page heading and metrics now. Hide the legacy nested Order Review heading/summary. */
+.order-selection-panel + .order-review-page > .title-row,
+.order-selection-panel + .order-review-page > .review-metrics { display: none; }
+
+/* The old fallback chips rendered as "Review / Order" when source metadata was sparse. */
+.order-selection-panel + .order-review-page .review-badges { display: none; }
+
+@media (max-width: 950px) {
+  .bulk-order-row { grid-template-columns: auto minmax(160px, 1fr) minmax(210px, 1.3fr) 70px; }
+  .bulk-order-status { grid-column: 2 / -1; justify-self: start; }
+}
+
+@media (max-width: 700px) {
+  .bulk-selection-count { width: 100%; margin-left: 0; }
+  .bulk-selection-toolbar button { flex: 1 1 150px; }
+  .bulk-order-list { max-height: none; }
+  .bulk-order-row { grid-template-columns: auto 1fr; align-items: start; }
+  .bulk-order-row > span { grid-column: 2; }
+  .bulk-order-pallets { text-align: left; }
+  .bulk-order-status { grid-column: 2; }
+}
