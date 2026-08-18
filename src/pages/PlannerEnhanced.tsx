@@ -20,7 +20,7 @@ export function PlannerEnhanced() {
   return <section className="planner-enhanced-page">
     <div className="panel planner-screen-switcher" style={{ marginBottom: 14, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
       <div><p className="eyebrow" style={{ marginBottom: 3 }}>Planning workspace</p><strong>Run Planner</strong><br/><small>Build runs here. Pallet Control remains available for the live order/outstanding matrix.</small></div>
-      <Link className="button-like primary" to="/pallet-control">Open Pallet Control</Link>
+      <Link className="button-like primary" to="/pallet-control" target="_blank" rel="noopener noreferrer">Open Pallet Control · Screen 2 ↗</Link>
     </div>
     <StablePlanner />
     <section className="planner-desktop-secondary" style={{ marginTop: 18, paddingTop: 18, borderTop: "3px solid #d8e5e9" }}>
