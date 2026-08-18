@@ -1,6 +1,6 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useAccessToken } from "../lib/auth";
-import { formatDate, ukTodayIso } from "../lib/dateUtils";
+import { formatDate, todayIsoDate } from "../lib/dateUtils";
 
 type ImportStop = {
   sequence?: number;
@@ -57,7 +57,7 @@ export function PlannerPlanImport() {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
-  const [resetDate, setResetDate] = useState(ukTodayIso());
+  const [resetDate, setResetDate] = useState(todayIsoDate());
   const [resetMessage, setResetMessage] = useState<string>();
   const [summary, setSummary] = useState<ImportSummary>();
 
