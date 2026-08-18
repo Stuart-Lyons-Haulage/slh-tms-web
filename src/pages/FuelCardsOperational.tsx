@@ -26,11 +26,6 @@ export function FuelCardsOperational() {
     return !q || [vehicle.registration, vehicle.abbreviation, vehicle.cabMobile, vehicle.fuelProvider, vehicle.fuelPin, vehicle.shellCard, vehicle.bpRedCard, vehicle.bpPlainCard, vehicle.notes].some((value) => text(value).toLowerCase().includes(q));
   }), [query, vehicles.data]);
 
-  async function copy(value: string, label: string) {
-    await navigator.clipboard.writeText(value);
-    setMessage(`${label} copied.`);
-  }
-
   async function save() {
     if (!editing) return;
     setSaving(true);
@@ -55,7 +50,7 @@ export function FuelCardsOperational() {
       <div className="title-actions">
         <span className="status approved">Live TMS Master Database</span>
         <button onClick={() => void vehicles.refresh()}>Refresh</button>
-        <Link className="button-like" to="/admin">Legacy migration</Link>
+        <Link className="button-like" to="/admin/fuel-card-migration">Legacy fuel migration</Link>
       </div>
     </div>
 
