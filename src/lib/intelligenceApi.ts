@@ -18,6 +18,7 @@ type ConfidenceResponse = {
   dotTracking: { latestEventUtc?: string };
   emailIntake: { lastReceivedUtc?: string };
 };
+type TachoLiveStatus = { configured: boolean; connected: boolean; matchedVehicleCount: number; message?: string };
 type ExistingException = { type: string; severity: 'High' | 'Medium' | 'Low'; reference: string; description: string; loadId?: string };
 type ExistingExceptionsResponse = { planningDate: string; generatedAtUtc: string; exceptions: ExistingException[] };
 
@@ -34,13 +35,19 @@ function severityRank(value: AttentionItem['severity']): number {
 }
 
 async function freshness(token?: string): Promise<FreshnessResponse> {
-  const confidence = await request<ConfidenceResponse>('/api/v1/operations/confidence', token);
+  const [confidence, liveTacho] = await Promise.all([
+    request<ConfidenceResponse>('/api/v1/operations/confidence', token),
+    request<TachoLiveStatus>('/api/v1/integrations/tachomaster/status', token).catch(() => null),
+  ]);
   const now = Date.now();
+  const tacho = liveTacho?.connected
+    ? { name: 'TachoMaster', lastUpdatedUtc: new Date(now).toISOString(), ageMinutes: 0, state: 'green' as const }
+    : freshnessSource('TachoMaster', confidence.tachoMaster.lastSyncUtc, now, 30, 120);
   return {
     generatedAtUtc: confidence.generatedAtUtc,
     sources: [
       freshnessSource('Tracking', confidence.dotTracking.latestEventUtc, now, 10, 30),
-      freshnessSource('Tacho', confidence.tachoMaster.lastSyncUtc, now, 30, 120),
+      tacho,
       freshnessSource('Info mailbox', confidence.emailIntake.lastReceivedUtc, now, 15, 60),
       freshnessSource('Sage HR', confidence.sageHr.lastSyncUtc, now, 180, 720),
     ],
