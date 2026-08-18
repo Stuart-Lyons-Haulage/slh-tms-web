@@ -1,12 +1,8 @@
 import { useCallback, useState } from "react";
 import { ApiError, api, request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { todayIsoDate } from "../lib/dateUtils";
 import { useApi } from "../lib/useApi";
-
-const localDate = () => {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
 
 type LiveCoverageResponse = {
   generatedAtUtc: string;
@@ -65,7 +61,7 @@ function StatusCard({ title, configured, connected, detail, meta }: { title: str
 
 export function OperationsControlClean() {
   const token = useAccessToken();
-  const [date, setDate] = useState(localDate());
+  const [date, setDate] = useState(todayIsoDate());
   const sage = useApi(useCallback(async () => api.sageHrStatus(await token()), [token]));
   const tacho = useApi(useCallback(async () => api.tachoMasterStatus(await token()), [token]));
   const road = useApi(useCallback(async () => api.roadTechStatus(await token()), [token]));
