@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FuelMaster } from './Pages';
 import { DriversUnified } from './DriversUnified';
+import { FleetAssetsOperational } from './FleetAssetsOperational';
 import { FuelCardsOperational } from './FuelCardsOperational';
 import { MarketsMasterClean } from './MarketsMasterClean';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
@@ -10,8 +11,8 @@ type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
 
 const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
   { key: 'drivers', label: 'Drivers', detail: 'Full driver register including employee number, skills, code, Tacho details, driving licence and live hours' },
-  { key: 'vehicles', label: 'Vehicles', detail: 'Registrations, fleet numbers, cab phones and vehicle identifiers' },
-  { key: 'trailers', label: 'Trailers', detail: 'Canonical SLH trailer numbers, types and capacities' },
+  { key: 'vehicles', label: 'Vehicles', detail: 'Registrations, fleet numbers and identifiers, with live Fleetio maintenance, compliance, defects, inspections and work orders below' },
+  { key: 'trailers', label: 'Trailers', detail: 'Canonical SLH trailer numbers and capacities, with linked Fleetio C-number, maintenance, compliance, defects and work orders below' },
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Vehicle fuel cards, PINs and fuel register' },
   { key: 'customers', label: 'Customers', detail: 'Customer names and master codes' },
   { key: 'sites', label: 'Sites', detail: 'Collection and delivery locations, driver instructions, default temperatures and planning regions' },
@@ -47,6 +48,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
     {section === 'drivers' && <DriversUnified />}
     {(section === 'vehicles' || section === 'trailers' || section === 'customers' || section === 'sites' || section === 'geofences') &&
       <MasterDataOperational initialTab={section} showCategoryButtons={false} showHeading={false} />}
+    {(section === 'vehicles' || section === 'trailers') && <div style={{ marginTop: 22 }}><FleetAssetsOperational /></div>}
     {section === 'sites' && <SitePlanningProfiles />}
     {section === 'fuel-cards' && <FuelCardsOperational />}
     {section === 'markets' && <MarketsMasterClean />}
