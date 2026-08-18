@@ -58,6 +58,32 @@ type IdentityImportResult = {
   message: string;
 };
 
+type PreferredVehicle = {
+  driverId: string;
+  driverName: string;
+  vehicleId: string;
+  vehicleRegistration: string;
+  confidencePercent: number;
+  observedDays: number;
+  updatedAtUtc?: string;
+  protected: boolean;
+  nextPlannedDate?: string;
+  prompt: string;
+};
+
+type PreferredVehicleResponse = {
+  planningDate: string;
+  lookbackDays: number;
+  generatedAtUtc: string;
+  preferences: PreferredVehicle[];
+};
+
+type PreferredVehicleRefresh = {
+  applied: number;
+  skipped: number;
+  changes: string[];
+};
+
 function parseCsvLine(line: string) {
   const fields: string[] = [];
   let current = "";
@@ -178,9 +204,10 @@ function matchTachoDriver(source: TachoCsvDriver, drivers: Driver[]): TachoMatch
   return strong.length === 1 ? { source, driver: strong[0], confidence: "Strong" } : undefined;
 }
 
-function DriverTachoOverview({ rows }: { rows: Driver[] }) {
+function DriverTachoOverview({ rows, preferences }: { rows: Driver[]; preferences: PreferredVehicle[] }) {
   const [filter, setFilter] = useState("");
   const normalised = filter.trim().toLowerCase();
+  const preferenceByDriver = useMemo(() => new Map(preferences.map((item) => [item.driverId, item])), [preferences]);
   const visible = useMemo(
     () => rows.filter((row) => !normalised || [row.displayName, row.employeeNumber, row.tachoName, row.tachoCardNumber, row.mobileNumber].some((field) => String(field || "").toLowerCase().includes(normalised))),
     [rows, normalised],
@@ -199,22 +226,26 @@ function DriverTachoOverview({ rows }: { rows: Driver[] }) {
         </label>
       </div>
       <p className="intro">
-        Live planning view of driver identity, TachoMaster linkage and available driving/work time. Driver maintenance and imports remain below this table.
+        Live planning view of driver identity, TachoMaster linkage, regular vehicle pairing and available driving/work time. Driver maintenance and imports remain below this table.
       </p>
       <div className="master-table-wrap">
         <table className="master-table driver-tacho-table">
           <thead>
             <tr>
-              <th>Employee</th><th>Driver</th><th>Mobile</th><th>Type</th><th>Group</th><th>Agency</th>
+              <th>Employee</th><th>Driver</th><th>Preferred vehicle</th><th>Pairing</th><th>Protection</th><th>Mobile</th><th>Type</th><th>Group</th><th>Agency</th>
               <th>Tacho name</th><th>Tacho card</th><th>Tacho link</th><th>Drive left today</th><th>Drive left week</th>
               <th>Work left week</th><th>Last Tacho sync</th><th>Licence</th><th>Licence expiry</th><th>Active</th>
             </tr>
           </thead>
           <tbody>
-            {visible.map((row) => (
-              <tr key={row.id}>
+            {visible.map((row) => {
+              const preference = preferenceByDriver.get(row.id);
+              return <tr key={row.id}>
                 <td>{value(row.employeeNumber)}</td>
                 <td><strong>{value(row.displayName)}</strong></td>
+                <td><strong>{value(preference?.vehicleRegistration)}</strong></td>
+                <td>{preference ? `${preference.confidencePercent.toFixed(0)}% · ${preference.observedDays} days` : "—"}</td>
+                <td>{preference?.protected ? `Protected${preference.nextPlannedDate ? ` · next ${preference.nextPlannedDate}` : ""}` : preference ? "Preferred" : "—"}</td>
                 <td>{value(row.mobileNumber)}</td>
                 <td>{value(row.driverType || (row.agencyName ? "Agency" : ""))}</td>
                 <td>{value(row.driverGroup)}</td>
@@ -229,12 +260,12 @@ function DriverTachoOverview({ rows }: { rows: Driver[] }) {
                 <td>{value(row.licenceStatus)}</td>
                 <td>{value(row.licenceExpiry)}</td>
                 <td>{row.active ? "Yes" : "No"}</td>
-              </tr>
-            ))}
+              </tr>;
+            })}
           </tbody>
         </table>
       </div>
-      <p className="hint">{visible.length} of {rows.length} drivers shown.</p>
+      <p className="hint">{visible.length} of {rows.length} drivers shown. Preferred vehicles use a 28-day TachoMaster + DOT/Falcon historical average and only auto-assign where the pairing evidence is strong.</p>
     </section>
   );
 }
@@ -242,7 +273,9 @@ function DriverTachoOverview({ rows }: { rows: Driver[] }) {
 export function DriversOperational() {
   const token = useAccessToken();
   const drivers = useApi(useCallback(async () => api.drivers(await token()), [token]));
+  const preferences = useApi(useCallback(async () => request<PreferredVehicleResponse>("/api/v1/driver-vehicle-preferences", await token()), [token]));
   const [syncing, setSyncing] = useState(false);
+  const [assigningVehicles, setAssigningVehicles] = useState(false);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState<string>();
 
@@ -257,6 +290,20 @@ export function DriversOperational() {
       setMessage(exception instanceof Error ? exception.message : "TachoMaster sync failed.");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function assignRegularVehicles() {
+    setAssigningVehicles(true);
+    setMessage(undefined);
+    try {
+      const result = await request<PreferredVehicleRefresh>("/api/v1/driver-vehicle-preferences/refresh?days=28", await token(), { method: "POST" }, 120000);
+      setMessage(`Regular vehicle analysis complete: ${result.applied} preferred vehicle pairing(s) assigned, ${result.skipped} left as suggestions only.${result.changes.length ? ` ${result.changes.slice(0, 5).join("; ")}${result.changes.length > 5 ? "; …" : ""}` : ""}`);
+      await preferences.refresh();
+    } catch (exception) {
+      setMessage(exception instanceof Error ? exception.message : "Regular vehicle analysis failed.");
+    } finally {
+      setAssigningVehicles(false);
     }
   }
 
@@ -356,15 +403,18 @@ export function DriversOperational() {
             Import Availability
             <input type="file" accept=".csv,text/csv" hidden disabled={importing} onChange={(event) => void importAvailabilityCsv(event)} />
           </label>
-          <button onClick={() => void drivers.refresh()} disabled={drivers.loading}>Refresh</button>
+          <button onClick={() => { void drivers.refresh(); void preferences.refresh(); }} disabled={drivers.loading || preferences.loading}>Refresh</button>
+          <button onClick={() => void assignRegularVehicles()} disabled={assigningVehicles}>
+            {assigningVehicles ? "Analysing 28 days…" : "Assign regular vehicles"}
+          </button>
           <button className="primary" onClick={() => void syncTacho()} disabled={syncing}>
             {syncing ? "Syncing TachoMaster…" : "Sync TachoMaster"}
           </button>
         </div>
       </div>
-      <p className="hint">Worker List is the preferred identity import because it carries TachoMaster member code and driver card number. Vehicle List links the TachoMaster/DOT registration to the existing vehicle master. Imports never auto-create drivers or vehicles.</p>
+      <p className="hint">Worker List is the preferred identity import because it carries TachoMaster member code and driver card number. Vehicle List links the TachoMaster/DOT registration to the existing vehicle master. “Assign regular vehicles” reviews the last 28 days of TachoMaster duties and stored DOT/Falcon driver evidence, then only assigns a preferred truck where the pairing is sufficiently strong.</p>
       {message && <p className="notice inline-notice">{message}</p>}
-      {drivers.error ? <div className="state error"><p>{drivers.error}</p></div> : drivers.loading && !drivers.data ? <div className="state">Loading driver and Tacho data…</div> : <DriverTachoOverview rows={drivers.data || []} />}
+      {(drivers.error || preferences.error) ? <div className="state error"><p>{drivers.error || preferences.error}</p></div> : drivers.loading && !drivers.data ? <div className="state">Loading driver and Tacho data…</div> : <DriverTachoOverview rows={drivers.data || []} preferences={preferences.data?.preferences || []} />}
       <div className="driver-maintenance-section">
         <p className="eyebrow">Driver maintenance</p>
         <DriversMaster />
