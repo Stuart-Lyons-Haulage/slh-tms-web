@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
 import { useAccessToken } from '../lib/auth';
 
-type Tab = 'drivers' | 'vehicles' | 'trailers' | 'sites' | 'geofences' | 'customers';
+export type MasterDataTab = 'drivers' | 'vehicles' | 'trailers' | 'sites' | 'geofences' | 'customers';
 type Row = Record<string, unknown> & { id: string; active: boolean };
 
 type Audit = {
@@ -15,7 +15,7 @@ type Audit = {
   changedAtUtc: string;
 };
 
-const config: Record<Tab, {
+const config: Record<MasterDataTab, {
   title: string;
   search: string;
   entityType: string;
@@ -64,9 +64,9 @@ function isoDate(value?: string) {
   return value ? new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
 }
 
-export function MasterDataOperational() {
+export function MasterDataOperational({ initialTab = 'drivers', showCategoryButtons = true, showHeading = true }: { initialTab?: MasterDataTab; showCategoryButtons?: boolean; showHeading?: boolean }) {
   const token = useAccessToken();
-  const [tab, setTab] = useState<Tab>('drivers');
+  const [tab, setTab] = useState<MasterDataTab>(initialTab);
   const [query, setQuery] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
@@ -80,6 +80,8 @@ export function MasterDataOperational() {
 
   const current = config[tab];
   const endpoint = `/api/v1/operational-master-data/${tab}`;
+
+  useEffect(() => { setTab(initialTab); }, [initialTab]);
 
   const load = useCallback(async () => {
     setLoading(true); setError(undefined);
@@ -126,16 +128,16 @@ export function MasterDataOperational() {
     finally { setSaving(false); }
   };
 
-  const tabs = useMemo(() => Object.keys(config) as Tab[], []);
+  const tabs = useMemo(() => Object.keys(config) as MasterDataTab[], []);
 
   return <section>
-    <div className="title-row">
+    {showHeading && <div className="title-row">
       <div><p className="eyebrow">Master data control</p><h1>Edit, archive and audit master data</h1><p>Operational changes use the same live master records as planning. Records are archived rather than deleted.</p></div>
-    </div>
+    </div>}
 
-    <div className="panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+    {showCategoryButtons && <div className="panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       {tabs.map(key => <button key={key} className={tab === key ? 'primary' : ''} onClick={() => setTab(key)}>{config[key].title}</button>)}
-    </div>
+    </div>}
 
     <div className="panel">
       <div className="title-row">
