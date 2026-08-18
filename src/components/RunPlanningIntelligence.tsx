@@ -66,11 +66,20 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
   async function allocate() {
     setBusy(true); setMessage(undefined);
     try {
-      await request(`/api/v1/loads/${load.id}/allocation`, await token(), {
+      const access = await token();
+      await request(`/api/v1/loads/${load.id}/allocation`, access, {
         method: "PUT",
         body: JSON.stringify({ driverId: driverId || null, vehicleId: vehicleId || null, trailerId: load.trailerId || null }),
       });
-      setMessage("Driver and vehicle allocation saved.");
+      if (chosenVehicle?.estimatedEmptyMiles != null) {
+        await request(`/api/v1/loads/${load.id}/commercial`, access, {
+          method: "PUT",
+          body: JSON.stringify({ emptyMiles: chosenVehicle.estimatedEmptyMiles }),
+        });
+      }
+      setMessage(chosenVehicle?.estimatedEmptyMiles != null
+        ? `Allocation saved. Empty miles set to ${chosenVehicle.estimatedEmptyMiles.toFixed(1)} from the best available DOT / previous-job position.`
+        : "Driver and vehicle allocation saved. Empty miles will populate once a positioning point is available.");
       await refresh();
       await onChanged?.();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Allocation could not be saved."); }
