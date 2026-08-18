@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { api, request } from "../lib/api";
+import { ApiError, api, request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 
@@ -64,16 +64,25 @@ export function OperationsControlClean() {
   const road = useApi(useCallback(async () => api.roadTechStatus(await token()), [token]));
   const fleetio = useApi(useCallback(async () => api.fleetioStatus(await token()), [token]));
   const fleet = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));
-  const liveCoverage = useApi(useCallback(async () => request<LiveCoverageResponse>("/api/v1/operations/live-coverage", await token(), undefined, 45000), [token]));
+  const liveCoverage = useApi(useCallback(async () => {
+    const authToken = await token();
+    try {
+      return await request<LiveCoverageResponse>("/api/v1/operations/live-coverage", authToken, undefined, 45000);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }
+  }, [token]));
   const exceptions = useApi(useCallback(async () => api.operationsExceptions(date, await token()), [date, token]));
   const reconciliation = useApi(useCallback(async () => api.operationsReconciliation(date, await token()), [date, token]));
 
   const moving = (fleet.data?.vehicles || []).filter((vehicle) => vehicle.condition === "Moving");
   const movingWithTachoFallback = moving.filter((vehicle) => Boolean(vehicle.tacho) || vehicle.driverSource === "TachoMaster").length;
+  const movingWithDotIdentityFallback = moving.filter((vehicle) => vehicle.driverSource === "DOT/Falcon" || Boolean(vehicle.driverName)).length;
   const movingCount = liveCoverage.data?.summary.movingVehicles ?? moving.length;
   const movingWithTacho = liveCoverage.data?.summary.movingWithTachoIdentity ?? movingWithTachoFallback;
   const movingWithTachoMember = liveCoverage.data?.summary.movingWithTachoMemberMatch ?? movingWithTachoFallback;
-  const movingWithDotCard = liveCoverage.data?.summary.movingWithLiveCardOrNameFromDot ?? 0;
+  const movingWithDotCard = liveCoverage.data?.summary.movingWithLiveCardOrNameFromDot ?? movingWithDotIdentityFallback;
   const movingWithoutTacho = liveCoverage.data?.summary.movingWithoutTachoIdentity ?? Math.max(0, moving.length - movingWithTachoFallback);
 
   const refresh = () => {
@@ -146,6 +155,7 @@ export function OperationsControlClean() {
         <article className={movingWithoutTacho ? "warning" : ""}><span>Moving without Tachomaster match</span><strong>{movingWithoutTacho}</strong><small>{movingWithoutTacho ? "Review card/duty identity coverage; location itself is still confirmed by DOT." : "All moving vehicles have a Tachomaster identity match."}</small></article>
       </div>
 
+      {liveCoverage.data === null && <p className="notice inline-notice">The upgraded live coverage API is still deploying, so this panel is temporarily using the existing DOT/Tachomaster fleet-status join.</p>}
       {liveCoverage.error && <p className="notice inline-notice">Live DOT/Tachomaster coverage check failed: {liveCoverage.error}</p>}
       {(liveCoverage.data?.unmatchedMovingVehicles || []).slice(0, 8).map((vehicle) => <div className="notice inline-notice" key={`${vehicle.vehicleIdentifier}-${vehicle.lastEventUtc}`}>
         <strong>{vehicle.vehicleIdentifier} · moving without Tachomaster match</strong><br />
