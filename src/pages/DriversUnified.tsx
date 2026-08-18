@@ -7,12 +7,12 @@ function value(input: unknown) {
   return input == null || input === "" ? "—" : String(input);
 }
 
-function minutes(input?: number) {
+function minutes(input?: number | null) {
   if (input == null) return "—";
   return `${Math.floor(input / 60)}h ${String(Math.abs(input % 60)).padStart(2, "0")}m`;
 }
 
-function dateTime(input?: string) {
+function dateTime(input?: string | null) {
   if (!input) return "—";
   const parsed = new Date(input);
   return Number.isNaN(parsed.getTime()) ? input : parsed.toLocaleString("en-GB");
@@ -38,6 +38,61 @@ type TachoRefreshResult = {
   message: string;
 };
 
+type TachoProfile = {
+  memberCode: number;
+  driverName: string;
+  cardNumber?: string;
+  employeeNumber?: string;
+  metricsValidAtUtc?: string;
+  dailyDriverPeriodsAvailable?: number;
+  driveAvailableTodayMinutes?: number;
+  driveAvailableTomorrowMinutes?: number;
+  driveAvailableWeekMinutes?: number;
+  driveAvailableFortnightMinutes?: number;
+  longDaysWorkedThisWeek?: number;
+  shortDailyRestTakenThisWeek?: number;
+  workAvailableWeekMinutes?: number;
+};
+
+type TachoDuty = {
+  vehicleCode: string;
+  memberCode: number;
+  driverName: string;
+  cardNumber?: string;
+  employeeNumber?: string;
+  dutyStartUtc: string;
+  dutyEndUtc?: string;
+  workMinutes: number;
+  restMinutes: number;
+  availableMinutes: number;
+  driveMinutes: number;
+  breakCount: number;
+  breakMinutes?: number;
+};
+
+type TachoHistory = {
+  configured: boolean;
+  driverId: string;
+  driverName: string;
+  employeeNumber: string;
+  linkedTachoMemberId?: string;
+  linkedTachoCard?: string;
+  from: string;
+  to: string;
+  profile?: TachoProfile;
+  summary: {
+    dutyCount: number;
+    daysWithDuty: number;
+    driveMinutes: number;
+    workMinutes: number;
+    availableMinutes: number;
+    restMinutes: number;
+    breakCount: number;
+    breakMinutes: number;
+  };
+  duties: TachoDuty[];
+};
+
 export function DriversUnified() {
   const token = useAccessToken();
   const drivers = useApi(useCallback(async () => api.drivers(await token()), [token]));
@@ -46,6 +101,9 @@ export function DriversUnified() {
   const [draft, setDraft] = useState<Driver>();
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [history, setHistory] = useState<TachoHistory>();
+  const [historyError, setHistoryError] = useState<string>();
   const [message, setMessage] = useState<string>();
 
   const visible = useMemo(() => {
@@ -101,7 +159,27 @@ export function DriversUnified() {
     }
   }
 
-  const edit = <K extends keyof Driver>(key: K, value: Driver[K]) => setDraft((current) => current ? { ...current, [key]: value } : current);
+  async function loadHistory(driver: Driver) {
+    setHistoryLoading(true);
+    setHistoryError(undefined);
+    setHistory(undefined);
+    try {
+      const result = await request<TachoHistory>(
+        `/api/v1/tachomaster/drivers/${driver.id}/history`,
+        await token(),
+        undefined,
+        60000,
+      );
+      setHistory(result);
+      window.setTimeout(() => document.getElementById("tacho-history")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "TachoMaster history could not be loaded.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  const edit = <K extends keyof Driver>(key: K, next: Driver[K]) => setDraft((current) => current ? { ...current, [key]: next } : current);
 
   return (
     <section className="drivers-unified-page">
@@ -109,7 +187,7 @@ export function DriversUnified() {
         <div>
           <p className="eyebrow">Master data + live TachoMaster</p>
           <h1>Drivers</h1>
-          <p className="hint">One driver, one row. Scroll horizontally for all driver, licence and Tacho information.</p>
+          <p className="hint">One driver, one row. Scroll horizontally for all driver, licence and Tacho information. History uses the linked Tacho member/card first, so vehicle changes do not lose a driver&apos;s duty records.</p>
         </div>
         <div className="title-actions">
           <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search driver…" />
@@ -118,9 +196,10 @@ export function DriversUnified() {
         </div>
       </div>
       {message && <p className="notice inline-notice">{message}</p>}
+      {historyError && <p className="notice inline-notice" style={{ borderColor: "#b42318" }}>{historyError}</p>}
       {drivers.error ? <div className="state error"><p>{drivers.error}</p></div> : (
         <div className="master-table-wrap" style={{ overflowX: "auto" }}>
-          <table className="master-table driver-unified-table" style={{ minWidth: 2300 }}>
+          <table className="master-table driver-unified-table" style={{ minWidth: 2360 }}>
             <thead>
               <tr>
                 <th>Employee</th><th>Driver</th><th>Mobile</th><th>Type</th><th>Group</th><th>Skills</th><th>Coding</th>
@@ -157,7 +236,7 @@ export function DriversUnified() {
                     <td>{isEditing ? <input value={row.notes || ""} onChange={(e) => edit("notes", e.target.value)} /> : value(row.notes)}</td>
                     <td>{isEditing ? <input type="checkbox" checked={row.active} onChange={(e) => edit("active", e.target.checked)} /> : row.active ? "Yes" : "No"}</td>
                     <td>
-                      {isEditing ? <div className="actions"><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button><button onClick={() => { setEditingId(undefined); setDraft(undefined); }}>Cancel</button></div> : <button onClick={() => startEdit(driver)}>Edit</button>}
+                      {isEditing ? <div className="actions"><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button><button onClick={() => { setEditingId(undefined); setDraft(undefined); }}>Cancel</button></div> : <div className="actions"><button onClick={() => startEdit(driver)}>Edit</button><button onClick={() => void loadHistory(driver)} disabled={historyLoading}>{historyLoading ? "Loading…" : "History"}</button></div>}
                     </td>
                   </tr>
                 );
@@ -167,6 +246,53 @@ export function DriversUnified() {
         </div>
       )}
       <p className="hint">{visible.length} driver{visible.length === 1 ? "" : "s"} shown. Agency has been removed from the operational driver register.</p>
+
+      {history && <div id="tacho-history" className="panel" style={{ marginTop: 20 }}>
+        <div className="title-row">
+          <div>
+            <p className="eyebrow">TachoMaster duty history</p>
+            <h2>{history.driverName}</h2>
+            <p className="hint">{history.from} to {history.to} · Member {value(history.linkedTachoMemberId)} · Card {value(history.linkedTachoCard)}</p>
+          </div>
+          <button onClick={() => setHistory(undefined)}>Close</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginBottom: 16 }}>
+          <div className="notice"><strong>{history.summary.dutyCount}</strong><br/><small>Duty records</small></div>
+          <div className="notice"><strong>{history.summary.daysWithDuty}</strong><br/><small>Days with duty</small></div>
+          <div className="notice"><strong>{minutes(history.summary.driveMinutes)}</strong><br/><small>Driving</small></div>
+          <div className="notice"><strong>{minutes(history.summary.workMinutes)}</strong><br/><small>Other work</small></div>
+          <div className="notice"><strong>{minutes(history.summary.availableMinutes)}</strong><br/><small>Availability</small></div>
+          <div className="notice"><strong>{minutes(history.summary.restMinutes)}</strong><br/><small>Rest</small></div>
+        </div>
+
+        {history.profile && <div className="panel" style={{ marginBottom: 16 }}>
+          <h3>Current TachoMaster limits</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
+            <div><small>Drive left today</small><br/><strong>{minutes(history.profile.driveAvailableTodayMinutes)}</strong></div>
+            <div><small>Drive left tomorrow</small><br/><strong>{minutes(history.profile.driveAvailableTomorrowMinutes)}</strong></div>
+            <div><small>Drive left week</small><br/><strong>{minutes(history.profile.driveAvailableWeekMinutes)}</strong></div>
+            <div><small>Drive left fortnight</small><br/><strong>{minutes(history.profile.driveAvailableFortnightMinutes)}</strong></div>
+            <div><small>Work left week</small><br/><strong>{minutes(history.profile.workAvailableWeekMinutes)}</strong></div>
+            <div><small>Daily periods available</small><br/><strong>{value(history.profile.dailyDriverPeriodsAvailable)}</strong></div>
+            <div><small>Long days this week</small><br/><strong>{value(history.profile.longDaysWorkedThisWeek)}</strong></div>
+            <div><small>Short rests this week</small><br/><strong>{value(history.profile.shortDailyRestTakenThisWeek)}</strong></div>
+            <div><small>Metrics valid</small><br/><strong>{dateTime(history.profile.metricsValidAtUtc)}</strong></div>
+          </div>
+        </div>}
+
+        <div className="master-table-wrap" style={{ overflowX: "auto" }}>
+          <table className="master-table" style={{ minWidth: 1200 }}>
+            <thead><tr><th>Duty start</th><th>Duty end</th><th>Vehicle</th><th>Drive</th><th>Work</th><th>Available</th><th>Rest</th><th>WTD breaks</th><th>Break time</th><th>Member</th></tr></thead>
+            <tbody>{history.duties.map((duty, index) => <tr key={`${duty.dutyStartUtc}-${duty.vehicleCode}-${index}`}>
+              <td>{dateTime(duty.dutyStartUtc)}</td><td>{dateTime(duty.dutyEndUtc)}</td><td>{value(duty.vehicleCode)}</td>
+              <td>{minutes(duty.driveMinutes)}</td><td>{minutes(duty.workMinutes)}</td><td>{minutes(duty.availableMinutes)}</td><td>{minutes(duty.restMinutes)}</td>
+              <td>{duty.breakCount}</td><td>{minutes(duty.breakMinutes)}</td><td>{duty.memberCode}</td>
+            </tr>)}</tbody>
+          </table>
+          {history.duties.length === 0 && <div className="state">No TachoMaster duty records were returned for this linked driver in the selected period.</div>}
+        </div>
+      </div>}
     </section>
   );
 }
