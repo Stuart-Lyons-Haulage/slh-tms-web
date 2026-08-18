@@ -9,6 +9,7 @@ import './operationalPresentationPatch';
 import './managementFallbackPatch';
 import './planLockFetchPatch';
 import './marketNormalizationPatch';
+import './preferredVehicleAllocationPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
