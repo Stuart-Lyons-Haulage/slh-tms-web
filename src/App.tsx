@@ -28,11 +28,11 @@ import { ManagementStabilityBanner } from './components/ManagementStabilityBanne
 import { MobileDock } from './components/MobileDock';
 
 const dailyNavigation = [
-  ['/dashboard', 'Dashboard'], ['/staging', 'Order control'], ['/', 'Planner'], ['/pallet-control', 'Pallet control'], ['/planner-import', 'Imports'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'],
+  ['/dashboard', 'Dashboard'], ['/', 'Planner'], ['/pallet-control', 'Pallet control'], ['/planner-import', 'Import planner plan'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'],
 ];
 const masterNavigation = [['/master-data', 'Master data']];
 const insightNavigation = [
-  ['/attention', 'Needs attention'], ['/management', 'Management'], ['/night-outs', 'Night outs'], ['/plan-stability', 'Plan stability'], ['/control-centre', 'Control centre'], ['/reporting', 'Reporting'], ['/exports', 'Exports'],
+  ['/management', 'Management'], ['/night-outs', 'Night outs'], ['/plan-stability', 'Plan stability'], ['/control-centre', 'Control centre'], ['/reporting', 'Reporting'], ['/exports', 'Exports'],
 ];
 
 type NavItem = string[];
