@@ -21,7 +21,7 @@ export type OrderUpdatePayload = {
 
 export const orderMaintenance = {
   update: (id: string, payload: OrderUpdatePayload, token?: string) =>
-    request<TransportOrder>(`/api/v1/orders/${id}`, token, {
+    request<TransportOrder>(`/api/v1/operational-recovery/orders/${id}`, token, {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
