@@ -25,6 +25,7 @@ type LiveCoverageResponse = {
     dutyRecordCount: number;
     tachoMemberIdentityCount: number;
     liveOnlyIdentityCount: number;
+    driverProfileCount?: number;
     error?: string;
   };
   summary: {
@@ -34,6 +35,10 @@ type LiveCoverageResponse = {
     movingWithLiveCardOrNameFromDot: number;
     movingWithoutTachoIdentity: number;
     attentionCount: number;
+    movingWithLiveTachoIdentity?: number;
+    movingWithLiveTachoMemberMatch?: number;
+    movingWithTachoDirectoryProfile?: number;
+    movingWithPlannedAllocation?: number;
   };
   unmatchedMovingVehicles: Array<{
     vehicleIdentifier: string;
@@ -41,6 +46,8 @@ type LiveCoverageResponse = {
     speedKph?: number;
     dotDriverName?: string;
     dotDriverCardDetected: boolean;
+    plannedDriverName?: string;
+    plannedLoadReference?: string;
     reason: string;
   }>;
 };
@@ -81,6 +88,9 @@ export function OperationsControlClean() {
   const movingWithDotIdentityFallback = moving.filter((vehicle) => vehicle.driverSource === "DOT/Falcon" || Boolean(vehicle.driverName)).length;
   const movingCount = liveCoverage.data?.summary.movingVehicles ?? moving.length;
   const movingWithTacho = liveCoverage.data?.summary.movingWithTachoIdentity ?? movingWithTachoFallback;
+  const liveTachoConfirmed = liveCoverage.data?.summary.movingWithLiveTachoIdentity ?? movingWithTachoFallback;
+  const allocationTachoProfiles = liveCoverage.data?.summary.movingWithTachoDirectoryProfile ?? 0;
+  const plannedAllocations = liveCoverage.data?.summary.movingWithPlannedAllocation ?? 0;
   const movingWithTachoMember = liveCoverage.data?.summary.movingWithTachoMemberMatch ?? movingWithTachoFallback;
   const movingWithDotCard = liveCoverage.data?.summary.movingWithLiveCardOrNameFromDot ?? movingWithDotIdentityFallback;
   const movingWithoutTacho = liveCoverage.data?.summary.movingWithoutTachoIdentity ?? Math.max(0, moving.length - movingWithTachoFallback);
@@ -108,7 +118,7 @@ export function OperationsControlClean() {
     <section className="panel" style={{ marginBottom: 18 }}>
       <div className="title-row">
         <div><p className="eyebrow">Integration confidence</p><h2>Live provider status</h2></div>
-        <small>DOT supplies live vehicle location; Tachomaster supplies driver/card identity and hours. Manual synchronisation is managed in Admin.</small>
+        <small>DOT supplies live vehicle location. Tachomaster supplies live card confirmation where available, plus driver profile/hours enrichment through TMS allocations.</small>
       </div>
       <div className="admin-grid">
         <StatusCard
@@ -125,10 +135,10 @@ export function OperationsControlClean() {
           detail={liveCoverage.data
             ? liveCoverage.data.tachoMaster.error
               ? `Tachomaster identity check failed: ${liveCoverage.data.tachoMaster.error}`
-              : `Tachomaster returned ${liveCoverage.data.tachoMaster.vehicleIdentityCount} live vehicle/driver identit${liveCoverage.data.tachoMaster.vehicleIdentityCount === 1 ? "y" : "ies"}.`
+              : `Tachomaster returned ${liveCoverage.data.tachoMaster.vehicleIdentityCount} live vehicle/card identit${liveCoverage.data.tachoMaster.vehicleIdentityCount === 1 ? "y" : "ies"} and ${liveCoverage.data.tachoMaster.driverProfileCount ?? 0} driver profile${(liveCoverage.data.tachoMaster.driverProfileCount ?? 0) === 1 ? "" : "s"}.`
             : tacho.data?.message || tacho.error || "Checking TachoMaster…"}
           meta={liveCoverage.data
-            ? `${liveCoverage.data.tachoMaster.dutyRecordCount} duty record candidates · ${liveCoverage.data.tachoMaster.tachoMemberIdentityCount} Tachomaster member matches · ${liveCoverage.data.tachoMaster.liveOnlyIdentityCount} live-only identities`
+            ? `${liveCoverage.data.tachoMaster.dutyRecordCount} duty record candidates · ${liveCoverage.data.tachoMaster.tachoMemberIdentityCount} live Tachomaster member matches · ${liveCoverage.data.tachoMaster.liveOnlyIdentityCount} live-only identities`
             : tacho.data ? `${tacho.data.matchedVehicleCount} current TachoMaster vehicle duty/card assignment${tacho.data.matchedVehicleCount === 1 ? "" : "s"}` : undefined}
         />
         <StatusCard
@@ -149,17 +159,20 @@ export function OperationsControlClean() {
 
       <div className="metrics" style={{ marginTop: 16 }}>
         <article><span>Vehicles moving now</span><strong>{movingCount}</strong><small>DOT/RoadTech live location and movement state</small></article>
-        <article><span>Moving + Tachomaster identity</span><strong>{movingWithTacho}</strong><small>Moving DOT vehicles matched to a Tachomaster vehicle/driver identity</small></article>
-        <article><span>Tachomaster member matches</span><strong>{movingWithTachoMember}</strong><small>Moving vehicles where the driver/card links to a Tachomaster member</small></article>
+        <article><span>Live Tachomaster card confirmed</span><strong>{liveTachoConfirmed}</strong><small>Moving DOT vehicles directly matched to a live Tachomaster vehicle/card identity</small></article>
+        <article><span>Allocation + Tachomaster profile</span><strong>{allocationTachoProfiles}</strong><small>Moving vehicles with a TMS planned driver enriched from the Tachomaster driver directory</small></article>
+        <article><span>Total Tachomaster coverage</span><strong>{movingWithTacho}</strong><small>Live card matches plus allocation-backed Tachomaster profile matches</small></article>
+        <article><span>Planned allocations seen</span><strong>{plannedAllocations}</strong><small>Moving vehicles matched back to a TMS run/driver allocation</small></article>
         <article><span>DOT card/name seen</span><strong>{movingWithDotCard}</strong><small>Moving vehicles where DOT/Falcon exposed live card or driver identity evidence</small></article>
-        <article className={movingWithoutTacho ? "warning" : ""}><span>Moving without Tachomaster match</span><strong>{movingWithoutTacho}</strong><small>{movingWithoutTacho ? "Review card/duty identity coverage; location itself is still confirmed by DOT." : "All moving vehicles have a Tachomaster identity match."}</small></article>
+        <article><span>Tachomaster member/profile matches</span><strong>{movingWithTachoMember}</strong><small>Live Tachomaster member matches plus allocation-backed profile matches</small></article>
+        <article className={movingWithoutTacho ? "warning" : ""}><span>Moving without Tachomaster coverage</span><strong>{movingWithoutTacho}</strong><small>{movingWithoutTacho ? "Review live card coverage, TMS allocation, or Tachomaster driver-directory matching." : "All moving vehicles have live or allocation-backed Tachomaster coverage."}</small></article>
       </div>
 
       {liveCoverage.data === null && <p className="notice inline-notice">The upgraded live coverage API is still deploying, so this panel is temporarily using the existing DOT/Tachomaster fleet-status join.</p>}
       {liveCoverage.error && <p className="notice inline-notice">Live DOT/Tachomaster coverage check failed: {liveCoverage.error}</p>}
       {(liveCoverage.data?.unmatchedMovingVehicles || []).slice(0, 8).map((vehicle) => <div className="notice inline-notice" key={`${vehicle.vehicleIdentifier}-${vehicle.lastEventUtc}`}>
-        <strong>{vehicle.vehicleIdentifier} · moving without Tachomaster match</strong><br />
-        {vehicle.reason}{vehicle.dotDriverName ? ` DOT driver: ${vehicle.dotDriverName}.` : ""}{vehicle.dotDriverCardDetected ? " DOT card detected." : ""}
+        <strong>{vehicle.vehicleIdentifier} · moving without Tachomaster coverage</strong><br />
+        {vehicle.reason}{vehicle.dotDriverName ? ` DOT driver: ${vehicle.dotDriverName}.` : ""}{vehicle.dotDriverCardDetected ? " DOT card detected." : ""}{vehicle.plannedDriverName ? ` Planned driver: ${vehicle.plannedDriverName}.` : ""}{vehicle.plannedLoadReference ? ` Run: ${vehicle.plannedLoadReference}.` : ""}
       </div>)}
     </section>
 
