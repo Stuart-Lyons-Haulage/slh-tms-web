@@ -1,11 +1,48 @@
 import { useCallback, useState } from "react";
-import { api } from "../lib/api";
+import { api, request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 
 const localDate = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
+type LiveCoverageResponse = {
+  generatedAtUtc: string;
+  operatingDate: string;
+  dot: {
+    configured: boolean;
+    provider: string;
+    liveVehicleCount: number;
+    movingVehicleCount: number;
+    latestEventUtc?: string;
+  };
+  tachoMaster: {
+    configured: boolean;
+    connected: boolean;
+    vehicleIdentityCount: number;
+    dutyRecordCount: number;
+    tachoMemberIdentityCount: number;
+    liveOnlyIdentityCount: number;
+    error?: string;
+  };
+  summary: {
+    movingVehicles: number;
+    movingWithTachoIdentity: number;
+    movingWithTachoMemberMatch: number;
+    movingWithLiveCardOrNameFromDot: number;
+    movingWithoutTachoIdentity: number;
+    attentionCount: number;
+  };
+  unmatchedMovingVehicles: Array<{
+    vehicleIdentifier: string;
+    lastEventUtc: string;
+    speedKph?: number;
+    dotDriverName?: string;
+    dotDriverCardDetected: boolean;
+    reason: string;
+  }>;
 };
 
 function StatusCard({ title, configured, connected, detail, meta }: { title: string; configured?: boolean; connected?: boolean; detail: string; meta?: string }) {
@@ -27,12 +64,17 @@ export function OperationsControlClean() {
   const road = useApi(useCallback(async () => api.roadTechStatus(await token()), [token]));
   const fleetio = useApi(useCallback(async () => api.fleetioStatus(await token()), [token]));
   const fleet = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));
+  const liveCoverage = useApi(useCallback(async () => request<LiveCoverageResponse>("/api/v1/operations/live-coverage", await token(), undefined, 45000), [token]));
   const exceptions = useApi(useCallback(async () => api.operationsExceptions(date, await token()), [date, token]));
   const reconciliation = useApi(useCallback(async () => api.operationsReconciliation(date, await token()), [date, token]));
 
   const moving = (fleet.data?.vehicles || []).filter((vehicle) => vehicle.condition === "Moving");
-  const movingWithTacho = moving.filter((vehicle) => Boolean(vehicle.tacho) || vehicle.driverSource === "TachoMaster").length;
-  const movingWithoutTacho = Math.max(0, moving.length - movingWithTacho);
+  const movingWithTachoFallback = moving.filter((vehicle) => Boolean(vehicle.tacho) || vehicle.driverSource === "TachoMaster").length;
+  const movingCount = liveCoverage.data?.summary.movingVehicles ?? moving.length;
+  const movingWithTacho = liveCoverage.data?.summary.movingWithTachoIdentity ?? movingWithTachoFallback;
+  const movingWithTachoMember = liveCoverage.data?.summary.movingWithTachoMemberMatch ?? movingWithTachoFallback;
+  const movingWithDotCard = liveCoverage.data?.summary.movingWithLiveCardOrNameFromDot ?? 0;
+  const movingWithoutTacho = liveCoverage.data?.summary.movingWithoutTachoIdentity ?? Math.max(0, moving.length - movingWithTachoFallback);
 
   const refresh = () => {
     void sage.refresh();
@@ -40,6 +82,7 @@ export function OperationsControlClean() {
     void road.refresh();
     void fleetio.refresh();
     void fleet.refresh();
+    void liveCoverage.refresh();
     void exceptions.refresh();
     void reconciliation.refresh();
   };
@@ -56,7 +99,7 @@ export function OperationsControlClean() {
     <section className="panel" style={{ marginBottom: 18 }}>
       <div className="title-row">
         <div><p className="eyebrow">Integration confidence</p><h2>Live provider status</h2></div>
-        <small>Manual synchronisation is managed in Admin; this page is status and diagnostics only.</small>
+        <small>DOT supplies live vehicle location; Tachomaster supplies driver/card identity and hours. Manual synchronisation is managed in Admin.</small>
       </div>
       <div className="admin-grid">
         <StatusCard
@@ -68,17 +111,23 @@ export function OperationsControlClean() {
         />
         <StatusCard
           title="TachoMaster"
-          configured={tacho.data?.configured}
-          connected={tacho.data?.connected}
-          detail={tacho.data?.message || tacho.error || "Checking TachoMaster…"}
-          meta={tacho.data ? `${tacho.data.matchedVehicleCount} current TachoMaster vehicle duty/card assignment${tacho.data.matchedVehicleCount === 1 ? "" : "s"}` : undefined}
+          configured={liveCoverage.data?.tachoMaster.configured ?? tacho.data?.configured}
+          connected={liveCoverage.data?.tachoMaster.connected ?? tacho.data?.connected}
+          detail={liveCoverage.data
+            ? liveCoverage.data.tachoMaster.error
+              ? `Tachomaster identity check failed: ${liveCoverage.data.tachoMaster.error}`
+              : `Tachomaster returned ${liveCoverage.data.tachoMaster.vehicleIdentityCount} live vehicle/driver identit${liveCoverage.data.tachoMaster.vehicleIdentityCount === 1 ? "y" : "ies"}.`
+            : tacho.data?.message || tacho.error || "Checking TachoMaster…"}
+          meta={liveCoverage.data
+            ? `${liveCoverage.data.tachoMaster.dutyRecordCount} duty record candidates · ${liveCoverage.data.tachoMaster.tachoMemberIdentityCount} Tachomaster member matches · ${liveCoverage.data.tachoMaster.liveOnlyIdentityCount} live-only identities`
+            : tacho.data ? `${tacho.data.matchedVehicleCount} current TachoMaster vehicle duty/card assignment${tacho.data.matchedVehicleCount === 1 ? "" : "s"}` : undefined}
         />
         <StatusCard
           title="DOT / RoadTech"
-          configured={road.data?.configured}
-          connected={road.data?.connected}
-          detail={road.data?.message || road.error || "Checking DOT / RoadTech…"}
-          meta={road.data ? `${road.data.recordCount} latest vehicle telemetry records returned` : undefined}
+          configured={liveCoverage.data?.dot.configured ?? road.data?.configured}
+          connected={Boolean(liveCoverage.data?.dot.liveVehicleCount) || road.data?.connected}
+          detail={liveCoverage.data ? `${liveCoverage.data.dot.provider} returned ${liveCoverage.data.dot.liveVehicleCount} live vehicle location record${liveCoverage.data.dot.liveVehicleCount === 1 ? "" : "s"}.` : road.data?.message || road.error || "Checking DOT / RoadTech…"}
+          meta={liveCoverage.data ? `${liveCoverage.data.dot.movingVehicleCount} moving now from DOT location/movement state` : road.data ? `${road.data.recordCount} latest vehicle telemetry records returned` : undefined}
         />
         <StatusCard
           title="Fleetio"
@@ -90,10 +139,18 @@ export function OperationsControlClean() {
       </div>
 
       <div className="metrics" style={{ marginTop: 16 }}>
-        <article><span>Vehicles moving now</span><strong>{moving.length}</strong><small>DOT/RoadTech live movement state</small></article>
-        <article><span>Moving + Tacho matched</span><strong>{movingWithTacho}</strong><small>Moving vehicles with a current correlated Tacho driver/duty record</small></article>
-        <article className={movingWithoutTacho ? "warning" : ""}><span>Moving without Tacho match</span><strong>{movingWithoutTacho}</strong><small>{movingWithoutTacho ? "Review card/duty identity coverage; movement itself is still confirmed by tracking." : "All moving vehicles have a current Tacho correlation."}</small></article>
+        <article><span>Vehicles moving now</span><strong>{movingCount}</strong><small>DOT/RoadTech live location and movement state</small></article>
+        <article><span>Moving + Tachomaster identity</span><strong>{movingWithTacho}</strong><small>Moving DOT vehicles matched to a Tachomaster vehicle/driver identity</small></article>
+        <article><span>Tachomaster member matches</span><strong>{movingWithTachoMember}</strong><small>Moving vehicles where the driver/card links to a Tachomaster member</small></article>
+        <article><span>DOT card/name seen</span><strong>{movingWithDotCard}</strong><small>Moving vehicles where DOT/Falcon exposed live card or driver identity evidence</small></article>
+        <article className={movingWithoutTacho ? "warning" : ""}><span>Moving without Tachomaster match</span><strong>{movingWithoutTacho}</strong><small>{movingWithoutTacho ? "Review card/duty identity coverage; location itself is still confirmed by DOT." : "All moving vehicles have a Tachomaster identity match."}</small></article>
       </div>
+
+      {liveCoverage.error && <p className="notice inline-notice">Live DOT/Tachomaster coverage check failed: {liveCoverage.error}</p>}
+      {(liveCoverage.data?.unmatchedMovingVehicles || []).slice(0, 8).map((vehicle) => <div className="notice inline-notice" key={`${vehicle.vehicleIdentifier}-${vehicle.lastEventUtc}`}>
+        <strong>{vehicle.vehicleIdentifier} · moving without Tachomaster match</strong><br />
+        {vehicle.reason}{vehicle.dotDriverName ? ` DOT driver: ${vehicle.dotDriverName}.` : ""}{vehicle.dotDriverCardDetected ? " DOT card detected." : ""}
+      </div>)}
     </section>
 
     <section className="panel" style={{ marginBottom: 18 }}>
