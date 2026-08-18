@@ -1,11 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { request } from "../lib/api";
+import { useAccessToken } from "../lib/auth";
 import { JobsOperational } from "./JobsOperational";
 import { OrderReviewBulk } from "./OrderReviewBulk";
 
 type OrderControlTab = "review" | "live";
+type NwfRepairResponse = { repaired: number; message: string };
 
 export function OrderControl({ initialTab = "review" }: { initialTab?: OrderControlTab }) {
+  const token = useAccessToken();
   const [tab, setTab] = useState<OrderControlTab>(initialTab);
+  const [reviewVersion, setReviewVersion] = useState(0);
+  const [repairNotice, setRepairNotice] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const result = await request<NwfRepairResponse>("/api/v1/staging/orders/repair-nwf-references", await token(), { method: "POST" });
+        if (!active || result.repaired <= 0) return;
+        setRepairNotice(result.message);
+        setReviewVersion((value) => value + 1);
+      } catch {
+        // The repair is compatibility-only and must never stop Order Control loading.
+        // New imports already use the corrected PO-first parser.
+      }
+    })();
+    return () => { active = false; };
+  }, [token]);
 
   return <>
     <section className="panel" style={{ marginBottom: 18 }}>
@@ -29,8 +51,9 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
           ? "Review, amend, reject or approve staged orders. Approval remains mandatory before an order enters live planning."
           : "Amend or cancel an already-approved job without leaving Order control; the audit record is retained."}
       </p>
+      {repairNotice && <p className="notice inline-notice" style={{ marginBottom: 0 }}>{repairNotice}</p>}
     </section>
 
-    {tab === "review" ? <OrderReviewBulk /> : <JobsOperational />}
+    {tab === "review" ? <OrderReviewBulk key={reviewVersion} /> : <JobsOperational />}
   </>;
 }
