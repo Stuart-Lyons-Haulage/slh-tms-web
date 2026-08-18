@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FuelMaster } from './Pages';
 import { DriversUnified } from './DriversUnified';
-import { FleetAssetsOperational } from './FleetAssetsOperational';
+import { FleetMasterUnified } from './FleetMasterUnified';
 import { FuelCardsOperational } from './FuelCardsOperational';
 import { MarketsMasterClean } from './MarketsMasterClean';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
@@ -11,8 +11,8 @@ type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
 
 const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
   { key: 'drivers', label: 'Drivers', detail: 'Full driver register including employee number, skills, code, Tacho details, driving licence and live hours' },
-  { key: 'vehicles', label: 'Vehicles', detail: 'Registrations, fleet numbers and identifiers, with live Fleetio maintenance, compliance, defects, inspections and work orders below' },
-  { key: 'trailers', label: 'Trailers', detail: 'Canonical SLH trailer numbers and capacities, with linked Fleetio C-number, maintenance, compliance, defects and work orders below' },
+  { key: 'vehicles', label: 'Vehicles', detail: 'One canonical vehicle master: TMS planning identity plus joined Fleetio status, specification, maintenance, defects and work orders' },
+  { key: 'trailers', label: 'Trailers', detail: 'One canonical trailer master: SLH trailer identity and capacity plus joined Fleetio C-number, specification, maintenance, defects and work orders' },
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Vehicle fuel cards, PINs and fuel register' },
   { key: 'customers', label: 'Customers', detail: 'Customer names and master codes' },
   { key: 'sites', label: 'Sites', detail: 'Collection and delivery locations, driver instructions, default temperatures and planning regions' },
@@ -33,7 +33,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       <div>
         <p className="eyebrow">Live TMS master database</p>
         <h1>Master data</h1>
-        <p className="intro">One place to maintain the records used throughout planning, tracking and integrations. The TMS is the live master; legacy imports are migration tools only.</p>
+        <p className="intro">One place to maintain the records used throughout planning, tracking and integrations. The TMS is the live master; integrations enrich those same records rather than creating competing registers.</p>
       </div>
       <span className="status approved">Live TMS Master Database</span>
     </div>
@@ -46,9 +46,10 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
     </div>
 
     {section === 'drivers' && <DriversUnified />}
-    {(section === 'vehicles' || section === 'trailers' || section === 'customers' || section === 'sites' || section === 'geofences') &&
+    {section === 'vehicles' && <FleetMasterUnified kind="vehicles" />}
+    {section === 'trailers' && <FleetMasterUnified kind="trailers" />}
+    {(section === 'customers' || section === 'sites' || section === 'geofences') &&
       <MasterDataOperational initialTab={section} showCategoryButtons={false} showHeading={false} />}
-    {(section === 'vehicles' || section === 'trailers') && <div style={{ marginTop: 22 }}><FleetAssetsOperational /></div>}
     {section === 'sites' && <SitePlanningProfiles />}
     {section === 'fuel-cards' && <FuelCardsOperational />}
     {section === 'markets' && <MarketsMasterClean />}
