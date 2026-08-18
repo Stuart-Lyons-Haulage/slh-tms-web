@@ -20,6 +20,7 @@ import './navigation-scroll.css';
 import './intelligence.css';
 import './mobile.css';
 import './ops-cleanup.css';
+import './mobile-v2.css';
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
