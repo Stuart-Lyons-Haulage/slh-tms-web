@@ -17,12 +17,17 @@ type EfficiencyResponse = {
   suggestedContinuations: number; suggestions: EfficiencySuggestion[]; message: string;
 };
 type SafeFixResult = { applied: number; skipped: number; changes?: string[]; skippedReasons?: string[] };
+type DuplicateOrderStatus = {
+  duplicateGroups: number; duplicateRecords: number; safeToRemove: number; requiresReview: number; message: string;
+  examples?: Array<{ reference: string; customer: string; collectionDate: string; records: number; safeToRemove: number; requiresReview: number }>;
+};
 
 export function TmsAssistant() {
   const token = useAccessToken();
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<AssistantSnapshot>();
   const [efficiency, setEfficiency] = useState<EfficiencyResponse>();
+  const [duplicates, setDuplicates] = useState<DuplicateOrderStatus>();
   const [question, setQuestion] = useState("What needs attention before we dispatch?");
   const [answer, setAnswer] = useState<string>();
   const [message, setMessage] = useState<string>();
@@ -33,11 +38,12 @@ export function TmsAssistant() {
     setBusy(true); setMessage(undefined);
     try {
       const accessToken = await token();
-      const [nextSnapshot, nextEfficiency] = await Promise.all([
+      const [nextSnapshot, nextEfficiency, nextDuplicates] = await Promise.all([
         api.assistantSnapshot(date, accessToken),
         request<EfficiencyResponse>(`/api/v1/assistant/efficiency?date=${encodeURIComponent(date)}`, accessToken),
+        request<DuplicateOrderStatus>(`/api/v1/assistant/order-duplicates?date=${encodeURIComponent(date)}`, accessToken),
       ]);
-      setSnapshot(nextSnapshot); setEfficiency(nextEfficiency);
+      setSnapshot(nextSnapshot); setEfficiency(nextEfficiency); setDuplicates(nextDuplicates);
     } catch (exception) {
       setMessage(exception instanceof Error ? exception.message : "Assistant checks could not load.");
     } finally { setBusy(false); }
@@ -45,11 +51,26 @@ export function TmsAssistant() {
   async function toggle() { const next = !open; setOpen(next); if (next && !snapshot) await refresh(); }
 
   async function runSafeFixes() {
-    const result = await api.fixSafeValidations(await token()) as SafeFixResult;
-    const detail = (result.changes || []).slice(0, 12).join("\n");
-    const skipped = (result.skippedReasons || []).slice(0, 8).join("\n");
+    const accessToken = await token();
+    const masterResult = await api.fixSafeValidations(accessToken) as SafeFixResult;
+    let duplicateResult: SafeFixResult = { applied: 0, skipped: 0 };
+    let duplicateError = "";
+    try {
+      duplicateResult = await request<SafeFixResult>(`/api/v1/assistant/order-duplicates/fix?date=${encodeURIComponent(date)}`, accessToken, { method: "POST" });
+    } catch (exception) {
+      duplicateError = exception instanceof Error ? exception.message : "Duplicate-order repair could not run.";
+    }
+
+    const result: SafeFixResult = {
+      applied: masterResult.applied + duplicateResult.applied,
+      skipped: masterResult.skipped + duplicateResult.skipped,
+      changes: [...(masterResult.changes || []), ...(duplicateResult.changes || [])],
+      skippedReasons: [...(masterResult.skippedReasons || []), ...(duplicateResult.skippedReasons || []), ...(duplicateError ? [`Duplicate orders: ${duplicateError}`] : [])],
+    };
+    const detail = (result.changes || []).slice(0, 16).join("\n");
+    const skipped = (result.skippedReasons || []).slice(0, 10).join("\n");
     setAnswer([
-      result.applied ? `${result.applied} safe correction${result.applied === 1 ? "" : "s"} applied to the live TMS master.` : "No deterministic correction was needed.",
+      result.applied ? `${result.applied} safe correction${result.applied === 1 ? "" : "s"} applied to the live TMS.` : "No deterministic correction was needed.",
       detail,
       result.skipped ? `${result.skipped} item${result.skipped === 1 ? "" : "s"} deliberately left for review because the Assistant could not prove a safe change.` : "",
       skipped,
@@ -66,8 +87,8 @@ export function TmsAssistant() {
       const response = await api.assistantAdvice(question, date, await token());
       setAnswer(response.answer);
       setSnapshot(current => current ? { ...current, source: response.source, suggestions: response.suggestions } : current);
-      if (/\b(fix|apply|correct|resolve|clean|merge|repair)\b/i.test(question) && /\b(safe|validation|duplicate|map|registration|site|market|master data)\b/i.test(question)) await runSafeFixes();
-      else setMessage("Advice returned. Use Fix safely for deterministic master-data corrections; planning, legal-hours and dispatch decisions remain planner-controlled.");
+      if (/\b(fix|apply|correct|resolve|clean|merge|repair|remove)\b/i.test(question) && /\b(safe|validation|duplicate|map|registration|site|market|master data|order|job)\b/i.test(question)) await runSafeFixes();
+      else setMessage("Advice returned. Use Fix safely for deterministic corrections; planning, legal-hours and dispatch decisions remain planner-controlled.");
     } catch (exception) { setMessage(exception instanceof Error ? exception.message : "The assistant could not answer just now."); }
     finally { setBusy(false); }
   }
@@ -79,11 +100,11 @@ export function TmsAssistant() {
     finally { setBusy(false); }
   }
 
-  const fixable = snapshot?.suggestions.filter(item => item.autoFixAvailable).length || 0;
+  const fixable = (snapshot?.suggestions.filter(item => item.autoFixAvailable).length || 0) + ((duplicates?.safeToRemove || 0) > 0 ? 1 : 0);
   return <div className={`tms-assistant ${open ? "open" : ""}`}>
     <button className="assistant-launch" type="button" onClick={() => void toggle()} aria-expanded={open}>
       <span>✦</span><strong>SLH Assistant</strong>
-      {(snapshot?.suggestions.some(item => item.severity === "high") || (efficiency?.suggestedContinuations || 0) > 0) && <i />}
+      {(snapshot?.suggestions.some(item => item.severity === "high") || (efficiency?.suggestedContinuations || 0) > 0 || (duplicates?.duplicateRecords || 0) > 0) && <i />}
     </button>
     {open && <aside className="assistant-panel" aria-label="SLH planning assistant">
       <div className="assistant-heading"><div><p className="eyebrow">Smart operations</p><h2>SLH Assistant</h2></div><button type="button" aria-label="Close assistant" onClick={() => setOpen(false)}>×</button></div>
@@ -91,9 +112,16 @@ export function TmsAssistant() {
       {snapshot && <div className="assistant-metrics">
         <span><b>{snapshot.metrics.unplannedOrders}</b> unplanned</span>
         <span><b>{snapshot.metrics.unallocatedLoads}</b> unallocated</span>
+        <span><b>{duplicates?.duplicateRecords || 0}</b> duplicate orders</span>
         <span><b>{snapshot.metrics.vehicleComplianceRisks}</b> fleet risks</span>
         <span><b>{snapshot.metrics.missingSiteMapPoints}</b> map points</span>
         <span><b>{snapshot.metrics.duplicateSiteGroups}</b> duplicate sites</span>
+      </div>}
+      {duplicates && duplicates.duplicateRecords > 0 && <div className="assistant-suggestions">
+        <article className="high">
+          <span>Orders</span><strong>Resolve exact duplicate orders</strong><p>{duplicates.message}</p>
+          <div className="assistant-card-actions"><button type="button" onClick={() => window.location.assign("/jobs")}>Open Manage Jobs</button>{duplicates.safeToRemove > 0 && <button type="button" className="primary" disabled={busy} onClick={() => void applyFixes()}>Remove {duplicates.safeToRemove} safe duplicate{duplicates.safeToRemove === 1 ? "" : "s"}</button>}</div>
+        </article>
       </div>}
       {efficiency && <div className="assistant-suggestions">
         <article className="info"><span>Efficiency</span><strong>Previous-day continuity</strong><p>{efficiency.message}</p></article>
@@ -107,7 +135,7 @@ export function TmsAssistant() {
         {snapshot?.suggestions.slice(0, 10).map(item => <article className={item.severity} key={item.id}>
           <span>{item.area}</span><strong>{item.title}</strong><p>{item.detail}</p>
           <div className="assistant-card-actions">
-            <button type="button" onClick={() => { const routes: Record<string,string> = { Sites:"/sites", Drivers:"/drivers", Vehicles:"/fleet-assets", Reporting:"/reporting", Planner:"/", Customers:"/customers", Markets:"/markets" }; window.location.assign(routes[item.area] || "/master-data"); }}>Open {item.area}</button>
+            <button type="button" onClick={() => { const routes: Record<string,string> = { Sites:"/sites", Drivers:"/drivers", Vehicles:"/fleet-assets", Reporting:"/reporting", Planner:"/", Customers:"/customers", Markets:"/markets", Orders:"/jobs" }; window.location.assign(routes[item.area] || "/master-data"); }}>Open {item.area}</button>
             {item.autoFixAvailable && <button type="button" className="primary" disabled={busy} onClick={() => void applyFixes()}>Fix safely</button>}
           </div>
         </article>)}
@@ -120,7 +148,7 @@ export function TmsAssistant() {
       </form>
       {fixable > 0 && <button type="button" className="assistant-fix" onClick={() => void applyFixes()} disabled={busy}>Fix {fixable} safe validation area{fixable === 1 ? "" : "s"}</button>}
       {message && <p className="notice inline-notice">{message}</p>}
-      <small>Safe fixes can repair map links, geocoding, proven duplicate sites, market naming and exact market duplicates, normalised registrations and customer email formatting. Ambiguous identities, dispatch decisions and legal-hours overrides remain planner-controlled.</small>
+      <small>Safe fixes can repair exact unallocated duplicate orders, map links, geocoding, proven duplicate sites, market naming, exact market duplicates, registrations and customer email formatting. Linked duplicate orders, ambiguous identities, dispatch decisions and legal-hours overrides remain planner-controlled.</small>
     </aside>}
   </div>;
 }
