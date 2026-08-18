@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, type Load } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
@@ -17,6 +18,10 @@ export function PlannerEnhanced() {
   const selected = loads.find(x => x.id === selectedId) || loads[0];
 
   return <>
+    <div className="panel" style={{ marginBottom: 14, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+      <div><p className="eyebrow" style={{ marginBottom: 3 }}>Two-screen planning</p><strong>Screen 1: Run Planner</strong><br/><small>Build and allocate runs here. Use Screen 2 for the live pallet/order matrix and outstanding quantities.</small></div>
+      <Link className="button-like primary" to="/pallet-control">Open Planning Screen 2 · Pallet Control</Link>
+    </div>
     <StablePlanner />
     <section style={{ marginTop: 18, paddingTop: 18, borderTop: "3px solid #d8e5e9" }}>
       <div className="title-row">
