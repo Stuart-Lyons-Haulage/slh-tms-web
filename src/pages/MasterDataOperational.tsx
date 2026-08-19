@@ -38,21 +38,17 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
     try {
       const access = await token();
       if (tab === 'sites') {
-        const profilesPromise = request<SitePlanningProfile[]>('/api/v1/site-planning-profiles', access);
-        let sourceSites: Row[];
-        try {
-          sourceSites = await request<Row[]>(`/api/v1/site-master-register?includeInactive=${includeInactive}`, access);
-        } catch {
-          const activeSites = await request<Row[]>('/api/v1/sites', access);
-          sourceSites = activeSites;
-          if (includeInactive) {
-            try {
-              const archivedSearch = await request<Row[]>(`${endpoint}/search?includeInactive=true`, access);
-              sourceSites = Array.from(new Map([...activeSites, ...archivedSearch].map(row => [row.id, row])).values());
-            } catch { /* keep complete active register if the compatibility lookup is unavailable */ }
-          }
+        const [activeSites, profiles] = await Promise.all([
+          request<Row[]>('/api/v1/sites', access),
+          request<SitePlanningProfile[]>('/api/v1/site-planning-profiles', access),
+        ]);
+        let sourceSites = activeSites;
+        if (includeInactive) {
+          try {
+            const archivedSearch = await request<Row[]>(`${endpoint}/search?includeInactive=true`, access);
+            sourceSites = Array.from(new Map([...activeSites, ...archivedSearch].map(row => [row.id, row])).values());
+          } catch { /* keep the complete active register if archived lookup is unavailable */ }
         }
-        const profiles = await profilesPromise;
         const profileBySite = new Map(profiles.map(profile => [profile.siteId, profile]));
         const merged = sourceSites.map(site => {
           const profile = profileBySite.get(site.id);
@@ -139,7 +135,7 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
       <hr/><h3>Change history</h3>{audit.length ? <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Date</th><th>Action</th><th>Changed by</th></tr></thead><tbody>{audit.map(item => <tr key={item.id}><td>{isoDate(item.changedAtUtc)}</td><td>{item.action}</td><td>{item.changedBy || '—'}</td></tr>)}</tbody></table></div> : <p className="hint">No recorded changes yet.</p>}
     </div>}
 
-    <div className="panel"><div className="title-row"><div><h2>{current.title}</h2><small>{rows.length} record{rows.length === 1 ? '' : 's'} shown</small><p className="hint">{tab === 'sites' ? 'The complete site register is shown here with each planning profile merged into the same record. Search covers site details, postcode, temperature and region.' : 'For duplicates: Archive first. Turn on Include archived, then Delete the unused duplicate. Records with operational history are protected from permanent deletion.'}</p></div><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><label>Search<input value={query} onChange={e => setQuery(e.target.value)} placeholder={current.search}/></label><label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}/> Include archived</label><button onClick={() => void load()} disabled={loading}>Refresh</button></div></div>
+    <div className="panel"><div className="title-row"><div><h2>{current.title}</h2><small>{rows.length} record{rows.length === 1 ? '' : 's'} shown</small><p className="hint">{tab === 'sites' ? 'All active sites are shown here with each planning profile merged into the same record. Search covers site details, postcode, temperature and region.' : 'For duplicates: Archive first. Turn on Include archived, then Delete the unused duplicate. Records with operational history are protected from permanent deletion.'}</p></div><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><label>Search<input value={query} onChange={e => setQuery(e.target.value)} placeholder={current.search}/></label><label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}/> Include archived</label><button onClick={() => void load()} disabled={loading}>Refresh</button></div></div>
       {error && <p className="notice" style={{ borderColor: '#b42318' }}>{error}</p>}{notice && <p className="notice">{notice}</p>}
       {loading ? <div className="state">Loading {current.title.toLowerCase()}…</div> : <div style={{ overflowX: 'auto' }}><table><thead><tr>{current.columns.map(([,label]) => <th key={label}>{label}</th>)}<th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}>{current.columns.map(([key]) => <td key={key}>{fmtCell(key, row[key])}</td>)}<td>{row.active ? 'Active' : 'Archived'}</td><td style={{ whiteSpace: 'nowrap' }}><button onClick={() => void openEdit(row)}>Edit</button>{' '}<button onClick={() => void setActive(row, !row.active)} disabled={saving}>{row.active ? 'Archive' : 'Restore'}</button>{!row.active && <>{' '}<button disabled={saving} onClick={() => void deleteRecord(row)} style={{ borderColor: '#b42318', color: '#b42318', fontWeight: 800 }}>Delete</button></>}</td></tr>)}</tbody></table>{rows.length === 0 && <div className="state">No records match this search.</div>}</div>}
     </div>
