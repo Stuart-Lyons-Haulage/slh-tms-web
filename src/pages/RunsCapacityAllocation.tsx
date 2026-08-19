@@ -10,14 +10,18 @@ const localDate = () => {
 
 type CapacityType = "Standard pallets" | "Euro pallets" | "Trays" | "Trolleys" | "Mixed load";
 
-function unitLabel(type?: string) {
+function loadTypeLabel(type?: string) {
   switch ((type || "").toLowerCase()) {
-    case "euro pallets": return "Euro pallets";
-    case "trays": return "trays";
-    case "trolleys": return "trolleys";
-    case "mixed load": return "mixed units";
-    default: return "standard pallets";
+    case "euro pallets": return "Euro pallet load";
+    case "trays": return "Tray load";
+    case "trolleys": return "Trolley load";
+    case "mixed load": return "Mixed-unit load";
+    default: return "Standard pallet load";
   }
+}
+
+function spaceLabel(type?: string) {
+  return (type || "").toLowerCase() === "euro pallets" ? "Euro spaces" : "floor spaces";
 }
 
 function trailerCapacity(trailer: Trailer | undefined, type: string) {
@@ -73,7 +77,7 @@ function RunAllocationCard({
         plannerNotes: load.plannerNotes,
       }, access);
       await onSaved();
-      setMessage(`Allocation saved · ${capacityType} · ${effectiveCapacity ?? "capacity pending"} capacity from trailer matrix.`);
+      setMessage(`Allocation saved · ${loadTypeLabel(capacityType)} · ${effectiveCapacity ?? "capacity pending"} ${spaceLabel(capacityType)} from trailer matrix.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Allocation could not be saved.");
     } finally {
@@ -89,7 +93,7 @@ function RunAllocationCard({
           <small>{load.stops.length} stop{load.stops.length === 1 ? "" : "s"} · {load.stops.map((stop) => stop.name).join(" → ") || "Stops pending"}</small>
         </div>
         <span className={utilisation != null && utilisation > 100 ? "capacity-warning" : ""}>
-          {numericUsed} / {effectiveCapacity ?? "—"} {unitLabel(capacityType)}
+          {numericUsed} / {effectiveCapacity ?? "—"} {spaceLabel(capacityType)} · {loadTypeLabel(capacityType)}
           {utilisation != null ? ` · ${utilisation.toFixed(1)}%` : ""}
         </span>
       </div>
@@ -119,7 +123,7 @@ function RunAllocationCard({
           <option>Mixed load</option>
         </select>
         <label>
-          Units / spaces used
+          Floor spaces used
           <input type="number" min="0" step="1" value={used} onChange={(event) => setUsed(event.target.value)} />
         </label>
         <button className="primary" type="button" onClick={() => void save()} disabled={saving}>
@@ -129,7 +133,7 @@ function RunAllocationCard({
 
       {selectedTrailer && (
         <p className="hint">
-          Trailer matrix: {selectedTrailer.trailerNumber} · Standard {selectedTrailer.standardCapacity ?? "not set"} · Euro {selectedTrailer.euroCapacity ?? "not set"}. The selected load type determines which capacity is used.
+          Trailer matrix: {selectedTrailer.trailerNumber} · Standard {selectedTrailer.standardCapacity ?? "not set"} · Euro {selectedTrailer.euroCapacity ?? "not set"}. Trays and trolleys retain their load type but use the trailer's physical floor-space capacity unless a specific matrix value is added later.
         </p>
       )}
       {!selectedTrailer && <p className="hint">Select the trailer to apply its capacity matrix. The TMS will not assume every run is 26 standard pallets.</p>}
