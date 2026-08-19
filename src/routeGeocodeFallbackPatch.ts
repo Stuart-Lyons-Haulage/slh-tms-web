@@ -11,7 +11,7 @@ function hasResult(value: unknown) {
 function fallbackQuery(value: string) {
   const firstPart = value.split(/[|·]/)[0]?.trim() || value.trim();
   const cleaned = firstPart
-    .replace(/^\s*(to|from|collect(?:ion)?|deliver(?:y)?)\s*[:\-]?\s*/i, "")
+    .replace(/^\s*(to|from|collect(?:ion)?|deliver(?:y)?)\s*[:-]?\s*/i, "")
     .replace(/\b\d+(?:\.\d+)?\s*(?:pallets?|trays?|trolleys?)\b.*$/i, "")
     .trim();
   if (!cleaned || cleaned.toLowerCase() === value.trim().toLowerCase()) return undefined;
