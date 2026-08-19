@@ -5,7 +5,6 @@ import { FleetMasterUnified } from './FleetMasterUnified';
 import { FuelCardsOperational } from './FuelCardsOperational';
 import { MarketsMasterClean } from './MarketsMasterClean';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
-import { SitePlanningProfiles } from './SitePlanningProfiles';
 import { GeofenceOperational } from './GeofenceOperational';
 
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
@@ -16,7 +15,7 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
   { key: 'trailers', label: 'Trailers', detail: 'One canonical trailer master: SLH trailer identity and capacity plus joined Fleetio C-number, specification, maintenance, defects and work orders' },
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Vehicle fuel cards, PINs and fuel register' },
   { key: 'customers', label: 'Customers', detail: 'Customer names and master codes' },
-  { key: 'sites', label: 'Sites', detail: 'Collection and delivery locations, driver instructions, default temperatures and planning regions' },
+  { key: 'sites', label: 'Sites', detail: 'One complete site register containing collection/delivery address and postcode, driver instructions, default temperature and planning region' },
   { key: 'geofences', label: 'Geofences', detail: 'RoadTech hit integrity, site links, dwell thresholds and entry/exit confirmation used by Live Runs' },
   { key: 'markets', label: 'Markets', detail: 'Market master records and contacts' },
   { key: 'fuel-prices', label: 'Fuel prices', detail: 'Fuel pricing reference data' },
@@ -54,7 +53,6 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
     {(section === 'customers' || section === 'sites') &&
       <MasterDataOperational initialTab={section} showCategoryButtons={false} showHeading={false} />}
     {section === 'geofences' && <GeofenceOperational />}
-    {section === 'sites' && <SitePlanningProfiles />}
     {section === 'fuel-cards' && <FuelCardsOperational />}
     {section === 'markets' && <MarketsMasterClean />}
     {section === 'fuel-prices' && <FuelMaster />}
