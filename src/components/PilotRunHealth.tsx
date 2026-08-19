@@ -7,7 +7,7 @@ import { useApi } from "../lib/useApi";
 type RunProgressStop = { id: string; sequence: number; name: string; address?: string; plannedArrivalUtc?: string };
 type RunProgressVisit = { id: string; geofenceId: string; geofenceName?: string; category?: string; loadStopId?: string; enteredAtUtc: string; confirmedAtUtc?: string; dwellMinutes?: number; waitLimitMinutes?: number; isDelayed: boolean; status: string; statusReason?: string };
 type RunProgressRecord = { loadId: string; loadReference: string; loadStatus: string; runState: string; totalStops: number; completedStops: number; progressPercent: number; nextStop?: RunProgressStop | null; currentVisit?: RunProgressVisit | null; lastDeparture?: { loadStopId?: string; exitedAtUtc: string; dwellMinutes: number } | null; calculatedAtUtc: string };
-type RunProgressResponse = { planningDate: string; calculatedAtUtc: string; count: number; source?: string; geofenceAvailable?: boolean; warning?: string; records: RunProgressRecord[] };
+type RunProgressResponse = { planningDate: string; calculatedAtUtc: string; count: number; source?: string; geofenceAvailable?: boolean; geofenceCount?: number; geofenceVisitCount?: number; geofenceLinkedRuns?: number; warning?: string; records: RunProgressRecord[] };
 type DeliveryEtaResponse = { records: Array<{ loadId: string; stopId: string; etaUtc?: string; source: string; risk: string; tachoStatus: string; breakMinutesIncluded: number; trackingUpdatedAtUtc?: string }> };
 type LoadFallback = { id: string; reference: string; planningDate: string; status: string; stops?: RunProgressStop[] };
 
@@ -36,7 +36,7 @@ function fallbackFromLoads(loads: LoadFallback[], planningDate: string, warning:
         calculatedAtUtc,
       } satisfies RunProgressRecord;
     });
-  return { planningDate, calculatedAtUtc, count: records.length, source: "LoadsFallback", geofenceAvailable: false, warning, records };
+  return { planningDate, calculatedAtUtc, count: records.length, source: "LoadsFallback", geofenceAvailable: false, geofenceCount: 0, geofenceVisitCount: 0, geofenceLinkedRuns: 0, warning, records };
 }
 
 export function PilotRunHealth() {
@@ -88,15 +88,17 @@ export function PilotRunHealth() {
     <div className="title-row"><div><p className="eyebrow">Live pilot health</p><h2>Run progression from tracking & geofences</h2></div><button type="button" onClick={() => void refresh()} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></div>
     <p className="intro">This panel refreshes every minute during the pilot. It shows whether planned runs are progressing through confirmed geofence visits and highlights site dwell delays first.</p>
     <div className="metrics">
-      <article className="metric"><span>{data?.count ?? 0}</span><strong>Runs today</strong><small>{data?.source === "LoadsFallback" ? "Imported loads fallback" : "Loaded into live run progress"}</small></article>
+      <article className="metric"><span>{data?.count ?? 0}</span><strong>Runs today</strong><small>{data?.source === "LoadsFallback" ? "Imported loads fallback" : data?.source === "PlanningRegister" ? "Audited planning register" : "Loaded into live run progress"}</small></article>
+      <article className="metric"><span>{data?.geofenceCount ?? 0}</span><strong>Geofences live</strong><small>{data?.geofenceAvailable === false ? "Not connected to progression" : `${data?.geofenceVisitCount ?? 0} visit event(s) today`}</small></article>
+      <article className="metric"><span>{data?.geofenceLinkedRuns ?? 0}</span><strong>Runs geofence-linked</strong><small>Run IDs with live site events</small></article>
       <article className="metric"><span>{summary.active}</span><strong>Active</strong><small>Not yet fully completed</small></article>
       <article className="metric"><span>{summary.onSite}</span><strong>On site</strong><small>Currently inside a geofence</small></article>
       <article className="metric"><span>{summary.delayed}</span><strong>Site delays</strong><small>Over the configured dwell limit</small></article>
       <article className="metric"><span>{summary.completed}</span><strong>Completed</strong><small>All stops confirmed and departed</small></article>
     </div>
     {error && <p className="error">Live run progress and loads fallback could not be loaded: {error}</p>}
-    {!error && data?.warning && <p className="hint">{data.warning}</p>}
-    {!error && data && <p className="hint">Planning date {formatDate(data.planningDate)} · last calculated {formatDateTime(data.calculatedAtUtc)} · {data.geofenceAvailable === false ? "geofence progress not connected" : "geofence progress connected"} · {etaCapture}</p>}
+    {!error && data?.warning && <p className="live-runs-warning">{data.warning}</p>}
+    {!error && data && <p className="hint">Planning date {formatDate(data.planningDate)} · last calculated {formatDateTime(data.calculatedAtUtc)} · {data.geofenceAvailable === false ? "geofence progression unavailable" : `${data.geofenceCount ?? 0} geofences connected`} · {etaCapture}</p>}
     {!loading && !error && ordered.length === 0 && <p className="hint">No runs are present for today yet. This panel will populate after the planner data has created the day’s runs.</p>}
     {ordered.length > 0 && <div className="table-wrap"><table><thead><tr><th>Run</th><th>Live state</th><th>Progress</th><th>Current / next stop</th><th>Dwell / timing</th></tr></thead><tbody>{ordered.map((record) => <tr key={record.loadId}>
       <td><strong>{record.loadReference}</strong><br /><small>{record.loadStatus}</small></td>
