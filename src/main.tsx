@@ -11,6 +11,7 @@ import './planLockFetchPatch';
 import './marketNormalizationPatch';
 import './preferredVehicleAllocationPatch';
 import './commercialRemovalPatch';
+import './routeGeocodeFallbackPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
