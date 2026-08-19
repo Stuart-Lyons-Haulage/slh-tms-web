@@ -23,10 +23,12 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
 
 export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?: MasterSection }) {
   const [section, setSection] = useState<MasterSection>(initialSection);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
 
-  useEffect(() => { setSection(initialSection); }, [initialSection]);
+  useEffect(() => { setSection(initialSection); setCleanupOpen(false); }, [initialSection]);
 
   const active = sections.find(item => item.key === section) || sections[0];
+  const separateCleanup = section === 'drivers' || section === 'vehicles' || section === 'trailers';
 
   return <section>
     <div className="title-row">
@@ -40,7 +42,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
 
     <div className="panel master-section-panel" style={{ marginBottom: 18 }}>
       <div className="master-section-tabs horizontal-tabs" role="tablist" aria-label="Master data sections">
-        {sections.map(item => <button key={item.key} role="tab" aria-selected={section === item.key} className={section === item.key ? 'primary' : ''} onClick={() => setSection(item.key)}>{item.label}</button>)}
+        {sections.map(item => <button key={item.key} role="tab" aria-selected={section === item.key} className={section === item.key ? 'primary' : ''} onClick={() => { setSection(item.key); setCleanupOpen(false); }}>{item.label}</button>)}
       </div>
       <p className="hint master-section-hint"><strong>{active.label}:</strong> {active.detail}</p>
     </div>
@@ -54,5 +56,17 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
     {section === 'fuel-cards' && <FuelCardsOperational />}
     {section === 'markets' && <MarketsMasterClean />}
     {section === 'fuel-prices' && <FuelMaster />}
+
+    {separateCleanup && <div className="panel" style={{ marginTop: 18, border: '2px solid #d5e0e4' }}>
+      <div className="title-row">
+        <div>
+          <p className="eyebrow">Master cleanup</p>
+          <h2>Duplicates & archived records</h2>
+          <p className="hint">Use this when tidying duplicate {active.label.toLowerCase()}. Archive is reversible. An archived row gets a permanent Delete button only for cleanup; the API will refuse deletion if the record is used by TMS history.</p>
+        </div>
+        <button className={cleanupOpen ? '' : 'primary'} onClick={() => setCleanupOpen(value => !value)}>{cleanupOpen ? 'Close cleanup' : 'Clean up duplicates'}</button>
+      </div>
+      {cleanupOpen && <MasterDataOperational initialTab={section as MasterDataTab} showCategoryButtons={false} showHeading={false} />}
+    </div>}
   </section>;
 }
