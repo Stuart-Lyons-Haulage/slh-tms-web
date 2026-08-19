@@ -7,7 +7,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Res
   if (response.status !== 409) return response;
 
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-  if (!url.includes('/api/v1/loads')) return response;
+  if (!url.includes('/api/v1/loads') && !url.includes('/api/v1/runs')) return response;
 
   let payload: { detail?: string } | null = null;
   try { payload = await response.clone().json(); } catch { return response; }
