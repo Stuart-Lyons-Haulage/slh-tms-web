@@ -1,8 +1,8 @@
 import { api, request, type FleetioSync } from './lib/api';
 
-// Keep the existing UI/button contract but route it to the corrected backend
-// sync which fetches every Fleetio page and handles trailers separately.
+// Keep legacy Fleetio sync controls on the same resilient full-asset path used
+// by Master Data. Core vehicle/trailer saves no longer depend on mapping writes.
 api.syncFleetioVehicles = (token?: string) =>
-  request<FleetioSync>('/api/v1/integrations/fleetio/sync-assets', token, {
+  request<FleetioSync>('/api/v1/integrations/fleetio/sync-assets-resilient', token, {
     method: 'POST',
   });

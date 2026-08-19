@@ -38,11 +38,11 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       <span className="status approved">Live TMS Master Database</span>
     </div>
 
-    <div className="panel" style={{ marginBottom: 18 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: 8 }}>
-        {sections.map(item => <button key={item.key} className={section === item.key ? 'primary' : ''} onClick={() => setSection(item.key)}>{item.label}</button>)}
+    <div className="panel master-section-panel" style={{ marginBottom: 18 }}>
+      <div className="master-section-tabs horizontal-tabs" role="tablist" aria-label="Master data sections">
+        {sections.map(item => <button key={item.key} role="tab" aria-selected={section === item.key} className={section === item.key ? 'primary' : ''} onClick={() => setSection(item.key)}>{item.label}</button>)}
       </div>
-      <p className="hint" style={{ marginBottom: 0 }}><strong>{active.label}:</strong> {active.detail}</p>
+      <p className="hint master-section-hint"><strong>{active.label}:</strong> {active.detail}</p>
     </div>
 
     {section === 'drivers' && <DriversUnified />}
