@@ -9,6 +9,7 @@ type FleetioAsset = {
   fleetioId: string;
   fleetioName?: string;
   fleetioStatus?: string;
+  fleetioVor?: boolean;
   vin?: string;
   year?: number;
   make?: string;
@@ -73,7 +74,12 @@ const dateTime = (value?: string) => {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" });
 };
 const description = (asset?: FleetioAsset) => asset ? [asset.year, asset.make, asset.model, asset.trim].filter(Boolean).join(" ") || "—" : "—";
-const attention = (asset?: FleetioAsset) => Boolean(asset && ((asset.issuesCount || 0) > 0 || (asset.serviceStatus || "").toLowerCase().includes("overdue")));
+const isVorText = (value: unknown) => {
+  const status = String(value ?? "").trim().toLowerCase();
+  return status === "vor" || status.includes("vehicle off road") || status.includes("out of service") || status.includes("out-of-service");
+};
+const isVor = (asset?: FleetioAsset, fallbackStatus?: unknown) => Boolean(asset?.fleetioVor || isVorText(asset?.fleetioStatus) || isVorText(fallbackStatus));
+const attention = (asset?: FleetioAsset) => Boolean(asset && (isVor(asset) || (asset.issuesCount || 0) > 0 || (asset.serviceStatus || "").toLowerCase().includes("overdue")));
 
 export function FleetMasterUnified({ kind }: { kind: Kind }) {
   const token = useAccessToken();
@@ -94,6 +100,25 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [maintenanceError, setMaintenanceError] = useState<string>();
 
+  const closeMaintenance = useCallback(() => {
+    setMaintenance(undefined);
+    setMaintenanceError(undefined);
+    setMaintenanceName(undefined);
+    setMaintenanceLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (!(maintenanceLoading || maintenance || maintenanceError)) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") closeMaintenance(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [closeMaintenance, maintenance, maintenanceError, maintenanceLoading]);
+
   const load = useCallback(async () => {
     setLoading(true); setError(undefined); setFleetioError(undefined);
     try {
@@ -108,10 +133,14 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
       setMasters(nextMasters);
 
       try {
-        setFleetio(await request<FleetioAssetStatus>("/api/v1/integrations/fleetio/asset-status", access, undefined, 60000));
+        setFleetio(await request<FleetioAssetStatus>("/api/v1/integrations/fleetio/asset-status-resilient", access, undefined, 60000));
       } catch (exception) {
-        setFleetio(undefined);
-        setFleetioError(exception instanceof Error ? exception.message : "Fleetio could not be loaded. The TMS master remains available.");
+        try {
+          setFleetio(await request<FleetioAssetStatus>("/api/v1/integrations/fleetio/asset-status", access, undefined, 60000));
+        } catch {
+          setFleetio(undefined);
+          setFleetioError(exception instanceof Error ? exception.message : "Fleetio could not be loaded. The TMS master remains available.");
+        }
       }
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : "The fleet master could not be loaded.");
@@ -119,7 +148,7 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
   }, [includeInactive, kind, token]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { setSelected(undefined); setDraft({}); setQuery(""); }, [kind]);
+  useEffect(() => { setSelected(undefined); setDraft({}); setQuery(""); closeMaintenance(); }, [closeMaintenance, kind]);
 
   const rows = useMemo<UnifiedRow[]>(() => {
     const result: UnifiedRow[] = [];
@@ -137,8 +166,7 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
         if (asset) used.add(asset.fleetioId);
         result.push({ key: `tms-${master.id}`, master, fleetio: asset, state: asset ? "Linked" : "TMS only" });
       }
-      for (const asset of assets.filter(item => !used.has(item.fleetioId)))
-        result.push({ key: `fleetio-${asset.fleetioId}`, fleetio: asset, state: "Fleetio only" });
+      for (const asset of assets.filter(item => !used.has(item.fleetioId))) result.push({ key: `fleetio-${asset.fleetioId}`, fleetio: asset, state: "Fleetio only" });
     } else {
       const assets = fleetio?.trailers || [];
       for (const master of masters) {
@@ -151,8 +179,7 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
         if (asset) used.add(asset.fleetioId);
         result.push({ key: `tms-${master.id}`, master, fleetio: asset, state: asset ? "Linked" : "TMS only" });
       }
-      for (const asset of assets.filter(item => !used.has(item.fleetioId)))
-        result.push({ key: `fleetio-${asset.fleetioId}`, fleetio: asset, state: "Fleetio only" });
+      for (const asset of assets.filter(item => !used.has(item.fleetioId))) result.push({ key: `fleetio-${asset.fleetioId}`, fleetio: asset, state: "Fleetio only" });
     }
     const needle = query.trim().toLowerCase();
     return result.filter(row => !needle || JSON.stringify(row).toLowerCase().includes(needle));
@@ -162,11 +189,12 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
   const tmsOnly = rows.filter(row => row.state === "TMS only").length;
   const fleetioOnly = rows.filter(row => row.state === "Fleetio only").length;
   const attentionCount = rows.filter(row => attention(row.fleetio)).length;
+  const vorCount = rows.filter(row => isVor(row.fleetio, row.master?.fleetioStatus)).length;
 
   async function syncFleetio() {
     setSyncing(true); setMessage(undefined); setError(undefined);
     try {
-      const result = await request<{ message?: string }>("/api/v1/integrations/fleetio/sync-assets", await token(), { method: "POST" }, 60000);
+      const result = await request<{ message?: string; mappingWarning?: string }>("/api/v1/integrations/fleetio/sync-assets-resilient", await token(), { method: "POST" }, 60000);
       setMessage(result.message || "Fleetio assets were synchronised into the TMS master.");
       await load();
     } catch (exception) {
@@ -216,16 +244,23 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
   const title = kind === "vehicles" ? "Vehicle master" : "Trailer master";
   const searchPlaceholder = kind === "vehicles" ? "Registration, fleet number, Fleetio ID, make or model…" : "SLH trailer, C-number, Fleetio ID, type or model…";
 
+  const statusCell = (asset?: FleetioAsset, fallback?: unknown) => {
+    const status = asset?.fleetioStatus ?? fallback;
+    return isVor(asset, fallback)
+      ? <span className="vor-badge">VOR · {text(status)}</span>
+      : <strong>{text(status)}</strong>;
+  };
+
   return <section className="fleet-master-unified">
     <div className="title-row">
       <div>
         <p className="eyebrow">Single fleet master · TMS + Fleetio</p>
         <h2>{title}</h2>
-        <p className="hint">The TMS row is the planning identity. Fleetio maintenance, compliance, specification, defects and work orders are joined onto that same record rather than shown in a second chart.</p>
+        <p className="hint">The TMS row is the planning identity. Fleetio maintenance, compliance, specification, defects and work orders are joined onto that same record.</p>
       </div>
       <div className="title-actions">
         <button onClick={() => void load()} disabled={loading}>Refresh</button>
-        <button className="primary" onClick={() => void syncFleetio()} disabled={syncing}>{syncing ? "Syncing…" : "Sync Fleetio into master"}</button>
+        <button className="primary" onClick={() => void syncFleetio()} disabled={syncing}>{syncing ? "Syncing…" : "Sync Fleetio into TMS"}</button>
       </div>
     </div>
 
@@ -233,50 +268,53 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
     {error && <p className="notice inline-notice" style={{ borderColor: "#b42318" }}>{error}</p>}
     {fleetioError && <p className="notice inline-notice">Fleetio is temporarily unavailable: {fleetioError} The TMS master is still shown below.</p>}
 
-    <div className="metrics">
+    <div className="metrics fleet-master-metrics">
       <article className="metric"><span>TMS master</span><strong>{masters.length}</strong><small>{kind === "vehicles" ? "vehicle" : "trailer"} records</small></article>
       <article className="metric"><span>Fleetio linked</span><strong>{linked}</strong><small>same canonical row</small></article>
       <article className="metric"><span>TMS only</span><strong>{tmsOnly}</strong><small>not yet linked in Fleetio</small></article>
       <article className="metric"><span>Fleetio only</span><strong>{fleetioOnly}</strong><small>sync/matching required</small></article>
-      <article className="metric"><span>Maintenance attention</span><strong>{attentionCount}</strong><small>issues or overdue service</small></article>
+      <article className={vorCount ? "metric vor-metric" : "metric"}><span>VOR</span><strong>{vorCount}</strong><small>vehicle/trailer off road</small></article>
+      <article className="metric"><span>Maintenance attention</span><strong>{attentionCount}</strong><small>VOR, issues or overdue service</small></article>
     </div>
 
-    <div className="panel">
-      <div className="title-row">
-        <label style={{ flex: "1 1 320px" }}>Search<input value={query} onChange={event => setQuery(event.target.value)} placeholder={searchPlaceholder} /></label>
-        <label style={{ display: "flex", alignItems: "center", gap: 7 }}><input type="checkbox" checked={includeInactive} onChange={event => setIncludeInactive(event.target.checked)} /> Include archived TMS records</label>
+    <div className="panel fleet-master-panel">
+      <div className="title-row fleet-master-filter-row">
+        <label>Search<input value={query} onChange={event => setQuery(event.target.value)} placeholder={searchPlaceholder} /></label>
+        <label className="check-label"><input type="checkbox" checked={includeInactive} onChange={event => setIncludeInactive(event.target.checked)} /> Include archived TMS records</label>
       </div>
 
       {loading && !rows.length ? <div className="state">Loading the joined fleet master…</div> :
-        <div className="master-table-wrap" style={{ overflowX: "auto" }}>
-          {kind === "vehicles" ? <table className="master-table" style={{ minWidth: 1500 }}>
+        <div className="master-table-wrap fleet-horizontal-scroll">
+          {kind === "vehicles" ? <table className="master-table fleet-master-table" style={{ minWidth: 1500 }}>
             <thead><tr><th>Registration</th><th>Fleet no.</th><th>Short code</th><th>Transmission</th><th>Fleetio asset</th><th>Vehicle</th><th>Fleetio status</th><th>Issues</th><th>Work orders</th><th>PMI / service</th><th>MOT</th><th>Link state</th><th>TMS status</th><th>Actions</th></tr></thead>
             <tbody>{rows.map(row => {
               const master = row.master; const asset = row.fleetio as FleetioVehicle | undefined;
               const registration = text(master?.registration ?? asset?.registration);
-              return <tr key={row.key}>
+              const vor = isVor(asset, master?.fleetioStatus);
+              return <tr key={row.key} className={vor ? "vor-row" : undefined}>
                 <td><strong>{registration}</strong></td>
                 <td>{text(master?.fleetNumber ?? asset?.fleetNumber)}</td>
                 <td>{text(master?.abbreviation)}</td>
                 <td>{text(master?.transmission)}</td>
                 <td><small>{asset ? `${text(asset.fleetioName)} · ${asset.fleetioId}` : text(master?.fleetioId)}</small></td>
                 <td>{description(asset)}{asset?.vin && <><br/><small>{asset.vin}</small></>}</td>
-                <td><strong>{text(asset?.fleetioStatus ?? master?.fleetioStatus)}</strong></td>
-                <td style={{ color: (asset?.issuesCount || 0) > 0 ? "#b42318" : undefined }}><strong>{asset?.issuesCount ?? 0}</strong></td>
+                <td className={vor ? "vor-cell" : undefined}>{statusCell(asset, master?.fleetioStatus)}</td>
+                <td className={(asset?.issuesCount || 0) > 0 ? "fleet-attention-cell" : undefined}><strong>{asset?.issuesCount ?? 0}</strong></td>
                 <td>{asset?.workOrdersCount ?? 0}</td>
                 <td>{date(asset?.pmiDueUtc)}<br/><small>{text(asset?.serviceStatus)}</small></td>
                 <td>{date(asset?.motDueUtc)}</td>
                 <td><strong>{row.state === "Linked" ? "✓ Linked" : row.state === "TMS only" ? "TMS only" : "⚠ Fleetio only"}</strong></td>
                 <td>{master ? (master.active ? "Active" : "Archived") : "Not in TMS"}</td>
-                <td style={{ whiteSpace: "nowrap" }}>{master && <><button onClick={() => edit(master)}>Edit</button>{" "}<button disabled={saving} onClick={() => void setActive(master, !master.active)}>{master.active ? "Archive" : "Restore"}</button>{" "}</>}{asset && <button onClick={() => void showMaintenance(asset, registration)}>Fleetio detail</button>}{!master && <button className="primary" disabled={syncing} onClick={() => void syncFleetio()}>Sync into TMS</button>}</td>
+                <td className="fleet-action-cell">{master && <><button onClick={() => edit(master)}>Edit</button>{" "}<button disabled={saving} onClick={() => void setActive(master, !master.active)}>{master.active ? "Archive" : "Restore"}</button>{" "}</>}{asset && <button onClick={() => void showMaintenance(asset, registration)}>Fleetio details</button>}{!master && <button className="primary" disabled={syncing} onClick={() => void syncFleetio()}>Sync to TMS</button>}</td>
               </tr>;
             })}</tbody>
-          </table> : <table className="master-table" style={{ minWidth: 1450 }}>
+          </table> : <table className="master-table fleet-master-table" style={{ minWidth: 1450 }}>
             <thead><tr><th>SLH trailer</th><th>Type</th><th>Standard cap.</th><th>Euro cap.</th><th>Fleetio C-number</th><th>Fleetio asset</th><th>Specification</th><th>Fleetio status</th><th>Issues</th><th>Work orders</th><th>PMI / service</th><th>Link state</th><th>TMS status</th><th>Actions</th></tr></thead>
             <tbody>{rows.map(row => {
               const master = row.master; const asset = row.fleetio as FleetioTrailer | undefined;
               const trailerNumber = text(master?.trailerNumber ?? asset?.trailerNumber);
-              return <tr key={row.key}>
+              const vor = isVor(asset);
+              return <tr key={row.key} className={vor ? "vor-row" : undefined}>
                 <td><strong>{trailerNumber}</strong></td>
                 <td>{text(master?.type ?? asset?.type)}</td>
                 <td>{text(master?.standardCapacity)}</td>
@@ -284,13 +322,13 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
                 <td>{text(asset?.fleetioCNumber)}</td>
                 <td><small>{asset ? `${text(asset.fleetioName)} · ${asset.fleetioId}` : "—"}</small></td>
                 <td>{description(asset)}{asset?.vin && <><br/><small>{asset.vin}</small></>}</td>
-                <td><strong>{text(asset?.fleetioStatus)}</strong></td>
-                <td style={{ color: (asset?.issuesCount || 0) > 0 ? "#b42318" : undefined }}><strong>{asset?.issuesCount ?? 0}</strong></td>
+                <td className={vor ? "vor-cell" : undefined}>{statusCell(asset)}</td>
+                <td className={(asset?.issuesCount || 0) > 0 ? "fleet-attention-cell" : undefined}><strong>{asset?.issuesCount ?? 0}</strong></td>
                 <td>{asset?.workOrdersCount ?? 0}</td>
                 <td>{date(asset?.pmiDueUtc)}<br/><small>{text(asset?.serviceStatus)}</small></td>
                 <td><strong>{row.state === "Linked" ? "✓ Linked" : row.state === "TMS only" ? "TMS only" : "⚠ Fleetio only"}</strong></td>
                 <td>{master ? (master.active ? "Active" : "Archived") : "Not in TMS"}</td>
-                <td style={{ whiteSpace: "nowrap" }}>{master && <><button onClick={() => edit(master)}>Edit</button>{" "}<button disabled={saving} onClick={() => void setActive(master, !master.active)}>{master.active ? "Archive" : "Restore"}</button>{" "}</>}{asset && <button onClick={() => void showMaintenance(asset, trailerNumber)}>Fleetio detail</button>}{!master && <button className="primary" disabled={syncing} onClick={() => void syncFleetio()}>Sync into TMS</button>}</td>
+                <td className="fleet-action-cell">{master && <><button onClick={() => edit(master)}>Edit</button>{" "}<button disabled={saving} onClick={() => void setActive(master, !master.active)}>{master.active ? "Archive" : "Restore"}</button>{" "}</>}{asset && <button onClick={() => void showMaintenance(asset, trailerNumber)}>Fleetio details</button>}{!master && <button className="primary" disabled={syncing} onClick={() => void syncFleetio()}>Sync to TMS</button>}</td>
               </tr>;
             })}</tbody>
           </table>}
@@ -298,8 +336,8 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
         </div>}
     </div>
 
-    {selected && <div className="panel" style={{ marginTop: 16 }}>
-      <div className="title-row"><div><p className="eyebrow">Edit TMS master</p><h2>{text(kind === "vehicles" ? selected.registration : selected.trailerNumber)}</h2><p className="hint">These are the planning-master fields. Fleetio maintenance/compliance fields are read from Fleetio and remain linked automatically.</p></div><button onClick={() => setSelected(undefined)}>Close</button></div>
+    {selected && <div className="panel master-record-editor" style={{ marginTop: 16 }}>
+      <div className="title-row"><div><p className="eyebrow">Edit TMS master</p><h2>{text(kind === "vehicles" ? selected.registration : selected.trailerNumber)}</h2><p className="hint">These are the planning-master fields. Fleetio maintenance/compliance fields remain linked automatically.</p></div><button onClick={() => setSelected(undefined)}>Close</button></div>
       {kind === "vehicles" ? <div className="form-grid">
         <label>Registration<input value={String(draft.registration ?? "")} onChange={e => setDraft(v => ({ ...v, registration: e.target.value }))} /></label>
         <label>Fleet number<input value={String(draft.fleetNumber ?? "")} onChange={e => setDraft(v => ({ ...v, fleetNumber: e.target.value }))} /></label>
@@ -316,16 +354,20 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
       <div className="actions"><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save TMS master"}</button><button disabled={saving} onClick={() => setSelected(undefined)}>Cancel</button></div>
     </div>}
 
-    {(maintenanceLoading || maintenance || maintenanceError) && <div className="panel" style={{ marginTop: 16 }}>
-      <div className="title-row"><div><p className="eyebrow">Live Fleetio maintenance</p><h2>{maintenanceName || "Asset"}</h2></div><button onClick={() => { setMaintenance(undefined); setMaintenanceError(undefined); setMaintenanceName(undefined); }}>Close</button></div>
-      {maintenanceLoading ? <div className="state">Loading defects, inspections and work orders…</div> : maintenanceError ? <div className="state error"><p>{maintenanceError}</p></div> : maintenance && <>
-        <p className="hint">Retrieved {dateTime(maintenance.retrievedAtUtc)}</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14 }}>
-          <article><p className="eyebrow">Defects / issues</p><h3>{maintenance.openIssues.length} open</h3>{maintenance.openIssues.length ? maintenance.openIssues.map(issue => <p key={issue.id}><strong>{issue.number ? `#${issue.number} ` : ""}{issue.name}</strong><br/><small>{text(issue.state)} · reported {date(issue.reportedAtUtc)}{issue.dueAtUtc ? ` · due ${date(issue.dueAtUtc)}` : ""}</small></p>) : <p className="hint">No open Fleetio issues returned.</p>}</article>
-          <article><p className="eyebrow">Latest inspection</p>{maintenance.latestInspection ? <><h3>{maintenance.latestInspection.title}</h3><p>Submitted {dateTime(maintenance.latestInspection.submittedAtUtc)}</p><p><strong>{maintenance.latestInspection.failedItems ?? 0}</strong> failed item(s)</p></> : <p className="hint">No submitted inspection returned.</p>}</article>
-          <article><p className="eyebrow">Work orders</p><h3>{maintenance.activeWorkOrders.length} active</h3>{maintenance.activeWorkOrders.length ? maintenance.activeWorkOrders.map(order => <p key={order.id}><strong>{order.number ? `#${order.number}` : "Work order"} · {text(order.status)}</strong><br/><small>{text(order.description)}{order.expectedCompletedAtUtc ? ` · expected ${date(order.expectedCompletedAtUtc)}` : ""}</small></p>) : <p className="hint">No active Fleetio work orders returned.</p>}</article>
+    {(maintenanceLoading || maintenance || maintenanceError) && <div className="fleetio-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) closeMaintenance(); }}>
+      <section className="fleetio-modal" role="dialog" aria-modal="true" aria-label={`Fleetio details for ${maintenanceName || "asset"}`}>
+        <div className="fleetio-modal-header"><div><p className="eyebrow">Live Fleetio maintenance</p><h2>{maintenanceName || "Asset"}</h2></div><button className="fleetio-modal-close" onClick={closeMaintenance} aria-label="Close Fleetio details">Close</button></div>
+        <div className="fleetio-modal-body">
+          {maintenanceLoading ? <div className="state">Loading defects, inspections and work orders…</div> : maintenanceError ? <div className="state error"><p>{maintenanceError}</p></div> : maintenance && <>
+            <p className="hint">Retrieved {dateTime(maintenance.retrievedAtUtc)}</p>
+            <div className="fleetio-detail-grid">
+              <article><p className="eyebrow">Defects / issues</p><h3>{maintenance.openIssues.length} open</h3>{maintenance.openIssues.length ? maintenance.openIssues.map(issue => <p key={issue.id}><strong>{issue.number ? `#${issue.number} ` : ""}{issue.name}</strong><br/><small>{text(issue.state)} · reported {date(issue.reportedAtUtc)}{issue.dueAtUtc ? ` · due ${date(issue.dueAtUtc)}` : ""}</small></p>) : <p className="hint">No open Fleetio issues returned.</p>}</article>
+              <article><p className="eyebrow">Latest inspection</p>{maintenance.latestInspection ? <><h3>{maintenance.latestInspection.title}</h3><p>Submitted {dateTime(maintenance.latestInspection.submittedAtUtc)}</p><p><strong>{maintenance.latestInspection.failedItems ?? 0}</strong> failed item(s)</p>{maintenance.latestInspection.submittedBy && <small>By {maintenance.latestInspection.submittedBy}</small>}</> : <p className="hint">No submitted inspection returned.</p>}</article>
+              <article><p className="eyebrow">Work orders</p><h3>{maintenance.activeWorkOrders.length} active</h3>{maintenance.activeWorkOrders.length ? maintenance.activeWorkOrders.map(order => <p key={order.id}><strong>{order.number ? `#${order.number}` : "Work order"} · {text(order.status)}</strong><br/><small>{text(order.description)}{order.expectedCompletedAtUtc ? ` · expected ${date(order.expectedCompletedAtUtc)}` : ""}</small></p>) : <p className="hint">No active Fleetio work orders returned.</p>}</article>
+            </div>
+          </>}
         </div>
-      </>}
+      </section>
     </div>}
   </section>;
 }
