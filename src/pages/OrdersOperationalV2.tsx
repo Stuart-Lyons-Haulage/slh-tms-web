@@ -26,8 +26,36 @@ type ImportOrder = {
   planningPeriod: "AM" | "PM" | "TBC";
 };
 
+type ManualOrderLine = {
+  key: string;
+  poNumber: string;
+  customerCode: string;
+  collectionSite: string;
+  destination: string;
+  deliveryAddress: string;
+  collectionDate: string;
+  pallets: string;
+  customerRef: string;
+  poRef: string;
+};
+
 function clean(value: unknown) { return String(value ?? "").trim(); }
 function normaliseHeader(value: unknown) { return clean(value).toLowerCase().replace(/[^a-z0-9]/g, ""); }
+function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function blankManualLine(): ManualOrderLine {
+  return {
+    key: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    poNumber: "",
+    customerCode: "",
+    collectionSite: "",
+    destination: "",
+    deliveryAddress: "",
+    collectionDate: today(),
+    pallets: "1",
+    customerRef: "",
+    poRef: "",
+  };
+}
 function first(row: Record<string, string>, ...names: string[]) {
   for (const name of names) {
     const value = row[normaliseHeader(name)];
@@ -160,6 +188,7 @@ function mapRow(row: Record<string, string>, index: number): ImportOrder | undef
 export function OrdersOperationalV2() {
   const token = useAccessToken();
   const [rows, setRows] = useState<ImportOrder[]>([]);
+  const [manualLines, setManualLines] = useState<ManualOrderLine[]>(() => [blankManualLine()]);
   const [fileName, setFileName] = useState("");
   const [message, setMessage] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
@@ -207,11 +236,11 @@ export function OrdersOperationalV2() {
           mapLink: row.mapLink,
         },
       }));
-      const accessToken = await token();
-      const result = await api.stageBatch(records, accessToken);
+      const result = await api.stageBatch(records, await token());
       const pending = result.records.filter((item) => String(item.status).toLowerCase() === "pendingreview" || String(item.status) === "0").length;
       setMessage(`${result.received} submitted. ${result.created} new Order Review item${result.created === 1 ? "" : "s"}; ${result.existing} already existed. ${pending} currently pending review.`);
       setRows([]);
+      window.dispatchEvent(new Event("slh:orders-changed"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Order staging failed.");
     } finally {
@@ -219,11 +248,88 @@ export function OrdersOperationalV2() {
     }
   }
 
+  function updateManual(key: string, field: keyof Omit<ManualOrderLine, "key">, value: string) {
+    setManualLines((current) => current.map((line) => line.key === key ? { ...line, [field]: value } : line));
+  }
+
+  async function submitManualLines() {
+    if (submitting) return;
+    const entered = manualLines.filter((line) => [line.poNumber, line.customerCode, line.collectionSite, line.destination, line.deliveryAddress, line.customerRef, line.poRef].some((value) => clean(value)));
+    if (!entered.length) { setMessage("Enter an order before sending it to Order Review."); return; }
+    const invalid = entered.find((line) => !clean(line.poNumber || line.poRef) || !clean(line.customerCode) || !clean(line.collectionDate) || !Number.isInteger(Number(line.pallets)) || Number(line.pallets) <= 0);
+    if (invalid) { setMessage("Each order line needs a reference, customer, date and a positive whole pallet quantity."); return; }
+
+    setSubmitting(true);
+    setMessage(undefined);
+    try {
+      const records: StageBatchRequest[] = entered.map((line, index) => {
+        const reference = clean(line.poNumber) || clean(line.poRef);
+        const notes = [
+          line.collectionSite ? `Collection site: ${clean(line.collectionSite)}` : "",
+          line.destination ? `Depot: ${clean(line.destination)}` : "",
+          line.deliveryAddress ? `Delivery address: ${clean(line.deliveryAddress)}` : "",
+          line.customerRef ? `Customer ref: ${clean(line.customerRef)}` : "",
+          line.poRef ? `PO ref: ${clean(line.poRef)}` : "",
+        ].filter(Boolean).join(" · ");
+        return {
+          entityType: "order",
+          idempotencyKey: `manual-order-v2:${line.collectionDate}:${reference}:${line.customerCode}:${index}`.slice(0, 200),
+          source: "Manual order entry · Import Centre",
+          payload: {
+            poNumber: reference,
+            customerCode: clean(line.customerCode),
+            collectionDate: line.collectionDate,
+            deliveryDate: line.collectionDate,
+            pallets: clean(line.pallets),
+            sellerName: clean(line.collectionSite),
+            stallNumber: clean(line.destination),
+            driverInstructions: notes,
+            mapLink: line.deliveryAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(clean(line.deliveryAddress))}` : "",
+          },
+        };
+      });
+      const result = await api.stageBatch(records, await token());
+      setMessage(`${result.created} new manual order${result.created === 1 ? "" : "s"} sent to Order Review. ${result.existing} already existed.`);
+      setManualLines([blankManualLine()]);
+      window.dispatchEvent(new Event("slh:orders-changed"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Manual orders could not be staged.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return <section className="orders-operational">
     <div className="title-row">
-      <div><p className="eyebrow">Order intake</p><h1>Customer orders</h1><p className="intro">Import the customer file, preserve every delivery line and its time, then submit it into Order Review for approval.</p></div>
+      <div><p className="eyebrow">Order intake</p><h1>Customer orders</h1><p className="intro">Enter a single order or import the customer file, then submit it into Order Review for approval.</p></div>
       <Link className="button-like" to="/staging">Open Order Review</Link>
     </div>
+
+    <article className="panel structured-import" style={{ marginBottom: 16 }}>
+      <div className="title-row">
+        <div><p className="eyebrow">Manual order entry</p><h2>Order lines</h2><p className="hint">One line is shown by default. Add another line only when you need to enter another order.</p></div>
+        <button type="button" onClick={() => setManualLines((current) => [...current, blankManualLine()])} disabled={submitting}>Add line</button>
+      </div>
+      <div className="table-scroll">
+        <table style={{ minWidth: 1180 }}>
+          <thead><tr><th>Reference</th><th>Customer</th><th>Date</th><th>Collection</th><th>Destination</th><th>Postcode / address</th><th>Pallets</th><th>Customer ref</th><th>PO ref</th><th /></tr></thead>
+          <tbody>{manualLines.map((line, index) => <tr key={line.key}>
+            <td><input value={line.poNumber} onChange={(e) => updateManual(line.key, "poNumber", e.target.value)} placeholder="Order / sales ref" /></td>
+            <td><input value={line.customerCode} onChange={(e) => updateManual(line.key, "customerCode", e.target.value)} placeholder="Customer" /></td>
+            <td><input type="date" value={line.collectionDate} onChange={(e) => updateManual(line.key, "collectionDate", e.target.value)} /></td>
+            <td><input value={line.collectionSite} onChange={(e) => updateManual(line.key, "collectionSite", e.target.value)} placeholder="Collection site" /></td>
+            <td><input value={line.destination} onChange={(e) => updateManual(line.key, "destination", e.target.value)} placeholder="Destination" /></td>
+            <td><input value={line.deliveryAddress} onChange={(e) => updateManual(line.key, "deliveryAddress", e.target.value)} placeholder="Postcode preferred" /></td>
+            <td><input type="number" min="1" step="1" value={line.pallets} onChange={(e) => updateManual(line.key, "pallets", e.target.value)} style={{ width: 80 }} /></td>
+            <td><input value={line.customerRef} onChange={(e) => updateManual(line.key, "customerRef", e.target.value)} /></td>
+            <td><input value={line.poRef} onChange={(e) => updateManual(line.key, "poRef", e.target.value)} /></td>
+            <td>{manualLines.length > 1 && <button type="button" onClick={() => setManualLines((current) => current.filter((item) => item.key !== line.key))} disabled={submitting} aria-label={`Remove order line ${index + 1}`}>Remove</button>}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+      <button className="primary" type="button" disabled={submitting} onClick={() => void submitManualLines()}>{submitting ? "Submitting…" : `Send ${manualLines.length} line${manualLines.length === 1 ? "" : "s"} to Order Review`}</button>
+    </article>
+
     <article className="panel structured-import">
       <p className="eyebrow">Customer file</p><h2>Import CSV</h2>
       <p>Recognises pallet and crate work, collection and delivery times, requested date, collection site, customer, depot, delivery address, sales order, quantity and PO ref.</p>
