@@ -6,6 +6,7 @@ import { FuelCardsOperational } from './FuelCardsOperational';
 import { MarketsMasterClean } from './MarketsMasterClean';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
 import { GeofenceOperational } from './GeofenceOperational';
+import { MasterDataAddPanel, type AddableMasterSection } from './MasterDataAddPanel';
 
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
 
@@ -24,6 +25,7 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
 export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?: MasterSection }) {
   const [section, setSection] = useState<MasterSection>(initialSection);
   const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => { setSection(initialSection); setCleanupOpen(false); }, [initialSection]);
 
@@ -35,7 +37,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       <div>
         <p className="eyebrow">Live TMS master database</p>
         <h1>Master data</h1>
-        <p className="intro">One place to maintain the records used throughout planning, tracking and integrations. The TMS is the live master; integrations enrich those same records rather than creating competing registers.</p>
+        <p className="intro">One place to add and maintain the records used throughout planning, tracking and integrations. The TMS is the live master; integrations enrich those same records rather than creating competing registers.</p>
       </div>
       <span className="status approved">Live TMS Master Database</span>
     </div>
@@ -47,15 +49,19 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       <p className="hint master-section-hint"><strong>{active.label}:</strong> {active.detail}</p>
     </div>
 
-    {section === 'drivers' && <DriversUnified />}
-    {section === 'vehicles' && <FleetMasterUnified kind="vehicles" />}
-    {section === 'trailers' && <FleetMasterUnified kind="trailers" />}
-    {(section === 'customers' || section === 'sites') &&
-      <MasterDataOperational initialTab={section} showCategoryButtons={false} showHeading={false} />}
-    {section === 'geofences' && <GeofenceOperational />}
-    {section === 'fuel-cards' && <FuelCardsOperational />}
-    {section === 'markets' && <MarketsMasterClean />}
-    {section === 'fuel-prices' && <FuelMaster />}
+    <MasterDataAddPanel section={section as AddableMasterSection} onAdded={() => setRefreshKey(value => value + 1)} />
+
+    <div key={`${section}-${refreshKey}`}>
+      {section === 'drivers' && <DriversUnified />}
+      {section === 'vehicles' && <FleetMasterUnified kind="vehicles" />}
+      {section === 'trailers' && <FleetMasterUnified kind="trailers" />}
+      {(section === 'customers' || section === 'sites') &&
+        <MasterDataOperational initialTab={section} showCategoryButtons={false} showHeading={false} />}
+      {section === 'geofences' && <GeofenceOperational />}
+      {section === 'fuel-cards' && <FuelCardsOperational />}
+      {section === 'markets' && <MarketsMasterClean />}
+      {section === 'fuel-prices' && <FuelMaster />}
+    </div>
 
     {separateCleanup && <div className="panel" style={{ marginTop: 18, border: '2px solid #d5e0e4' }}>
       <div className="title-row">
