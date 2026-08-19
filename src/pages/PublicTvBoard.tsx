@@ -39,6 +39,11 @@ function todayInLondon() {
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
+function displayKey() {
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+  return new URLSearchParams(hash).get("key")?.trim() || "";
+}
+
 function time(value?: string) {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -55,7 +60,7 @@ function stateClass(value: string) {
 }
 
 export function PublicTvBoard() {
-  const key = new URLSearchParams(window.location.search).get("key")?.trim() || "";
+  const key = displayKey();
   const [feed, setFeed] = useState<TvFeed>();
   const [error, setError] = useState<string>();
   const [clock, setClock] = useState(() => new Date());
@@ -68,8 +73,8 @@ export function PublicTvBoard() {
       return;
     }
     try {
-      const response = await fetch(`/tms-api/api/v1/tv-display/live-runs?date=${encodeURIComponent(date)}&key=${encodeURIComponent(key)}`, {
-        headers: { Accept: "application/json" },
+      const response = await fetch(`/tms-api/api/v1/tv-display/live-runs?date=${encodeURIComponent(date)}`, {
+        headers: { Accept: "application/json", "X-TV-Display-Key": key },
         cache: "no-store",
       });
       if (!response.ok) {
