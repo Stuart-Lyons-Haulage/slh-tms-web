@@ -5,6 +5,7 @@ import { PublicClientApplication } from '@azure/msal-browser';
 import { App } from './App';
 import './runtimeGuards';
 import './fleetioSyncPatch';
+import './masterDataCleanupFetchPatch';
 import './operationalPresentationPatch';
 import './managementFallbackPatch';
 import './planLockFetchPatch';
