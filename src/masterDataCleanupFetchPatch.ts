@@ -1,3 +1,5 @@
+export {};
+
 // Compatibility bridge for older Master Data components that still call the
 // operational-master-data archive/restore routes. Keep those visible buttons
 // on the same resilient endpoint as the duplicate-cleanup workspace.
