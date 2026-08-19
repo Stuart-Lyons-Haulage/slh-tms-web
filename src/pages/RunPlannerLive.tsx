@@ -57,7 +57,7 @@ export function RunPlannerLive() {
     setRuns(drafts); setActiveKey(current=>drafts.some(r=>r.key===current)?current:drafts[0].key);
   },[control,date,loads]);
 
-  const orders=control?.orders || [];
+  const orders=useMemo(()=>control?.orders || [],[control]);
   const visible=useMemo(()=>orders.filter(o=>o.outstandingPallets>0).filter(o=>!query.trim() || [o.reference,o.customerCode,o.collection,o.destination].some(v=>String(v).toLowerCase().includes(query.toLowerCase()))),[orders,query]);
   const active=runs.find(r=>r.key===activeKey) || runs[0];
   const updateRun=(key:string,fn:(r:RunDraft)=>RunDraft)=>setRuns(current=>current.map(r=>r.key===key?fn(r):r));
