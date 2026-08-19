@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { formatTime as formatUkTime } from "../lib/dateUtils";
+import { displayRunReference } from "../lib/runDisplay";
 import "../tv-display.css";
 
 type TvRun = {
   id: string;
   reference: string;
+  displayReference?: string;
   status: string;
   driver: string;
   vehicle: string;
@@ -31,6 +34,7 @@ type TvFeed = {
 };
 
 type PairResponse = { key: string; pairedAtUtc: string };
+type RunLabelFeed = { planningDate: string; labels: Array<{ loadId: string; displayReference: string }> };
 
 const UK_ZONE = "Europe/London";
 const STORAGE_KEY = "slh-tv-display-key";
@@ -44,9 +48,7 @@ function todayInLondon() {
 }
 
 function time(value?: string) {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "—" : timeFormat.format(parsed);
+  return formatUkTime(value);
 }
 
 function stateClass(value: string) {
@@ -79,13 +81,18 @@ export function PublicTvBoard() {
   const [lastRefresh, setLastRefresh] = useState<Date>();
   const date = todayInLondon();
 
-  async function refresh(key = displayKey) {
+  const refresh = useCallback(async (key = displayKey) => {
     if (!key) return;
     try {
-      const response = await fetch(`/tms-api/api/v1/tv-display/live-runs?date=${encodeURIComponent(date)}`, {
+      const liveRequest = fetch(`/tms-api/api/v1/tv-display/live-runs?date=${encodeURIComponent(date)}`, {
         headers: { Accept: "application/json", "X-TV-Display-Key": key },
         cache: "no-store",
       });
+      const labelsRequest = fetch(`/tms-api/api/v1/tv-display/run-labels?date=${encodeURIComponent(date)}`, {
+        headers: { Accept: "application/json", "X-TV-Display-Key": key },
+        cache: "no-store",
+      }).catch(() => undefined);
+      const [response, labelResponse] = await Promise.all([liveRequest, labelsRequest]);
       if (response.status === 401) {
         localStorage.removeItem(STORAGE_KEY);
         setDisplayKey("");
@@ -98,13 +105,23 @@ export function PublicTvBoard() {
         try { detail = (await response.json() as { message?: string }).message || detail; } catch { /* keep generic detail */ }
         throw new Error(detail);
       }
-      setFeed(await response.json() as TvFeed);
+
+      const nextFeed = await response.json() as TvFeed;
+      if (labelResponse?.ok) {
+        try {
+          const labelFeed = await labelResponse.json() as RunLabelFeed;
+          const labelByLoad = new Map(labelFeed.labels.map(item => [item.loadId, item.displayReference]));
+          nextFeed.runs = nextFeed.runs.map(run => ({ ...run, displayReference: labelByLoad.get(run.id) || run.displayReference }));
+        } catch { /* fallback below keeps the TV usable during staggered API/web deployments */ }
+      }
+
+      setFeed(nextFeed);
       setError(undefined);
       setLastRefresh(new Date());
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : "The TV live-runs feed could not be loaded.");
     }
-  }
+  }, [date, displayKey]);
 
   async function pair(event: FormEvent) {
     event.preventDefault();
@@ -149,7 +166,7 @@ export function PublicTvBoard() {
     void refresh(displayKey);
     const refreshTimer = window.setInterval(() => void refresh(displayKey), 20_000);
     return () => window.clearInterval(refreshTimer);
-  }, [displayKey, date]);
+  }, [displayKey, refresh]);
 
   const metrics = useMemo(() => {
     const rows = feed?.runs || [];
@@ -213,7 +230,7 @@ export function PublicTvBoard() {
     <section className="tv-run-table">
       <div className="tv-run-head"><span>Run</span><span>Allocation</span><span>Next stop</span><span>ETA</span><span>Live status</span></div>
       {(feed?.runs || []).map(run => <article className="tv-run-row" key={run.id}>
-        <div className="tv-run-ref"><strong>{run.reference}</strong><small>{run.status}</small></div>
+        <div className="tv-run-ref"><strong>{run.displayReference || displayRunReference(run.reference, undefined, run.firstPlannedUtc)}</strong><small>{run.status}</small></div>
         <div><strong>{run.vehicle}</strong><span>{run.driver}</span><small>{run.trailer ? `Trailer ${run.trailer}` : "Trailer TBC"}</small></div>
         <div><strong>{run.nextStop || (run.state === "COMPLETED" ? "Run complete" : "Next stop TBC")}</strong><small>Start {time(run.firstPlannedUtc)} · finish {time(run.finalPlannedUtc)}</small></div>
         <div className="tv-run-eta"><strong>{run.state === "COMPLETED" ? "✓" : time(run.etaUtc)}</strong><small>{run.etaSource === "Live" ? "LIVE ETA" : run.etaSource.toUpperCase()}</small></div>
@@ -222,6 +239,6 @@ export function PublicTvBoard() {
       {!error && feed && feed.runs.length === 0 && <div className="tv-display-empty">No runs are planned for today.</div>}
     </section>
 
-    <footer className="tv-display-footer"><span>Read-only display</span><span>UK local time</span><span>Refreshes every {feed?.refreshSeconds || 20} seconds</span><span>{lastRefresh ? `Updated ${timeFormat.format(lastRefresh)}` : "Connecting…"}</span></footer>
+    <footer className="tv-display-footer"><span>Read-only display</span><span>UK local time · Europe/London</span><span>Refreshes every {feed?.refreshSeconds || 20} seconds</span><span>{lastRefresh ? `Updated ${timeFormat.format(lastRefresh)}` : "Connecting…"}</span></footer>
   </div>;
 }

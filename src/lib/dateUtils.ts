@@ -16,6 +16,18 @@ function partsFor(date: Date) {
   };
 }
 
+export function parseApiDateTime(value?: string | Date | null) {
+  if (!value) return undefined;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? undefined : value;
+  const raw = String(value).trim();
+  if (!raw) return undefined;
+  const hasTime = raw.includes("T");
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+  const normalised = hasTime && !hasZone ? `${raw}Z` : raw;
+  const date = new Date(normalised);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 export function todayIsoDate() {
   const { day, month, year } = partsFor(new Date());
   return `${year}-${month}-${day}`;
@@ -30,8 +42,10 @@ export function addDaysIso(days: number) {
 
 export function formatDate(value?: string | Date | null) {
   if (!value) return "—";
-  const date = value instanceof Date ? value : new Date(String(value).includes("T") ? String(value) : `${value}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return String(value);
+  const date = value instanceof Date
+    ? value
+    : parseApiDateTime(String(value).includes("T") ? String(value) : `${value}T12:00:00Z`);
+  if (!date) return String(value);
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: UK_TIME_ZONE,
     day: "2-digit",
@@ -42,8 +56,10 @@ export function formatDate(value?: string | Date | null) {
 
 export function formatDateLong(value?: string | Date | null) {
   if (!value) return "—";
-  const date = value instanceof Date ? value : new Date(String(value).includes("T") ? String(value) : `${value}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return String(value);
+  const date = value instanceof Date
+    ? value
+    : parseApiDateTime(String(value).includes("T") ? String(value) : `${value}T12:00:00Z`);
+  if (!date) return String(value);
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: UK_TIME_ZONE,
     weekday: "long",
@@ -55,13 +71,24 @@ export function formatDateLong(value?: string | Date | null) {
 
 export function formatDateTime(value?: string | Date | null) {
   if (!value) return "—";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
+  const date = parseApiDateTime(value);
+  if (!date) return String(value);
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: UK_TIME_ZONE,
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export function formatTime(value?: string | Date | null) {
+  if (!value) return "—";
+  const date = parseApiDateTime(value);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: UK_TIME_ZONE,
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);

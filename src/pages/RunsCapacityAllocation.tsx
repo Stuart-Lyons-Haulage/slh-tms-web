@@ -9,6 +9,7 @@ import {
   type Vehicle,
 } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
 import "../runs-capacity-allocation.css";
 
@@ -97,13 +98,18 @@ function filteredPlannerNotes(value?: string) {
   return value.split("|").map(part => part.trim()).filter(part => part && !exclude.test(part)).join(" | ");
 }
 
+function firstPlannedTime(load: Load) {
+  return [...(load.stops || [])].sort((left, right) => left.sequence - right.sequence).find(stop => stop.plannedArrivalUtc)?.plannedArrivalUtc;
+}
+
 function buildDriverText(load: Load, dispatch: LoadDispatch) {
   const plannerNotes = filteredPlannerNotes(load.plannerNotes);
+  const runLabel = displayRunReference(load.reference, load.plannerNotes, firstPlannedTime(load));
   const loadLine = load.palletSpacesUsed != null
     ? `Load: ${load.palletSpacesUsed}${load.totalPalletSpaces ? ` / ${load.totalPalletSpaces}` : ""} ${load.capacityType || "pallet spaces"}`
     : "";
   const header = [
-    `SLH run ${dispatch.reference}`,
+    `SLH ${runLabel}`,
     dispatch.driver ? `Driver: ${dispatch.driver.displayName}` : "Driver: Unallocated",
     dispatch.vehicle ? `Vehicle: ${dispatch.vehicle.registration}` : "Vehicle: Unallocated",
     dispatch.trailer ? `Trailer: ${dispatch.trailer.trailerNumber}` : "",
@@ -175,6 +181,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
   const effectiveCapacity = trailerCapacity(selectedTrailer, capacityType) ?? load.totalPalletSpaces;
   const numericUsed = Number(used || 0);
   const utilisation = effectiveCapacity && effectiveCapacity > 0 ? numericUsed / effectiveCapacity * 100 : undefined;
+  const runLabel = displayRunReference(load.reference, load.plannerNotes, firstPlannedTime(load));
 
   const stopPayload = (source: EditableStop[]) => source.map(stop => ({
     orderId: stop.orderId,
@@ -347,7 +354,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
   return (
     <article className="order-card allocation-card">
       <div className="title-row">
-        <div><strong>{load.reference}</strong><small>{load.stops.length} stop{load.stops.length === 1 ? "" : "s"} · {load.stops.map(stop => stop.name).join(" → ") || "Stops pending"}</small></div>
+        <div><strong>{runLabel}</strong><small>{load.stops.length} stop{load.stops.length === 1 ? "" : "s"} · {load.stops.map(stop => stop.name).join(" → ") || "Stops pending"}</small></div>
         <span className={utilisation != null && utilisation > 100 ? "capacity-warning" : ""}>
           {numericUsed} / {effectiveCapacity ?? "—"} {spaceLabel(capacityType)} · {loadTypeLabel(capacityType)}{utilisation != null ? ` · ${utilisation.toFixed(1)}%` : ""}
         </span>
@@ -390,8 +397,8 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       {message && <p className="notice inline-notice run-location-warning">{message}</p>}
 
       {previewOpen && <div className="run-text-modal-backdrop" onClick={() => setPreviewOpen(false)}>
-        <div className="run-text-modal" role="dialog" aria-modal="true" aria-label={`Driver text preview for ${load.reference}`} onClick={event => event.stopPropagation()}>
-          <div className="title-row"><div><p className="eyebrow">Driver text preview</p><h2>{load.reference}</h2></div><button type="button" onClick={() => setPreviewOpen(false)}>Close</button></div>
+        <div className="run-text-modal" role="dialog" aria-modal="true" aria-label={`Driver text preview for ${runLabel}`} onClick={event => event.stopPropagation()}>
+          <div className="title-row"><div><p className="eyebrow">Driver text preview</p><h2>{runLabel}</h2></div><button type="button" onClick={() => setPreviewOpen(false)}>Close</button></div>
           <textarea readOnly value={previewText} />
           <div className="run-text-modal-actions"><button type="button" onClick={() => void copyDriverText()}>Copy text</button><button className="primary" type="button" onClick={() => void sendDriverText()} disabled={saving || !driverId || !vehicleId}>Send driver SMS</button></div>
         </div>
