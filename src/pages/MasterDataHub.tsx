@@ -6,6 +6,7 @@ import { FuelCardsOperational } from './FuelCardsOperational';
 import { MarketsMasterClean } from './MarketsMasterClean';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
 import { SitePlanningProfiles } from './SitePlanningProfiles';
+import { GeofenceOperational } from './GeofenceOperational';
 
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
 
@@ -16,7 +17,7 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Vehicle fuel cards, PINs and fuel register' },
   { key: 'customers', label: 'Customers', detail: 'Customer names and master codes' },
   { key: 'sites', label: 'Sites', detail: 'Collection and delivery locations, driver instructions, default temperatures and planning regions' },
-  { key: 'geofences', label: 'Geofences', detail: 'Operational site geofences, site links, dwell thresholds and entry/exit confirmation rules' },
+  { key: 'geofences', label: 'Geofences', detail: 'RoadTech hit integrity, site links, dwell thresholds and entry/exit confirmation used by Live Runs' },
   { key: 'markets', label: 'Markets', detail: 'Market master records and contacts' },
   { key: 'fuel-prices', label: 'Fuel prices', detail: 'Fuel pricing reference data' },
 ];
@@ -50,8 +51,9 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
     {section === 'drivers' && <DriversUnified />}
     {section === 'vehicles' && <FleetMasterUnified kind="vehicles" />}
     {section === 'trailers' && <FleetMasterUnified kind="trailers" />}
-    {(section === 'customers' || section === 'sites' || section === 'geofences') &&
+    {(section === 'customers' || section === 'sites') &&
       <MasterDataOperational initialTab={section} showCategoryButtons={false} showHeading={false} />}
+    {section === 'geofences' && <GeofenceOperational />}
     {section === 'sites' && <SitePlanningProfiles />}
     {section === 'fuel-cards' && <FuelCardsOperational />}
     {section === 'markets' && <MarketsMasterClean />}
