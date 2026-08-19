@@ -18,10 +18,11 @@ const localDate = () => {
 };
 
 type CapacityType = "Standard pallets" | "Euro pallets" | "Trays" | "Trolleys" | "Mixed load";
-type EditableStop = Omit<Load["stops"][number], "latitude" | "longitude"> & { latitude: string; longitude: string };
+type EditableStop = Omit<Load["stops"][number], "latitude" | "longitude"> & { latitude: string; longitude: string; postcode: string };
 
 const normalise = (value?: string) => (value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const spaceLabel = (type?: string) => (type || "").toLowerCase() === "euro pallets" ? "Euro spaces" : "floor spaces";
+const postcodePattern = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
 
 function loadTypeLabel(type?: string) {
   switch ((type || "").toLowerCase()) {
@@ -66,7 +67,28 @@ function matchSite(sites: Site[], stopName: string) {
 }
 
 function usefulAddress(value?: string) {
-  return Boolean(value && (/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(value) || /\d+\s+[A-Za-z]/.test(value)));
+  return Boolean(value && (postcodePattern.test(value) || /\d+\s+[A-Za-z]/.test(value)));
+}
+
+function postcodeFrom(value?: string) {
+  const match = value?.match(postcodePattern);
+  return match ? `${match[1].toUpperCase()} ${match[2].toUpperCase()}` : "";
+}
+
+function formatPostcode(value?: string) {
+  if (!value) return "";
+  const compact = value.toUpperCase().replace(/\s+/g, "").trim();
+  const match = compact.match(/^([A-Z]{1,2}\d[A-Z\d]?)(\d[A-Z]{2})$/);
+  return match ? `${match[1]} ${match[2]}` : value.toUpperCase().trim();
+}
+
+function addressWithPostcode(address: string | undefined, postcode: string) {
+  const current = (address || "").trim();
+  const formatted = formatPostcode(postcode);
+  if (!formatted) return current;
+  return postcodePattern.test(current)
+    ? current.replace(postcodePattern, formatted)
+    : [current, formatted].filter(Boolean).join(", ");
 }
 
 function filteredPlannerNotes(value?: string) {
@@ -105,12 +127,16 @@ function buildDriverText(load: Load, dispatch: LoadDispatch) {
   return [header, stops, "Please reply to this message to confirm acceptance"].filter(Boolean).join("\n\n");
 }
 
-function editableStops(load: Load): EditableStop[] {
-  return load.stops.map(stop => ({
-    ...stop,
-    latitude: stop.latitude?.toString() || "",
-    longitude: stop.longitude?.toString() || "",
-  }));
+function editableStops(load: Load, sites: Site[]): EditableStop[] {
+  return load.stops.map(stop => {
+    const site = matchSite(sites, stop.name);
+    return {
+      ...stop,
+      latitude: stop.latitude?.toString() || "",
+      longitude: stop.longitude?.toString() || "",
+      postcode: postcodeFrom(stop.address) || postcodeFrom(site?.collectionAddress),
+    };
+  });
 }
 
 function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }: {
@@ -131,7 +157,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
   const [message, setMessage] = useState<string>();
   const [routeOpen, setRouteOpen] = useState(false);
   const [routeSummary, setRouteSummary] = useState<string>();
-  const [stops, setStops] = useState<EditableStop[]>(() => editableStops(load));
+  const [stops, setStops] = useState<EditableStop[]>(() => editableStops(load, sites));
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewText, setPreviewText] = useState("");
 
@@ -141,8 +167,8 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     setTrailerId(load.trailerId || "");
     setCapacityType(capacityTypeFromLoad(load.capacityType));
     setUsed(load.palletSpacesUsed?.toString() || "0");
-    setStops(editableStops(load));
-  }, [load]);
+    setStops(editableStops(load, sites));
+  }, [load, sites]);
 
   const selectedTrailer = trailers.find(item => item.id === trailerId);
   const selectedDriver = drivers.find(item => item.id === driverId);
@@ -153,7 +179,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
   const stopPayload = (source: EditableStop[]) => source.map(stop => ({
     orderId: stop.orderId,
     name: stop.name,
-    address: stop.address,
+    address: addressWithPostcode(stop.address, stop.postcode),
     latitude: stop.latitude.trim() ? Number(stop.latitude) : undefined,
     longitude: stop.longitude.trim() ? Number(stop.longitude) : undefined,
     plannedArrivalUtc: stop.plannedArrivalUtc ? new Date(stop.plannedArrivalUtc).toISOString() : undefined,
@@ -185,26 +211,36 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     let resolved = 0;
     for (const stop of next) {
       const site = matchSite(sites, stop.name);
+      const masterPostcode = postcodeFrom(site?.collectionAddress);
+      const stopPostcode = postcodeFrom(stop.postcode) || postcodeFrom(stop.address) || masterPostcode;
+      if (stopPostcode) stop.postcode = stopPostcode;
+
+      if (site?.collectionAddress) {
+        if (!usefulAddress(stop.address)) stop.address = site.collectionAddress;
+        else if (stopPostcode && !postcodeFrom(stop.address)) stop.address = addressWithPostcode(stop.address, stopPostcode);
+      } else if (stopPostcode && !postcodeFrom(stop.address)) {
+        stop.address = addressWithPostcode(stop.address, stopPostcode);
+      }
+
       if (site?.latitude != null && site.longitude != null) {
         stop.latitude = String(site.latitude); stop.longitude = String(site.longitude);
-        if (site.collectionAddress && !usefulAddress(stop.address)) stop.address = site.collectionAddress;
         resolved++; continue;
       }
+
       const label = stopSiteName(stop.name);
-      const query = site?.collectionAddress || (usefulAddress(stop.address) ? stop.address! : `${label}, United Kingdom`);
+      const query = site?.collectionAddress || (stopPostcode ? `${stopPostcode}, United Kingdom` : usefulAddress(stop.address) ? stop.address! : `${label}, United Kingdom`);
       try {
         const response = await api.geocode(query, access) as { results?: Array<{ position?: { lat?: number; lon?: number } }> };
         const position = response.results?.[0]?.position;
         if (position?.lat == null || position.lon == null) throw new Error("No point returned");
         stop.latitude = String(position.lat); stop.longitude = String(position.lon);
-        if (site?.collectionAddress && !usefulAddress(stop.address)) stop.address = site.collectionAddress;
         resolved++;
       } catch { failed.push(stop.name); }
     }
     setStops(next);
     setMessage(failed.length
-      ? `${resolved} stop${resolved === 1 ? "" : "s"} located. Could not locate: ${failed.join(", ")}. You can enter those coordinates manually.`
-      : `${resolved} stop${resolved === 1 ? "" : "s"} located from Site Master / map search.`);
+      ? `${resolved} stop${resolved === 1 ? "" : "s"} located. Check the Site Master postcode for: ${failed.join(", ")}.`
+      : `${resolved} stop${resolved === 1 ? "" : "s"} located from Site Master postcode/address data.`);
     return next;
   }
 
@@ -219,7 +255,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     setSaving(true); setMessage(undefined);
     try {
       await api.updateLoadStops(load.id, stopPayload(stops), await token());
-      await onSaved(); setMessage("Route points and planned ETAs saved.");
+      await onSaved(); setMessage("Postcodes and planned ETAs saved.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "The route could not be saved."); }
     finally { setSaving(false); }
   }
@@ -231,7 +267,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       let routeStops = stops;
       if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2) routeStops = await resolveLocations(access);
       if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2)
-        throw new Error("At least two stops need map coordinates before an ETA can be calculated.");
+        throw new Error("At least two stops need a valid postcode or Site Master location before an ETA can be calculated.");
 
       await api.updateLoadStops(load.id, stopPayload(routeStops), access);
       const result = await api.route(load.id, access) as {
@@ -295,8 +331,12 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     finally { setSaving(false); }
   }
 
-  function updateStop(index: number, field: "address" | "latitude" | "longitude" | "plannedArrivalUtc", value: string) {
+  function updateStop(index: number, field: "address" | "plannedArrivalUtc", value: string) {
     setStops(current => current.map((stop, stopIndex) => stopIndex === index ? { ...stop, [field]: value } : stop));
+  }
+
+  function updatePostcode(index: number, value: string) {
+    setStops(current => current.map((stop, stopIndex) => stopIndex === index ? { ...stop, postcode: value.toUpperCase() } : stop));
   }
 
   return (
@@ -325,16 +365,15 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       </div>
 
       {routeOpen && <div className="run-route-editor">
-        <p className="hint">Locate uses Site Master first, then map search. Calculate route saves the coordinates before requesting the ETA.</p>
+        <p className="hint">Postcode is taken from Site Master where available. Map coordinates are resolved automatically in the background and are no longer entered manually.</p>
         {stops.map((stop, index) => <div className="run-route-stop" key={stop.id || index}>
           <strong>{index + 1}. {stop.name}</strong>
           <input placeholder="Address" value={stop.address || ""} onChange={event => updateStop(index, "address", event.target.value)} />
-          <input placeholder="Latitude" inputMode="decimal" value={stop.latitude} onChange={event => updateStop(index, "latitude", event.target.value)} />
-          <input placeholder="Longitude" inputMode="decimal" value={stop.longitude} onChange={event => updateStop(index, "longitude", event.target.value)} />
+          <input placeholder="Postcode" autoCapitalize="characters" value={stop.postcode} onChange={event => updatePostcode(index, event.target.value)} />
           <input type="datetime-local" value={stop.plannedArrivalUtc ? new Date(stop.plannedArrivalUtc).toISOString().slice(0, 16) : ""} onChange={event => updateStop(index, "plannedArrivalUtc", event.target.value)} />
         </div>)}
         <div className="run-route-actions">
-          <button type="button" onClick={() => void locateStops()} disabled={saving}>Locate addresses</button>
+          <button type="button" onClick={() => void locateStops()} disabled={saving}>Resolve postcodes</button>
           <button type="button" onClick={() => void saveRoute()} disabled={saving}>Save route & ETA</button>
           <button className="primary" type="button" onClick={() => void calculateRoute()} disabled={saving}>Calculate route & ETA</button>
         </div>
