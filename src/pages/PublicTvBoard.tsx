@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import "../tv-display.css";
 
 type TvRun = {
@@ -29,7 +29,10 @@ type TvFeed = {
   runs: TvRun[];
 };
 
+type PairResponse = { key: string; pairedAtUtc: string };
+
 const UK_ZONE = "Europe/London";
+const STORAGE_KEY = "slh-tv-display-key";
 const timeFormat = new Intl.DateTimeFormat("en-GB", { timeZone: UK_ZONE, hour: "2-digit", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("en-GB", { timeZone: UK_ZONE, weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
@@ -37,11 +40,6 @@ function todayInLondon() {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: UK_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
   const value = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value || "";
   return `${value("year")}-${value("month")}-${value("day")}`;
-}
-
-function displayKey() {
-  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
-  return new URLSearchParams(hash).get("key")?.trim() || "";
 }
 
 function time(value?: string) {
@@ -59,24 +57,41 @@ function stateClass(value: string) {
   return "tv-state-upcoming";
 }
 
+function initialDisplayKey() {
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+  const legacy = new URLSearchParams(hash).get("key")?.trim();
+  if (legacy) {
+    localStorage.setItem(STORAGE_KEY, legacy);
+    window.history.replaceState(null, "", window.location.pathname);
+    return legacy;
+  }
+  return localStorage.getItem(STORAGE_KEY)?.trim() || "";
+}
+
 export function PublicTvBoard() {
-  const key = displayKey();
+  const [displayKey, setDisplayKey] = useState(initialDisplayKey);
+  const [pairCode, setPairCode] = useState("");
+  const [pairing, setPairing] = useState(false);
   const [feed, setFeed] = useState<TvFeed>();
   const [error, setError] = useState<string>();
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState<Date>();
   const date = todayInLondon();
 
-  async function refresh() {
-    if (!key) {
-      setError("This TV link is missing its display key. Generate the link from the signed-in TMS TV display page.");
-      return;
-    }
+  async function refresh(key = displayKey) {
+    if (!key) return;
     try {
       const response = await fetch(`/tms-api/api/v1/tv-display/live-runs?date=${encodeURIComponent(date)}`, {
         headers: { Accept: "application/json", "X-TV-Display-Key": key },
         cache: "no-store",
       });
+      if (response.status === 401) {
+        localStorage.removeItem(STORAGE_KEY);
+        setDisplayKey("");
+        setFeed(undefined);
+        setError("This TV needs pairing again. Enter the current 6-digit code from TV display in the signed-in TMS.");
+        return;
+      }
       if (!response.ok) {
         let detail = "The TV live-runs feed could not be loaded.";
         try { detail = (await response.json() as { message?: string }).message || detail; } catch { /* keep generic detail */ }
@@ -90,12 +105,50 @@ export function PublicTvBoard() {
     }
   }
 
+  async function pair(event: FormEvent) {
+    event.preventDefault();
+    const code = pairCode.replace(/\D/g, "").slice(0, 6);
+    if (code.length !== 6) {
+      setError("Enter all 6 digits from the TMS TV display page.");
+      return;
+    }
+
+    setPairing(true);
+    setError(undefined);
+    try {
+      const response = await fetch("/tms-api/api/v1/tv-display/pair", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (!response.ok) {
+        let detail = "That pairing code could not be accepted.";
+        try { detail = (await response.json() as { message?: string }).message || detail; } catch { /* keep generic detail */ }
+        throw new Error(detail);
+      }
+      const result = await response.json() as PairResponse;
+      localStorage.setItem(STORAGE_KEY, result.key);
+      setDisplayKey(result.key);
+      setPairCode("");
+      await refresh(result.key);
+    } catch (exception) {
+      setError(exception instanceof Error ? exception.message : "The TV could not be paired.");
+    } finally {
+      setPairing(false);
+    }
+  }
+
   useEffect(() => {
-    void refresh();
     const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
-    const refreshTimer = window.setInterval(() => void refresh(), 20_000);
-    return () => { window.clearInterval(clockTimer); window.clearInterval(refreshTimer); };
-  }, [key, date]);
+    return () => window.clearInterval(clockTimer);
+  }, []);
+
+  useEffect(() => {
+    if (!displayKey) return;
+    void refresh(displayKey);
+    const refreshTimer = window.setInterval(() => void refresh(displayKey), 20_000);
+    return () => window.clearInterval(refreshTimer);
+  }, [displayKey, date]);
 
   const metrics = useMemo(() => {
     const rows = feed?.runs || [];
@@ -110,6 +163,35 @@ export function PublicTvBoard() {
   async function fullScreen() {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await document.documentElement.requestFullscreen();
+  }
+
+  if (!displayKey) {
+    return <div className="tv-display-page tv-pair-page">
+      <header className="tv-display-header">
+        <div className="tv-display-brand"><span>SLH</span><div><small>LIVE OPERATIONS</small><h1>Pair this TV</h1></div></div>
+        <div className="tv-display-clock"><strong>{timeFormat.format(clock)}</strong><span>{dateFormat.format(clock)}</span></div>
+      </header>
+      <section className="tv-pair-card">
+        <p className="tv-pair-step">ONE-TIME SETUP</p>
+        <h2>Enter the 6-digit TV code</h2>
+        <p>On a signed-in phone or computer open <strong>TV display</strong> in the TMS. Enter the code shown there below.</p>
+        <form onSubmit={event => void pair(event)}>
+          <input
+            autoFocus
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={6}
+            value={pairCode}
+            onChange={event => setPairCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="000000"
+            aria-label="Six digit TV pairing code"
+          />
+          <button className="primary" type="submit" disabled={pairing || pairCode.length !== 6}>{pairing ? "Pairing…" : "Pair TV"}</button>
+        </form>
+        {error && <div className="tv-display-error"><strong>Pairing not completed</strong><span>{error}</span></div>}
+        <p className="tv-pair-hint">Once paired, this television remembers the secure display key and opens Live Runs automatically next time.</p>
+      </section>
+    </div>;
   }
 
   return <div className="tv-display-page">
