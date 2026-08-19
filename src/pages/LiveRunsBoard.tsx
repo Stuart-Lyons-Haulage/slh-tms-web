@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type DeliveryEta, type FleetStatus, type Load } from "../lib/api";
+import { api, request, type DeliveryEta, type FleetStatus, type Load } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { todayIsoDate } from "../lib/dateUtils";
 import { useApi } from "../lib/useApi";
 import "../live-runs.css";
 
 type RunColour = "upcoming" | "stationary" | "on-time" | "at-risk";
+type RunProgressStop = { id: string; sequence: number; name: string; plannedArrivalUtc?: string };
+type RunProgressVisit = { geofenceName?: string; enteredAtUtc: string; confirmedAtUtc?: string; dwellMinutes?: number; waitLimitMinutes?: number; isDelayed: boolean; status: string; statusReason?: string };
+type RunProgressRecord = { loadId: string; loadReference: string; loadStatus: string; runState: string; totalStops: number; completedStops: number; progressPercent: number; nextStop?: RunProgressStop | null; currentVisit?: RunProgressVisit | null; lastDeparture?: { exitedAtUtc: string; dwellMinutes: number } | null };
+type RunProgressResponse = { planningDate: string; calculatedAtUtc: string; source?: string; geofenceAvailable?: boolean; geofenceCount?: number; geofenceVisitCount?: number; geofenceLinkedRuns?: number; warning?: string; records: RunProgressRecord[] };
 
 type LiveRunRow = {
   load: Load;
+  progress?: RunProgressRecord;
   vehicle?: FleetStatus["vehicles"][number];
   registration: string;
   driver: string;
@@ -24,18 +29,8 @@ type LiveRunRow = {
 };
 
 const UK_TIME_ZONE = "Europe/London";
-const timeFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: UK_TIME_ZONE,
-  hour: "2-digit",
-  minute: "2-digit",
-});
-const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: UK_TIME_ZONE,
-  weekday: "long",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
+const timeFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
+const dateFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
 
 function formatTime(value?: string) {
   if (!value) return "—";
@@ -52,7 +47,28 @@ function formatAge(value?: string | Date, now = new Date()) {
   return `${Math.round(seconds / 60)}m ago`;
 }
 
-function statusFor(vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
+function statusFor(progress: RunProgressRecord | undefined, vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
+  if (progress?.runState === "Completed") {
+    return { status: "upcoming" as const, label: "COMPLETED", detail: "All geofence-confirmed stops completed" };
+  }
+
+  if (progress?.currentVisit?.isDelayed) {
+    return {
+      status: "at-risk" as const,
+      label: "SITE DELAY",
+      detail: `${progress.currentVisit.geofenceName || "Site"} · ${progress.currentVisit.dwellMinutes ?? 0} min dwell`,
+    };
+  }
+
+  if (progress?.currentVisit) {
+    const confirmed = Boolean(progress.currentVisit.confirmedAtUtc);
+    return {
+      status: "stationary" as const,
+      label: confirmed ? "ON SITE" : "AT SITE · VERIFYING",
+      detail: `${progress.currentVisit.geofenceName || "Matched geofence"} · ${progress.currentVisit.dwellMinutes ?? 0} min dwell`,
+    };
+  }
+
   const risk = etas.find((eta) => eta.risk === "Late" || eta.risk === "AtRisk" || eta.tachoStatus === "InsufficientDriveTime");
   if (risk) {
     return {
@@ -66,15 +82,15 @@ function statusFor(vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
     return {
       status: "upcoming" as const,
       label: vehicle?.condition === "Stale" ? "TRACKING STALE" : "UPCOMING",
-      detail: vehicle?.condition === "Stale" ? "Waiting for fresh tracking" : "Awaiting start / movement",
+      detail: progress?.runState === "BetweenStops" ? `Between stops · next ${progress.nextStop?.name || "stop"}` : vehicle?.condition === "Stale" ? "Waiting for fresh tracking" : "Awaiting start / movement",
     };
   }
 
   if (["Stationary", "Started", "SignedOn"].includes(vehicle.condition) && !(vehicle.speedKph && vehicle.speedKph > 2)) {
     return {
       status: "stationary" as const,
-      label: "STATIONARY",
-      detail: vehicle.condition === "Stationary" ? "Vehicle stationary" : "Signed on / awaiting movement",
+      label: progress?.runState === "BetweenStops" ? "BETWEEN STOPS" : "STATIONARY",
+      detail: progress?.runState === "BetweenStops" ? `Stopped between sites · next ${progress.nextStop?.name || "stop"}` : vehicle.condition === "Stationary" ? "Vehicle stationary" : "Signed on / awaiting movement",
     };
   }
 
@@ -82,8 +98,8 @@ function statusFor(vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
   if (vehicle.condition === "Moving" && hasUsableEta) {
     return {
       status: "on-time" as const,
-      label: "ON TIME",
-      detail: "Live ETA inside planned window",
+      label: progress?.runState === "BetweenStops" ? "BETWEEN STOPS" : "ON TIME",
+      detail: progress?.nextStop ? `Next ${progress.nextStop.name} · live ETA active` : "Live ETA inside planned window",
     };
   }
 
@@ -94,14 +110,17 @@ function statusFor(vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
   };
 }
 
-function pickNextEta(etas: DeliveryEta[], now: Date) {
+function pickNextEta(etas: DeliveryEta[], now: Date, progress?: RunProgressRecord) {
   const sorted = [...etas].sort((left, right) => left.sequence - right.sequence);
+  const nextSequence = progress?.nextStop?.sequence;
+  if (nextSequence != null) return sorted.find((eta) => eta.sequence >= nextSequence) || sorted.at(-1);
   const cutoff = now.getTime() - 15 * 60 * 1000;
   return sorted.find((eta) => !eta.etaUtc || new Date(eta.etaUtc).getTime() >= cutoff) || sorted.at(-1);
 }
 
 function averageWindowBuffer(rows: LiveRunRow[]) {
   const minutes = rows.flatMap((row) => {
+    if (row.progress?.runState === "Completed") return [];
     const eta = row.nextEta;
     if (!eta?.etaUtc || !eta.deliveryWindowEndUtc) return [];
     const value = Math.round((new Date(eta.deliveryWindowEndUtc).getTime() - new Date(eta.etaUtc).getTime()) / 60000);
@@ -114,18 +133,32 @@ function averageWindowBuffer(rows: LiveRunRow[]) {
   return `${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
 }
 
-function currentTracking(vehicle: LiveRunRow["vehicle"], now: Date) {
-  if (!vehicle) return { primary: "No live vehicle match", secondary: "Awaiting DOT/Falcon link" };
-  if (vehicle.condition === "Moving") {
+function currentTracking(progress: RunProgressRecord | undefined, vehicle: LiveRunRow["vehicle"], now: Date) {
+  if (progress?.currentVisit) {
     return {
-      primary: `Moving · ${Math.round(vehicle.speedKph || 0)} km/h`,
-      secondary: `DOT update ${formatAge(vehicle.lastEventTimeUtc, now)}`,
+      primary: `${progress.currentVisit.confirmedAtUtc ? "On site" : "Inside geofence"} · ${progress.currentVisit.geofenceName || "matched site"}`,
+      secondary: `${progress.currentVisit.dwellMinutes ?? 0} min dwell · ${progress.currentVisit.confirmedAtUtc ? "visit confirmed" : "confirmation pending"}`,
     };
   }
-  return {
-    primary: vehicle.condition.replace(/([A-Z])/g, " $1").trim(),
-    secondary: `DOT update ${formatAge(vehicle.lastEventTimeUtc, now)}`,
-  };
+  if (!vehicle) return { primary: progress?.runState === "Completed" ? "Run complete" : "No live vehicle match", secondary: progress?.runState === "Completed" ? "Geofence progression complete" : "Awaiting DOT/Falcon link" };
+  if (vehicle.condition === "Moving") {
+    return { primary: `Moving · ${Math.round(vehicle.speedKph || 0)} km/h`, secondary: `DOT update ${formatAge(vehicle.lastEventTimeUtc, now)}` };
+  }
+  return { primary: vehicle.condition.replace(/([A-Z])/g, " $1").trim(), secondary: `DOT update ${formatAge(vehicle.lastEventTimeUtc, now)}` };
+}
+
+function progressPriority(progress: RunProgressRecord | undefined, load: Load) {
+  if (progress?.currentVisit) return 100;
+  if (progress?.runState === "BetweenStops" || progress?.runState === "InProgress" || progress?.runState === "OnSiteConfirmed" || progress?.runState === "SiteDelay") return 90;
+  if ((progress?.completedStops || 0) > 0 && progress?.runState !== "Completed") return 80;
+  if (load.status === "InProgress") return 70;
+  if (load.status === "Dispatched") return 60;
+  if (load.status === "Planned") return 40;
+  return 10;
+}
+
+function firstPlanned(load: Load) {
+  return [...(load.stops || [])].sort((a, b) => a.sequence - b.sequence)[0]?.plannedArrivalUtc;
 }
 
 export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
@@ -134,44 +167,26 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
 
-  const {
-    data: loadData,
-    error: loadError,
-    loading: loadLoading,
-    refresh: refreshLoads,
-  } = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
-  const {
-    data: fleetData,
-    error: fleetError,
-    refresh: refreshFleet,
-  } = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));
-  const {
-    data: etaData,
-    error: etaError,
-    refresh: refreshEtas,
-  } = useApi(useCallback(async () => api.deliveryEtas(date, await token()), [date, token]));
-  const {
-    data: assignmentData,
-    error: assignmentError,
-    refresh: refreshAssignments,
-  } = useApi(useCallback(async () => api.driverAssignments(date, date, await token()), [date, token]));
+  const { data: loadData, error: loadError, loading: loadLoading, refresh: refreshLoads } = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
+  const { data: fleetData, error: fleetError, refresh: refreshFleet } = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));
+  const { data: etaData, error: etaError, refresh: refreshEtas } = useApi(useCallback(async () => api.deliveryEtas(date, await token()), [date, token]));
+  const { data: assignmentData, error: assignmentError, refresh: refreshAssignments } = useApi(useCallback(async () => api.driverAssignments(date, date, await token()), [date, token]));
+  const { data: progressData, error: progressError, refresh: refreshProgress } = useApi(useCallback(async () => request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(date)}`, await token()), [date, token]));
 
   useEffect(() => {
     const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
     const refreshTimer = window.setInterval(() => {
-      void Promise.all([refreshLoads(), refreshFleet(), refreshEtas(), refreshAssignments()]).then(() => setLastRefresh(new Date()));
+      void Promise.all([refreshLoads(), refreshFleet(), refreshEtas(), refreshAssignments(), refreshProgress()]).then(() => setLastRefresh(new Date()));
     }, 20000);
-    return () => {
-      window.clearInterval(clockTimer);
-      window.clearInterval(refreshTimer);
-    };
-  }, [refreshAssignments, refreshEtas, refreshFleet, refreshLoads]);
+    return () => { window.clearInterval(clockTimer); window.clearInterval(refreshTimer); };
+  }, [refreshAssignments, refreshEtas, refreshFleet, refreshLoads, refreshProgress]);
 
   const rows = useMemo<LiveRunRow[]>(() => {
     const now = clock;
     const fleetById = new Map((fleetData?.vehicles || []).map((vehicle) => [vehicle.vehicleId, vehicle]));
     const fleetByLoad = new Map((fleetData?.vehicles || []).filter((vehicle) => vehicle.loadId).map((vehicle) => [vehicle.loadId!, vehicle]));
     const assignmentByLoad = new Map((assignmentData || []).map((assignment) => [assignment.loadId, assignment]));
+    const progressByLoad = new Map((progressData?.records || []).map((progress) => [progress.loadId, progress]));
     const etaByLoad = new Map<string, DeliveryEta[]>();
     for (const eta of etaData?.records || []) {
       const existing = etaByLoad.get(eta.loadId) || [];
@@ -179,21 +194,53 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       etaByLoad.set(eta.loadId, existing);
     }
 
+    const vehicleCandidates = new Map<string, Array<{ load: Load; progress?: RunProgressRecord; planned?: string }>>();
+    for (const load of loadData || []) {
+      const assignment = assignmentByLoad.get(load.id);
+      const vehicleId = load.vehicleId || assignment?.vehicle?.id;
+      if (!vehicleId) continue;
+      const candidates = vehicleCandidates.get(vehicleId) || [];
+      candidates.push({ load, progress: progressByLoad.get(load.id), planned: firstPlanned(load) });
+      vehicleCandidates.set(vehicleId, candidates);
+    }
+
+    const activeLoadByVehicle = new Map<string, string>();
+    for (const [vehicleId, candidates] of vehicleCandidates) {
+      const ordered = [...candidates].sort((a, b) => {
+        const priority = progressPriority(b.progress, b.load) - progressPriority(a.progress, a.load);
+        if (priority) return priority;
+        const aTime = a.planned ? new Date(a.planned).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b.planned ? new Date(b.planned).getTime() : Number.MAX_SAFE_INTEGER;
+        const nowMs = now.getTime();
+        const aPast = aTime <= nowMs;
+        const bPast = bTime <= nowMs;
+        if (aPast !== bPast) return aPast ? -1 : 1;
+        if (aPast && bPast) return bTime - aTime;
+        return aTime - bTime;
+      });
+      if (ordered[0]) activeLoadByVehicle.set(vehicleId, ordered[0].load.id);
+    }
+
     return (loadData || []).map((load) => {
       const assignment = assignmentByLoad.get(load.id);
-      const vehicle = fleetByLoad.get(load.id) || (load.vehicleId ? fleetById.get(load.vehicleId) : undefined);
+      const progress = progressByLoad.get(load.id);
+      const resolvedVehicleId = load.vehicleId || assignment?.vehicle?.id;
+      const sharedVehicle = resolvedVehicleId ? fleetById.get(resolvedVehicleId) : undefined;
+      const directVehicle = fleetByLoad.get(load.id);
+      const activeLoadId = resolvedVehicleId ? activeLoadByVehicle.get(resolvedVehicleId) : undefined;
+      const vehicle = progress?.runState === "Completed" ? undefined : activeLoadId === load.id ? (sharedVehicle || directVehicle) : !activeLoadId && directVehicle ? directVehicle : undefined;
       const runEtas = [...(etaByLoad.get(load.id) || [])].sort((left, right) => left.sequence - right.sequence);
-      const nextEta = pickNextEta(runEtas, now);
+      const nextEta = pickNextEta(runEtas, now, progress);
       const relevantEtas = nextEta ? runEtas.filter((eta) => eta.sequence >= nextEta.sequence) : runEtas;
       const finalEta = runEtas.at(-1);
-      const firstStop = [...(load.stops || [])].sort((left, right) => left.sequence - right.sequence)[0];
-      const firstPlannedUtc = firstStop?.plannedArrivalUtc || vehicle?.plannedDutyUtc;
-      const state = statusFor(vehicle, relevantEtas);
+      const firstPlannedUtc = firstPlanned(load) || vehicle?.plannedDutyUtc;
+      const state = statusFor(progress, vehicle, relevantEtas);
       return {
         load,
+        progress,
         vehicle,
-        registration: assignment?.vehicle?.registration || vehicle?.registration || "Vehicle TBC",
-        driver: assignment?.driver?.displayName || vehicle?.driverName || "Driver TBC",
+        registration: assignment?.vehicle?.registration || sharedVehicle?.registration || "Vehicle TBC",
+        driver: assignment?.driver?.displayName || sharedVehicle?.driverName || "Driver TBC",
         trailer: assignment?.trailerNumber,
         firstPlannedUtc,
         nextEta,
@@ -204,18 +251,21 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
         statusDetail: state.detail,
       };
     }).sort((left, right) => {
+      const leftCompleted = left.progress?.runState === "Completed" ? 1 : 0;
+      const rightCompleted = right.progress?.runState === "Completed" ? 1 : 0;
+      if (leftCompleted !== rightCompleted) return leftCompleted - rightCompleted;
       const leftTime = left.firstPlannedUtc ? new Date(left.firstPlannedUtc).getTime() : Number.MAX_SAFE_INTEGER;
       const rightTime = right.firstPlannedUtc ? new Date(right.firstPlannedUtc).getTime() : Number.MAX_SAFE_INTEGER;
       return leftTime - rightTime || left.load.reference.localeCompare(right.load.reference);
     });
-  }, [assignmentData, clock, etaData, fleetData, loadData]);
+  }, [assignmentData, clock, etaData, fleetData, loadData, progressData]);
 
   const onTime = rows.filter((row) => row.status === "on-time").length;
-  const stationary = rows.filter((row) => row.status === "stationary").length;
+  const onSite = rows.filter((row) => Boolean(row.progress?.currentVisit)).length;
   const atRisk = rows.filter((row) => row.status === "at-risk").length;
-  const vehiclesOut = rows.filter((row) => row.vehicle && ["Moving", "Started", "SignedOn", "Stationary"].includes(row.vehicle.condition)).length;
+  const vehiclesOut = new Set(rows.filter((row) => row.vehicle && ["Moving", "Started", "SignedOn", "Stationary"].includes(row.vehicle.condition)).map((row) => row.vehicle!.vehicleId)).size;
   const onTimePercent = vehiclesOut ? Math.round((onTime / vehiclesOut) * 100) : 0;
-  const refreshError = loadError || fleetError || etaError || assignmentError;
+  const refreshError = loadError || fleetError || etaError || assignmentError || progressError;
 
   async function toggleFullscreen() {
     if (document.fullscreenElement) await document.exitFullscreen();
@@ -224,10 +274,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
 
   return <section className={`live-runs-board ${tvMode ? "tv-board" : "dashboard-board"}`}>
     <div className="live-runs-topbar">
-      <div className="live-runs-title">
-        <div className="live-runs-mark">SLH</div>
-        <div><p>LIVE OPERATIONS</p><h1>Live Runs</h1></div>
-      </div>
+      <div className="live-runs-title"><div className="live-runs-mark">SLH</div><div><p>LIVE OPERATIONS</p><h1>Live Runs</h1></div></div>
       <div className="live-runs-actions">
         {!tvMode && <Link className="live-runs-tv-link" to="/live-runs/tv" target="_blank" rel="noopener noreferrer">Open office TV view ↗</Link>}
         {tvMode && <><Link className="live-runs-tv-link subtle" to="/live-runs">Back to Live Runs</Link><button type="button" onClick={() => void toggleFullscreen()}>Full screen</button></>}
@@ -238,49 +285,47 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
     <div className="live-runs-kpis">
       <article><span className="kpi-icon">▣</span><div><small>Vehicles out</small><strong>{vehiclesOut}<em> / {rows.length}</em></strong></div></article>
       <article className="good"><span className="kpi-icon">✓</span><div><small>On time</small><strong>{onTime}<em> {onTimePercent}%</em></strong></div></article>
-      <article className="watch"><span className="kpi-icon">◷</span><div><small>Stationary</small><strong>{stationary}</strong></div></article>
+      <article className="watch"><span className="kpi-icon">⌖</span><div><small>On site</small><strong>{onSite}</strong></div></article>
       <article className="bad"><span className="kpi-icon">!</span><div><small>At risk</small><strong>{atRisk}</strong></div></article>
       <article><span className="kpi-icon">◎</span><div><small>Avg window buffer</small><strong>{averageWindowBuffer(rows)}</strong></div></article>
     </div>
 
     <div className="live-runs-meta">
-      <span>↕ Sorted by earliest planned first stop</span>
-      <div className="live-runs-legend"><span><i className="dot upcoming" />Upcoming</span><span><i className="dot stationary" />Stationary</span><span><i className="dot on-time" />On time</span><span><i className="dot at-risk" />At risk</span></div>
+      <span>↕ Current run determined by geofence progression, then plan status/time</span>
+      <div className="live-runs-legend"><span><i className="dot upcoming" />Upcoming / complete</span><span><i className="dot stationary" />On site / stationary</span><span><i className="dot on-time" />On route</span><span><i className="dot at-risk" />At risk / delay</span></div>
     </div>
 
+    {progressData?.geofenceAvailable === false && <div className="live-runs-warning">Geofence progression is unavailable. Live Runs is temporarily using tracking, ETA and plan status only.{progressData.warning ? ` ${progressData.warning}` : ""}</div>}
+    {progressData?.geofenceAvailable !== false && progressData?.warning && <div className="live-runs-warning">{progressData.warning}</div>}
     {refreshError && <div className="live-runs-warning">Live refresh issue: {refreshError}. Last successful data remains on screen.</div>}
 
-    <div className="live-runs-head" aria-hidden="true">
-      <span>Vehicle / driver / trailer</span><span>Route / jobs</span><span>First planned</span><span>Window end</span><span>Live ETA / next stop</span><span>Tracking</span><span>Status</span>
-    </div>
+    <div className="live-runs-head" aria-hidden="true"><span>Vehicle / driver / trailer</span><span>Route / jobs</span><span>First planned</span><span>Window end</span><span>Live ETA / next stop</span><span>Tracking / geofence</span><span>Status</span></div>
 
     <div className="live-runs-list">
       {!loadData && loadLoading && <div className="live-runs-empty">Loading today’s runs…</div>}
       {loadData && rows.length === 0 && <div className="live-runs-empty">No runs have been generated for today yet.</div>}
       {rows.map((row) => {
-        const tracking = currentTracking(row.vehicle, clock);
+        const tracking = currentTracking(row.progress, row.vehicle, clock);
         const sortedStops = [...(row.load.stops || [])].sort((left, right) => left.sequence - right.sequence);
-        const currentSequence = row.nextEta?.sequence;
+        const currentSequence = row.progress?.nextStop?.sequence ?? row.nextEta?.sequence;
+        const completed = row.progress?.runState === "Completed";
         return <article className={`live-run-row ${row.status}`} key={row.load.id}>
-          <div className="run-identity">
-            <span className="run-truck">▰</span>
-            <div><strong>{row.registration}</strong><span>{row.driver}</span><small>{row.trailer || row.load.reference}</small></div>
-          </div>
+          <div className="run-identity"><span className="run-truck">▰</span><div><strong>{row.registration}</strong><span>{row.driver}</span><small>{row.trailer || row.load.reference}</small></div></div>
           <div className="run-route">
             <strong>{sortedStops.length ? sortedStops.map((stop) => stop.name).join(" → ") : row.load.reference}</strong>
-            {sortedStops.length > 0 && <div className="run-progress" aria-label={`${sortedStops.length} planned stops`}>
-              {sortedStops.map((stop) => <i key={stop.id} className={currentSequence && stop.sequence < currentSequence ? "done" : currentSequence === stop.sequence ? "current" : ""} />)}
+            {sortedStops.length > 0 && <div className="run-progress" aria-label={`${row.progress?.completedStops ?? 0} of ${sortedStops.length} stops completed`}>
+              {sortedStops.map((stop) => <i key={stop.id} className={completed || (currentSequence != null && stop.sequence < currentSequence) ? "done" : currentSequence === stop.sequence ? "current" : ""} />)}
             </div>}
           </div>
           <div className="run-time"><strong>{formatTime(row.firstPlannedUtc)}</strong><small>{sortedStops[0]?.name || "First stop TBC"}</small></div>
           <div className="run-time"><strong>{formatTime(row.finalEta?.deliveryWindowEndUtc)}</strong><small>{row.finalEta?.stopName || "Window TBC"}</small></div>
-          <div className="run-eta"><strong>{formatTime(row.nextEta?.etaUtc)}</strong><small>{row.nextEta?.stopName || "ETA calculating"}</small></div>
+          <div className="run-eta"><strong>{completed ? "✓" : formatTime(row.nextEta?.etaUtc)}</strong><small>{completed ? "Run completed" : row.progress?.currentVisit?.geofenceName || row.nextEta?.stopName || row.progress?.nextStop?.name || "ETA calculating"}</small></div>
           <div className="run-tracking"><strong>{tracking.primary}</strong><small>{tracking.secondary}</small></div>
           <div className="run-status"><span>{row.statusLabel}</span><small>{row.statusDetail}</small>{!tvMode && <Link to={`/timeline/run/${row.load.id}`}>Open run →</Link>}</div>
         </article>;
       })}
     </div>
 
-    <footer className="live-runs-footer"><span>UK time</span><span>ETA and tracking refresh every 20 seconds</span><span>Refreshed {formatAge(lastRefresh, clock)}</span></footer>
+    <footer className="live-runs-footer"><span>UK time</span><span>Tracking, ETA & geofence refresh every 20 seconds</span><span>{progressData?.geofenceCount ?? 0} active geofences · {progressData?.geofenceLinkedRuns ?? 0} runs linked</span><span>Refreshed {formatAge(lastRefresh, clock)}</span></footer>
   </section>;
 }
