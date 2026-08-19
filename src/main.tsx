@@ -4,6 +4,7 @@ import { MsalProvider } from '@azure/msal-react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { App } from './App';
 import './runtimeGuards';
+import './orderPlanningSyncBridge';
 import './fleetioSyncPatch';
 import './masterDataCleanupFetchPatch';
 import './operationalPresentationPatch';
