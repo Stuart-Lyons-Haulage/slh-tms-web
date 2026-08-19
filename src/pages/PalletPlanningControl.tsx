@@ -21,13 +21,13 @@ type PlanningControlData = {
 };
 type RegionData = { date: string; destinations: string[]; destinationRegions: Record<string, string> };
 
-function localDate() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function planningDate() { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function ukDate(value: string) { return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${value}T12:00:00`)); }
 function fmtTime(value?: string) { if (!value) return "—"; const d = new Date(value); return Number.isNaN(d.getTime()) ? value : d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
 
 export function PalletPlanningControl() {
   const token = useAccessToken();
-  const [date, setDate] = useState(localDate());
+  const [date, setDate] = useState(planningDate());
   const [mode, setMode] = useState<ViewMode>("outstanding");
   const [selectedCell, setSelectedCell] = useState<{ group: string; destination: string }>();
   const [message, setMessage] = useState<string>();
@@ -87,8 +87,9 @@ export function PalletPlanningControl() {
   }
 
   return <section>
-    <div className="title-row"><div><p className="eyebrow">Planner second screen · live quantity control</p><h1>Pallet control</h1><p className="intro">The TMS equivalent of the Pallet Order sheet. Collection rows and delivery columns are created only from live orders for the selected date; delivery sites are grouped regionally to make North, Midlands, East, London, South and West work easier to scan.</p></div><div className="title-actions"><label>Planning date <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setSelectedCell(undefined); }} /></label><button onClick={() => { void refreshControl(); void refreshRegions(); }} disabled={control.loading}>Refresh</button><Link className="button-like primary" to="/">Open planner</Link></div></div>
+    <div className="title-row"><div><p className="eyebrow">Planner second screen · live quantity control</p><h1>Pallet control</h1><p className="intro">The TMS equivalent of the Pallet Order sheet. It opens on the next planning day by default. Collection rows and delivery columns are created only from live orders for the selected date; delivery sites are grouped regionally to make North, Midlands, East, London, South and West work easier to scan.</p></div><div className="title-actions"><label>Planning date <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setSelectedCell(undefined); }} /></label><button onClick={() => { void refreshControl(); void refreshRegions(); }} disabled={control.loading}>Refresh</button><Link className="button-like primary" to="/">Open planner</Link></div></div>
     {message && <p className="notice inline-notice">{message}</p>}{control.error && <p className="notice inline-notice">{control.error}</p>}
+    {data && data.summary.orders === 0 && <div className="state">No pallet orders are available for {ukDate(date)}. Check the planning date or Order Review if you expected work here.</div>}
     {data && <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, margin: "14px 0" }}>{[["Ordered", data.summary.ordered], ["Planned", data.summary.planned], ["Outstanding", data.summary.outstanding], ["Over-planned", data.summary.overplanned], ["Late additions", data.summary.lateAdditions]].map(([label, value]) => <div key={String(label)} className="panel" style={{ padding: 12 }}><small>{label}</small><div style={{ fontSize: 28, fontWeight: 800, marginTop: 4 }}>{value}</div></div>)}</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}><strong>{ukDate(date)}</strong>{(["outstanding", "ordered", "planned"] as ViewMode[]).map((item) => <button key={item} className={mode === item ? "primary" : ""} onClick={() => setMode(item)}>{item === "outstanding" ? "Outstanding" : item === "ordered" ? "Original orders" : "Planned"}</button>)}<span style={{ marginLeft: "auto" }}><small>Auto-refreshes every 5 seconds · {data.summary.orders} orders · {data.summary.runs} runs</small></span></div>
