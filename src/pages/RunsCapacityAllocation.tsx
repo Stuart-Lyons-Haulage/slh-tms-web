@@ -332,11 +332,16 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
   }
 
   function updateStop(index: number, field: "address" | "plannedArrivalUtc", value: string) {
-    setStops(current => current.map((stop, stopIndex) => stopIndex === index ? { ...stop, [field]: value } : stop));
+    setStops(current => current.map((stop, stopIndex) => {
+      if (stopIndex !== index) return stop;
+      return field === "address" ? { ...stop, address: value, latitude: "", longitude: "" } : { ...stop, plannedArrivalUtc: value };
+    }));
   }
 
   function updatePostcode(index: number, value: string) {
-    setStops(current => current.map((stop, stopIndex) => stopIndex === index ? { ...stop, postcode: value.toUpperCase() } : stop));
+    setStops(current => current.map((stop, stopIndex) => stopIndex === index
+      ? { ...stop, postcode: value.toUpperCase(), latitude: "", longitude: "" }
+      : stop));
   }
 
   return (
