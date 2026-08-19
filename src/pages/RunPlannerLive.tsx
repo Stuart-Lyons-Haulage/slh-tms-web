@@ -39,7 +39,11 @@ export function RunPlannerLive() {
     setControl(nextControl); setLoads(Array.isArray(nextLoads)?nextLoads:[]); setSites(Array.isArray(nextSites)?nextSites:[]);
   },[date,token]);
 
-  useEffect(()=>{ void refresh(); const id=window.setInterval(()=>void refresh(),3000); return()=>window.clearInterval(id); },[refresh]);
+  // Do not poll while a planner is building a run. Polling rebuilt the run from saved server
+  // allocations every few seconds and wiped locally-selected orders before Save Run was pressed.
+  // Pallet Control maintains its own live refresh; this planner refreshes on load/date change,
+  // explicit Refresh, and immediately after a successful Save Run.
+  useEffect(()=>{ void refresh(); },[refresh]);
 
   useEffect(()=>{
     if (!control) return;
@@ -66,11 +70,13 @@ export function RunPlannerLive() {
   function addOrder(order: PlanningOrder) {
     if (!active) return;
     updateRun(active.key,run=>{
+      if (run.lines.some(line=>line.orderId===order.id)) return run;
       const value:RunLine={key:crypto.randomUUID(),orderId:order.id,collectionSite:order.collection,deliverySite:order.destination,pallets:String(order.outstandingPallets)};
       const blank=run.lines.findIndex(l=>!l.orderId&&!l.collectionSite&&!l.deliverySite&&!l.pallets);
       if(blank>=0){const lines=[...run.lines];lines[blank]=value;return{...run,lines};}
       return{...run,lines:[...run.lines,value]};
     });
+    setMessage(`${order.collection} → ${order.destination} added to this run. It remains in Orders to Plan until the run is saved.`);
   }
 
   async function allocate(orderId:string,loadId:string,pallets:number,access:string){
