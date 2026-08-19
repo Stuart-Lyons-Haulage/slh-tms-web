@@ -11,6 +11,7 @@ import './managementFallbackPatch';
 import './planLockFetchPatch';
 import './marketNormalizationPatch';
 import './preferredVehicleAllocationPatch';
+import './allocationResiliencePatch';
 import './commercialRemovalPatch';
 import './routeGeocodeFallbackPatch';
 import './styles.css';
