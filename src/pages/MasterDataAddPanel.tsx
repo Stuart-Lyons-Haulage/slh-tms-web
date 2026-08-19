@@ -13,7 +13,8 @@ export type AddableMasterSection =
   | 'markets'
   | 'fuel-prices';
 
-type FormState = Record<string, string | number | boolean | null | undefined>;
+type FormState = Record<string, string | number | boolean | undefined>;
+type ApplyPayload = Record<string, string | number | boolean | undefined>;
 
 const regions = ['North', 'Midlands', 'East', 'London', 'South East', 'South West', 'West / Wales', 'Other'];
 
@@ -44,6 +45,7 @@ function initial(section: AddableMasterSection): FormState {
 }
 
 function text(value: FormState[string]) { return String(value ?? ''); }
+function numberOrUndefined(value: FormState[string]) { return value === '' || value == null ? undefined : Number(value); }
 function numberOrNull(value: FormState[string]) { return value === '' || value == null ? null : Number(value); }
 
 export function MasterDataAddPanel({ section, onAdded }: { section: AddableMasterSection; onAdded: () => void }) {
@@ -80,7 +82,7 @@ export function MasterDataAddPanel({ section, onAdded }: { section: AddableMaste
 
   function set(key: string, value: FormState[string]) { setForm(current => ({ ...current, [key]: value })); }
 
-  async function apply(entityType: string, payload: Record<string, string | number | boolean | null | undefined>) {
+  async function apply(entityType: string, payload: ApplyPayload) {
     const result = await api.applyMasterData([{
       entityType,
       idempotencyKey: `manual:${entityType}:${Date.now()}`,
@@ -110,7 +112,7 @@ export function MasterDataAddPanel({ section, onAdded }: { section: AddableMaste
         await apply('vehicle', form);
       } else if (section === 'trailers') {
         if (!text(form.trailerNumber).trim()) throw new Error('Trailer number is required.');
-        await apply('trailer', { ...form, standardCapacity: numberOrNull(form.standardCapacity), euroCapacity: numberOrNull(form.euroCapacity) });
+        await apply('trailer', { ...form, standardCapacity: numberOrUndefined(form.standardCapacity), euroCapacity: numberOrUndefined(form.euroCapacity) });
       } else if (section === 'customers') {
         if (!text(form.code).trim() || !text(form.name).trim()) throw new Error('Customer code and customer name are required.');
         await apply('customer', form);
