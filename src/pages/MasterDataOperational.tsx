@@ -44,6 +44,7 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
     window.setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
     try { const access = await token(); setAudit(await request<Audit[]>(`/api/v1/operational-master-data/audit/${current.entityType}/${row.id}`, access)); } catch { /* history optional */ }
   };
+
   const save = async () => {
     if (!selected) return; setSaving(true); setError(undefined); setNotice(undefined);
     try {
@@ -53,16 +54,38 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
       setNotice(`${current.entityType} updated in the Live TMS Master Database.`); setSelected(undefined); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Update failed.'); } finally { setSaving(false); }
   };
+
   const setActive = async (row: Row, active: boolean) => {
-    if (!window.confirm(`${active ? 'Restore' : 'Archive'} this ${current.entityType.toLowerCase()}? Historical planning records will be retained.`)) return;
+    if (!window.confirm(`${active ? 'Restore' : 'Archive'} this ${current.entityType.toLowerCase()}? ${active ? 'It will return to active master-data lists.' : 'It will be removed from normal planning selections but historical records will be retained.'}`)) return;
     setSaving(true); setError(undefined); setNotice(undefined);
-    try { const access = await token(); await request(`${endpoint}/${row.id}/${active ? 'restore' : 'archive'}`, access, { method: 'POST' }); setNotice(`${current.entityType} ${active ? 'restored' : 'archived'}.`); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Archive/restore is not available until the latest master-data API deployment is live.'); } finally { setSaving(false); }
+    try {
+      const access = await token();
+      try { await request(`/api/v1/master-data-cleanup/${tab}/${row.id}/${active ? 'restore' : 'archive'}`, access, { method: 'POST' }); }
+      catch { await request(`${endpoint}/${row.id}/${active ? 'restore' : 'archive'}`, access, { method: 'POST' }); }
+      setNotice(`${current.entityType} ${active ? 'restored' : 'archived'}. ${active ? '' : 'If this is an unused duplicate, enable Include archived and use Delete to remove it permanently.'}`);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Archive/restore failed.'); } finally { setSaving(false); }
   };
+
+  const deleteRecord = async (row: Row) => {
+    if (row.active) { setError('Archive this record before deleting it.'); return; }
+    const label = fmt(row[current.columns[0][0]]);
+    if (!window.confirm(`Permanently delete ${current.entityType.toLowerCase()} “${label}” from the TMS master?\n\nUse Delete only for a duplicate or incorrect master record. If it is referenced by operational history, the TMS will block deletion and keep it archived.`)) return;
+    setSaving(true); setError(undefined); setNotice(undefined);
+    try {
+      const access = await token();
+      await request(`/api/v1/master-data-cleanup/${tab}/${row.id}`, access, { method: 'DELETE' });
+      setNotice(`${current.entityType} permanently deleted from the TMS master.`);
+      if (selected?.id === row.id) setSelected(undefined);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Delete failed. This record may be in use; leave it archived instead.'); }
+    finally { setSaving(false); }
+  };
+
   const tabs = useMemo(() => Object.keys(config) as MasterDataTab[], []);
 
   return <section>
-    {showHeading && <div className="title-row"><div><p className="eyebrow">Master data control</p><h1>Edit, archive and audit master data</h1><p>Operational changes use the same live master records as planning. Records are archived rather than deleted.</p></div></div>}
+    {showHeading && <div className="title-row"><div><p className="eyebrow">Master data control</p><h1>Edit, archive, delete and audit master data</h1><p>Archive records to remove them from normal planning. Archived records can be permanently deleted only when the TMS confirms they are unused.</p></div></div>}
     {showCategoryButtons && <div className="panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{tabs.map(key => <button key={key} className={tab === key ? 'primary' : ''} onClick={() => setTab(key)}>{config[key].title}</button>)}</div>}
 
     {selected && <div className="panel" ref={editorRef} style={{ scrollMarginTop: 90 }}>
@@ -74,9 +97,9 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
       <hr/><h3>Change history</h3>{audit.length ? <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Date</th><th>Action</th><th>Changed by</th></tr></thead><tbody>{audit.map(item => <tr key={item.id}><td>{isoDate(item.changedAtUtc)}</td><td>{item.action}</td><td>{item.changedBy || '—'}</td></tr>)}</tbody></table></div> : <p className="hint">No recorded changes yet.</p>}
     </div>}
 
-    <div className="panel"><div className="title-row"><div><h2>{current.title}</h2><small>{rows.length} record{rows.length === 1 ? '' : 's'} shown</small></div><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><label>Search<input value={query} onChange={e => setQuery(e.target.value)} placeholder={current.search}/></label><label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}/> Include archived</label><button onClick={() => void load()} disabled={loading}>Refresh</button></div></div>
+    <div className="panel"><div className="title-row"><div><h2>{current.title}</h2><small>{rows.length} record{rows.length === 1 ? '' : 's'} shown</small><p className="hint">For duplicates: Archive first. Turn on Include archived, then Delete the unused duplicate. Records with operational history are protected from permanent deletion.</p></div><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><label>Search<input value={query} onChange={e => setQuery(e.target.value)} placeholder={current.search}/></label><label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}/> Include archived</label><button onClick={() => void load()} disabled={loading}>Refresh</button></div></div>
       {error && <p className="notice" style={{ borderColor: '#b42318' }}>{error}</p>}{notice && <p className="notice">{notice}</p>}
-      {loading ? <div className="state">Loading {current.title.toLowerCase()}…</div> : <div style={{ overflowX: 'auto' }}><table><thead><tr>{current.columns.map(([,label]) => <th key={label}>{label}</th>)}<th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}>{current.columns.map(([key]) => <td key={key}>{fmt(row[key])}</td>)}<td>{row.active ? 'Active' : 'Archived'}</td><td style={{ whiteSpace: 'nowrap' }}><button onClick={() => void openEdit(row)}>Edit</button>{' '}<button onClick={() => void setActive(row, !row.active)} disabled={saving}>{row.active ? 'Archive' : 'Restore'}</button></td></tr>)}</tbody></table>{rows.length === 0 && <div className="state">No records match this search.</div>}</div>}
+      {loading ? <div className="state">Loading {current.title.toLowerCase()}…</div> : <div style={{ overflowX: 'auto' }}><table><thead><tr>{current.columns.map(([,label]) => <th key={label}>{label}</th>)}<th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}>{current.columns.map(([key]) => <td key={key}>{fmt(row[key])}</td>)}<td>{row.active ? 'Active' : 'Archived'}</td><td style={{ whiteSpace: 'nowrap' }}><button onClick={() => void openEdit(row)}>Edit</button>{' '}<button onClick={() => void setActive(row, !row.active)} disabled={saving}>{row.active ? 'Archive' : 'Restore'}</button>{!row.active && <>{' '}<button disabled={saving} onClick={() => void deleteRecord(row)} style={{ borderColor: '#b42318', color: '#b42318', fontWeight: 800 }}>Delete</button></>}</td></tr>)}</tbody></table>{rows.length === 0 && <div className="state">No records match this search.</div>}</div>}
     </div>
   </section>;
 }
