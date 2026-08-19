@@ -53,9 +53,7 @@ function Shell() {
   const { instance, accounts } = useMsal();
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const tvMode = location.pathname === '/live-runs/tv';
-  const tvHash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
-  const tvHasKey = new URLSearchParams(tvHash).has('key');
+  const tvMode = location.pathname === '/live-runs/tv' || location.pathname === '/tv';
   const signIn = () => instance.loginRedirect({ scopes: apiScope ? [apiScope] : [] });
   const closeMobile = () => setOpen(false);
   useEffect(() => { setOpen(false); }, [location.pathname]);
@@ -76,7 +74,7 @@ function Shell() {
       <NavSection title="Control & insight" storageKey="slh-nav-insight" items={insightNavigation} current={location.pathname} closeMobile={closeMobile}/>
       {authenticated && <button className="mobile-sign-out" type="button" onClick={() => instance.logoutRedirect()}>Sign out · {accounts[0]?.name || 'Microsoft account'}</button>}
     </aside>}
-    <main className={tvMode ? 'tv-main' : undefined}>{tvMode ? <RouteErrorBoundary key={location.pathname}>{authenticated && !tvHasKey ? <TvDisplaySetup /> : <PublicTvBoard />}</RouteErrorBoundary> : authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
+    <main className={tvMode ? 'tv-main' : undefined}>{tvMode ? <RouteErrorBoundary key={location.pathname}><PublicTvBoard /></RouteErrorBoundary> : authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
       <Route path="/" element={<PlannerEnhanced />} /><Route path="/dashboard" element={<DashboardOperational />} /><Route path="/live-runs" element={<LiveRunsBoard />} /><Route path="/tv-display" element={<TvDisplaySetup />} /><Route path="/order-intake" element={<ImportCentre initialTab="orders" />} /><Route path="/jobs" element={<OrderControl initialTab="live" />} /><Route path="/loads" element={<RunsOperational />} /><Route path="/allocation" element={<PlannerEnhanced />} /><Route path="/pallet-control" element={<PalletPlanningControl />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<ImportCentre />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderControl />} />
       <Route path="/attention" element={<AttentionAndExceptions />} /><Route path="/exceptions" element={<AttentionAndExceptions />} /><Route path="/readiness" element={<DashboardOperational />} /><Route path="/plan-stability" element={<PlanStability />} /><Route path="/timeline/run/:id" element={<TimelinePage kind="run" />} /><Route path="/timeline/order/:id" element={<TimelinePage kind="order" />} />
       <Route path="/management" element={<Management />} /><Route path="/night-outs" element={<NightOutReport />} /><Route path="/control-centre" element={<ControlCentre />} /><Route path="/operations-control" element={<ControlCentre />} /><Route path="/admin" element={<ControlCentre />} /><Route path="/driver" element={<DriverMobile />} />
