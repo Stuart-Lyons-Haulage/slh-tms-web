@@ -16,3 +16,12 @@ api.updateLoadUtilisation = (id, payload, token) =>
     method: "PUT",
     body: JSON.stringify(payload),
   });
+
+api.updateLoadStops = (id, stops, token) =>
+  request<Load>(`/api/v1/runs/${id}/stops`, token, {
+    method: "PUT",
+    body: JSON.stringify(stops),
+  });
+
+api.route = (id, token) =>
+  request<Record<string, unknown>>(`/api/v1/runs/${id}/route`, token);
