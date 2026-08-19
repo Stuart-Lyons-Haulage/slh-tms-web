@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, request, type DeliveryEta, type FleetStatus, type Load } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
-import { todayIsoDate } from "../lib/dateUtils";
+import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
+import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
 import "../live-runs.css";
 
@@ -32,16 +33,19 @@ const UK_TIME_ZONE = "Europe/London";
 const timeFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
 
+function apiTimeMs(value?: string) {
+  return parseApiDateTime(value)?.getTime() ?? Number.NaN;
+}
+
 function formatTime(value?: string) {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "—" : timeFormatter.format(parsed);
+  const parsed = parseApiDateTime(value);
+  return parsed ? timeFormatter.format(parsed) : "—";
 }
 
 function formatAge(value?: string | Date, now = new Date()) {
   if (!value) return "No live update";
-  const parsed = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "No live update";
+  const parsed = parseApiDateTime(value);
+  if (!parsed) return "No live update";
   const seconds = Math.max(0, Math.round((now.getTime() - parsed.getTime()) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   return `${Math.round(seconds / 60)}m ago`;
@@ -115,7 +119,7 @@ function pickNextEta(etas: DeliveryEta[], now: Date, progress?: RunProgressRecor
   const nextSequence = progress?.nextStop?.sequence;
   if (nextSequence != null) return sorted.find((eta) => eta.sequence >= nextSequence) || sorted.at(-1);
   const cutoff = now.getTime() - 15 * 60 * 1000;
-  return sorted.find((eta) => !eta.etaUtc || new Date(eta.etaUtc).getTime() >= cutoff) || sorted.at(-1);
+  return sorted.find((eta) => !eta.etaUtc || apiTimeMs(eta.etaUtc) >= cutoff) || sorted.at(-1);
 }
 
 function averageWindowBuffer(rows: LiveRunRow[]) {
@@ -123,7 +127,7 @@ function averageWindowBuffer(rows: LiveRunRow[]) {
     if (row.progress?.runState === "Completed") return [];
     const eta = row.nextEta;
     if (!eta?.etaUtc || !eta.deliveryWindowEndUtc) return [];
-    const value = Math.round((new Date(eta.deliveryWindowEndUtc).getTime() - new Date(eta.etaUtc).getTime()) / 60000);
+    const value = Math.round((apiTimeMs(eta.deliveryWindowEndUtc) - apiTimeMs(eta.etaUtc)) / 60000);
     return Number.isFinite(value) ? [value] : [];
   });
   if (!minutes.length) return "—";
@@ -209,8 +213,8 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       const ordered = [...candidates].sort((a, b) => {
         const priority = progressPriority(b.progress, b.load) - progressPriority(a.progress, a.load);
         if (priority) return priority;
-        const aTime = a.planned ? new Date(a.planned).getTime() : Number.MAX_SAFE_INTEGER;
-        const bTime = b.planned ? new Date(b.planned).getTime() : Number.MAX_SAFE_INTEGER;
+        const aTime = a.planned ? apiTimeMs(a.planned) : Number.MAX_SAFE_INTEGER;
+        const bTime = b.planned ? apiTimeMs(b.planned) : Number.MAX_SAFE_INTEGER;
         const nowMs = now.getTime();
         const aPast = aTime <= nowMs;
         const bPast = bTime <= nowMs;
@@ -254,8 +258,8 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       const leftCompleted = left.progress?.runState === "Completed" ? 1 : 0;
       const rightCompleted = right.progress?.runState === "Completed" ? 1 : 0;
       if (leftCompleted !== rightCompleted) return leftCompleted - rightCompleted;
-      const leftTime = left.firstPlannedUtc ? new Date(left.firstPlannedUtc).getTime() : Number.MAX_SAFE_INTEGER;
-      const rightTime = right.firstPlannedUtc ? new Date(right.firstPlannedUtc).getTime() : Number.MAX_SAFE_INTEGER;
+      const leftTime = left.firstPlannedUtc ? apiTimeMs(left.firstPlannedUtc) : Number.MAX_SAFE_INTEGER;
+      const rightTime = right.firstPlannedUtc ? apiTimeMs(right.firstPlannedUtc) : Number.MAX_SAFE_INTEGER;
       return leftTime - rightTime || left.load.reference.localeCompare(right.load.reference);
     });
   }, [assignmentData, clock, etaData, fleetData, loadData, progressData]);
@@ -299,7 +303,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
     {progressData?.geofenceAvailable !== false && progressData?.warning && <div className="live-runs-warning">{progressData.warning}</div>}
     {refreshError && <div className="live-runs-warning">Live refresh issue: {refreshError}. Last successful data remains on screen.</div>}
 
-    <div className="live-runs-head" aria-hidden="true"><span>Vehicle / driver / trailer</span><span>Route / jobs</span><span>First planned</span><span>Window end</span><span>Live ETA / next stop</span><span>Tracking / geofence</span><span>Status</span></div>
+    <div className="live-runs-head" aria-hidden="true"><span>Vehicle / driver / run</span><span>Route / jobs</span><span>First planned</span><span>Window end</span><span>Live ETA / next stop</span><span>Tracking / geofence</span><span>Status</span></div>
 
     <div className="live-runs-list">
       {!loadData && loadLoading && <div className="live-runs-empty">Loading today’s runs…</div>}
@@ -309,10 +313,11 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
         const sortedStops = [...(row.load.stops || [])].sort((left, right) => left.sequence - right.sequence);
         const currentSequence = row.progress?.nextStop?.sequence ?? row.nextEta?.sequence;
         const completed = row.progress?.runState === "Completed";
+        const runLabel = displayRunReference(row.load.reference, row.load.plannerNotes, row.firstPlannedUtc);
         return <article className={`live-run-row ${row.status}`} key={row.load.id}>
-          <div className="run-identity"><span className="run-truck">▰</span><div><strong>{row.registration}</strong><span>{row.driver}</span><small>{row.trailer || row.load.reference}</small></div></div>
+          <div className="run-identity"><span className="run-truck">▰</span><div><strong>{row.registration}</strong><span>{row.driver}</span><small>{row.trailer ? `${runLabel} · Trailer ${row.trailer}` : runLabel}</small></div></div>
           <div className="run-route">
-            <strong>{sortedStops.length ? sortedStops.map((stop) => stop.name).join(" → ") : row.load.reference}</strong>
+            <strong>{sortedStops.length ? sortedStops.map((stop) => stop.name).join(" → ") : runLabel}</strong>
             {sortedStops.length > 0 && <div className="run-progress" aria-label={`${row.progress?.completedStops ?? 0} of ${sortedStops.length} stops completed`}>
               {sortedStops.map((stop) => <i key={stop.id} className={completed || (currentSequence != null && stop.sequence < currentSequence) ? "done" : currentSequence === stop.sequence ? "current" : ""} />)}
             </div>}
@@ -326,6 +331,6 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       })}
     </div>
 
-    <footer className="live-runs-footer"><span>UK time</span><span>Tracking, ETA & geofence refresh every 20 seconds</span><span>{progressData?.geofenceCount ?? 0} active geofences · {progressData?.geofenceLinkedRuns ?? 0} runs linked</span><span>Refreshed {formatAge(lastRefresh, clock)}</span></footer>
+    <footer className="live-runs-footer"><span>UK local time · Europe/London</span><span>Tracking, ETA & geofence refresh every 20 seconds</span><span>{progressData?.geofenceCount ?? 0} active geofences · {progressData?.geofenceLinkedRuns ?? 0} runs linked</span><span>Refreshed {formatAge(lastRefresh, clock)}</span></footer>
   </section>;
 }
