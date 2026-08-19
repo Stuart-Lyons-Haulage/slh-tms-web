@@ -1,4 +1,4 @@
-import { api, request, type Load } from "./lib/api";
+import { api, request, type Load, type LoadDispatch } from "./lib/api";
 
 // Runs now use the operational API path throughout. This path deliberately
 // avoids the legacy costing/commercial persistence layer.
@@ -25,3 +25,6 @@ api.updateLoadStops = (id, stops, token) =>
 
 api.route = (id, token) =>
   request<Record<string, unknown>>(`/api/v1/runs/${id}/route`, token);
+
+api.dispatch = (id, token) =>
+  request<LoadDispatch>(`/api/v1/runs/${id}/dispatch`, token);
