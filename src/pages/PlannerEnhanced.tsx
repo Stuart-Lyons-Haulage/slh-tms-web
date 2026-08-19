@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { StablePlanner } from "./StablePlanner";
+import { RunPlannerLive } from "./RunPlannerLive";
 
 export function PlannerEnhanced() {
   return <section className="planner-enhanced-page">
@@ -7,11 +7,11 @@ export function PlannerEnhanced() {
       <div>
         <p className="eyebrow" style={{ marginBottom: 3 }}>Planning workspace</p>
         <strong>Run Planner</strong><br />
-        <small>Build runs and split pallet quantities here. Driver, vehicle and trailer allocation stays on Runs.</small>
+        <small>Start with Run 1 and one line, then add only the lines and runs you need. Pallet balances recalculate from saved allocations.</small>
       </div>
       <Link className="button-like primary" to="/pallet-control" target="_blank" rel="noopener noreferrer">Open Pallet Control · Screen 2 ↗</Link>
     </div>
-    <StablePlanner />
+    <RunPlannerLive />
     <div className="mobile-planner-handoff">
       <strong>Allocation and dispatch are on Runs.</strong>
       <span>After the plan is built, assign the driver, vehicle and trailer from Runs.</span>
