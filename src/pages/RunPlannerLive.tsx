@@ -45,16 +45,16 @@ const localDate = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
-const normalise = (v: unknown) => String(v ?? "").trim().replace(/[^a-z0-9]/gi, "").toUpperCase();
+const normalise = (value: unknown) => String(value ?? "").trim().replace(/[^a-z0-9]/gi, "").toUpperCase();
 const tagged = (notes: string | undefined, label: string) => (notes || "")
   .split("·")
-  .map((x) => x.trim())
-  .find((x) => x.toLowerCase().startsWith(`${label}:`.toLowerCase()))
+  .map((part) => part.trim())
+  .find((part) => part.toLowerCase().startsWith(`${label}:`.toLowerCase()))
   ?.slice(label.length + 1)
   .trim() || "";
 const periodFromLoad = (load: Load): Period => {
-  const p = tagged(load.plannerNotes, "Planner period").toUpperCase();
-  return p === "AM" || p === "PM" ? p : "";
+  const period = tagged(load.plannerNotes, "Planner period").toUpperCase();
+  return period === "AM" || period === "PM" ? period : "";
 };
 const withPlannerPeriod = (notes: string | undefined, period: Period) => {
   const parts = (notes || "").split("·").map((part) => part.trim()).filter(Boolean)
@@ -63,24 +63,16 @@ const withPlannerPeriod = (notes: string | undefined, period: Period) => {
 };
 const siteAddress = (sites: Site[], value: string) => sites.find((site) =>
   [site.name, site.driverTextName, site.externalCode, ...(site.aliases || "").split(/[,;|]/)]
-    .some((x) => normalise(x) === normalise(value)))?.collectionAddress;
-const runRef = (date: string, n: number) => `RUN-${date.replaceAll("-", "")}-${String(n).padStart(2, "0")}`;
+    .some((candidate) => normalise(candidate) === normalise(value)))?.collectionAddress;
+const runRef = (date: string, number: number) => `RUN-${date.replaceAll("-", "")}-${String(number).padStart(2, "0")}`;
 
 function validPallets(value: string) {
-  const number = Number(value);
-  return Number.isInteger(number) && number >= 0 ? number : undefined;
+  const pallets = Number(value);
+  return Number.isInteger(pallets) && pallets >= 0 ? pallets : undefined;
 }
 
-function notifyPlanningChanged(date: string) {
-  window.dispatchEvent(new CustomEvent("slh:planning-changed", { detail: { date } }));
-  try {
-    localStorage.setItem("slh:planning-pulse", JSON.stringify({ date, at: Date.now() }));
-  } catch { /* storage can be unavailable in private browsing */ }
-  try {
-    const channel = new BroadcastChannel("slh-planning");
-    channel.postMessage({ type: "allocation-changed", date, at: Date.now() });
-    channel.close();
-  } catch { /* BroadcastChannel is an enhancement, not a dependency */ }
+function signalPlanningChange() {
+  window.dispatchEvent(new Event("slh:orders-changed"));
 }
 
 export function RunPlannerLive() {
@@ -98,16 +90,17 @@ export function RunPlannerLive() {
   const mutationCounter = useRef(0);
 
   const hydrate = useCallback((nextControl: PlanningControlData, nextLoads: Load[]) => {
-    const ordered = [...nextLoads].sort((a, b) => String(a.reference).localeCompare(String(b.reference)));
+    const ordered = [...nextLoads].sort((left, right) => String(left.reference).localeCompare(String(right.reference)));
     if (!ordered.length) {
       const shell: RunDraft = { key: `shell-${date}-1`, period: "", lines: [blankLine()] };
       setRuns([shell]);
       setActiveKey(shell.key);
       return;
     }
+
     const drafts = ordered.map((load) => {
       const lines = nextControl.orders.flatMap((order) => {
-        const allocation = order.allocations.find((a) => a.loadId === load.id && a.pallets > 0);
+        const allocation = order.allocations.find((item) => item.loadId === load.id && item.pallets > 0);
         return allocation ? [{
           key: `${load.id}-${order.id}`,
           orderId: order.id,
@@ -123,8 +116,9 @@ export function RunPlannerLive() {
         lines: lines.length ? lines : [blankLine()],
       } satisfies RunDraft;
     });
+
     setRuns(drafts);
-    setActiveKey((current) => drafts.some((r) => r.key === current) ? current : drafts[0].key);
+    setActiveKey((current) => drafts.some((run) => run.key === current) ? current : drafts[0].key);
   }, [date]);
 
   const refreshAll = useCallback(async () => {
@@ -142,8 +136,11 @@ export function RunPlannerLive() {
   }, [date, hydrate, token]);
 
   const refreshControl = useCallback(async () => {
-    const next = await request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}&_=${Date.now()}`, await token());
-    setControl(next);
+    const nextControl = await request<PlanningControlData>(
+      `/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}&_=${Date.now()}`,
+      await token(),
+    );
+    setControl(nextControl);
   }, [date, token]);
 
   useEffect(() => {
@@ -154,39 +151,27 @@ export function RunPlannerLive() {
     };
   }, [refreshAll]);
 
-  // Keep order amendments and another planner/Pallet Control tab visible without rebuilding
-  // the run currently being edited. The run draft is the immediate source of truth for local
-  // pallet balances; the server control snapshot reconciles every two seconds.
+  // Reconcile server-side order amendments and changes made from Pallet Control without
+  // rebuilding the run draft that the planner is actively editing. Local quantities remain
+  // the immediate source of truth; the server is the durable source of truth after autosave.
   useEffect(() => {
     const refresh = () => void refreshControl().catch(() => undefined);
     const interval = window.setInterval(refresh, 2000);
-    const onChanged = (event: Event) => {
-      const detail = (event as CustomEvent<{ date?: string }>).detail;
-      if (!detail?.date || detail.date === date) refresh();
-    };
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== "slh:planning-pulse" || !event.newValue) return;
-      try { if (JSON.parse(event.newValue).date === date) refresh(); } catch { /* ignore malformed pulse */ }
-    };
-    window.addEventListener("slh:planning-changed", onChanged);
-    window.addEventListener("storage", onStorage);
-    let channel: BroadcastChannel | undefined;
-    try {
-      channel = new BroadcastChannel("slh-planning");
-      channel.onmessage = (event) => { if (!event.data?.date || event.data.date === date) refresh(); };
-    } catch { /* polling remains available */ }
+    window.addEventListener("slh:orders-changed", refresh);
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener("slh:planning-changed", onChanged);
-      window.removeEventListener("storage", onStorage);
-      channel?.close();
+      window.removeEventListener("slh:orders-changed", refresh);
     };
-  }, [date, refreshControl]);
+  }, [refreshControl]);
 
   const orders = useMemo(() => control?.orders || [], [control]);
+
+  // Project unsaved keystrokes into the order pool immediately. This is what keeps the
+  // residual quantity on the right while the 450ms durable autosave is in flight.
   const effectiveOrders = useMemo(() => {
     const localByOrder = new Map<string, number>();
     const localLoadIds = new Set(runs.flatMap((run) => run.loadId ? [run.loadId] : []));
+
     for (const run of runs) {
       for (const line of run.lines) {
         if (!line.orderId) continue;
@@ -194,12 +179,13 @@ export function RunPlannerLive() {
         localByOrder.set(line.orderId, (localByOrder.get(line.orderId) || 0) + quantity);
       }
     }
+
     return orders.map((order) => {
-      const outsideLocalRuns = order.allocations
+      const plannedOutsideThisPlanner = order.allocations
         .filter((allocation) => !localLoadIds.has(allocation.loadId))
         .reduce((sum, allocation) => sum + Math.max(allocation.pallets, 0), 0);
       const locallyPlanned = localByOrder.get(order.id) || 0;
-      const plannedPallets = outsideLocalRuns + locallyPlanned;
+      const plannedPallets = plannedOutsideThisPlanner + locallyPlanned;
       return {
         ...order,
         plannedPallets,
@@ -215,16 +201,19 @@ export function RunPlannerLive() {
   }), { ordered: 0, planned: 0, outstanding: 0 }), [effectiveOrders]);
 
   const visible = useMemo(() => effectiveOrders
-    .filter((o) => o.outstandingPallets > 0)
-    .filter((o) => !query.trim() || [o.reference, o.customerCode, o.collection, o.destination]
-      .some((v) => String(v).toLowerCase().includes(query.toLowerCase())))
-    .sort((a, b) => a.collection.localeCompare(b.collection) || a.destination.localeCompare(b.destination)), [effectiveOrders, query]);
+    .filter((order) => order.outstandingPallets > 0)
+    .filter((order) => !query.trim() || [order.reference, order.customerCode, order.collection, order.destination]
+      .some((value) => String(value).toLowerCase().includes(query.toLowerCase())))
+    .sort((left, right) => left.collection.localeCompare(right.collection)
+      || left.destination.localeCompare(right.destination)
+      || left.reference.localeCompare(right.reference)), [effectiveOrders, query]);
 
-  const active = runs.find((r) => r.key === activeKey) || runs[0];
-  const updateRun = (key: string, fn: (r: RunDraft) => RunDraft) => setRuns((current) => current.map((r) => r.key === key ? fn(r) : r));
-  const updateLine = (runKey: string, lineKey: string, patch: Partial<RunLine>) => updateRun(runKey, (r) => ({
-    ...r,
-    lines: r.lines.map((l) => l.key === lineKey ? { ...l, ...patch } : l),
+  const active = runs.find((run) => run.key === activeKey) || runs[0];
+  const updateRun = (key: string, updater: (run: RunDraft) => RunDraft) => setRuns((current) =>
+    current.map((run) => run.key === key ? updater(run) : run));
+  const updateLine = (runKey: string, lineKey: string, patch: Partial<RunLine>) => updateRun(runKey, (run) => ({
+    ...run,
+    lines: run.lines.map((line) => line.key === lineKey ? { ...line, ...patch } : line),
   }));
 
   function runTotal(run: RunDraft) {
@@ -232,7 +221,10 @@ export function RunPlannerLive() {
   }
 
   function buildStops(lines: RunLine[]) {
-    return lines.filter((line) => line.orderId && validPallets(line.pallets)! > 0).flatMap((line) => [
+    return lines.filter((line) => {
+      const pallets = validPallets(line.pallets);
+      return Boolean(line.orderId) && pallets !== undefined && pallets > 0;
+    }).flatMap((line) => [
       { name: `Collect · ${line.collectionSite}`, address: siteAddress(sites, line.collectionSite) },
       { orderId: line.orderId, name: `Deliver · ${line.deliverySite}`, address: siteAddress(sites, line.deliverySite) },
     ]);
@@ -248,10 +240,10 @@ export function RunPlannerLive() {
 
   async function syncStops(loadId: string, lines: RunLine[], access: string) {
     const stops = buildStops(lines);
-    if (stops.length === 0) {
-      // New API revisions allow an empty stop list while a load is still Draft. Older
-      // revisions may reject this; allocation zero remains authoritative either way.
-      try { await api.updateLoadStops(loadId, [], access); } catch { /* safe compatibility fallback */ }
+    if (!stops.length) {
+      // The paired API change allows a Draft run to be completely cleared. Keeping this
+      // compatibility catch prevents an older API revision from blocking the allocation reset.
+      try { await api.updateLoadStops(loadId, [], access); } catch { /* allocation zero remains authoritative */ }
       return;
     }
     await api.updateLoadStops(loadId, stops, access);
@@ -265,7 +257,7 @@ export function RunPlannerLive() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          palletSpacesUsed: runTotal({ ...run, period }),
+          palletSpacesUsed: runTotal(run),
           totalPalletSpaces: load?.totalPalletSpaces ?? 26,
           capacityType: load?.capacityType ?? "Standard pallets",
           depotSplits: load?.depotSplits,
@@ -273,7 +265,7 @@ export function RunPlannerLive() {
           plannerNotes: withPlannerPeriod(load?.plannerNotes, period),
         }),
       });
-      notifyPlanningChanged(date);
+      signalPlanningChange();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Run period could not be auto-saved.");
     }
@@ -282,86 +274,101 @@ export function RunPlannerLive() {
   function maxForOrder(orderId: string, runKey: string) {
     const order = orders.find((item) => item.id === orderId);
     if (!order) return 0;
-    const plannedOnOtherRuns = runs.filter((run) => run.key !== runKey)
+
+    const plannedOnOtherVisibleRuns = runs.filter((run) => run.key !== runKey)
       .flatMap((run) => run.lines)
       .filter((line) => line.orderId === orderId)
       .reduce((sum, line) => sum + (validPallets(line.pallets) || 0), 0);
+
     const representedLoadIds = new Set(runs.flatMap((run) => run.loadId ? [run.loadId] : []));
-    const serverOutsidePlanner = order.allocations
+    const plannedOnOtherServerRuns = order.allocations
       .filter((allocation) => !representedLoadIds.has(allocation.loadId))
       .reduce((sum, allocation) => sum + Math.max(allocation.pallets, 0), 0);
-    return Math.max(order.orderedPallets - plannedOnOtherRuns - serverOutsidePlanner, 0);
+
+    return Math.max(order.orderedPallets - plannedOnOtherVisibleRuns - plannedOnOtherServerRuns, 0);
   }
 
-  async function persistQuantity(runKey: string, lineKey: string, orderId: string, loadId: string, pallets: number) {
+  async function persistQuantity(
+    runKey: string,
+    lineKey: string,
+    orderId: string,
+    loadId: string,
+    pallets: number,
+    linesAfterEdit: RunLine[],
+  ) {
     const mutation = ++mutationCounter.current;
-    setBusyKey(`${runKey}:${lineKey}`);
+    const key = `${runKey}:${lineKey}`;
+    setBusyKey(key);
     try {
       const access = await token();
       await allocate(orderId, loadId, pallets, access);
-      notifyPlanningChanged(date);
+      if (pallets === 0) await syncStops(loadId, linesAfterEdit, access);
+      signalPlanningChange();
       setMessage(`Auto-saved · ${pallets} pallet${pallets === 1 ? "" : "s"} on this run.`);
       void refreshControl().catch(() => undefined);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Pallet quantity could not be auto-saved.");
-      // Only rehydrate if this is still the newest mutation. This prevents an older failed
-      // request from undoing a later successful edit.
       if (mutation === mutationCounter.current) void refreshAll();
     } finally {
-      setBusyKey((current) => current === `${runKey}:${lineKey}` ? undefined : current);
+      setBusyKey((current) => current === key ? undefined : current);
     }
   }
 
   function scheduleQuantity(run: RunDraft, line: RunLine, value: string) {
-    updateLine(run.key, line.key, { pallets: value });
+    const linesAfterEdit = run.lines.map((item) => item.key === line.key ? { ...item, pallets: value } : item);
+    updateRun(run.key, (current) => ({ ...current, lines: linesAfterEdit }));
+
     if (!line.orderId || !run.loadId) return;
     const pallets = validPallets(value);
     if (pallets === undefined) return;
+
     const maximum = maxForOrder(line.orderId, run.key);
     if (pallets > maximum) {
-      setMessage(`Maximum available for this run is ${maximum} pallets. The remaining quantity is controlled by the live order balance.`);
+      setMessage(`Maximum available for this run is ${maximum} pallets. Reduce the quantity to keep the order balance valid.`);
       return;
     }
+
     const timerKey = `${run.key}:${line.key}`;
     if (saveTimers.current[timerKey]) window.clearTimeout(saveTimers.current[timerKey]);
     saveTimers.current[timerKey] = window.setTimeout(() => {
       delete saveTimers.current[timerKey];
-      void persistQuantity(run.key, line.key, line.orderId!, run.loadId!, pallets);
+      void persistQuantity(run.key, line.key, line.orderId!, run.loadId!, pallets, linesAfterEdit);
     }, 450);
   }
 
   async function addOrder(order: PlanningOrder) {
     if (!active || order.outstandingPallets <= 0 || busyKey) return;
     if (active.lines.some((line) => line.orderId === order.id)) {
-      setMessage(`${order.collection} → ${order.destination} is already on this run. Amend its pallet quantity in the run line.`);
+      setMessage(`${order.collection} → ${order.destination} is already on this run. Amend the pallet quantity on the run line.`);
       return;
     }
 
-    const newLine: RunLine = {
+    const line: RunLine = {
       key: crypto.randomUUID(),
       orderId: order.id,
       collectionSite: order.collection,
       deliverySite: order.destination,
       pallets: String(order.outstandingPallets),
     };
-    let nextLines: RunLine[] = [];
-    updateRun(active.key, (run) => {
-      const blank = run.lines.findIndex((line) => !line.orderId && !line.collectionSite && !line.deliverySite && !line.pallets);
-      if (blank >= 0) {
-        nextLines = [...run.lines];
-        nextLines[blank] = newLine;
-      } else nextLines = [...run.lines, newLine];
-      return { ...run, lines: nextLines };
-    });
+    const blankIndex = active.lines.findIndex((item) => !item.orderId && !item.collectionSite && !item.deliverySite && !item.pallets);
+    const nextLines = blankIndex >= 0
+      ? active.lines.map((item, index) => index === blankIndex ? line : item)
+      : [...active.lines, line];
 
+    updateRun(active.key, (run) => ({ ...run, lines: nextLines }));
     setBusyKey(active.key);
+
     try {
       const access = await token();
       let loadId = active.loadId;
       if (!loadId) {
-        const index = runs.findIndex((run) => run.key === active.key);
+        const index = Math.max(runs.findIndex((run) => run.key === active.key), 0);
+        const existingReferences = new Set(loads.map((load) => load.reference.toUpperCase()));
+        let number = index + 1;
+        while (existingReferences.has(runRef(date, number).toUpperCase())) number += 1;
+
         const created = await api.createLoad({
-          reference: runRef(date, Math.max(index + 1, 1)),
+          reference: runRef(date, number),
           planningDate: date,
           palletSpacesUsed: order.outstandingPallets,
           totalPalletSpaces: 26,
@@ -373,10 +380,11 @@ export function RunPlannerLive() {
         setLoads((current) => current.some((load) => load.id === created.id) ? current : [...current, created]);
         updateRun(active.key, (run) => ({ ...run, loadId }));
       }
+
       await allocate(order.id, loadId, order.outstandingPallets, access);
       await syncStops(loadId, nextLines, access);
-      notifyPlanningChanged(date);
-      setMessage(`${order.outstandingPallets} pallet${order.outstandingPallets === 1 ? "" : "s"} added and auto-saved. Any balance remains in Orders to Plan.`);
+      signalPlanningChange();
+      setMessage(`${order.outstandingPallets} pallet${order.outstandingPallets === 1 ? "" : "s"} added and auto-saved. Any remaining balance stays in Orders to Plan.`);
       void refreshControl().catch(() => undefined);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Order could not be added to the run.");
@@ -387,15 +395,22 @@ export function RunPlannerLive() {
   }
 
   async function clearLine(run: RunDraft, line: RunLine) {
+    const timerKey = `${run.key}:${line.key}`;
+    if (saveTimers.current[timerKey]) {
+      window.clearTimeout(saveTimers.current[timerKey]);
+      delete saveTimers.current[timerKey];
+    }
+
     const remaining = run.lines.length === 1 ? [blankLine()] : run.lines.filter((item) => item.key !== line.key);
     updateRun(run.key, (current) => ({ ...current, lines: remaining }));
     if (!line.orderId || !run.loadId) return;
-    setBusyKey(`${run.key}:${line.key}`);
+
+    setBusyKey(timerKey);
     try {
       const access = await token();
       await allocate(line.orderId, run.loadId, 0, access);
       await syncStops(run.loadId, remaining, access);
-      notifyPlanningChanged(date);
+      signalPlanningChange();
       setMessage("Order removed from the run and its pallets returned to Orders to Plan.");
       void refreshControl().catch(() => undefined);
     } catch (error) {
@@ -406,15 +421,19 @@ export function RunPlannerLive() {
     }
   }
 
+  function resetForDate(nextDate: string) {
+    Object.values(saveTimers.current).forEach((id) => window.clearTimeout(id));
+    saveTimers.current = {};
+    setDate(nextDate);
+    setMessage(undefined);
+    const shell: RunDraft = { key: `shell-${nextDate}-1`, period: "", lines: [blankLine()] };
+    setRuns([shell]);
+    setActiveKey(shell.key);
+  }
+
   return <section className="simple-planner">
     <div className="simple-planner-toolbar">
-      <label>Plan date <input type="date" value={date} onChange={(event) => {
-        setDate(event.target.value);
-        setMessage(undefined);
-        const shell: RunDraft = { key: `shell-${event.target.value}-1`, period: "", lines: [blankLine()] };
-        setRuns([shell]);
-        setActiveKey(shell.key);
-      }} /></label>
+      <label>Plan date <input type="date" value={date} onChange={(event) => resetForDate(event.target.value)} /></label>
       <button onClick={() => void refreshAll()} disabled={Boolean(busyKey)}>Refresh</button>
       <button className="primary" onClick={() => {
         const draft: RunDraft = { key: `shell-${date}-${crypto.randomUUID()}`, period: "", lines: [blankLine()] };
@@ -433,36 +452,50 @@ export function RunPlannerLive() {
       <div className="simple-run-builder">
         <div className="simple-section-heading">
           <div><p className="eyebrow">Run builder</p><h2>{runs.length} run{runs.length === 1 ? "" : "s"}</h2></div>
-          <small>Every pallet change saves automatically.</small>
+          <small>Click an order on the right. Pallet changes auto-save.</small>
         </div>
+
         {runs.map((run, index) => {
           const pallets = runTotal(run);
+          const saving = busyKey === run.key || busyKey?.startsWith(`${run.key}:`);
           return <article key={run.key} className={`simple-run-card ${activeKey === run.key ? "active" : ""}`} onClick={() => setActiveKey(run.key)}>
             <div className="simple-run-header">
               <div><strong>Run {index + 1}</strong><small>{run.loadId ? "Live" : "New"}</small></div>
-              <div className="run-period-selector"><span>Period</span>{(["AM", "PM"] as const).map((period) => <button key={period} type="button" className={run.period === period ? "selected" : ""} onClick={(event) => {
-                event.stopPropagation();
-                updateRun(run.key, (current) => ({ ...current, period }));
-                void persistPeriod(run, period);
-              }}>{period}</button>)}</div>
+              <div className="run-period-selector">
+                <span>Period</span>
+                {(["AM", "PM"] as const).map((period) => <button key={period} type="button" className={run.period === period ? "selected" : ""} onClick={(event) => {
+                  event.stopPropagation();
+                  updateRun(run.key, (current) => ({ ...current, period }));
+                  void persistPeriod(run, period);
+                }}>{period}</button>)}
+              </div>
               <div className={`simple-run-pallets ${pallets > 26 ? "over" : ""}`}><strong>{pallets}</strong><small>/ 26 pallets</small></div>
             </div>
+
             <div className="simple-run-columns"><span>Collection</span><span>Pallets</span><span>Delivery</span><span /></div>
             <div className="simple-run-lines">
               {run.lines.map((line, lineIndex) => <div className="simple-run-line" key={line.key}>
                 <span className="simple-line-number">{lineIndex + 1}</span>
-                <input value={line.collectionSite} onChange={(event) => updateLine(run.key, line.key, { collectionSite: event.target.value })} onBlur={() => run.loadId && void syncStops(run.loadId, run.lines, token as never)} placeholder="Collection" />
+                <input value={line.collectionSite} readOnly={Boolean(line.orderId)} onChange={(event) => updateLine(run.key, line.key, { collectionSite: event.target.value })} placeholder="Collection" />
                 <input className="simple-pallet-input" type="number" min="0" inputMode="numeric" value={line.pallets} onChange={(event) => scheduleQuantity(run, line, event.target.value)} placeholder="0" />
-                <input value={line.deliverySite} onChange={(event) => updateLine(run.key, line.key, { deliverySite: event.target.value })} placeholder="Delivery" />
-                <button type="button" className="simple-clear-line" aria-label={`Clear line ${lineIndex + 1}`} disabled={busyKey === `${run.key}:${line.key}`} onClick={(event) => { event.stopPropagation(); void clearLine(run, line); }}>×</button>
+                <input value={line.deliverySite} readOnly={Boolean(line.orderId)} onChange={(event) => updateLine(run.key, line.key, { deliverySite: event.target.value })} placeholder="Delivery" />
+                <button type="button" className="simple-clear-line" aria-label={`Clear line ${lineIndex + 1}`} disabled={busyKey === `${run.key}:${line.key}`} onClick={(event) => {
+                  event.stopPropagation();
+                  void clearLine(run, line);
+                }}>×</button>
               </div>)}
             </div>
+
             <div className="simple-run-footer">
-              <div className="simple-line-actions"><button type="button" onClick={(event) => { event.stopPropagation(); updateRun(run.key, (current) => ({ ...current, lines: [...current.lines, blankLine()] })); }}>+ Add line</button></div>
-              <small>{busyKey === run.key || busyKey?.startsWith(`${run.key}:`) ? "Saving…" : run.loadId ? "✓ Auto-saved" : "Choose an order to start this run"}</small>
+              <div className="simple-line-actions"><button type="button" onClick={(event) => {
+                event.stopPropagation();
+                updateRun(run.key, (current) => ({ ...current, lines: [...current.lines, blankLine()] }));
+              }}>+ Add line</button></div>
+              <small>{saving ? "Saving…" : run.loadId ? "✓ Auto-saved" : "Choose an order to start this run"}</small>
             </div>
           </article>;
         })}
+
         <button className="simple-add-run" type="button" onClick={() => {
           const draft: RunDraft = { key: `shell-${date}-${crypto.randomUUID()}`, period: "", lines: [blankLine()] };
           setRuns((current) => [...current, draft]);
@@ -471,9 +504,12 @@ export function RunPlannerLive() {
       </div>
 
       <aside className="simple-order-pool">
-        <div className="simple-order-header"><div><p className="eyebrow">Orders to plan</p><h2>Available now</h2></div><strong>{visible.length}</strong></div>
+        <div className="simple-order-header">
+          <div><p className="eyebrow">Orders to plan</p><h2>Available now</h2></div>
+          <strong>{visible.length}</strong>
+        </div>
         <input className="simple-order-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order, site or customer…" />
-        <p className="simple-order-help">Click an order to add its remaining pallets to the selected run. Split quantities stay here immediately.</p>
+        <p className="simple-order-help">Click to add the current balance to the selected run. If you reduce the pallets on the run, the remainder appears here immediately.</p>
         <div className="simple-order-list">
           {visible.map((order) => <button key={order.id} className="simple-order-card" type="button" disabled={Boolean(busyKey)} onClick={() => void addOrder(order)}>
             <span><small>Collection</small><strong>{order.collection}</strong><small>{order.reference}</small></span>
