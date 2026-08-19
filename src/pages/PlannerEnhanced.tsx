@@ -7,7 +7,7 @@ export function PlannerEnhanced() {
       <div>
         <p className="eyebrow" style={{ marginBottom: 3 }}>Planning workspace</p>
         <strong>Run Planner</strong><br />
-        <small>Start with Run 1 and one line, then add only the lines and runs you need. Pallet balances recalculate from saved allocations.</small>
+        <small>Orders stay on the right for click-to-add. Pallet balances update immediately and run quantities auto-save as they are amended.</small>
       </div>
       <Link className="button-like primary" to="/pallet-control" target="_blank" rel="noopener noreferrer">Open Pallet Control · Screen 2 ↗</Link>
     </div>
