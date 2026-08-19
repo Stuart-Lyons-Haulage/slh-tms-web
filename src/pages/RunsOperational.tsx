@@ -4,7 +4,7 @@ import { intelligenceApi } from "../lib/intelligenceApi";
 import { useAccessToken } from "../lib/auth";
 import { formatDate, formatDateTime, todayIsoDate } from "../lib/dateUtils";
 import { useApi } from "../lib/useApi";
-import { AllocationBoard } from "./Pages";
+import { RunsCapacityAllocation } from "./RunsCapacityAllocation";
 
 function ukLocalDateTimeFromUtcFields(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return value;
@@ -76,7 +76,7 @@ export function RunsOperational() {
       </section>
 
       <PilotRunHealth />
-      <AllocationBoard />
+      <RunsCapacityAllocation />
     </div>
   );
 }
