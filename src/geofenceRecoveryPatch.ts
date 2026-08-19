@@ -25,15 +25,35 @@ async function recover(headers: Headers): Promise<boolean> {
   return recoveryPromise;
 }
 
+function isGeofenceStatusRequest(url: string) {
+  return url.includes('/api/v1/run-progress') ||
+    url.includes('/api/v1/geofence-integrity') ||
+    /\/api\/v1\/geofences(?:\?|$)/.test(url);
+}
+
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const response = await originalFetch(input, init);
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  if (!isGeofenceStatusRequest(url)) return response;
 
-  if (!response.ok || !url.includes('/api/v1/run-progress')) return response;
+  let needsRecovery = !response.ok;
+  if (response.ok) {
+    try {
+      const payload = await response.clone().json() as {
+        geofenceAvailable?: boolean;
+        engineReady?: boolean;
+        count?: number;
+        records?: unknown[];
+      };
+      if (url.includes('/api/v1/run-progress')) needsRecovery = payload.geofenceAvailable === false;
+      else if (url.includes('/api/v1/geofence-integrity')) needsRecovery = payload.engineReady === false;
+      else needsRecovery = payload.count === 0 || Array.isArray(payload.records) && payload.records.length === 0;
+    } catch {
+      return response;
+    }
+  }
 
-  let payload: { geofenceAvailable?: boolean } | null = null;
-  try { payload = await response.clone().json(); } catch { return response; }
-  if (payload?.geofenceAvailable !== false) return response;
+  if (!needsRecovery) return response;
 
   const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
   const recovered = await recover(headers);
