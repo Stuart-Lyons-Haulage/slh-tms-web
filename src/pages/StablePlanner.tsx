@@ -369,6 +369,10 @@ export function StablePlanner() {
         await allocate(line.orderId, loadId, Number(line.pallets), accessToken);
       }
 
+      // The allocation endpoint preserves legacy stop linkage even for a zero quantity.
+      // Re-apply the planner's final stop set so moving/removing a split cannot leave a stale stop behind.
+      await api.updateLoadStops(loadId, stops, accessToken);
+
       await api.updateLoadUtilisation(loadId, {
         palletSpacesUsed: totalPallets,
         totalPalletSpaces: load?.totalPalletSpaces ?? 26,
