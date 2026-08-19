@@ -54,7 +54,8 @@ function Shell() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const tvMode = location.pathname === '/live-runs/tv';
-  const tvHasKey = new URLSearchParams(location.search).has('key');
+  const tvHash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
+  const tvHasKey = new URLSearchParams(tvHash).has('key');
   const signIn = () => instance.loginRedirect({ scopes: apiScope ? [apiScope] : [] });
   const closeMobile = () => setOpen(false);
   useEffect(() => { setOpen(false); }, [location.pathname]);
