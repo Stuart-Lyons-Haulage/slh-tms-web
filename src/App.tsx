@@ -1,7 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode, useEffect, useState } from 'react';
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { DriverAssignments, DriverMobile, ExportCentre, LiveTracking } from './pages/Pages';
+import { DriverAssignments, DriverMobile, LiveTracking } from './pages/Pages';
+import { ExportCentre } from './pages/ExportCentre';
 import { FuelCardMigration } from './pages/FuelCardMigration';
 import { Management } from './pages/Management';
 import { NightOutReport } from './pages/NightOutReport';
