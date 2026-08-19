@@ -28,11 +28,11 @@ api.assistantAdvice = async (...args: Parameters<typeof originalAdvice>): Promis
 // Costing is not part of the SLH operating TMS. Keep the legacy method harmless so
 // older route screens cannot fail after calculating a route simply because they
 // previously attempted to save mileage through the commercial endpoint.
-const originalUpdateCommercial = api.updateLoadCommercial;
+type UpdateLoadCommercial = typeof api.updateLoadCommercial;
 api.updateLoadCommercial = async (
-  id: Parameters<typeof originalUpdateCommercial>[0],
-  _payload: Parameters<typeof originalUpdateCommercial>[1],
-  token?: Parameters<typeof originalUpdateCommercial>[2],
+  id: Parameters<UpdateLoadCommercial>[0],
+  _payload: Parameters<UpdateLoadCommercial>[1],
+  token?: Parameters<UpdateLoadCommercial>[2],
 ): Promise<Load> => {
   const loads = await api.loads(undefined, token);
   const load = loads.find(item => item.id === id);
