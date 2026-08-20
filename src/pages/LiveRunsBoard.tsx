@@ -27,6 +27,7 @@ type LiveRunRow = {
   status: RunColour;
   statusLabel: string;
   statusDetail: string;
+  carryOver: boolean;
 };
 
 const UK_TIME_ZONE = "Europe/London";
@@ -49,6 +50,12 @@ function formatAge(value?: string | Date, now = new Date()) {
   const seconds = Math.max(0, Math.round((now.getTime() - parsed.getTime()) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   return `${Math.round(seconds / 60)}m ago`;
+}
+
+function shiftIsoDate(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
 }
 
 function statusFor(progress: RunProgressRecord | undefined, vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
@@ -165,17 +172,72 @@ function firstPlanned(load: Load) {
   return [...(load.stops || [])].sort((a, b) => a.sequence - b.sequence)[0]?.plannedArrivalUtc;
 }
 
+function carryOverIsOperationallyActive(row: LiveRunRow) {
+  if (row.progress?.runState === "Completed" || row.load.status === "Completed" || row.load.status === "Cancelled") return false;
+  const runState = row.progress?.runState;
+  const executionStarted = Boolean(
+    row.progress?.currentVisit ||
+    (row.progress?.completedStops || 0) > 0 ||
+    (runState && ["BetweenStops", "InProgress", "OnSiteConfirmed", "SiteDelay"].includes(runState)),
+  );
+  const liveVehicle = Boolean(row.vehicle && !["Stale", "NotSignedOn"].includes(row.vehicle.condition));
+  const operationalStatus = row.load.status === "Dispatched" || row.load.status === "InProgress";
+  return executionStarted || liveVehicle || operationalStatus;
+}
+
 export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
   const token = useAccessToken();
   const date = todayIsoDate();
+  const previousDate = shiftIsoDate(date, -1);
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
 
-  const { data: loadData, error: loadError, loading: loadLoading, refresh: refreshLoads } = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
+  const { data: loadData, error: loadError, loading: loadLoading, refresh: refreshLoads } = useApi(useCallback(async () => {
+    const access = await token();
+    const [previous, current] = await Promise.all([
+      api.loads(previousDate, access).catch(() => []),
+      api.loads(date, access),
+    ]);
+    const byId = new Map<string, Load>();
+    for (const load of [...previous, ...current]) byId.set(load.id, load);
+    return [...byId.values()];
+  }, [date, previousDate, token]));
+
   const { data: fleetData, error: fleetError, refresh: refreshFleet } = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));
-  const { data: etaData, error: etaError, refresh: refreshEtas } = useApi(useCallback(async () => api.deliveryEtas(date, await token()), [date, token]));
-  const { data: assignmentData, error: assignmentError, refresh: refreshAssignments } = useApi(useCallback(async () => api.driverAssignments(date, date, await token()), [date, token]));
-  const { data: progressData, error: progressError, refresh: refreshProgress } = useApi(useCallback(async () => request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(date)}`, await token()), [date, token]));
+
+  const { data: etaData, error: etaError, refresh: refreshEtas } = useApi(useCallback(async () => {
+    const access = await token();
+    const [previous, current] = await Promise.all([
+      api.deliveryEtas(previousDate, access).catch(() => undefined),
+      api.deliveryEtas(date, access),
+    ]);
+    return {
+      ...current,
+      records: [...(previous?.records || []), ...(current.records || [])],
+    };
+  }, [date, previousDate, token]));
+
+  const { data: assignmentData, error: assignmentError, refresh: refreshAssignments } = useApi(useCallback(async () =>
+    api.driverAssignments(previousDate, date, await token()), [date, previousDate, token]));
+
+  const { data: progressData, error: progressError, refresh: refreshProgress } = useApi(useCallback(async () => {
+    const access = await token();
+    const [previous, current] = await Promise.all([
+      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(previousDate)}`, access).catch(() => undefined),
+      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(date)}`, access),
+    ]);
+    const warnings = [previous?.warning, current.warning].filter((value): value is string => Boolean(value));
+    return {
+      ...current,
+      planningDate: `${previousDate}/${date}`,
+      geofenceAvailable: current.geofenceAvailable !== false && previous?.geofenceAvailable !== false,
+      geofenceCount: Math.max(previous?.geofenceCount || 0, current.geofenceCount || 0),
+      geofenceVisitCount: (previous?.geofenceVisitCount || 0) + (current.geofenceVisitCount || 0),
+      geofenceLinkedRuns: (previous?.geofenceLinkedRuns || 0) + (current.geofenceLinkedRuns || 0),
+      warning: warnings.length ? warnings.join(" ") : undefined,
+      records: [...(previous?.records || []), ...(current.records || [])],
+    } satisfies RunProgressResponse;
+  }, [date, previousDate, token]));
 
   useEffect(() => {
     const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
@@ -198,13 +260,24 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       etaByLoad.set(eta.loadId, existing);
     }
 
+    const currentStartTimes = (loadData || [])
+      .filter((load) => load.planningDate === date)
+      .map((load) => firstPlanned(load))
+      .filter((value): value is string => Boolean(value))
+      .map(apiTimeMs)
+      .filter(Number.isFinite);
+    const handoverMs = currentStartTimes.length ? Math.min(...currentStartTimes) : Number.POSITIVE_INFINITY;
+    const afterNewDayHandover = now.getTime() >= handoverMs;
+
     const vehicleCandidates = new Map<string, Array<{ load: Load; progress?: RunProgressRecord; planned?: string }>>();
     for (const load of loadData || []) {
       const assignment = assignmentByLoad.get(load.id);
+      const progress = progressByLoad.get(load.id);
+      if (progress?.runState === "Completed" || load.status === "Completed" || load.status === "Cancelled") continue;
       const vehicleId = load.vehicleId || assignment?.vehicle?.id;
       if (!vehicleId) continue;
       const candidates = vehicleCandidates.get(vehicleId) || [];
-      candidates.push({ load, progress: progressByLoad.get(load.id), planned: firstPlanned(load) });
+      candidates.push({ load, progress, planned: firstPlanned(load) });
       vehicleCandidates.set(vehicleId, candidates);
     }
 
@@ -239,6 +312,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       const finalEta = runEtas.at(-1);
       const firstPlannedUtc = firstPlanned(load) || vehicle?.plannedDutyUtc;
       const state = statusFor(progress, vehicle, relevantEtas);
+      const carryOver = load.planningDate === previousDate;
       return {
         load,
         progress,
@@ -252,9 +326,18 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
         etas: runEtas,
         status: state.status,
         statusLabel: state.label,
-        statusDetail: state.detail,
+        statusDetail: carryOver ? `Previous-night carry-over · ${state.detail}` : state.detail,
+        carryOver,
       };
+    }).filter((row) => {
+      if (row.load.planningDate === date) return true;
+      if (row.load.planningDate !== previousDate) return false;
+      if (row.progress?.runState === "Completed" || row.load.status === "Completed" || row.load.status === "Cancelled") return false;
+      // Before the first new-day run is due, preserve every unfinished previous-night run.
+      // After handover, keep it only while there is operational evidence that it is still alive.
+      return !afterNewDayHandover || carryOverIsOperationallyActive(row);
     }).sort((left, right) => {
+      if (left.carryOver !== right.carryOver) return left.carryOver ? -1 : 1;
       const leftCompleted = left.progress?.runState === "Completed" ? 1 : 0;
       const rightCompleted = right.progress?.runState === "Completed" ? 1 : 0;
       if (leftCompleted !== rightCompleted) return leftCompleted - rightCompleted;
@@ -262,7 +345,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       const rightTime = right.firstPlannedUtc ? apiTimeMs(right.firstPlannedUtc) : Number.MAX_SAFE_INTEGER;
       return leftTime - rightTime || left.load.reference.localeCompare(right.load.reference);
     });
-  }, [assignmentData, clock, etaData, fleetData, loadData, progressData]);
+  }, [assignmentData, clock, date, etaData, fleetData, loadData, previousDate, progressData]);
 
   const onTime = rows.filter((row) => row.status === "on-time").length;
   const onSite = rows.filter((row) => Boolean(row.progress?.currentVisit)).length;
@@ -295,7 +378,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
     </div>
 
     <div className="live-runs-meta">
-      <span>↕ Current run determined by geofence progression, then plan status/time</span>
+      <span>↕ Previous-night runs remain live until complete; active carry-overs remain visible after the AM handover</span>
       <div className="live-runs-legend"><span><i className="dot upcoming" />Upcoming / complete</span><span><i className="dot stationary" />On site / stationary</span><span><i className="dot on-time" />On route</span><span><i className="dot at-risk" />At risk / delay</span></div>
     </div>
 
@@ -306,14 +389,15 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
     <div className="live-runs-head" aria-hidden="true"><span>Vehicle / driver / run</span><span>Route / jobs</span><span>First planned</span><span>Window end</span><span>Live ETA / next stop</span><span>Tracking / geofence</span><span>Status</span></div>
 
     <div className="live-runs-list">
-      {!loadData && loadLoading && <div className="live-runs-empty">Loading today’s runs…</div>}
-      {loadData && rows.length === 0 && <div className="live-runs-empty">No runs have been generated for today yet.</div>}
+      {!loadData && loadLoading && <div className="live-runs-empty">Loading current and overnight runs…</div>}
+      {loadData && rows.length === 0 && <div className="live-runs-empty">No current or carried-over live runs are available.</div>}
       {rows.map((row) => {
         const tracking = currentTracking(row.progress, row.vehicle, clock);
         const sortedStops = [...(row.load.stops || [])].sort((left, right) => left.sequence - right.sequence);
         const currentSequence = row.progress?.nextStop?.sequence ?? row.nextEta?.sequence;
         const completed = row.progress?.runState === "Completed";
-        const runLabel = displayRunReference(row.load.reference, row.load.plannerNotes, row.firstPlannedUtc);
+        const baseRunLabel = displayRunReference(row.load.reference, row.load.plannerNotes, row.firstPlannedUtc);
+        const runLabel = row.carryOver ? `${baseRunLabel} · CARRY-OVER` : baseRunLabel;
         return <article className={`live-run-row ${row.status}`} key={row.load.id}>
           <div className="run-identity"><span className="run-truck">▰</span><div><strong>{row.registration}</strong><span>{row.driver}</span><small>{row.trailer ? `${runLabel} · Trailer ${row.trailer}` : runLabel}</small></div></div>
           <div className="run-route">
