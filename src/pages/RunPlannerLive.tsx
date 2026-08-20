@@ -42,6 +42,14 @@ type RunLine = {
 type RunDraft = { key: string; loadId?: string; period: Period; nightOut: boolean; routeJob: string; operationalAmendment: string; lines: RunLine[] };
 
 const blankLine = (): RunLine => ({ key: crypto.randomUUID(), collectionSite: "", deliverySite: "", pallets: "", note: "" });
+const blankRun = (key: string): RunDraft => ({
+  key,
+  period: "",
+  nightOut: false,
+  routeJob: "",
+  operationalAmendment: "",
+  lines: [blankLine()],
+});
 const localDate = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -88,7 +96,7 @@ export function RunPlannerLive() {
   const [control, setControl] = useState<PlanningControlData>();
   const [loads, setLoads] = useState<Load[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
-  const [runs, setRuns] = useState<RunDraft[]>([{ key: `shell-${localDate()}-1`, period: "", lines: [blankLine()] }]);
+  const [runs, setRuns] = useState<RunDraft[]>(() => [blankRun(`shell-${localDate()}-1`)]);
   const [activeKey, setActiveKey] = useState(runs[0].key);
   const [busyKey, setBusyKey] = useState<string>();
   const [message, setMessage] = useState<string>();
@@ -99,7 +107,7 @@ export function RunPlannerLive() {
   const hydrate = useCallback((nextControl: PlanningControlData, nextLoads: Load[]) => {
     const ordered = [...nextLoads].sort((left, right) => String(left.reference).localeCompare(String(right.reference)));
     if (!ordered.length) {
-      const shell: RunDraft = { key: `shell-${date}-1`, period: "", nightOut: false, routeJob: "", operationalAmendment: "", lines: [blankLine()] };
+      const shell = blankRun(`shell-${date}-1`);
       setRuns([shell]);
       setActiveKey(shell.key);
       return;
@@ -443,7 +451,7 @@ export function RunPlannerLive() {
     saveTimers.current = {};
     setDate(nextDate);
     setMessage(undefined);
-    const shell: RunDraft = { key: `shell-${nextDate}-1`, period: "", nightOut: false, routeJob: "", operationalAmendment: "", lines: [blankLine()] };
+    const shell = blankRun(`shell-${nextDate}-1`);
     setRuns([shell]);
     setActiveKey(shell.key);
   }
@@ -453,7 +461,7 @@ export function RunPlannerLive() {
       <label>Plan date <input type="date" value={date} onChange={(event) => resetForDate(event.target.value)} /></label>
       <button onClick={() => void refreshAll()} disabled={Boolean(busyKey)}>Refresh</button>
       <button className="primary" onClick={() => {
-        const draft: RunDraft = { key: `shell-${date}-${crypto.randomUUID()}`, period: "", nightOut: false, routeJob: "", operationalAmendment: "", lines: [blankLine()] };
+        const draft = blankRun(`shell-${date}-${crypto.randomUUID()}`);
         setRuns((current) => [...current, draft]);
         setActiveKey(draft.key);
       }}>+ Add run</button>
@@ -520,7 +528,7 @@ export function RunPlannerLive() {
         })}
 
         <button className="simple-add-run" type="button" onClick={() => {
-          const draft: RunDraft = { key: `shell-${date}-${crypto.randomUUID()}`, period: "", nightOut: false, routeJob: "", operationalAmendment: "", lines: [blankLine()] };
+          const draft = blankRun(`shell-${date}-${crypto.randomUUID()}`);
           setRuns((current) => [...current, draft]);
           setActiveKey(draft.key);
         }}>+ Add another run</button>
