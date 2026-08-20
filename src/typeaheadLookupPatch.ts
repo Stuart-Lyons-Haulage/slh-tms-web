@@ -28,13 +28,10 @@ const compact = (value: unknown) => normalise(value).replace(/[^a-z0-9]/g, '');
 
 function lookupKind(select: HTMLSelectElement): LookupKind | undefined {
   const first = normalise(select.options[0]?.textContent);
-  const label = normalise(select.closest('label')?.textContent);
-  const candidates = `${first} ${label}`;
-
-  if (/^(driver|select driver(?:…|\.\.\.)?)$/.test(first) || /\bdriver\b/.test(first)) return 'driver';
-  if (/^(vehicle|select vehicle(?:…|\.\.\.)?)$/.test(first) || /\bvehicle\b/.test(first)) return 'vehicle';
-  if (/^(trailer|select trailer(?:…|\.\.\.)?)$/.test(first) || /\btrailer\b/.test(first)) return 'trailer';
-  if (/^(site|select site(?:…|\.\.\.)?|collection site|delivery site)$/.test(first) || /\b(site|collection site|delivery site)\b/.test(candidates) && first.includes('site')) return 'site';
+  if (/^(driver|select driver(?:…|\.\.\.)?)$/.test(first)) return 'driver';
+  if (/^(vehicle|select vehicle(?:…|\.\.\.)?)$/.test(first)) return 'vehicle';
+  if (/^(trailer|select trailer(?:…|\.\.\.)?)$/.test(first)) return 'trailer';
+  if (/^(site|select site(?:…|\.\.\.)?|collection site|delivery site)$/.test(first)) return 'site';
   return undefined;
 }
 
@@ -92,6 +89,12 @@ function optionsFor(select: HTMLSelectElement, state: LookupState) {
     });
 }
 
+function updateActiveOption(state: LookupState) {
+  [...state.panel.querySelectorAll<HTMLElement>('.slh-typeahead-option')].forEach((button, index) => {
+    button.dataset.active = index === state.activeIndex ? 'true' : 'false';
+  });
+}
+
 function renderOptions(select: HTMLSelectElement, state: LookupState) {
   if (!state.open || document.activeElement !== state.input) {
     state.panel.hidden = true;
@@ -121,7 +124,7 @@ function renderOptions(select: HTMLSelectElement, state: LookupState) {
     button.dataset.selected = option.value === select.value ? 'true' : 'false';
     button.addEventListener('mouseenter', () => {
       state.activeIndex = index;
-      renderOptions(select, state);
+      updateActiveOption(state);
     });
     button.addEventListener('mousedown', event => event.preventDefault());
     button.addEventListener('click', () => {
@@ -206,11 +209,11 @@ function enhanceSelect(select: HTMLSelectElement, kind: LookupKind) {
       event.preventDefault();
       if (!state.open) open();
       else state.activeIndex = Math.min(state.activeIndex + 1, Math.max(rows.length - 1, 0));
-      renderOptions(select, state);
+      updateActiveOption(state);
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       state.activeIndex = Math.max(state.activeIndex - 1, 0);
-      renderOptions(select, state);
+      updateActiveOption(state);
     } else if (event.key === 'Enter' && state.open && rows[state.activeIndex]) {
       event.preventDefault();
       const option = rows[state.activeIndex].option;
@@ -278,7 +281,7 @@ function syncSiteDatalist() {
 function enhanceSiteInputs() {
   document.querySelectorAll<HTMLInputElement>('.simple-run-line input').forEach(input => {
     const row = input.closest('.simple-run-line');
-    if (!row || input.readOnly || input.disabled) return;
+    if (!row) return;
     const inputs = [...row.querySelectorAll<HTMLInputElement>('input')];
     const index = inputs.indexOf(input);
     if (index === 0 || index === 2) {
@@ -291,7 +294,7 @@ function enhanceSiteInputs() {
     const text = normalise(label.childNodes[0]?.textContent || label.textContent);
     if (!/^(collection site|delivery site|destination)$/.test(text)) return;
     const input = label.querySelector<HTMLInputElement>('input:not([type="date"]):not([type="number"])');
-    if (!input || input.readOnly || input.disabled) return;
+    if (!input) return;
     input.setAttribute('list', 'slh-site-master-options');
     input.setAttribute('autocomplete', 'off');
   });
@@ -302,7 +305,7 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = 'slh-typeahead-styles';
   style.textContent = `
-    .slh-typeahead-source{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important;clip-path:inset(50%)!important}
+    .slh-typeahead-source{display:none!important}
     .slh-typeahead{position:relative;width:100%;min-width:0}
     .slh-typeahead>input{width:100%;padding-right:32px!important}
     .slh-typeahead-arrow{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:28px;height:28px;padding:0;border:0;background:transparent;color:#526774;font-size:18px;line-height:1;z-index:2}
@@ -369,7 +372,16 @@ if (typeof window !== 'undefined' && !window.__slhTypeaheadLookupPatch) {
     return result;
   };
 
-  const observer = new MutationObserver(queueEnhancements);
+  const observer = new MutationObserver(mutations => {
+    const meaningful = mutations.some(mutation => {
+      const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+      if (!target) return true;
+      if (target.closest('.slh-typeahead')) return false;
+      if (target.id === 'slh-site-master-options' || target.closest('#slh-site-master-options')) return false;
+      return true;
+    });
+    if (meaningful) queueEnhancements();
+  });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   document.addEventListener('change', queueEnhancements, true);
   window.addEventListener('focus', queueEnhancements);
