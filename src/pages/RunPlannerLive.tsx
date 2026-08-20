@@ -135,7 +135,7 @@ export function RunPlannerLive() {
   const refreshAll = useCallback(async () => {
     const access = await token();
     const [nextControl, nextLoads, nextSites] = await Promise.all([
-      request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}&_=${Date.now()}`, access),
+      request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, access),
       api.loads(date, access),
       api.sites(access),
     ]);
@@ -148,7 +148,7 @@ export function RunPlannerLive() {
 
   const refreshControl = useCallback(async () => {
     const nextControl = await request<PlanningControlData>(
-      `/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}&_=${Date.now()}`,
+      `/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`,
       await token(),
     );
     setControl(nextControl);
@@ -167,7 +167,7 @@ export function RunPlannerLive() {
   // the immediate source of truth; the server is the durable source of truth after autosave.
   useEffect(() => {
     const refresh = () => void refreshControl().catch(() => undefined);
-    const interval = window.setInterval(refresh, 2000);
+    const interval = window.setInterval(refresh, 20000);
     window.addEventListener("slh:orders-changed", refresh);
     return () => {
       window.clearInterval(interval);
