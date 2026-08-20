@@ -21,7 +21,7 @@ type PlanningControlData = {
 };
 type RegionData = { date: string; destinations: string[]; destinationRegions: Record<string, string> };
 
-function planningDate() { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function planningDate() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function ukDate(value: string) { return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${value}T12:00:00`)); }
 function fmtTime(value?: string) { if (!value) return "—"; const d = new Date(value); return Number.isNaN(d.getTime()) ? value : d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
 
@@ -33,14 +33,14 @@ export function PalletPlanningControl() {
   const [message, setMessage] = useState<string>();
   const [busyKey, setBusyKey] = useState<string>();
   const [allocationDrafts, setAllocationDrafts] = useState<Record<string, { loadId: string; pallets: string }>>({});
-  const control = useApi(useCallback(async () => request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}&_=${Date.now()}`, await token()), [date, token]));
+  const control = useApi(useCallback(async () => request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, await token()), [date, token]));
   const regions = useApi(useCallback(async () => request<RegionData>(`/api/v1/planning-control/regions?date=${encodeURIComponent(date)}`, await token()), [date, token]));
   const refreshControl = control.refresh;
   const refreshRegions = regions.refresh;
 
   useEffect(() => {
     const refresh = () => { void refreshControl(); void refreshRegions(); };
-    const id = window.setInterval(refresh, 2000);
+    const id = window.setInterval(refresh, 20000);
     const onFocus = () => refresh();
     const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
     const onOrderChanged = () => refresh();
