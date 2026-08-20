@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, request, type Load, type Site } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
+import { RunPlanningIntelligence } from "../components/RunPlanningIntelligence";
 import "../simple-planner.css";
 
 type Period = "" | "AM" | "PM";
@@ -488,6 +489,7 @@ export function RunPlannerLive() {
         {runs.map((run, index) => {
           const pallets = runTotal(run);
           const saving = busyKey === run.key || busyKey?.startsWith(`${run.key}:`);
+          const load = loads.find((item) => item.id === run.loadId);
           return <article key={run.key} className={`simple-run-card ${activeKey === run.key ? "active" : ""}`} onClick={() => setActiveKey(run.key)}>
             <div className="simple-run-header">
               <div><strong>Run {index + 1}</strong><small>{run.loadId ? "Live" : "New"}</small></div>
@@ -529,6 +531,7 @@ export function RunPlannerLive() {
               }}>+ Add line</button></div>
               <small>{saving ? "Saving…" : run.loadId ? "✓ Auto-saved" : "Choose an order to start this run"}</small>
             </div>
+            {load && activeKey === run.key && <RunPlanningIntelligence load={load} onChanged={refreshAll} />}
           </article>;
         })}
 
