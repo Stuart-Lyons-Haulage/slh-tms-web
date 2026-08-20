@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, request, type Load, type Site } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
 import { useApi } from "../lib/useApi";
 import "../simple-planner.css";
 
@@ -111,22 +112,31 @@ function siteMatches(site: Site, value: string) {
     .some((candidate) => normalise(candidate) === target);
 }
 
-function siteAddress(sites: Site[], value: string) {
-  return sites.find((site) => siteMatches(site, value))?.collectionAddress;
+function stopSiteDetails(sites: Site[], value: string) {
+  const site = sites.find((item) => siteMatches(item, value));
+  return {
+    address: site?.collectionAddress,
+    latitude: site?.latitude,
+    longitude: site?.longitude,
+  };
 }
 
 function buildStops(lines: Array<RunLine & { orderId: string }>, sites: Site[]) {
-  return lines.flatMap((line) => [
-    {
-      name: `Collect · ${line.collectionSite}`,
-      address: siteAddress(sites, line.collectionSite),
-    },
-    {
-      orderId: line.orderId,
-      name: `Deliver · ${line.deliverySite}`,
-      address: siteAddress(sites, line.deliverySite),
-    },
-  ]);
+  return lines.flatMap((line) => {
+    const collection = stopSiteDetails(sites, line.collectionSite);
+    const delivery = stopSiteDetails(sites, line.deliverySite);
+    return [
+      {
+        name: `Collect · ${line.collectionSite}`,
+        ...collection,
+      },
+      {
+        orderId: line.orderId,
+        name: `Deliver · ${line.deliverySite}`,
+        ...delivery,
+      },
+    ];
+  });
 }
 
 export function StablePlanner() {
@@ -145,6 +155,8 @@ export function StablePlanner() {
   const loads = useMemo(() => Array.isArray(loadsApi.data) ? loadsApi.data.filter(Boolean) : [], [loadsApi.data]);
   const sites = useMemo(() => Array.isArray(sitesApi.data) ? sitesApi.data.filter((site) => site?.active !== false) : [], [sitesApi.data]);
   const planningOrders = useMemo(() => controlApi.data?.orders || [], [controlApi.data]);
+  const refreshLoads = loadsApi.refresh;
+  const refreshControl = controlApi.refresh;
 
   useEffect(() => {
     if (loadsApi.loading || controlApi.loading) return;
@@ -382,7 +394,8 @@ export function StablePlanner() {
         plannerNotes: withPlannerPeriod(load?.plannerNotes, run.period),
       }, accessToken);
 
-      await Promise.all([loadsApi.refresh(), controlApi.refresh()]);
+      await Promise.all([refreshLoads(), refreshControl()]);
+      signalPlanningChange();
       setMessage(`Run ${runNumber} saved · ${run.period} · ${totalPallets} pallets. Split balances remain in Orders until fully planned.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : `Run ${runNumber} could not be saved.`);
@@ -393,6 +406,11 @@ export function StablePlanner() {
 
   const loading = loadsApi.loading || controlApi.loading || sitesApi.loading;
   const error = loadsApi.error || controlApi.error || sitesApi.error;
+
+  useEffect(() => subscribePlanningChanges(() => {
+    void refreshLoads();
+    void refreshControl();
+  }), [refreshControl, refreshLoads]);
 
   return <section className="simple-planner">
     <datalist id="planner-site-options">

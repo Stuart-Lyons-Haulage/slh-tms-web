@@ -28,3 +28,9 @@ api.route = (id, token) =>
 
 api.dispatch = (id, token) =>
   request<LoadDispatch>(`/api/v1/runs/${id}/dispatch`, token);
+
+api.updateLoadStatus = (id, status, token) =>
+  request<Load>(`/api/v1/runs/${id}/status`, token, {
+    method: "PUT",
+    body: JSON.stringify({ status }),
+  });

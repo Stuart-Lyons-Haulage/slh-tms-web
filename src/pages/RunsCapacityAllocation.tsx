@@ -9,6 +9,7 @@ import {
   type Vehicle,
 } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
 import "../runs-capacity-allocation.css";
@@ -138,8 +139,9 @@ function editableStops(load: Load, sites: Site[]): EditableStop[] {
     const site = matchSite(sites, stop.name);
     return {
       ...stop,
-      latitude: stop.latitude?.toString() || "",
-      longitude: stop.longitude?.toString() || "",
+      address: usefulAddress(stop.address) ? stop.address : site?.collectionAddress || stop.address,
+      latitude: stop.latitude?.toString() || site?.latitude?.toString() || "",
+      longitude: stop.longitude?.toString() || site?.longitude?.toString() || "",
       postcode: postcodeFrom(stop.address) || postcodeFrom(site?.collectionAddress),
     };
   });
@@ -206,14 +208,15 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
         plannerNotes: load.plannerNotes,
       }, access);
       await onSaved();
+      signalPlanningChange();
       setMessage(`Allocation saved · ${loadTypeLabel(capacityType)} · ${effectiveCapacity ?? "capacity pending"} ${spaceLabel(capacityType)} from trailer matrix.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Allocation could not be saved.");
     } finally { setSaving(false); }
   }
 
-  async function resolveLocations(access: string) {
-    const next = stops.map(stop => ({ ...stop }));
+  async function resolveLocations(access: string, source: EditableStop[] = stops) {
+    const next = source.map(stop => ({ ...stop }));
     const failed: string[] = [];
     let resolved = 0;
     for (const stop of next) {
@@ -251,6 +254,59 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     return next;
   }
 
+  function promptForMissingPostcodes(source: EditableStop[]) {
+    const next = source.map(stop => ({ ...stop }));
+    const missing: string[] = [];
+    for (const stop of next) {
+      const site = matchSite(sites, stop.name);
+      const existing = postcodeFrom(stop.postcode) || postcodeFrom(stop.address) || postcodeFrom(site?.collectionAddress);
+      if (existing) {
+        stop.postcode = existing;
+        continue;
+      }
+
+      const entered = window.prompt(`Postcode needed for ${stop.name}`, stop.postcode || "");
+      if (entered === null) throw new Error("Dispatch cancelled. The route needs a postcode before it can be sent.");
+      const formatted = postcodeFrom(entered) || formatPostcode(entered);
+      if (!postcodeFrom(formatted)) {
+        missing.push(stop.name);
+        continue;
+      }
+      stop.postcode = formatted;
+      stop.address = addressWithPostcode(stop.address, formatted);
+    }
+    if (missing.length) throw new Error(`Add a valid postcode before dispatching: ${missing.join(", ")}.`);
+    setStops(next);
+    return next;
+  }
+
+  async function saveConfirmedPostcodesToSites(source: EditableStop[], access: string) {
+    const updated = new Set<string>();
+    for (const stop of source) {
+      const site = matchSite(sites, stop.name);
+      if (!site || postcodeFrom(site.collectionAddress)) continue;
+      const stopPostcode = postcodeFrom(stop.postcode) || postcodeFrom(stop.address);
+      if (!stopPostcode) continue;
+      await api.updateSite(site.id, {
+        externalCode: site.externalCode,
+        name: site.name,
+        driverTextName: site.driverTextName,
+        aliases: site.aliases,
+        collectionAddress: addressWithPostcode(site.collectionAddress || stop.address || stopSiteName(stop.name), stopPostcode),
+        collectionInstructions: site.collectionInstructions,
+        mapLink: site.mapLink,
+        latitude: site.latitude,
+        longitude: site.longitude,
+        customField1: site.customField1,
+        customField2: site.customField2,
+        customField3: site.customField3,
+        active: site.active,
+      }, access);
+      updated.add(site.name);
+    }
+    return [...updated];
+  }
+
   async function locateStops() {
     setSaving(true); setMessage(undefined); setRouteSummary(undefined);
     try { await resolveLocations(await token()); }
@@ -262,7 +318,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     setSaving(true); setMessage(undefined);
     try {
       await api.updateLoadStops(load.id, stopPayload(stops), await token());
-      await onSaved(); setMessage("Postcodes and planned ETAs saved.");
+      await onSaved(); signalPlanningChange(); setMessage("Postcodes and planned ETAs saved.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "The route could not be saved."); }
     finally { setSaving(false); }
   }
@@ -291,11 +347,61 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       const finalEta = new Date(baseTime + minutes * 60_000).toISOString();
       const withEta = routeStops.map((stop, index) => index === routeStops.length - 1 ? { ...stop, plannedArrivalUtc: finalEta } : stop);
       await api.updateLoadStops(load.id, stopPayload(withEta), access);
-      setStops(withEta); await onSaved();
+      setStops(withEta); await onSaved(); signalPlanningChange();
       setMessage("Route and ETA calculated successfully.");
       setRouteSummary(`${miles} miles · estimated drive time ${Math.floor(minutes / 60)}h ${minutes % 60}m · final-stop ETA saved${result.approximate ? " using the resilient road estimate" : ""}.`);
     } catch (error) { setRouteSummary(error instanceof Error ? error.message : "Route calculation failed."); }
     finally { setSaving(false); }
+  }
+
+  async function dispatchRun() {
+    if (!driverId || !vehicleId) {
+      setMessage("Allocate both a driver and vehicle before dispatch.");
+      return;
+    }
+
+    setSaving(true); setMessage(undefined); setRouteSummary(undefined);
+    try {
+      const access = await token();
+      await api.allocateLoad(load.id, { vehicleId, driverId, trailerId: trailerId || undefined }, access);
+      await api.updateLoadUtilisation(load.id, {
+        palletSpacesUsed: Number.isFinite(numericUsed) ? numericUsed : undefined,
+        totalPalletSpaces: effectiveCapacity,
+        capacityType,
+        depotSplits: load.depotSplits,
+        temperatureC: load.temperatureC,
+        plannerNotes: load.plannerNotes,
+      }, access);
+
+      const promptedStops = promptForMissingPostcodes(stops);
+      const updatedSites = await saveConfirmedPostcodesToSites(promptedStops, access);
+      let routeStops = promptedStops;
+      if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2) routeStops = await resolveLocations(access, promptedStops);
+      if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2)
+        throw new Error("At least two stops need a valid postcode or Site Master location before dispatch.");
+
+      await api.updateLoadStops(load.id, stopPayload(routeStops), access);
+      const result = await api.route(load.id, access) as {
+        routes?: Array<{ summary?: { lengthInMeters?: number; travelTimeInSeconds?: number } }>;
+        approximate?: boolean;
+      };
+      const summary = result.routes?.[0]?.summary;
+      if (!summary) throw new Error("The route service did not return a route, so this run was not dispatched.");
+
+      const minutes = Math.max(1, Math.round((summary.travelTimeInSeconds || 0) / 60));
+      const firstPlanned = routeStops.find(stop => stop.plannedArrivalUtc)?.plannedArrivalUtc;
+      const firstTime = firstPlanned ? new Date(firstPlanned).getTime() : Number.NaN;
+      const baseTime = Number.isFinite(firstTime) && firstTime > Date.now() ? firstTime : Date.now();
+      const finalEta = new Date(baseTime + minutes * 60_000).toISOString();
+      const withEta = routeStops.map((stop, index) => index === routeStops.length - 1 ? { ...stop, plannedArrivalUtc: finalEta } : stop);
+      await api.updateLoadStops(load.id, stopPayload(withEta), access);
+      await api.updateLoadStatus(load.id, "Dispatched", access);
+
+      setStops(withEta); await onSaved(); signalPlanningChange();
+      setMessage(`Run dispatched. Route is good to go${result.approximate ? " using the resilient road estimate" : ""}.${updatedSites.length ? ` Saved postcode to Site Master for ${updatedSites.join(", ")}.` : ""}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The run could not be dispatched.");
+    } finally { setSaving(false); }
   }
 
   async function prepareDriverText(openModal = true) {
@@ -371,9 +477,10 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
 
       <div className="run-card-actions">
         <button type="button" onClick={() => setRouteOpen(value => !value)}>{routeOpen ? "Hide route & ETA" : "Route & ETA"}</button>
+        <button className="primary" type="button" onClick={() => void dispatchRun()} disabled={saving || !driverId || !vehicleId}>{saving ? "Dispatching…" : "Dispatch"}</button>
         <button type="button" onClick={() => void prepareDriverText(true)} disabled={saving}>Preview text</button>
         <button type="button" onClick={() => void copyDriverText()} disabled={saving}>Copy text</button>
-        <button className="primary" type="button" onClick={() => void sendDriverText()} disabled={saving || !driverId || !vehicleId}>Send driver SMS</button>
+        <button type="button" onClick={() => void sendDriverText()} disabled={saving || !driverId || !vehicleId}>Send driver SMS</button>
       </div>
 
       {routeOpen && <div className="run-route-editor">
@@ -416,10 +523,17 @@ export function RunsCapacityAllocation() {
   const trailers = useApi(useCallback(async () => api.trailers(await token()), [token]));
   const sites = useApi(useCallback(async () => api.sites(await token()), [token]));
   const rows = loads.data || [];
+  const refreshLoads = loads.refresh;
+  const refreshVehicles = vehicles.refresh;
+  const refreshDrivers = drivers.refresh;
+  const refreshTrailers = trailers.refresh;
+  const refreshSites = sites.refresh;
 
-  async function refreshAll() {
-    await Promise.all([loads.refresh(), vehicles.refresh(), drivers.refresh(), trailers.refresh(), sites.refresh()]);
-  }
+  const refreshAll = useCallback(async () => {
+    await Promise.all([refreshLoads(), refreshVehicles(), refreshDrivers(), refreshTrailers(), refreshSites()]);
+  }, [refreshDrivers, refreshLoads, refreshSites, refreshTrailers, refreshVehicles]);
+
+  useEffect(() => subscribePlanningChanges(() => void refreshAll()), [refreshAll]);
 
   const error = loads.error || vehicles.error || drivers.error || trailers.error || sites.error;
   return <section>
@@ -427,6 +541,6 @@ export function RunsCapacityAllocation() {
     <div className="planner-toolbar"><label>Plan date <input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{rows.length} run{rows.length === 1 ? "" : "s"}</span></div>
     {error && <p className="notice inline-notice">{error}</p>}
     {!error && !rows.length && <div className="state">No runs are available for this planning date.</div>}
-    <div className="allocation-load-list">{rows.map(load => <RunAllocationCard key={load.id} load={load} vehicles={vehicles.data || []} drivers={drivers.data || []} trailers={trailers.data || []} sites={sites.data || []} onSaved={loads.refresh} />)}</div>
+    <div className="allocation-load-list">{rows.map(load => <RunAllocationCard key={load.id} load={load} vehicles={vehicles.data || []} drivers={drivers.data || []} trailers={trailers.data || []} sites={sites.data || []} onSaved={refreshAll} />)}</div>
   </section>;
 }

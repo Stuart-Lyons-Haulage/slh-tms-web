@@ -62,12 +62,6 @@ const UK_TIME_ZONE = "Europe/London";
 const timeFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
-function shiftIsoDate(value: string, days: number) {
-  const [year, month, day] = value.split("-").map(Number);
-  const shifted = new Date(Date.UTC(year, month - 1, day + days));
-  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
-}
-
 function ms(value?: string) {
   return parseApiDateTime(value)?.getTime() ?? Number.NaN;
 }
@@ -158,15 +152,9 @@ function tachoText(eta?: DeliveryEta) {
   return "tacho unavailable";
 }
 
-function isActiveCarryOver(progress: RunProgressRecord) {
-  if (progress.runState === "Completed") return false;
-  return Boolean(progress.currentVisit || progress.completedStops > 0 || progress.runState === "BetweenStops");
-}
-
 export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
   const token = useAccessToken();
   const today = todayIsoDate();
-  const previous = shiftIsoDate(today, -1);
   const tvAccessKey = tvMode ? new URLSearchParams(window.location.search).get("key")?.trim() : undefined;
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
@@ -185,32 +173,27 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     const getAssignments = (from: string, to: string) => tvAccessKey
       ? request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, undefined, tvInit)
       : api.driverAssignments(from, to, access);
-    const [previousLoads, currentLoads, previousEtas, currentEtas, previousProgress, currentProgress, assignments] = await Promise.all([
-      getLoads(previous).catch(() => []),
+    const [currentLoads, currentEtas, currentProgress, assignments] = await Promise.all([
       getLoads(today),
-      getDeliveryEtas(previous).catch(() => undefined),
       getDeliveryEtas(today).catch(() => undefined),
-      getRunProgress(previous).catch(() => undefined),
       getRunProgress(today).catch(() => undefined),
-      getAssignments(previous, today),
+      getAssignments(today, today),
     ]);
-    const carryOverProgress = (previousProgress?.records || []).filter(isActiveCarryOver);
-    const carryOverIds = new Set(carryOverProgress.map((item) => item.loadId));
     const etaWarning = currentEtas ? undefined : "Live ETA calculation is still catching up; showing tracker, geofence and allocation progress on this refresh.";
     const progressWarning = currentProgress ? undefined : "Geofence run progression is still catching up; showing planned runs and allocation progress on this refresh.";
     return {
-      loads: [...previousLoads.filter((load) => carryOverIds.has(load.id)), ...currentLoads],
-      etas: [...(previousEtas?.records || []).filter((eta) => carryOverIds.has(eta.loadId)), ...(currentEtas?.records || [])],
-      progress: [...carryOverProgress, ...(currentProgress?.records || [])],
+      loads: currentLoads.filter((load) => load.planningDate === today),
+      etas: currentEtas?.records || [],
+      progress: currentProgress?.records || [],
       assignments,
-      warning: [previousProgress?.warning, currentProgress?.warning, etaWarning, progressWarning].filter(Boolean).join(" "),
-      geofenceAvailable: previousProgress?.geofenceAvailable !== false && currentProgress?.geofenceAvailable !== false,
-      geofenceCount: Math.max(previousProgress?.geofenceCount || 0, currentProgress?.geofenceCount || 0),
-      geofenceLinkedRuns: (previousProgress?.geofenceLinkedRuns || 0) + (currentProgress?.geofenceLinkedRuns || 0),
-      latestTrackingUtc: currentProgress?.latestTrackingUtc || previousProgress?.latestTrackingUtc,
+      warning: [currentProgress?.warning, etaWarning, progressWarning].filter(Boolean).join(" "),
+      geofenceAvailable: currentProgress?.geofenceAvailable !== false,
+      geofenceCount: currentProgress?.geofenceCount || 0,
+      geofenceLinkedRuns: currentProgress?.geofenceLinkedRuns || 0,
+      latestTrackingUtc: currentProgress?.latestTrackingUtc,
       calculatedAtUtc: currentEtas?.calculatedAtUtc,
     };
-  }, [previous, today, token, tvAccessKey]));
+  }, [today, token, tvAccessKey]));
 
   useEffect(() => {
     const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
