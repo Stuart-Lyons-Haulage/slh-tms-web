@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AdminIntegrationSyncControls } from '../components/AdminIntegrationSyncControls';
 import { Admin } from './Pages';
 import { OperationsControlClean } from './OperationsControlClean';
 
@@ -18,6 +19,6 @@ export function ControlCentre() {
       </div>
     </div>
 
-    {view === 'operations' ? <OperationsControlClean /> : <Admin />}
+    {view === 'operations' ? <OperationsControlClean /> : <><AdminIntegrationSyncControls /><Admin /></>}
   </section>;
 }
