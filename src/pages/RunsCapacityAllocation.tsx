@@ -280,6 +280,33 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     return next;
   }
 
+  async function saveConfirmedPostcodesToSites(source: EditableStop[], access: string) {
+    const updated = new Set<string>();
+    for (const stop of source) {
+      const site = matchSite(sites, stop.name);
+      if (!site || postcodeFrom(site.collectionAddress)) continue;
+      const stopPostcode = postcodeFrom(stop.postcode) || postcodeFrom(stop.address);
+      if (!stopPostcode) continue;
+      await api.updateSite(site.id, {
+        externalCode: site.externalCode,
+        name: site.name,
+        driverTextName: site.driverTextName,
+        aliases: site.aliases,
+        collectionAddress: addressWithPostcode(site.collectionAddress || stop.address || stopSiteName(stop.name), stopPostcode),
+        collectionInstructions: site.collectionInstructions,
+        mapLink: site.mapLink,
+        latitude: site.latitude,
+        longitude: site.longitude,
+        customField1: site.customField1,
+        customField2: site.customField2,
+        customField3: site.customField3,
+        active: site.active,
+      }, access);
+      updated.add(site.name);
+    }
+    return [...updated];
+  }
+
   async function locateStops() {
     setSaving(true); setMessage(undefined); setRouteSummary(undefined);
     try { await resolveLocations(await token()); }
@@ -347,6 +374,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       }, access);
 
       const promptedStops = promptForMissingPostcodes(stops);
+      const updatedSites = await saveConfirmedPostcodesToSites(promptedStops, access);
       let routeStops = promptedStops;
       if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2) routeStops = await resolveLocations(access, promptedStops);
       if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2)
@@ -370,7 +398,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       await api.updateLoadStatus(load.id, "Dispatched", access);
 
       setStops(withEta); await onSaved(); signalPlanningChange();
-      setMessage(`Run dispatched. Route is good to go${result.approximate ? " using the resilient road estimate" : ""}.`);
+      setMessage(`Run dispatched. Route is good to go${result.approximate ? " using the resilient road estimate" : ""}.${updatedSites.length ? ` Saved postcode to Site Master for ${updatedSites.join(", ")}.` : ""}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The run could not be dispatched.");
     } finally { setSaving(false); }
