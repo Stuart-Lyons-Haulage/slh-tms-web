@@ -291,13 +291,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       etaByLoad.set(eta.loadId, existing);
     }
 
-    const currentStartTimes = (loadData || [])
-      .filter((load) => load.planningDate === date)
-      .map((load) => firstPlanned(load))
-      .filter((value): value is string => Boolean(value))
-      .map(apiTimeMs)
-      .filter(Number.isFinite);
-    const handoverMs = currentStartTimes.length ? Math.min(...currentStartTimes) : fallbackCarryOverHandoverMs(date);
+    const handoverMs = fallbackCarryOverHandoverMs(date);
     const afterNewDayHandover = now.getTime() >= handoverMs;
 
     const vehicleCandidates = new Map<string, Array<{ load: Load; progress?: RunProgressRecord; planned?: string }>>();
