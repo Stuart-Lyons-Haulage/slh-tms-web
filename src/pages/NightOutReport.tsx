@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
+import { DailyCompliance } from "./DailyCompliance";
 
 type Day = {
   date: string; worked: boolean; sageMatched: boolean; nightOut: boolean; status: string; discrepancies: string[];
@@ -27,7 +28,7 @@ const fmtTime = (value?: string) => value ? new Intl.DateTimeFormat("en-GB", { h
 const mins = (value?: number) => value == null ? "—" : `${Math.floor(value/60)}h ${String(value%60).padStart(2,"0")}m`;
 const statusMark = (value: string) => value === "Confirmed" ? "✓" : value === "Review" ? "⚠" : value === "Check" ? "△" : "—";
 
-export function NightOutReport() {
+function WeeklyNightOutReport() {
   const token = useAccessToken();
   const [weekStart,setWeekStart] = useState(monday());
   const [filter,setFilter] = useState<"all"|"review"|"nights">("all");
@@ -43,19 +44,18 @@ export function NightOutReport() {
       <div>
         <p className="eyebrow">Payroll & driver-hours control</p>
         <h1>Weekly driver timesheets & night outs</h1>
-        <p className="intro">One weekly view reconciling the TMS plan, Tachomaster duties, DOT vehicle movement and the active Sage HR roster. It confirms days worked and nights out, then highlights anything that does not agree before payroll is processed.</p>
+        <p className="intro">One weekly view reconciling the TMS plan, TachoMaster duties, DOT vehicle movement and the active Sage HR roster. It confirms days worked and nights out, then highlights anything that does not agree before payroll is processed.</p>
       </div>
     </div>
 
     <div className="panel" style={{ display:"flex", gap:12, alignItems:"end", flexWrap:"wrap" }}>
       <label>Week commencing<input type="date" value={weekStart} onChange={e=>setWeekStart(e.target.value)}/></label>
       <label>Show<select value={filter} onChange={e=>setFilter(e.target.value as typeof filter)}><option value="all">All live drivers</option><option value="review">Discrepancies only</option><option value="nights">Night outs only</option></select></label>
-      <button className="primary" onClick={()=>void report.refresh()}>Refresh all sources</button>
-      {report.data && <small>{fmtDate(report.data.weekStart)} to {fmtDate(report.data.weekEnd)}</small>}
+      {report.data && <small>{fmtDate(report.data.weekStart)} to {fmtDate(report.data.weekEnd)} · data maintained automatically</small>}
     </div>
 
     {report.error && <p className="notice">{report.error}</p>}
-    {report.loading && <div className="state">Reconciling TMS, Tachomaster, DOT and Sage HR…</div>}
+    {report.loading && <div className="state">Reconciling TMS, TachoMaster, DOT and Sage HR…</div>}
 
     {report.data && <>
       <div className="metrics">
@@ -69,7 +69,7 @@ export function NightOutReport() {
         <h2>Source confidence</h2>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:10 }}>
           <div><strong>TMS</strong><br/><small>{report.data.sourceStatus.tms}</small></div>
-          <div><strong>Tachomaster</strong><br/><small>{report.data.sourceStatus.tachoMaster}</small></div>
+          <div><strong>TachoMaster</strong><br/><small>{report.data.sourceStatus.tachoMaster}</small></div>
           <div><strong>DOT / Falcon</strong><br/><small>{report.data.sourceStatus.dot}</small></div>
           <div><strong>Sage HR</strong><br/><small>{report.data.sourceStatus.sageHr}</small></div>
         </div>
@@ -113,4 +113,15 @@ export function NightOutReport() {
       </div>
     </>}
   </section>;
+}
+
+export function NightOutReport() {
+  const [view, setView] = useState<"compliance" | "timesheets">("compliance");
+  return <>
+    <div className="panel" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <button className={view === "compliance" ? "primary" : undefined} onClick={() => setView("compliance")}>Daily compliance</button>
+      <button className={view === "timesheets" ? "primary" : undefined} onClick={() => setView("timesheets")}>Timesheets & night outs</button>
+    </div>
+    {view === "compliance" ? <DailyCompliance /> : <WeeklyNightOutReport />}
+  </>;
 }
