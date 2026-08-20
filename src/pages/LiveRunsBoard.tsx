@@ -33,6 +33,15 @@ type LiveRunRow = {
 const UK_TIME_ZONE = "Europe/London";
 const timeFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
+const carryOverHandoverFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: UK_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
 function apiTimeMs(value?: string) {
   return parseApiDateTime(value)?.getTime() ?? Number.NaN;
@@ -56,6 +65,16 @@ function shiftIsoDate(value: string, days: number) {
   const [year, month, day] = value.split("-").map(Number);
   const shifted = new Date(Date.UTC(year, month - 1, day + days));
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
+}
+
+function fallbackCarryOverHandoverMs(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  const noonUtc = Date.UTC(year, month - 1, day, 12);
+  const parts = carryOverHandoverFormatter.formatToParts(new Date(noonUtc));
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const localNoonAsUtc = Date.UTC(Number(byType.year), Number(byType.month) - 1, Number(byType.day), Number(byType.hour), Number(byType.minute));
+  const offsetMinutes = (localNoonAsUtc - noonUtc) / 60000;
+  return Date.UTC(year, month - 1, day, 6, 0) - offsetMinutes * 60000;
 }
 
 function statusFor(progress: RunProgressRecord | undefined, vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
@@ -180,9 +199,8 @@ function carryOverIsOperationallyActive(row: LiveRunRow) {
     (row.progress?.completedStops || 0) > 0 ||
     (runState && ["BetweenStops", "InProgress", "OnSiteConfirmed", "SiteDelay"].includes(runState)),
   );
-  const liveVehicle = Boolean(row.vehicle && !["Stale", "NotSignedOn"].includes(row.vehicle.condition));
   const operationalStatus = row.load.status === "Dispatched" || row.load.status === "InProgress";
-  return executionStarted || liveVehicle || operationalStatus;
+  return executionStarted || operationalStatus;
 }
 
 export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
@@ -266,7 +284,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       .filter((value): value is string => Boolean(value))
       .map(apiTimeMs)
       .filter(Number.isFinite);
-    const handoverMs = currentStartTimes.length ? Math.min(...currentStartTimes) : Number.POSITIVE_INFINITY;
+    const handoverMs = currentStartTimes.length ? Math.min(...currentStartTimes) : fallbackCarryOverHandoverMs(date);
     const afterNewDayHandover = now.getTime() >= handoverMs;
 
     const vehicleCandidates = new Map<string, Array<{ load: Load; progress?: RunProgressRecord; planned?: string }>>();

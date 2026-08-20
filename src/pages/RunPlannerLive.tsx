@@ -88,7 +88,7 @@ export function RunPlannerLive() {
   const [control, setControl] = useState<PlanningControlData>();
   const [loads, setLoads] = useState<Load[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
-  const [runs, setRuns] = useState<RunDraft[]>([{ key: `shell-${localDate()}-1`, period: "", lines: [blankLine()] }]);
+  const [runs, setRuns] = useState<RunDraft[]>([{ key: `shell-${localDate()}-1`, period: "", nightOut: false, routeJob: "", operationalAmendment: "", lines: [blankLine()] }]);
   const [activeKey, setActiveKey] = useState(runs[0].key);
   const [busyKey, setBusyKey] = useState<string>();
   const [message, setMessage] = useState<string>();
