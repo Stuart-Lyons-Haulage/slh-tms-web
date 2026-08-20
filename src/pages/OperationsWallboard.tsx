@@ -176,7 +176,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       ? request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(date)}`, undefined, tvInit, 40000)
       : api.deliveryEtas(date, access);
     const getRunProgress = (date: string) =>
-      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(date)}`, access, tvInit);
+      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(date)}`, access, tvInit, 40000);
     const getAssignments = (from: string, to: string) => tvAccessKey
       ? request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, undefined, tvInit)
       : api.driverAssignments(from, to, access);
@@ -184,22 +184,24 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       getLoads(previous).catch(() => []),
       getLoads(today),
       getDeliveryEtas(previous).catch(() => undefined),
-      getDeliveryEtas(today),
+      getDeliveryEtas(today).catch(() => undefined),
       getRunProgress(previous).catch(() => undefined),
-      getRunProgress(today),
+      getRunProgress(today).catch(() => undefined),
       getAssignments(previous, today),
     ]);
+    const etaWarning = currentEtas ? undefined : "Live ETA calculation is still catching up; showing tracker, geofence and allocation progress on this refresh.";
+    const progressWarning = currentProgress ? undefined : "Geofence run progression is still catching up; showing planned runs and allocation progress on this refresh.";
     return {
       loads: [...previousLoads, ...currentLoads],
-      etas: [...(previousEtas?.records || []), ...(currentEtas.records || [])],
-      progress: [...(previousProgress?.records || []), ...(currentProgress.records || [])],
+      etas: [...(previousEtas?.records || []), ...(currentEtas?.records || [])],
+      progress: [...(previousProgress?.records || []), ...(currentProgress?.records || [])],
       assignments,
-      warning: [previousProgress?.warning, currentProgress.warning].filter(Boolean).join(" "),
-      geofenceAvailable: previousProgress?.geofenceAvailable !== false && currentProgress.geofenceAvailable !== false,
-      geofenceCount: Math.max(previousProgress?.geofenceCount || 0, currentProgress.geofenceCount || 0),
-      geofenceLinkedRuns: (previousProgress?.geofenceLinkedRuns || 0) + (currentProgress.geofenceLinkedRuns || 0),
-      latestTrackingUtc: currentProgress.latestTrackingUtc || previousProgress?.latestTrackingUtc,
-      calculatedAtUtc: currentEtas.calculatedAtUtc,
+      warning: [previousProgress?.warning, currentProgress?.warning, etaWarning, progressWarning].filter(Boolean).join(" "),
+      geofenceAvailable: previousProgress?.geofenceAvailable !== false && currentProgress?.geofenceAvailable !== false,
+      geofenceCount: Math.max(previousProgress?.geofenceCount || 0, currentProgress?.geofenceCount || 0),
+      geofenceLinkedRuns: (previousProgress?.geofenceLinkedRuns || 0) + (currentProgress?.geofenceLinkedRuns || 0),
+      latestTrackingUtc: currentProgress?.latestTrackingUtc || previousProgress?.latestTrackingUtc,
+      calculatedAtUtc: currentEtas?.calculatedAtUtc,
     };
   }, [previous, today, token, tvAccessKey]));
 
