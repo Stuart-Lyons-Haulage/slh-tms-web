@@ -20,7 +20,9 @@ export function HeaderIntelligence() {
       } catch { /* Header remains usable if intelligence is temporarily unavailable. */ }
     };
     void refresh();
-    const id = window.setInterval(refresh, 60000);
+    // Header intelligence is advisory rather than second-by-second operational data.
+    // Three minutes keeps it useful while avoiding two API calls every minute on every open TMS screen.
+    const id = window.setInterval(refresh, 180000);
     return () => { alive = false; window.clearInterval(id); };
   }, [token]);
   return <div className="header-intelligence">
