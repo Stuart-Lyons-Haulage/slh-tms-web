@@ -171,10 +171,14 @@ function currentTracking(progress: RunProgressRecord | undefined, vehicle: LiveR
     };
   }
   if (!vehicle) return { primary: progress?.runState === "Completed" ? "Run complete" : "No live vehicle match", secondary: progress?.runState === "Completed" ? "Geofence progression complete" : "Awaiting DOT/Falcon link" };
+  const liveDriver = vehicle.driverName
+    ? `${vehicle.driverSource === "TachoMaster" ? "Tacho card" : vehicle.driverSource === "DOT/Falcon" ? "DOT driver" : "Planned driver"} · ${vehicle.driverName}`
+    : undefined;
+  const mismatch = vehicle.driverMismatch && vehicle.allocatedDriverName ? ` · allocated ${vehicle.allocatedDriverName}` : "";
   if (vehicle.condition === "Moving") {
-    return { primary: `Moving · ${Math.round(vehicle.speedKph || 0)} km/h`, secondary: `DOT update ${formatAge(vehicle.lastEventTimeUtc, now)}` };
+    return { primary: `Moving · ${Math.round(vehicle.speedKph || 0)} km/h`, secondary: `${liveDriver || "No live driver card"} · DOT update ${formatAge(vehicle.lastEventTimeUtc, now)}${mismatch}` };
   }
-  return { primary: vehicle.condition.replace(/([A-Z])/g, " $1").trim(), secondary: `DOT update ${formatAge(vehicle.lastEventTimeUtc, now)}` };
+  return { primary: vehicle.condition.replace(/([A-Z])/g, " $1").trim(), secondary: `${liveDriver || "No live driver card"} · DOT update ${formatAge(vehicle.lastEventTimeUtc, now)}${mismatch}` };
 }
 
 function progressPriority(progress: RunProgressRecord | undefined, load: Load) {
@@ -336,7 +340,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
         progress,
         vehicle,
         registration: assignment?.vehicle?.registration || sharedVehicle?.registration || "Vehicle TBC",
-        driver: assignment?.driver?.displayName || sharedVehicle?.driverName || "Driver TBC",
+        driver: sharedVehicle?.driverSource === "TachoMaster" ? sharedVehicle.driverName || assignment?.driver?.displayName || "Driver TBC" : assignment?.driver?.displayName || sharedVehicle?.driverName || "Driver TBC",
         trailer: assignment?.trailerNumber,
         firstPlannedUtc,
         nextEta,
