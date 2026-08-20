@@ -60,6 +60,11 @@ function stateClass(value: string) {
   return "tv-state-upcoming";
 }
 
+function needsAttention(value: string) {
+  const normalised = value.toLowerCase();
+  return normalised.includes("risk") || normalised.includes("stale") || normalised.includes("allocation");
+}
+
 function initialDisplayKey() {
   const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
   const legacy = new URLSearchParams(hash).get("key")?.trim();
@@ -229,7 +234,7 @@ export function PublicTvBoard() {
 
     <section className="tv-run-table">
       <div className="tv-run-head"><span>Run</span><span>Allocation</span><span>Next stop</span><span>ETA</span><span>Live status</span></div>
-      {(feed?.runs || []).map(run => <article className="tv-run-row" key={run.id}>
+      {(feed?.runs || []).map(run => <article className={`tv-run-row ${needsAttention(run.state) ? "tv-run-row-attention" : ""}`} key={run.id}>
         <div className="tv-run-ref"><strong>{run.displayReference || displayRunReference(run.reference, undefined, run.firstPlannedUtc)}</strong><small>{run.status}</small></div>
         <div><strong>{run.vehicle}</strong><span>{run.driver}</span><small>{run.trailer ? `Trailer ${run.trailer}` : "Trailer TBC"}</small></div>
         <div><strong>{run.nextStop || (run.state === "COMPLETED" ? "Run complete" : "Next stop TBC")}</strong><small>Start {time(run.firstPlannedUtc)} · finish {time(run.finalPlannedUtc)}</small></div>
