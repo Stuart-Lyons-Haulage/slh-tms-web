@@ -89,6 +89,7 @@ export function DailyCompliance() {
     amber: rows.filter(row => row.status === "Review" || row.status === "Paper evidence required").length,
     red: rows.filter(row => row.status === "Non-compliant").length,
   }), [rows]);
+  const minimumMinutes = report.data?.policy.minimumPreUseOtherWorkMinutes ?? 15;
 
   function exportFiltered() {
     const header = ["Date", "Asset Type", "Asset", "Run", "Driver", "Employment Type", "Tacho Start", "Pre-use Other Work Minutes", "First Movement", "Fleetio Form", "Fleetio Submitted", "Fleetio User", "Fleetio Driver Match", "Failed Items", "Status", "Reason"];
@@ -135,7 +136,7 @@ export function DailyCompliance() {
     {report.data && <>
       <div className="metrics">
         <article className="metric"><span>Assets in this view</span><strong>{filteredSummary.total}</strong><small>{report.data.summary.vehicles} vehicle duties · {report.data.summary.trailers} trailer duties today</small></article>
-        <article className="metric"><span>Compliant</span><strong>🟢 {filteredSummary.green}</strong><small>Fleetio + minimum {report.data.policy.minimumPreUseOtherWorkMinutes}m Tacho other-work</small></article>
+        <article className="metric"><span>Compliant</span><strong>🟢 {filteredSummary.green}</strong><small>Fleetio + minimum {minimumMinutes}m Tacho other-work</small></article>
         <article className="metric"><span>Paper / review</span><strong>🟠 {filteredSummary.amber}</strong><small>Agency paper exception or incomplete electronic evidence</small></article>
         <article className="metric"><span>Action required</span><strong>🔴 {filteredSummary.red}</strong><small>Employed-driver compliance gap</small></article>
       </div>
@@ -154,7 +155,7 @@ export function DailyCompliance() {
             <td><strong>{row.driverName}</strong><br/><small>{row.employmentType}</small></td>
             <td>{row.runReference}</td>
             <td>{fmtTime(row.tachoDutyStartUtc)}</td>
-            <td><strong>{row.tachoPreUseOtherWorkMinutes == null ? "—" : `${row.tachoPreUseOtherWorkMinutes} min`}</strong><br/><small>{(row.tachoPreUseOtherWorkMinutes ?? 0) >= report.data.policy.minimumPreUseOtherWorkMinutes ? "✓ Meets SLH standard" : "Below / unavailable"}</small></td>
+            <td><strong>{row.tachoPreUseOtherWorkMinutes == null ? "—" : `${row.tachoPreUseOtherWorkMinutes} min`}</strong><br/><small>{(row.tachoPreUseOtherWorkMinutes ?? 0) >= minimumMinutes ? "✓ Meets SLH standard" : "Below / unavailable"}</small></td>
             <td>{row.fleetioInspectionId ? <><strong>{row.fleetioDriverMatched ? "✓" : "⚠"} {row.fleetioForm || "Inspection"}</strong><br/><small>{fmtTime(row.fleetioSubmittedAtUtc)} · {row.fleetioUser || "User unavailable"}{row.fleetioFailedItems ? ` · ${row.fleetioFailedItems} failed item(s)` : ""}</small></> : <strong>Not found</strong>}</td>
             <td>{fmtTime(row.firstMovementUtc)}</td>
             <td><strong>{row.status}</strong><br/><small>{row.reason}</small></td>
