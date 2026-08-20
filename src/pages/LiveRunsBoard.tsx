@@ -180,9 +180,12 @@ function carryOverIsOperationallyActive(row: LiveRunRow) {
     (row.progress?.completedStops || 0) > 0 ||
     (runState && ["BetweenStops", "InProgress", "OnSiteConfirmed", "SiteDelay"].includes(runState)),
   );
-  const liveVehicle = Boolean(row.vehicle && !["Stale", "NotSignedOn"].includes(row.vehicle.condition));
-  const operationalStatus = row.load.status === "Dispatched" || row.load.status === "InProgress";
-  return executionStarted || liveVehicle || operationalStatus;
+  const freshTracking = row.vehicle?.lastEventTimeUtc
+    ? Date.now() - new Date(row.vehicle.lastEventTimeUtc).getTime() <= 30 * 60 * 1000
+    : false;
+  // Historic status alone is not live evidence. Carry a run over only on a
+  // confirmed visit/progression or a fresh DOT position.
+  return executionStarted || freshTracking;
 }
 
 export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
