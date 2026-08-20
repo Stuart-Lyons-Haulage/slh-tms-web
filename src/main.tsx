@@ -20,6 +20,7 @@ import './geofenceRecoveryPatch';
 import './commercialRemovalPatch';
 import './routeGeocodeFallbackPatch';
 import './pollingLoadGuard';
+import './wallboardSnapshotFetchPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
