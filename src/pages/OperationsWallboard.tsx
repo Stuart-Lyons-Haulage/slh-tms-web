@@ -95,7 +95,7 @@ function formatAge(value?: string | Date, now = new Date()) {
 function etaSourceText(eta?: DeliveryEta) {
   if (!eta) return "ETA pending";
   if (eta.source === "Live") return `LIVE ETA ${formatTime(eta.etaUtc)}`;
-  if (eta.source === "Estimated") return `ESTIMATE ${formatTime(eta.etaUtc)}`;
+  if (String(eta.source) === "Estimated") return `ESTIMATE ${formatTime(eta.etaUtc)}`;
   return "planned";
 }
 
@@ -156,11 +156,11 @@ function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta
       priority: 70,
     };
   }
-  if ((progress?.completedStops || 0) > 0 || nextEta?.source === "Live" || nextEta?.source === "Estimated") {
+  if ((progress?.completedStops || 0) > 0 || nextEta?.source === "Live" || String(nextEta?.source) === "Estimated") {
     return {
       status: "route" as const,
       label: "ON ROUTE",
-      detail: nextEta?.source === "Estimated"
+      detail: String(nextEta?.source) === "Estimated"
         ? `${progress?.nextStop?.name || nextEta?.stopName || "Next stop"} · resilient ETA only`
         : progress?.nextStop?.name || nextEta?.stopName || "Live ETA active",
       priority: 55,
@@ -174,7 +174,7 @@ function tachoText(eta?: DeliveryEta) {
   if (eta.tachoStatus === "InsufficientDriveTime") return "insufficient drive time";
   if (eta.tachoStatus === "BreakIncluded") return `${eta.breakMinutesIncluded}m break included`;
   if (eta.tachoStatus === "WithinDriveTime") return "within drive time";
-  if (eta.tachoStatus === "EstimateOnly") return "route estimate only";
+  if (String(eta.tachoStatus) === "EstimateOnly") return "route estimate only";
   if (eta.tachoDriverName) return `matched ${eta.tachoDriverName}`;
   return "tacho unavailable";
 }
