@@ -9,6 +9,7 @@ import './plannerEmptyStopsPatch';
 import './fleetioSyncPatch';
 import './masterDataCleanupFetchPatch';
 import './operationalPresentationPatch';
+import './typeaheadLookupPatch';
 import './managementFallbackPatch';
 import './planLockFetchPatch';
 import './marketNormalizationPatch';
