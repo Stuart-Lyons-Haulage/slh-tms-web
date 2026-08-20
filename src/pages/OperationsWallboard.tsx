@@ -92,6 +92,13 @@ function formatAge(value?: string | Date, now = new Date()) {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
 
+function etaSourceText(eta?: DeliveryEta) {
+  if (!eta) return "ETA pending";
+  if (eta.source === "Live") return `LIVE ETA ${formatTime(eta.etaUtc)}`;
+  if (eta.source === "Estimated") return `ESTIMATE ${formatTime(eta.etaUtc)}`;
+  return "planned";
+}
+
 function firstStop(load?: Load) {
   return [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence)[0];
 }
@@ -129,7 +136,7 @@ function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta
       priority: 100,
     };
   }
-  const hardRisk = etas.find((eta) => eta.tachoStatus === "InsufficientDriveTime" || (eta.source === "Live" && eta.risk === "Late"));
+  const hardRisk = etas.find((eta) => eta.source === "Live" && (eta.risk === "Late" || eta.tachoStatus === "InsufficientDriveTime"));
   if (hardRisk) {
     return {
       status: "late" as const,
@@ -149,8 +156,15 @@ function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta
       priority: 70,
     };
   }
-  if ((progress?.completedStops || 0) > 0 || nextEta?.source === "Live") {
-    return { status: "route" as const, label: "ON ROUTE", detail: progress?.nextStop?.name || nextEta?.stopName || "Live ETA active", priority: 55 };
+  if ((progress?.completedStops || 0) > 0 || nextEta?.source === "Live" || nextEta?.source === "Estimated") {
+    return {
+      status: "route" as const,
+      label: "ON ROUTE",
+      detail: nextEta?.source === "Estimated"
+        ? `${progress?.nextStop?.name || nextEta?.stopName || "Next stop"} · resilient ETA only`
+        : progress?.nextStop?.name || nextEta?.stopName || "Live ETA active",
+      priority: 55,
+    };
   }
   return { status: "scheduled" as const, label: "SCHEDULED", detail: nextEta?.stopName || "Awaiting tracker/geofence evidence", priority: 30 };
 }
@@ -160,6 +174,7 @@ function tachoText(eta?: DeliveryEta) {
   if (eta.tachoStatus === "InsufficientDriveTime") return "insufficient drive time";
   if (eta.tachoStatus === "BreakIncluded") return `${eta.breakMinutesIncluded}m break included`;
   if (eta.tachoStatus === "WithinDriveTime") return "within drive time";
+  if (eta.tachoStatus === "EstimateOnly") return "route estimate only";
   if (eta.tachoDriverName) return `matched ${eta.tachoDriverName}`;
   return "tacho unavailable";
 }
@@ -355,7 +370,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
           ? `${row.progress.currentVisit.geofenceName || "On site"} · ${row.progress.currentVisit.dwellMinutes ?? 0}m`
           : `${completedStops} of ${totalStops || "?"} stops`;
         return <article className={`ops-board-row ${row.status} ${row.id === presentRowId ? "present" : ""}`} role="row" key={row.id} data-row-id={row.id}>
-          <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.nextEta?.source === "Live" ? `ETA ${formatTime(row.nextEta?.etaUtc)}` : "planned"}</small></span>
+          <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{etaSourceText(row.nextEta)}</small></span>
           <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.progress?.nextStop?.name || row.nextEta?.stopName || "Next stop TBC"}</small></span>
           <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
           <span><strong>{row.driver}</strong><small>{tachoText(row.nextEta)}</small></span>
@@ -367,8 +382,8 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     </div>
 
     <footer className="ops-wallboard-footer">
-      <span>Tracker + geofences + TachoMaster only</span>
-      <span>ETA risk and job progress view</span>
+      <span>RoadTech + geofences + Azure Maps truck traffic + TachoMaster</span>
+      <span>Only LIVE ETA can create customer-window risk</span>
       <span>Refresh every 20 seconds</span>
       <span>Last refresh {formatAge(lastRefresh, clock)}</span>
     </footer>
