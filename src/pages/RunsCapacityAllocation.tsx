@@ -215,8 +215,8 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     } finally { setSaving(false); }
   }
 
-  async function resolveLocations(access: string) {
-    const next = stops.map(stop => ({ ...stop }));
+  async function resolveLocations(access: string, source: EditableStop[] = stops) {
+    const next = source.map(stop => ({ ...stop }));
     const failed: string[] = [];
     let resolved = 0;
     for (const stop of next) {
@@ -251,6 +251,32 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     setMessage(failed.length
       ? `${resolved} stop${resolved === 1 ? "" : "s"} located. Check the Site Master postcode for: ${failed.join(", ")}.`
       : `${resolved} stop${resolved === 1 ? "" : "s"} located from Site Master postcode/address data.`);
+    return next;
+  }
+
+  function promptForMissingPostcodes(source: EditableStop[]) {
+    const next = source.map(stop => ({ ...stop }));
+    const missing: string[] = [];
+    for (const stop of next) {
+      const site = matchSite(sites, stop.name);
+      const existing = postcodeFrom(stop.postcode) || postcodeFrom(stop.address) || postcodeFrom(site?.collectionAddress);
+      if (existing) {
+        stop.postcode = existing;
+        continue;
+      }
+
+      const entered = window.prompt(`Postcode needed for ${stop.name}`, stop.postcode || "");
+      if (entered === null) throw new Error("Dispatch cancelled. The route needs a postcode before it can be sent.");
+      const formatted = postcodeFrom(entered) || formatPostcode(entered);
+      if (!postcodeFrom(formatted)) {
+        missing.push(stop.name);
+        continue;
+      }
+      stop.postcode = formatted;
+      stop.address = addressWithPostcode(stop.address, formatted);
+    }
+    if (missing.length) throw new Error(`Add a valid postcode before dispatching: ${missing.join(", ")}.`);
+    setStops(next);
     return next;
   }
 
@@ -299,6 +325,55 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       setRouteSummary(`${miles} miles · estimated drive time ${Math.floor(minutes / 60)}h ${minutes % 60}m · final-stop ETA saved${result.approximate ? " using the resilient road estimate" : ""}.`);
     } catch (error) { setRouteSummary(error instanceof Error ? error.message : "Route calculation failed."); }
     finally { setSaving(false); }
+  }
+
+  async function dispatchRun() {
+    if (!driverId || !vehicleId) {
+      setMessage("Allocate both a driver and vehicle before dispatch.");
+      return;
+    }
+
+    setSaving(true); setMessage(undefined); setRouteSummary(undefined);
+    try {
+      const access = await token();
+      await api.allocateLoad(load.id, { vehicleId, driverId, trailerId: trailerId || undefined }, access);
+      await api.updateLoadUtilisation(load.id, {
+        palletSpacesUsed: Number.isFinite(numericUsed) ? numericUsed : undefined,
+        totalPalletSpaces: effectiveCapacity,
+        capacityType,
+        depotSplits: load.depotSplits,
+        temperatureC: load.temperatureC,
+        plannerNotes: load.plannerNotes,
+      }, access);
+
+      const promptedStops = promptForMissingPostcodes(stops);
+      let routeStops = promptedStops;
+      if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2) routeStops = await resolveLocations(access, promptedStops);
+      if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2)
+        throw new Error("At least two stops need a valid postcode or Site Master location before dispatch.");
+
+      await api.updateLoadStops(load.id, stopPayload(routeStops), access);
+      const result = await api.route(load.id, access) as {
+        routes?: Array<{ summary?: { lengthInMeters?: number; travelTimeInSeconds?: number } }>;
+        approximate?: boolean;
+      };
+      const summary = result.routes?.[0]?.summary;
+      if (!summary) throw new Error("The route service did not return a route, so this run was not dispatched.");
+
+      const minutes = Math.max(1, Math.round((summary.travelTimeInSeconds || 0) / 60));
+      const firstPlanned = routeStops.find(stop => stop.plannedArrivalUtc)?.plannedArrivalUtc;
+      const firstTime = firstPlanned ? new Date(firstPlanned).getTime() : Number.NaN;
+      const baseTime = Number.isFinite(firstTime) && firstTime > Date.now() ? firstTime : Date.now();
+      const finalEta = new Date(baseTime + minutes * 60_000).toISOString();
+      const withEta = routeStops.map((stop, index) => index === routeStops.length - 1 ? { ...stop, plannedArrivalUtc: finalEta } : stop);
+      await api.updateLoadStops(load.id, stopPayload(withEta), access);
+      await api.updateLoadStatus(load.id, "Dispatched", access);
+
+      setStops(withEta); await onSaved(); signalPlanningChange();
+      setMessage(`Run dispatched. Route is good to go${result.approximate ? " using the resilient road estimate" : ""}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The run could not be dispatched.");
+    } finally { setSaving(false); }
   }
 
   async function prepareDriverText(openModal = true) {
@@ -374,9 +449,10 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
 
       <div className="run-card-actions">
         <button type="button" onClick={() => setRouteOpen(value => !value)}>{routeOpen ? "Hide route & ETA" : "Route & ETA"}</button>
+        <button className="primary" type="button" onClick={() => void dispatchRun()} disabled={saving || !driverId || !vehicleId}>{saving ? "Dispatching…" : "Dispatch"}</button>
         <button type="button" onClick={() => void prepareDriverText(true)} disabled={saving}>Preview text</button>
         <button type="button" onClick={() => void copyDriverText()} disabled={saving}>Copy text</button>
-        <button className="primary" type="button" onClick={() => void sendDriverText()} disabled={saving || !driverId || !vehicleId}>Send driver SMS</button>
+        <button type="button" onClick={() => void sendDriverText()} disabled={saving || !driverId || !vehicleId}>Send driver SMS</button>
       </div>
 
       {routeOpen && <div className="run-route-editor">
