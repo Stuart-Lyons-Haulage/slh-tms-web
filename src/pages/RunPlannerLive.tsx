@@ -37,10 +37,11 @@ type RunLine = {
   collectionSite: string;
   deliverySite: string;
   pallets: string;
+  note: string;
 };
-type RunDraft = { key: string; loadId?: string; period: Period; lines: RunLine[] };
+type RunDraft = { key: string; loadId?: string; period: Period; nightOut: boolean; routeJob: string; operationalAmendment: string; lines: RunLine[] };
 
-const blankLine = (): RunLine => ({ key: crypto.randomUUID(), collectionSite: "", deliverySite: "", pallets: "" });
+const blankLine = (): RunLine => ({ key: crypto.randomUUID(), collectionSite: "", deliverySite: "", pallets: "", note: "" });
 const localDate = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -61,6 +62,12 @@ const withPlannerPeriod = (notes: string | undefined, period: Period) => {
     .filter((part) => !part.toLowerCase().startsWith("planner period:"));
   return period ? [`Planner period: ${period}`, ...parts].join(" · ") : parts.join(" · ");
 };
+const plannerTag = (notes: string | undefined, label: string, value: string) => {
+  const parts = (notes || "").split("·").map((part) => part.trim()).filter(Boolean)
+    .filter((part) => !part.toLowerCase().startsWith(`${label.toLowerCase()}:`));
+  return value.trim() ? [`${label}: ${value.trim()}`, ...parts].join(" · ") : parts.join(" · ");
+};
+const plannerBoolean = (notes: string | undefined, label: string) => tagged(notes, label).toLowerCase() === "yes";
 const siteAddress = (sites: Site[], value: string) => sites.find((site) =>
   [site.name, site.driverTextName, site.externalCode, ...(site.aliases || "").split(/[,;|]/)]
     .some((candidate) => normalise(candidate) === normalise(value)))?.collectionAddress;
@@ -92,7 +99,7 @@ export function RunPlannerLive() {
   const hydrate = useCallback((nextControl: PlanningControlData, nextLoads: Load[]) => {
     const ordered = [...nextLoads].sort((left, right) => String(left.reference).localeCompare(String(right.reference)));
     if (!ordered.length) {
-      const shell: RunDraft = { key: `shell-${date}-1`, period: "", lines: [blankLine()] };
+      const shell: RunDraft = { key: `shell-${date}-1`, period: "", nightOut: false, routeJob: "", operationalAmendment: "", lines: [blankLine()] };
       setRuns([shell]);
       setActiveKey(shell.key);
       return;
@@ -107,12 +114,16 @@ export function RunPlannerLive() {
           collectionSite: order.collection,
           deliverySite: order.destination,
           pallets: String(allocation.pallets),
+          note: load.stops.find((stop) => stop.orderId === order.id && /^deliver/i.test(stop.name))?.plannerNote || "",
         }] : [];
       });
       return {
         key: load.id,
         loadId: load.id,
         period: periodFromLoad(load),
+        nightOut: plannerBoolean(load.plannerNotes, "Night out"),
+        routeJob: tagged(load.plannerNotes, "Route/job"),
+        operationalAmendment: tagged(load.plannerNotes, "Operational amendment"),
         lines: lines.length ? lines : [blankLine()],
       } satisfies RunDraft;
     });
@@ -226,7 +237,7 @@ export function RunPlannerLive() {
       return Boolean(line.orderId) && pallets !== undefined && pallets > 0;
     }).flatMap((line) => [
       { name: `Collect · ${line.collectionSite}`, address: siteAddress(sites, line.collectionSite) },
-      { orderId: line.orderId, name: `Deliver · ${line.deliverySite}`, address: siteAddress(sites, line.deliverySite) },
+      { orderId: line.orderId, name: `Deliver · ${line.deliverySite}`, address: siteAddress(sites, line.deliverySite), plannerNote: line.note.trim() || undefined },
     ]);
   }
 
@@ -249,8 +260,14 @@ export function RunPlannerLive() {
     await api.updateLoadStops(loadId, stops, access);
   }
 
-  async function persistPeriod(run: RunDraft, period: Period) {
+  function notesForRun(run: RunDraft, period = run.period) {
+    const current = loads.find((item) => item.id === run.loadId)?.plannerNotes;
+    return plannerTag(plannerTag(plannerTag(withPlannerPeriod(current, period), "Night out", run.nightOut ? "Yes" : "No"), "Route/job", run.routeJob), "Operational amendment", run.operationalAmendment);
+  }
+
+  async function persistRunDetails(run: RunDraft, patch: Partial<RunDraft>) {
     if (!run.loadId) return;
+    const next = { ...run, ...patch };
     const load = loads.find((item) => item.id === run.loadId);
     try {
       await request(`/api/v1/loads/${run.loadId}/utilisation`, await token(), {
@@ -262,12 +279,12 @@ export function RunPlannerLive() {
           capacityType: load?.capacityType ?? "Standard pallets",
           depotSplits: load?.depotSplits,
           temperatureC: load?.temperatureC,
-          plannerNotes: withPlannerPeriod(load?.plannerNotes, period),
+          plannerNotes: notesForRun(next),
         }),
       });
       signalPlanningChange();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Run period could not be auto-saved.");
+      setMessage(error instanceof Error ? error.message : "Run details could not be auto-saved.");
     }
   }
 
@@ -348,7 +365,7 @@ export function RunPlannerLive() {
       orderId: order.id,
       collectionSite: order.collection,
       deliverySite: order.destination,
-      pallets: String(order.outstandingPallets),
+      pallets: String(order.outstandingPallets), note: "",
     };
     const blankIndex = active.lines.findIndex((item) => !item.orderId && !item.collectionSite && !item.deliverySite && !item.pallets);
     const nextLines = blankIndex >= 0
@@ -373,7 +390,7 @@ export function RunPlannerLive() {
           palletSpacesUsed: order.outstandingPallets,
           totalPalletSpaces: 26,
           capacityType: "Standard pallets",
-          plannerNotes: active.period ? `Planner period: ${active.period}` : undefined,
+          plannerNotes: notesForRun(active),
           stops: buildStops(nextLines),
         }, access);
         loadId = created.id;
@@ -426,7 +443,7 @@ export function RunPlannerLive() {
     saveTimers.current = {};
     setDate(nextDate);
     setMessage(undefined);
-    const shell: RunDraft = { key: `shell-${nextDate}-1`, period: "", lines: [blankLine()] };
+    const shell: RunDraft = { key: `shell-${nextDate}-1`, period: "", nightOut: false, routeJob: "", operationalAmendment: "", lines: [blankLine()] };
     setRuns([shell]);
     setActiveKey(shell.key);
   }
@@ -436,7 +453,7 @@ export function RunPlannerLive() {
       <label>Plan date <input type="date" value={date} onChange={(event) => resetForDate(event.target.value)} /></label>
       <button onClick={() => void refreshAll()} disabled={Boolean(busyKey)}>Refresh</button>
       <button className="primary" onClick={() => {
-        const draft: RunDraft = { key: `shell-${date}-${crypto.randomUUID()}`, period: "", lines: [blankLine()] };
+        const draft: RunDraft = { key: `shell-${date}-${crypto.randomUUID()}`, period: "", nightOut: false, routeJob: "", operationalAmendment: "", lines: [blankLine()] };
         setRuns((current) => [...current, draft]);
         setActiveKey(draft.key);
       }}>+ Add run</button>
@@ -466,19 +483,25 @@ export function RunPlannerLive() {
                 {(["AM", "PM"] as const).map((period) => <button key={period} type="button" className={run.period === period ? "selected" : ""} onClick={(event) => {
                   event.stopPropagation();
                   updateRun(run.key, (current) => ({ ...current, period }));
-                  void persistPeriod(run, period);
+                  void persistRunDetails(run, { period });
                 }}>{period}</button>)}
               </div>
               <div className={`simple-run-pallets ${pallets > 26 ? "over" : ""}`}><strong>{pallets}</strong><small>/ 26 pallets</small></div>
             </div>
 
-            <div className="simple-run-columns"><span>Collection</span><span>Pallets</span><span>Delivery</span><span /></div>
+            <div className="simple-run-details">
+              <label>Route / job<input value={run.routeJob} placeholder="Route or job selection" onChange={(event) => updateRun(run.key, (current) => ({ ...current, routeJob: event.target.value }))} onBlur={() => void persistRunDetails(run, { routeJob: run.routeJob })} /></label>
+              <label className="simple-night-out"><input type="checkbox" checked={run.nightOut} onChange={(event) => { const nightOut = event.target.checked; updateRun(run.key, (current) => ({ ...current, nightOut })); void persistRunDetails(run, { nightOut }); }} /> Night out confirmed</label>
+              <label>Operational amendment<input value={run.operationalAmendment} placeholder="e.g. swap to trailer 123 / breakdown" onChange={(event) => updateRun(run.key, (current) => ({ ...current, operationalAmendment: event.target.value }))} onBlur={() => void persistRunDetails(run, { operationalAmendment: run.operationalAmendment })} /></label>
+            </div>
+            <div className="simple-run-columns"><span>Collection</span><span>Pallets</span><span>Delivery</span><span>Line note</span><span /></div>
             <div className="simple-run-lines">
               {run.lines.map((line, lineIndex) => <div className="simple-run-line" key={line.key}>
                 <span className="simple-line-number">{lineIndex + 1}</span>
                 <input value={line.collectionSite} readOnly={Boolean(line.orderId)} onChange={(event) => updateLine(run.key, line.key, { collectionSite: event.target.value })} placeholder="Collection" />
                 <input className="simple-pallet-input" type="number" min="0" inputMode="numeric" value={line.pallets} onChange={(event) => scheduleQuantity(run, line, event.target.value)} placeholder="0" />
                 <input value={line.deliverySite} readOnly={Boolean(line.orderId)} onChange={(event) => updateLine(run.key, line.key, { deliverySite: event.target.value })} placeholder="Delivery" />
+                <input value={line.note} onChange={(event) => updateLine(run.key, line.key, { note: event.target.value })} onBlur={() => { if (run.loadId) void (async () => { try { await syncStops(run.loadId!, run.lines, await token()); setMessage("Line note auto-saved."); } catch (error) { setMessage(error instanceof Error ? error.message : "Line note could not be saved."); } })(); }} placeholder="Facility / load-line note" />
                 <button type="button" className="simple-clear-line" aria-label={`Clear line ${lineIndex + 1}`} disabled={busyKey === `${run.key}:${line.key}`} onClick={(event) => {
                   event.stopPropagation();
                   void clearLine(run, line);
@@ -497,7 +520,7 @@ export function RunPlannerLive() {
         })}
 
         <button className="simple-add-run" type="button" onClick={() => {
-          const draft: RunDraft = { key: `shell-${date}-${crypto.randomUUID()}`, period: "", lines: [blankLine()] };
+          const draft: RunDraft = { key: `shell-${date}-${crypto.randomUUID()}`, period: "", nightOut: false, routeJob: "", operationalAmendment: "", lines: [blankLine()] };
           setRuns((current) => [...current, draft]);
           setActiveKey(draft.key);
         }}>+ Add another run</button>

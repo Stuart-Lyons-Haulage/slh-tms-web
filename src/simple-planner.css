@@ -170,7 +170,7 @@
 
 .simple-run-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 88px minmax(0, 1fr) 38px;
+  grid-template-columns: minmax(0, 1fr) 88px minmax(0, 1fr) minmax(150px, .9fr) 38px;
   gap: 7px;
   padding: 7px 12px 2px 40px;
   color: #657985;
@@ -188,7 +188,7 @@
 
 .simple-run-line {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 88px minmax(0, 1fr) 34px;
+  grid-template-columns: 24px minmax(0, 1fr) 88px minmax(0, 1fr) minmax(150px, .9fr) 34px;
   gap: 7px;
   align-items: center;
 }
@@ -224,6 +224,18 @@
   text-align: center;
   font-weight: 850;
 }
+
+.simple-run-details {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(250px, 1.4fr);
+  gap: 10px;
+  align-items: end;
+  padding: 0 12px 8px;
+}
+
+.simple-run-details label { display: grid; gap: 4px; color: #526a76; font-size: .72rem; font-weight: 800; }
+.simple-run-details input:not([type="checkbox"]) { min-height: 36px; border: 1px solid #c8d6dc; border-radius: 7px; padding: 6px 8px; }
+.simple-run-details .simple-night-out { display: flex; align-items: center; gap: 6px; min-height: 36px; white-space: nowrap; }
 
 .simple-clear-line {
   width: 34px;
@@ -435,10 +447,14 @@
     grid-row: 2;
   }
 
+  .simple-run-line input:nth-of-type(4) { grid-column: 2 / 4; grid-row: 3; }
+
   .simple-clear-line {
     grid-column: 4;
-    grid-row: 1 / 3;
+    grid-row: 1 / 4;
   }
+
+  .simple-run-details { grid-template-columns: 1fr; }
 
   .simple-run-footer {
     align-items: stretch;
