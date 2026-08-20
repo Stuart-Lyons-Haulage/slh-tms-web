@@ -129,7 +129,7 @@ function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta
       priority: 100,
     };
   }
-  const hardRisk = etas.find((eta) => eta.risk === "Late" || eta.tachoStatus === "InsufficientDriveTime");
+  const hardRisk = etas.find((eta) => eta.tachoStatus === "InsufficientDriveTime" || (eta.source === "Live" && eta.risk === "Late"));
   if (hardRisk) {
     return {
       status: "late" as const,
@@ -138,7 +138,7 @@ function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta
       priority: 95,
     };
   }
-  if (nextEta?.risk === "AtRisk") {
+  if (nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
     return { status: "risk" as const, label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
   }
   if (progress?.currentVisit) {
@@ -207,16 +207,20 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     ]);
     const etas = etaResult.status === "fulfilled" ? etaResult.value : undefined;
     const progress = progressResult.status === "fulfilled" ? progressResult.value : undefined;
-    setLiveData({
-      etas: etas?.records || [],
-      progress: progress?.records || [],
-      warning: [progress?.warning, etas ? undefined : "Live ETA calculation is still catching up.", progress ? undefined : "Geofence progression is still catching up."].filter(Boolean).join(" "),
-      geofenceAvailable: progress?.geofenceAvailable !== false,
-      geofenceCount: progress?.geofenceCount || 0,
-      geofenceLinkedRuns: progress?.geofenceLinkedRuns || 0,
-      latestTrackingUtc: progress?.latestTrackingUtc,
-      calculatedAtUtc: etas?.calculatedAtUtc,
-    });
+    setLiveData((previous) => ({
+      etas: etas?.records ?? previous?.etas ?? [],
+      progress: progress?.records ?? previous?.progress ?? [],
+      warning: [
+        progress?.warning,
+        etas ? undefined : "Live ETA refresh is catching up; retaining the last confirmed ETA snapshot.",
+        progress ? undefined : "Geofence refresh is catching up; retaining the last confirmed progression snapshot.",
+      ].filter(Boolean).join(" "),
+      geofenceAvailable: progress ? progress.geofenceAvailable !== false : previous?.geofenceAvailable ?? true,
+      geofenceCount: progress?.geofenceCount ?? previous?.geofenceCount ?? 0,
+      geofenceLinkedRuns: progress?.geofenceLinkedRuns ?? previous?.geofenceLinkedRuns ?? 0,
+      latestTrackingUtc: progress?.latestTrackingUtc ?? previous?.latestTrackingUtc,
+      calculatedAtUtc: etas?.calculatedAtUtc ?? previous?.calculatedAtUtc,
+    }));
   }, [today, token, tvAccessKey]);
 
   useEffect(() => {
