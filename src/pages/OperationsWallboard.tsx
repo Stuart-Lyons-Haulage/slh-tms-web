@@ -164,19 +164,13 @@ function tachoText(eta?: DeliveryEta) {
   return "tacho unavailable";
 }
 
-function fallbackAfter<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
-  return Promise.race([
-    promise.catch(() => fallback),
-    new Promise<T>((resolve) => window.setTimeout(() => resolve(fallback), timeoutMs)),
-  ]);
-}
-
 export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
   const token = useAccessToken();
   const today = todayIsoDate();
   const tvAccessKey = tvMode ? new URLSearchParams(window.location.search).get("key")?.trim() : undefined;
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
+  const [liveData, setLiveData] = useState<Pick<WallboardData, "etas" | "progress" | "warning" | "geofenceAvailable" | "geofenceCount" | "geofenceLinkedRuns" | "latestTrackingUtc" | "calculatedAtUtc">>();
   const tableRef = useRef<HTMLDivElement | null>(null);
 
   const { data, error, loading, refresh } = useApi(useCallback(async () => {
@@ -185,53 +179,70 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     const getLoads = (date: string) => tvAccessKey
       ? request<Load[]>(`/api/v1/loads?date=${encodeURIComponent(date)}`, undefined, tvInit)
       : api.loads(date, access);
-    const getDeliveryEtas = (date: string) => tvAccessKey
-      ? request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(date)}`, undefined, tvInit, 40000)
-      : api.deliveryEtas(date, access);
-    const getRunProgress = (date: string) =>
-      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(date)}`, access, tvInit, 40000);
     const getAssignments = (from: string, to: string) => tvAccessKey
       ? request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, undefined, tvInit)
       : api.driverAssignments(from, to, access);
-    const [currentLoads, currentEtas, currentProgress, assignments] = await Promise.all([
+    const [currentLoads, assignments] = await Promise.all([
       getLoads(today),
-      fallbackAfter(getDeliveryEtas(today), undefined, 7000),
-      fallbackAfter(getRunProgress(today), undefined, 7000),
       getAssignments(today, today),
     ]);
-    const etaWarning = currentEtas ? undefined : "Live ETA calculation is still catching up; showing tracker, geofence and allocation progress on this refresh.";
-    const progressWarning = currentProgress ? undefined : "Geofence run progression is still catching up; showing planned runs and allocation progress on this refresh.";
     return {
       loads: currentLoads.filter((load) => load.planningDate === today),
-      etas: currentEtas?.records || [],
-      progress: currentProgress?.records || [],
+      etas: [],
+      progress: [],
       assignments,
-      warning: [currentProgress?.warning, etaWarning, progressWarning].filter(Boolean).join(" "),
-      geofenceAvailable: currentProgress?.geofenceAvailable !== false,
-      geofenceCount: currentProgress?.geofenceCount || 0,
-      geofenceLinkedRuns: currentProgress?.geofenceLinkedRuns || 0,
-      latestTrackingUtc: currentProgress?.latestTrackingUtc,
-      calculatedAtUtc: currentEtas?.calculatedAtUtc,
+      warning: "Live tracker, geofence and ETA evidence is loading.",
+      geofenceAvailable: true,
+      geofenceCount: 0,
+      geofenceLinkedRuns: 0,
     } satisfies WallboardData;
   }, [today, token, tvAccessKey]));
+
+  const refreshLiveData = useCallback(async () => {
+    const access = tvAccessKey ? undefined : await token();
+    const tvInit = tvAccessKey ? { headers: { "X-TMS-TV-Key": tvAccessKey } } : undefined;
+    const [etaResult, progressResult] = await Promise.allSettled([
+      request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+    ]);
+    const etas = etaResult.status === "fulfilled" ? etaResult.value : undefined;
+    const progress = progressResult.status === "fulfilled" ? progressResult.value : undefined;
+    setLiveData({
+      etas: etas?.records || [],
+      progress: progress?.records || [],
+      warning: [progress?.warning, etas ? undefined : "Live ETA calculation is still catching up.", progress ? undefined : "Geofence progression is still catching up."].filter(Boolean).join(" "),
+      geofenceAvailable: progress?.geofenceAvailable !== false,
+      geofenceCount: progress?.geofenceCount || 0,
+      geofenceLinkedRuns: progress?.geofenceLinkedRuns || 0,
+      latestTrackingUtc: progress?.latestTrackingUtc,
+      calculatedAtUtc: etas?.calculatedAtUtc,
+    });
+  }, [today, token, tvAccessKey]);
 
   useEffect(() => {
     const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
     const refreshTimer = window.setInterval(() => {
-      void refresh().then(() => setLastRefresh(new Date()));
+      void Promise.allSettled([refresh(), refreshLiveData()]).then(() => setLastRefresh(new Date()));
     }, 20000);
+    void refreshLiveData().then(() => setLastRefresh(new Date()));
     return () => {
       window.clearInterval(clockTimer);
       window.clearInterval(refreshTimer);
     };
-  }, [refresh]);
+  }, [refresh, refreshLiveData]);
+
+  const boardData = useMemo<WallboardData | undefined>(() => {
+    if (!data) return undefined;
+    if (!liveData) return data;
+    return { ...data, ...liveData, warning: liveData.warning || data.warning };
+  }, [data, liveData]);
 
   const rows = useMemo<BoardRow[]>(() => {
-    const loadsById = new Map((data?.loads || []).map((load) => [load.id, load]));
-    const progressByLoad = new Map((data?.progress || []).map((item) => [item.loadId, item]));
-    const assignmentByLoad = new Map((data?.assignments || []).map((item) => [item.loadId, item]));
+    const loadsById = new Map((boardData?.loads || []).map((load) => [load.id, load]));
+    const progressByLoad = new Map((boardData?.progress || []).map((item) => [item.loadId, item]));
+    const assignmentByLoad = new Map((boardData?.assignments || []).map((item) => [item.loadId, item]));
     const etaByLoad = new Map<string, DeliveryEta[]>();
-    for (const eta of data?.etas || []) {
+    for (const eta of boardData?.etas || []) {
       const list = etaByLoad.get(eta.loadId) || [];
       list.push(eta);
       etaByLoad.set(eta.loadId, list);
@@ -275,7 +286,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
         if (right.status === "late" && left.status !== "late") return 1;
         return leftTime - rightTime;
       });
-  }, [data]);
+  }, [boardData]);
 
   const presentRowId = useMemo(() => {
     if (!rows.length) return undefined;
@@ -314,15 +325,15 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     </header>
 
     <div className="ops-wallboard-summary">
-      <article><span>Active board</span><strong>{rows.length}</strong><small>today plus live carry-over</small></article>
-      <article className="green"><span>Tracker live</span><strong>{formatAge(data?.latestTrackingUtc, clock)}</strong><small>{data?.geofenceLinkedRuns ?? 0} geofence-linked runs</small></article>
+      <article><span>Active board</span><strong>{rows.length}</strong><small>today's live runs</small></article>
+      <article className="green"><span>Tracker live</span><strong>{formatAge(boardData?.latestTrackingUtc, clock)}</strong><small>{boardData?.geofenceLinkedRuns ?? 0} geofence-linked runs</small></article>
       <article className="amber"><span>On site</span><strong>{onSite}</strong><small>dwell monitored by geofence</small></article>
       <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} late · {risk} at risk</small></article>
-      <article><span>Updated</span><strong>{formatAge(lastRefresh, clock)}</strong><small>{data?.geofenceCount ?? 0} approved geofences</small></article>
+      <article><span>Updated</span><strong>{formatAge(lastRefresh, clock)}</strong><small>{boardData?.geofenceCount ?? 0} approved geofences</small></article>
     </div>
 
-    {(error || data?.warning || data?.geofenceAvailable === false) && <div className="ops-wallboard-alert">
-      {error || data?.warning || "Geofence progression is unavailable; ETA risk is using tracker/tacho data where available."}
+    {(error || boardData?.warning || boardData?.geofenceAvailable === false) && <div className="ops-wallboard-alert">
+      {error || boardData?.warning || "Geofence progression is unavailable; ETA risk is using tracker/tacho data where available."}
     </div>}
 
     <div className="ops-board-table" ref={tableRef} role="table" aria-label="Operations arrivals and departures">
@@ -345,7 +356,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
           <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
           <span><strong>{row.driver}</strong><small>{tachoText(row.nextEta)}</small></span>
           <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${progressPercent}%` }} /></div><small>{progressPercent}% complete</small></span>
-          <span className="time-cell eta"><strong>{formatTime(row.nextEta?.etaUtc)}</strong><small>{formatAge(row.nextEta?.trackingUpdatedAtUtc || data?.latestTrackingUtc, clock)}</small></span>
+          <span className="time-cell eta"><strong>{formatTime(row.nextEta?.etaUtc)}</strong><small>{formatAge(row.nextEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}</small></span>
           <span className="status-cell"><strong>{row.statusLabel}</strong><small>{buffer == null ? row.statusDetail : `${buffer >= 0 ? "+" : ""}${buffer}m · ${row.statusDetail}`}</small></span>
         </article>;
       })}
