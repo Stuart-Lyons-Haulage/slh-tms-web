@@ -36,6 +36,8 @@ type FleetioTrailer = FleetioAsset & {
   trailerNumber: string;
   fleetioCNumber?: string;
   type?: string;
+  standardCapacity?: number;
+  euroCapacity?: number;
 };
 
 type FleetioAssetStatus = {
@@ -62,6 +64,11 @@ type UnifiedRow = {
 };
 
 const normalise = (value: unknown) => String(value ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+const trailerKey = (value: unknown) => {
+  const key = normalise(value);
+  const match = key.match(/^(?:SLH|TRAILER|TRL)?0*(\d{1,3})$/);
+  return match ? String(Number(match[1])) : key;
+};
 const text = (value: unknown) => value == null || value === "" ? "—" : String(value);
 const date = (value?: string) => {
   if (!value) return "—";
@@ -170,11 +177,11 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
     } else {
       const assets = fleetio?.trailers || [];
       for (const master of masters) {
-        const trailerNumber = normalise(master.trailerNumber);
+        const trailerNumber = trailerKey(master.trailerNumber);
         const asset = assets.find(item => !used.has(item.fleetioId) && (
           item.tmsTrailerId === master.id ||
-          (trailerNumber && normalise(item.trailerNumber) === trailerNumber) ||
-          (trailerNumber && normalise(item.fleetioName) === trailerNumber)
+          (trailerNumber && trailerKey(item.trailerNumber) === trailerNumber) ||
+          (trailerNumber && trailerKey(item.fleetioName) === trailerNumber)
         ));
         if (asset) used.add(asset.fleetioId);
         result.push({ key: `tms-${master.id}`, master, fleetio: asset, state: asset ? "Linked" : "TMS only" });
@@ -317,8 +324,8 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
               return <tr key={row.key} className={vor ? "vor-row" : undefined}>
                 <td><strong>{trailerNumber}</strong></td>
                 <td>{text(master?.type ?? asset?.type)}</td>
-                <td>{text(master?.standardCapacity)}</td>
-                <td>{text(master?.euroCapacity)}</td>
+                <td>{text(master?.standardCapacity ?? asset?.standardCapacity)}</td>
+                <td>{text(master?.euroCapacity ?? asset?.euroCapacity)}</td>
                 <td>{text(asset?.fleetioCNumber)}</td>
                 <td><small>{asset ? `${text(asset.fleetioName)} · ${asset.fleetioId}` : "—"}</small></td>
                 <td>{description(asset)}{asset?.vin && <><br/><small>{asset.vin}</small></>}</td>
