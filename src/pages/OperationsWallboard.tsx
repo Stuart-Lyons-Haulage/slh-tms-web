@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, request, type DeliveryEta, type DeliveryEtas, type DriverAssignment, type Load } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
@@ -56,6 +56,18 @@ type BoardRow = {
   statusLabel: string;
   statusDetail: string;
   priority: number;
+};
+type WallboardData = {
+  loads: Load[];
+  etas: DeliveryEta[];
+  progress: RunProgressRecord[];
+  assignments: DriverAssignment[];
+  warning: string;
+  geofenceAvailable: boolean;
+  geofenceCount: number;
+  geofenceLinkedRuns: number;
+  latestTrackingUtc?: string;
+  calculatedAtUtc?: string;
 };
 
 const UK_TIME_ZONE = "Europe/London";
@@ -152,12 +164,20 @@ function tachoText(eta?: DeliveryEta) {
   return "tacho unavailable";
 }
 
+function fallbackAfter<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
+  return Promise.race([
+    promise.catch(() => fallback),
+    new Promise<T>((resolve) => window.setTimeout(() => resolve(fallback), timeoutMs)),
+  ]);
+}
+
 export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
   const token = useAccessToken();
   const today = todayIsoDate();
   const tvAccessKey = tvMode ? new URLSearchParams(window.location.search).get("key")?.trim() : undefined;
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
+  const tableRef = useRef<HTMLDivElement | null>(null);
 
   const { data, error, loading, refresh } = useApi(useCallback(async () => {
     const access = tvAccessKey ? undefined : await token();
@@ -175,8 +195,8 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       : api.driverAssignments(from, to, access);
     const [currentLoads, currentEtas, currentProgress, assignments] = await Promise.all([
       getLoads(today),
-      getDeliveryEtas(today).catch(() => undefined),
-      getRunProgress(today).catch(() => undefined),
+      fallbackAfter(getDeliveryEtas(today), undefined, 7000),
+      fallbackAfter(getRunProgress(today), undefined, 7000),
       getAssignments(today, today),
     ]);
     const etaWarning = currentEtas ? undefined : "Live ETA calculation is still catching up; showing tracker, geofence and allocation progress on this refresh.";
@@ -192,7 +212,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       geofenceLinkedRuns: currentProgress?.geofenceLinkedRuns || 0,
       latestTrackingUtc: currentProgress?.latestTrackingUtc,
       calculatedAtUtc: currentEtas?.calculatedAtUtc,
-    };
+    } satisfies WallboardData;
   }, [today, token, tvAccessKey]));
 
   useEffect(() => {
@@ -247,17 +267,32 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
         statusDetail: status.detail,
         priority: status.priority,
       };
-    }).filter((row) => row.load?.status !== "Cancelled")
+    }).filter((row) => row.load?.status !== "Cancelled" && row.status !== "complete")
       .sort((left, right) => {
-        const priority = right.priority - left.priority;
-        if (priority) return priority;
-        return (ms(left.scheduledUtc) || Number.MAX_SAFE_INTEGER) - (ms(right.scheduledUtc) || Number.MAX_SAFE_INTEGER);
+        const leftTime = ms(left.scheduledUtc) || Number.MAX_SAFE_INTEGER;
+        const rightTime = ms(right.scheduledUtc) || Number.MAX_SAFE_INTEGER;
+        if (left.status === "late" && right.status !== "late") return -1;
+        if (right.status === "late" && left.status !== "late") return 1;
+        return leftTime - rightTime;
       });
   }, [data]);
 
+  const presentRowId = useMemo(() => {
+    if (!rows.length) return undefined;
+    const now = clock.getTime();
+    const tolerance = 30 * 60 * 1000;
+    return rows.find((row) => (ms(row.scheduledUtc) || 0) >= now - tolerance)?.id || rows.at(-1)?.id;
+  }, [clock, rows]);
+
+  useEffect(() => {
+    if (!tvMode || !presentRowId || loading) return;
+    window.setTimeout(() => {
+      tableRef.current?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 350);
+  }, [lastRefresh, loading, presentRowId, tvMode]);
+
   const late = rows.filter((row) => row.status === "late").length;
   const risk = rows.filter((row) => row.status === "risk").length;
-  const live = rows.filter((row) => row.nextEta?.source === "Live" || row.progress?.currentVisit || (row.progress?.completedStops || 0) > 0).length;
   const onSite = rows.filter((row) => row.status === "onsite").length;
 
   async function fullscreen() {
@@ -279,38 +314,38 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     </header>
 
     <div className="ops-wallboard-summary">
-      <article><span>Active board</span><strong>{rows.length}</strong><small>runs and carried-over jobs</small></article>
-      <article className="green"><span>Tracker/geofence live</span><strong>{live}</strong><small>{data?.geofenceLinkedRuns ?? 0} linked runs</small></article>
+      <article><span>Active board</span><strong>{rows.length}</strong><small>today plus live carry-over</small></article>
+      <article className="green"><span>Tracker live</span><strong>{formatAge(data?.latestTrackingUtc, clock)}</strong><small>{data?.geofenceLinkedRuns ?? 0} geofence-linked runs</small></article>
       <article className="amber"><span>On site</span><strong>{onSite}</strong><small>dwell monitored by geofence</small></article>
       <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} late · {risk} at risk</small></article>
-      <article><span>Latest tracker</span><strong>{formatAge(data?.latestTrackingUtc, clock)}</strong><small>{data?.geofenceCount ?? 0} approved geofences</small></article>
+      <article><span>Updated</span><strong>{formatAge(lastRefresh, clock)}</strong><small>{data?.geofenceCount ?? 0} approved geofences</small></article>
     </div>
 
     {(error || data?.warning || data?.geofenceAvailable === false) && <div className="ops-wallboard-alert">
       {error || data?.warning || "Geofence progression is unavailable; ETA risk is using tracker/tacho data where available."}
     </div>}
 
-    <div className="ops-board-table" role="table" aria-label="Operations arrivals and departures">
+    <div className="ops-board-table" ref={tableRef} role="table" aria-label="Operations arrivals and departures">
       <div className="ops-board-head" role="row">
-        <span>STD</span><span>ETA</span><span>Run</span><span>Vehicle</span><span>Driver</span><span>Next / destination</span><span>Progress</span><span>Tracker</span><span>Tacho</span><span>Status</span>
+        <span>Time</span><span>Run</span><span>Vehicle</span><span>Driver</span><span>Progress</span><span>ETA</span><span>Status</span>
       </div>
       {loading && !data && <div className="ops-board-empty">Loading tracker, geofence and tacho progress...</div>}
       {!loading && rows.length === 0 && <div className="ops-board-empty">No active runs are available for the wallboard.</div>}
       {rows.map((row) => {
         const buffer = minutesToWindow(row.nextEta);
+        const completedStops = row.progress?.completedStops ?? 0;
+        const totalStops = row.progress?.totalStops || row.etas.length || row.load?.stops?.length || 0;
+        const progressPercent = totalStops > 0 ? Math.min(100, Math.round((completedStops / totalStops) * 100)) : Math.round(row.progress?.progressPercent ?? 0);
         const progressLabel = row.progress?.currentVisit
           ? `${row.progress.currentVisit.geofenceName || "On site"} · ${row.progress.currentVisit.dwellMinutes ?? 0}m`
-          : `${row.progress?.completedStops ?? 0}/${row.progress?.totalStops ?? row.etas.length} stops`;
-        return <article className={`ops-board-row ${row.status}`} role="row" key={row.id}>
-          <span className="time-cell">{formatTime(row.scheduledUtc)}</span>
-          <span className="time-cell eta">{formatTime(row.nextEta?.etaUtc)}</span>
-          <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : row.load?.status || row.progress?.runState || "planned"}</small></span>
-          <span><strong>{row.vehicle}</strong><small>{row.nextEta?.source === "Live" ? "live ETA" : "planned ETA"}</small></span>
-          <span><strong>{row.driver}</strong><small>{row.nextEta?.tachoDriverName ? "tacho matched" : "allocation / pending"}</small></span>
-          <span className="route-cell"><strong>{row.progress?.nextStop?.name || row.nextEta?.stopName || "Next stop TBC"}</strong><small>{row.route}</small></span>
-          <span><strong>{progressLabel}</strong><small>{Math.round(row.progress?.progressPercent ?? 0)}% complete</small></span>
-          <span><strong>{formatAge(row.nextEta?.trackingUpdatedAtUtc, clock)}</strong><small>{row.nextEta?.source || "Unavailable"}</small></span>
-          <span><strong>{tachoText(row.nextEta)}</strong><small>{row.nextEta?.driveAvailableTodayMinutes != null ? `${row.nextEta.driveAvailableTodayMinutes} min drive left` : "hours pending"}</small></span>
+          : `${completedStops} of ${totalStops || "?"} stops`;
+        return <article className={`ops-board-row ${row.status} ${row.id === presentRowId ? "present" : ""}`} role="row" key={row.id} data-row-id={row.id}>
+          <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.nextEta?.source === "Live" ? `ETA ${formatTime(row.nextEta?.etaUtc)}` : "planned"}</small></span>
+          <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.progress?.nextStop?.name || row.nextEta?.stopName || "Next stop TBC"}</small></span>
+          <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
+          <span><strong>{row.driver}</strong><small>{tachoText(row.nextEta)}</small></span>
+          <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${progressPercent}%` }} /></div><small>{progressPercent}% complete</small></span>
+          <span className="time-cell eta"><strong>{formatTime(row.nextEta?.etaUtc)}</strong><small>{formatAge(row.nextEta?.trackingUpdatedAtUtc || data?.latestTrackingUtc, clock)}</small></span>
           <span className="status-cell"><strong>{row.statusLabel}</strong><small>{buffer == null ? row.statusDetail : `${buffer >= 0 ? "+" : ""}${buffer}m · ${row.statusDetail}`}</small></span>
         </article>;
       })}
