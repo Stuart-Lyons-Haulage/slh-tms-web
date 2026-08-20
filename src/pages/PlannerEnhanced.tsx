@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { RunPlannerLive } from "./RunPlannerLive";
+import { SubcontractorQuickAdd } from "./SubcontractorQuickAdd";
 
 export function PlannerEnhanced() {
   return <section className="planner-enhanced-page">
@@ -11,10 +12,11 @@ export function PlannerEnhanced() {
       </div>
       <Link className="button-like primary" to="/pallet-control" target="_blank" rel="noopener noreferrer">Open Pallet Control · Screen 2 ↗</Link>
     </div>
+    <SubcontractorQuickAdd />
     <RunPlannerLive />
     <div className="mobile-planner-handoff">
       <strong>Allocation and dispatch are on Runs.</strong>
-      <span>After the plan is built, assign the driver, vehicle and trailer from Runs.</span>
+      <span>After the plan is built, assign the driver, vehicle and trailer from Runs. Subcontractor drivers and vehicles added above appear in the same master lists.</span>
       <Link to="/loads">Open Runs →</Link>
     </div>
   </section>;
