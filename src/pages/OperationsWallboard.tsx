@@ -158,6 +158,11 @@ function tachoText(eta?: DeliveryEta) {
   return "tacho unavailable";
 }
 
+function isActiveCarryOver(progress: RunProgressRecord) {
+  if (progress.runState === "Completed") return false;
+  return Boolean(progress.currentVisit || progress.completedStops > 0 || progress.runState === "BetweenStops");
+}
+
 export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
   const token = useAccessToken();
   const today = todayIsoDate();
@@ -189,12 +194,14 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       getRunProgress(today).catch(() => undefined),
       getAssignments(previous, today),
     ]);
+    const carryOverProgress = (previousProgress?.records || []).filter(isActiveCarryOver);
+    const carryOverIds = new Set(carryOverProgress.map((item) => item.loadId));
     const etaWarning = currentEtas ? undefined : "Live ETA calculation is still catching up; showing tracker, geofence and allocation progress on this refresh.";
     const progressWarning = currentProgress ? undefined : "Geofence run progression is still catching up; showing planned runs and allocation progress on this refresh.";
     return {
-      loads: [...previousLoads, ...currentLoads],
-      etas: [...(previousEtas?.records || []), ...(currentEtas?.records || [])],
-      progress: [...(previousProgress?.records || []), ...(currentProgress?.records || [])],
+      loads: [...previousLoads.filter((load) => carryOverIds.has(load.id)), ...currentLoads],
+      etas: [...(previousEtas?.records || []).filter((eta) => carryOverIds.has(eta.loadId)), ...(currentEtas?.records || [])],
+      progress: [...carryOverProgress, ...(currentProgress?.records || [])],
       assignments,
       warning: [previousProgress?.warning, currentProgress?.warning, etaWarning, progressWarning].filter(Boolean).join(" "),
       geofenceAvailable: previousProgress?.geofenceAvailable !== false && currentProgress?.geofenceAvailable !== false,
