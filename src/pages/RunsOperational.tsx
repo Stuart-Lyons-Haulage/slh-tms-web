@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { PilotRunHealth } from "../components/PilotRunHealth";
 import { intelligenceApi } from "../lib/intelligenceApi";
 import { useAccessToken } from "../lib/auth";
 import { formatDate, formatDateTime, todayIsoDate } from "../lib/dateUtils";
@@ -75,7 +74,6 @@ export function RunsOperational() {
         {lockMessage && <p className="notice inline-notice">{lockMessage}</p>}
       </section>
 
-      <PilotRunHealth />
       <RunsCapacityAllocation />
     </div>
   );

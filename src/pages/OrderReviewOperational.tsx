@@ -389,7 +389,7 @@ export function OrderReviewOperational() {
 
     <div className="panel reset-panel">
       <div>
-        <p className="eyebrow">Pilot housekeeping</p>
+        <p className="eyebrow">Operational housekeeping</p>
         <h2>Clear one planning date</h2>
         <p className="hint">This does not run a global reset. It only clears open work for the chosen date; delivered/completed history is retained.</p>
       </div>
