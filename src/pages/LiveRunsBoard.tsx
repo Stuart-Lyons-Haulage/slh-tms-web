@@ -260,15 +260,6 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       etaByLoad.set(eta.loadId, existing);
     }
 
-    const currentStartTimes = (loadData || [])
-      .filter((load) => load.planningDate === date)
-      .map((load) => firstPlanned(load))
-      .filter((value): value is string => Boolean(value))
-      .map(apiTimeMs)
-      .filter(Number.isFinite);
-    const handoverMs = currentStartTimes.length ? Math.min(...currentStartTimes) : Number.POSITIVE_INFINITY;
-    const afterNewDayHandover = now.getTime() >= handoverMs;
-
     const vehicleCandidates = new Map<string, Array<{ load: Load; progress?: RunProgressRecord; planned?: string }>>();
     for (const load of loadData || []) {
       const assignment = assignmentByLoad.get(load.id);
@@ -333,9 +324,10 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       if (row.load.planningDate === date) return true;
       if (row.load.planningDate !== previousDate) return false;
       if (row.progress?.runState === "Completed" || row.load.status === "Completed" || row.load.status === "Cancelled") return false;
-      // Before the first new-day run is due, preserve every unfinished previous-night run.
-      // After handover, keep it only while there is operational evidence that it is still alive.
-      return !afterNewDayHandover || carryOverIsOperationallyActive(row);
+      // A previous-day route belongs on Live Runs only while live tracking or
+      // geofence progression proves that it is still operating.  An unfinished
+      // record on its own must not be presented as an upcoming run.
+      return carryOverIsOperationallyActive(row);
     }).sort((left, right) => {
       if (left.carryOver !== right.carryOver) return left.carryOver ? -1 : 1;
       const leftCompleted = left.progress?.runState === "Completed" ? 1 : 0;
