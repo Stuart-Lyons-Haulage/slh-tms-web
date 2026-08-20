@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, request, type Load, type Site } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
 import "../simple-planner.css";
 
 type Period = "" | "AM" | "PM";
@@ -68,18 +69,26 @@ const plannerTag = (notes: string | undefined, label: string, value: string) => 
   return value.trim() ? [`${label}: ${value.trim()}`, ...parts].join(" · ") : parts.join(" · ");
 };
 const plannerBoolean = (notes: string | undefined, label: string) => tagged(notes, label).toLowerCase() === "yes";
-const siteAddress = (sites: Site[], value: string) => sites.find((site) =>
-  [site.name, site.driverTextName, site.externalCode, ...(site.aliases || "").split(/[,;|]/)]
-    .some((candidate) => normalise(candidate) === normalise(value)))?.collectionAddress;
+const siteFor = (sites: Site[], value: string) => {
+  const target = normalise(value);
+  if (!target) return undefined;
+  return sites.find((site) =>
+    [site.name, site.driverTextName, site.externalCode, ...(site.aliases || "").split(/[,;|]/)]
+      .some((candidate) => normalise(candidate) === target));
+};
+const stopFromSite = (sites: Site[], value: string) => {
+  const site = siteFor(sites, value);
+  return {
+    address: site?.collectionAddress,
+    latitude: site?.latitude,
+    longitude: site?.longitude,
+  };
+};
 const runRef = (date: string, number: number) => `RUN-${date.replaceAll("-", "")}-${String(number).padStart(2, "0")}`;
 
 function validPallets(value: string) {
   const pallets = Number(value);
   return Number.isInteger(pallets) && pallets >= 0 ? pallets : undefined;
-}
-
-function signalPlanningChange() {
-  window.dispatchEvent(new Event("slh:orders-changed"));
 }
 
 export function RunPlannerLive() {
@@ -168,10 +177,10 @@ export function RunPlannerLive() {
   useEffect(() => {
     const refresh = () => void refreshControl().catch(() => undefined);
     const interval = window.setInterval(refresh, 2000);
-    window.addEventListener("slh:orders-changed", refresh);
+    const unsubscribe = subscribePlanningChanges(refresh);
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener("slh:orders-changed", refresh);
+      unsubscribe();
     };
   }, [refreshControl]);
 
@@ -235,10 +244,14 @@ export function RunPlannerLive() {
     return lines.filter((line) => {
       const pallets = validPallets(line.pallets);
       return Boolean(line.orderId) && pallets !== undefined && pallets > 0;
-    }).flatMap((line) => [
-      { name: `Collect · ${line.collectionSite}`, address: siteAddress(sites, line.collectionSite) },
-      { orderId: line.orderId, name: `Deliver · ${line.deliverySite}`, address: siteAddress(sites, line.deliverySite), plannerNote: line.note.trim() || undefined },
-    ]);
+    }).flatMap((line) => {
+      const collection = stopFromSite(sites, line.collectionSite);
+      const delivery = stopFromSite(sites, line.deliverySite);
+      return [
+        { name: `Collect · ${line.collectionSite}`, ...collection },
+        { orderId: line.orderId, name: `Deliver · ${line.deliverySite}`, ...delivery, plannerNote: line.note.trim() || undefined },
+      ];
+    });
   }
 
   async function allocate(orderId: string, loadId: string, pallets: number, access: string) {

@@ -9,6 +9,7 @@ import {
   type Vehicle,
 } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
 import "../runs-capacity-allocation.css";
@@ -138,8 +139,9 @@ function editableStops(load: Load, sites: Site[]): EditableStop[] {
     const site = matchSite(sites, stop.name);
     return {
       ...stop,
-      latitude: stop.latitude?.toString() || "",
-      longitude: stop.longitude?.toString() || "",
+      address: usefulAddress(stop.address) ? stop.address : site?.collectionAddress || stop.address,
+      latitude: stop.latitude?.toString() || site?.latitude?.toString() || "",
+      longitude: stop.longitude?.toString() || site?.longitude?.toString() || "",
       postcode: postcodeFrom(stop.address) || postcodeFrom(site?.collectionAddress),
     };
   });
@@ -206,6 +208,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
         plannerNotes: load.plannerNotes,
       }, access);
       await onSaved();
+      signalPlanningChange();
       setMessage(`Allocation saved · ${loadTypeLabel(capacityType)} · ${effectiveCapacity ?? "capacity pending"} ${spaceLabel(capacityType)} from trailer matrix.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Allocation could not be saved.");
@@ -262,7 +265,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     setSaving(true); setMessage(undefined);
     try {
       await api.updateLoadStops(load.id, stopPayload(stops), await token());
-      await onSaved(); setMessage("Postcodes and planned ETAs saved.");
+      await onSaved(); signalPlanningChange(); setMessage("Postcodes and planned ETAs saved.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "The route could not be saved."); }
     finally { setSaving(false); }
   }
@@ -291,7 +294,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       const finalEta = new Date(baseTime + minutes * 60_000).toISOString();
       const withEta = routeStops.map((stop, index) => index === routeStops.length - 1 ? { ...stop, plannedArrivalUtc: finalEta } : stop);
       await api.updateLoadStops(load.id, stopPayload(withEta), access);
-      setStops(withEta); await onSaved();
+      setStops(withEta); await onSaved(); signalPlanningChange();
       setMessage("Route and ETA calculated successfully.");
       setRouteSummary(`${miles} miles · estimated drive time ${Math.floor(minutes / 60)}h ${minutes % 60}m · final-stop ETA saved${result.approximate ? " using the resilient road estimate" : ""}.`);
     } catch (error) { setRouteSummary(error instanceof Error ? error.message : "Route calculation failed."); }
@@ -417,9 +420,11 @@ export function RunsCapacityAllocation() {
   const sites = useApi(useCallback(async () => api.sites(await token()), [token]));
   const rows = loads.data || [];
 
-  async function refreshAll() {
+  const refreshAll = useCallback(async () => {
     await Promise.all([loads.refresh(), vehicles.refresh(), drivers.refresh(), trailers.refresh(), sites.refresh()]);
-  }
+  }, [drivers.refresh, loads.refresh, sites.refresh, trailers.refresh, vehicles.refresh]);
+
+  useEffect(() => subscribePlanningChanges(() => void refreshAll()), [refreshAll]);
 
   const error = loads.error || vehicles.error || drivers.error || trailers.error || sites.error;
   return <section>
@@ -427,6 +432,6 @@ export function RunsCapacityAllocation() {
     <div className="planner-toolbar"><label>Plan date <input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{rows.length} run{rows.length === 1 ? "" : "s"}</span></div>
     {error && <p className="notice inline-notice">{error}</p>}
     {!error && !rows.length && <div className="state">No runs are available for this planning date.</div>}
-    <div className="allocation-load-list">{rows.map(load => <RunAllocationCard key={load.id} load={load} vehicles={vehicles.data || []} drivers={drivers.data || []} trailers={trailers.data || []} sites={sites.data || []} onSaved={loads.refresh} />)}</div>
+    <div className="allocation-load-list">{rows.map(load => <RunAllocationCard key={load.id} load={load} vehicles={vehicles.data || []} drivers={drivers.data || []} trailers={trailers.data || []} sites={sites.data || []} onSaved={refreshAll} />)}</div>
   </section>;
 }

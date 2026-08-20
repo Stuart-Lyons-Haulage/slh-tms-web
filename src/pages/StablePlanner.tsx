@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, request, type Load, type Site } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
 import { useApi } from "../lib/useApi";
 import "../simple-planner.css";
 
@@ -111,22 +112,31 @@ function siteMatches(site: Site, value: string) {
     .some((candidate) => normalise(candidate) === target);
 }
 
-function siteAddress(sites: Site[], value: string) {
-  return sites.find((site) => siteMatches(site, value))?.collectionAddress;
+function stopSiteDetails(sites: Site[], value: string) {
+  const site = sites.find((item) => siteMatches(item, value));
+  return {
+    address: site?.collectionAddress,
+    latitude: site?.latitude,
+    longitude: site?.longitude,
+  };
 }
 
 function buildStops(lines: Array<RunLine & { orderId: string }>, sites: Site[]) {
-  return lines.flatMap((line) => [
-    {
-      name: `Collect · ${line.collectionSite}`,
-      address: siteAddress(sites, line.collectionSite),
-    },
-    {
-      orderId: line.orderId,
-      name: `Deliver · ${line.deliverySite}`,
-      address: siteAddress(sites, line.deliverySite),
-    },
-  ]);
+  return lines.flatMap((line) => {
+    const collection = stopSiteDetails(sites, line.collectionSite);
+    const delivery = stopSiteDetails(sites, line.deliverySite);
+    return [
+      {
+        name: `Collect · ${line.collectionSite}`,
+        ...collection,
+      },
+      {
+        orderId: line.orderId,
+        name: `Deliver · ${line.deliverySite}`,
+        ...delivery,
+      },
+    ];
+  });
 }
 
 export function StablePlanner() {
@@ -383,6 +393,7 @@ export function StablePlanner() {
       }, accessToken);
 
       await Promise.all([loadsApi.refresh(), controlApi.refresh()]);
+      signalPlanningChange();
       setMessage(`Run ${runNumber} saved · ${run.period} · ${totalPallets} pallets. Split balances remain in Orders until fully planned.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : `Run ${runNumber} could not be saved.`);
@@ -393,6 +404,11 @@ export function StablePlanner() {
 
   const loading = loadsApi.loading || controlApi.loading || sitesApi.loading;
   const error = loadsApi.error || controlApi.error || sitesApi.error;
+
+  useEffect(() => subscribePlanningChanges(() => {
+    void loadsApi.refresh();
+    void controlApi.refresh();
+  }), [controlApi.refresh, loadsApi.refresh]);
 
   return <section className="simple-planner">
     <datalist id="planner-site-options">

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, request, type DeliveryEta, type FleetStatus, type Load } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
+import { subscribePlanningChanges } from "../lib/planningEvents";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
 import "../live-runs.css";
@@ -262,11 +263,19 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
   }, [date, previousDate, token]));
 
   useEffect(() => {
-    const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
-    const refreshTimer = window.setInterval(() => {
+    const refreshAll = () => {
       void Promise.all([refreshLoads(), refreshFleet(), refreshEtas(), refreshAssignments(), refreshProgress()]).then(() => setLastRefresh(new Date()));
-    }, 20000);
-    return () => { window.clearInterval(clockTimer); window.clearInterval(refreshTimer); };
+    };
+    const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
+    const refreshTimer = window.setInterval(refreshAll, 20000);
+    const unsubscribe = subscribePlanningChanges(refreshAll);
+    window.addEventListener("focus", refreshAll);
+    return () => {
+      window.clearInterval(clockTimer);
+      window.clearInterval(refreshTimer);
+      unsubscribe();
+      window.removeEventListener("focus", refreshAll);
+    };
   }, [refreshAssignments, refreshEtas, refreshFleet, refreshLoads, refreshProgress]);
 
   const rows = useMemo<LiveRunRow[]>(() => {
