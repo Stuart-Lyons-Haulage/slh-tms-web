@@ -262,6 +262,7 @@ export type LoadStop = {
   latitude?: number;
   longitude?: number;
   plannedArrivalUtc?: string;
+  plannerNote?: string;
 };
 export type Load = {
   id: string;
@@ -975,6 +976,7 @@ export const api = {
       latitude?: number;
       longitude?: number;
       plannedArrivalUtc?: string;
+      plannerNote?: string;
     }>,
     token?: string,
   ) =>
