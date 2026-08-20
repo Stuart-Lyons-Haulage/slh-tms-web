@@ -34,16 +34,6 @@ type LiveRunRow = {
 const UK_TIME_ZONE = "Europe/London";
 const timeFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
-const localDateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: UK_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-
 function apiTimeMs(value?: string) {
   return parseApiDateTime(value)?.getTime() ?? Number.NaN;
 }
@@ -60,27 +50,6 @@ function formatAge(value?: string | Date, now = new Date()) {
   const seconds = Math.max(0, Math.round((now.getTime() - parsed.getTime()) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   return `${Math.round(seconds / 60)}m ago`;
-}
-
-function shiftIsoDate(value: string, days: number) {
-  const [year, month, day] = value.split("-").map(Number);
-  const shifted = new Date(Date.UTC(year, month - 1, day + days));
-  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
-}
-
-function explicitRunPeriod(load: Load, firstPlannedUtc?: string) {
-  const label = displayRunReference(load.reference, load.plannerNotes, firstPlannedUtc);
-  const explicit = label.match(/\b(AM|PM)\b/i)?.[1]?.toUpperCase();
-  if (explicit === "AM" || explicit === "PM") return explicit;
-  const parsed = parseApiDateTime(firstPlannedUtc);
-  if (!parsed) return undefined;
-  const hour = Number(localDateTimeFormatter.formatToParts(parsed).find((part) => part.type === "hour")?.value);
-  if (!Number.isFinite(hour)) return undefined;
-  return hour >= 15 || hour < 3 ? "PM" : "AM";
-}
-
-function isPmOvernightCarryOver(load: Load, previousDate: string, firstPlannedUtc?: string) {
-  return load.planningDate === previousDate && explicitRunPeriod(load, firstPlannedUtc) === "PM";
 }
 
 function statusFor(progress: RunProgressRecord | undefined, vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
@@ -201,71 +170,32 @@ function firstPlanned(load: Load) {
   return [...(load.stops || [])].sort((a, b) => a.sequence - b.sequence)[0]?.plannedArrivalUtc;
 }
 
-function carryOverIsOperationallyActive(row: LiveRunRow) {
-  if (row.progress?.runState === "Completed" || row.load.status === "Completed" || row.load.status === "Cancelled") return false;
-  const runState = row.progress?.runState;
-  const executionStarted = Boolean(
-    row.progress?.currentVisit ||
-    (row.progress?.completedStops || 0) > 0 ||
-    (runState && ["BetweenStops", "InProgress", "OnSiteConfirmed", "SiteDelay"].includes(runState)),
-  );
-  const operationalStatus = row.load.status === "Dispatched" || row.load.status === "InProgress";
-  return executionStarted || operationalStatus;
-}
-
 export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
   const token = useAccessToken();
   const date = todayIsoDate();
-  const previousDate = shiftIsoDate(date, -1);
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
 
   const { data: loadData, error: loadError, loading: loadLoading, refresh: refreshLoads } = useApi(useCallback(async () => {
     const access = await token();
-    const [previous, current] = await Promise.all([
-      api.loads(previousDate, access).catch(() => []),
-      api.loads(date, access),
-    ]);
-    const byId = new Map<string, Load>();
-    for (const load of [...previous, ...current]) byId.set(load.id, load);
-    return [...byId.values()];
-  }, [date, previousDate, token]));
+    return (await api.loads(date, access)).filter((load) => load.planningDate === date);
+  }, [date, token]));
 
   const { data: fleetData, error: fleetError, refresh: refreshFleet } = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));
 
   const { data: etaData, error: etaError, refresh: refreshEtas } = useApi(useCallback(async () => {
     const access = await token();
-    const [previous, current] = await Promise.all([
-      api.deliveryEtas(previousDate, access).catch(() => undefined),
-      api.deliveryEtas(date, access),
-    ]);
-    return {
-      ...current,
-      records: [...(previous?.records || []), ...(current.records || [])],
-    };
-  }, [date, previousDate, token]));
+    return api.deliveryEtas(date, access);
+  }, [date, token]));
 
   const { data: assignmentData, error: assignmentError, refresh: refreshAssignments } = useApi(useCallback(async () =>
-    api.driverAssignments(previousDate, date, await token()), [date, previousDate, token]));
+    api.driverAssignments(date, date, await token()), [date, token]));
 
   const { data: progressData, error: progressError, refresh: refreshProgress } = useApi(useCallback(async () => {
     const access = await token();
-    const [previous, current] = await Promise.all([
-      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(previousDate)}`, access).catch(() => undefined),
-      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(date)}`, access),
-    ]);
-    const warnings = [previous?.warning, current.warning].filter((value): value is string => Boolean(value));
-    return {
-      ...current,
-      planningDate: `${previousDate}/${date}`,
-      geofenceAvailable: current.geofenceAvailable !== false && previous?.geofenceAvailable !== false,
-      geofenceCount: Math.max(previous?.geofenceCount || 0, current.geofenceCount || 0),
-      geofenceVisitCount: (previous?.geofenceVisitCount || 0) + (current.geofenceVisitCount || 0),
-      geofenceLinkedRuns: (previous?.geofenceLinkedRuns || 0) + (current.geofenceLinkedRuns || 0),
-      warning: warnings.length ? warnings.join(" ") : undefined,
-      records: [...(previous?.records || []), ...(current.records || [])],
-    } satisfies RunProgressResponse;
-  }, [date, previousDate, token]));
+    const current = await request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(date)}`, access);
+    return { ...current, records: current.records.filter((progress) => loadData?.some((load) => load.id === progress.loadId) ?? true) };
+  }, [date, loadData, token]));
 
   useEffect(() => {
     const refreshAll = () => {
@@ -339,7 +269,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       const finalEta = runEtas.at(-1);
       const firstPlannedUtc = firstPlanned(load) || vehicle?.plannedDutyUtc;
       const state = statusFor(progress, vehicle, relevantEtas);
-      const carryOver = isPmOvernightCarryOver(load, previousDate, firstPlannedUtc);
+      const carryOver = false;
       return {
         load,
         progress,
@@ -358,9 +288,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       };
     }).filter((row) => {
       if (row.load.planningDate === date) return true;
-      if (row.load.planningDate !== previousDate) return false;
-      if (row.progress?.runState === "Completed" || row.load.status === "Completed" || row.load.status === "Cancelled") return false;
-      return row.carryOver && carryOverIsOperationallyActive(row);
+      return false;
     }).sort((left, right) => {
       if (left.carryOver !== right.carryOver) return left.carryOver ? -1 : 1;
       const leftCompleted = left.progress?.runState === "Completed" ? 1 : 0;
@@ -370,7 +298,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       const rightTime = right.firstPlannedUtc ? apiTimeMs(right.firstPlannedUtc) : Number.MAX_SAFE_INTEGER;
       return leftTime - rightTime || left.load.reference.localeCompare(right.load.reference);
     });
-  }, [assignmentData, clock, date, etaData, fleetData, loadData, previousDate, progressData]);
+  }, [assignmentData, clock, date, etaData, fleetData, loadData, progressData]);
 
   const onTime = rows.filter((row) => row.status === "on-time").length;
   const onSite = rows.filter((row) => Boolean(row.progress?.currentVisit)).length;
