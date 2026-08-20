@@ -419,10 +419,15 @@ export function RunsCapacityAllocation() {
   const trailers = useApi(useCallback(async () => api.trailers(await token()), [token]));
   const sites = useApi(useCallback(async () => api.sites(await token()), [token]));
   const rows = loads.data || [];
+  const refreshLoads = loads.refresh;
+  const refreshVehicles = vehicles.refresh;
+  const refreshDrivers = drivers.refresh;
+  const refreshTrailers = trailers.refresh;
+  const refreshSites = sites.refresh;
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loads.refresh(), vehicles.refresh(), drivers.refresh(), trailers.refresh(), sites.refresh()]);
-  }, [drivers.refresh, loads.refresh, sites.refresh, trailers.refresh, vehicles.refresh]);
+    await Promise.all([refreshLoads(), refreshVehicles(), refreshDrivers(), refreshTrailers(), refreshSites()]);
+  }, [refreshDrivers, refreshLoads, refreshSites, refreshTrailers, refreshVehicles]);
 
   useEffect(() => subscribePlanningChanges(() => void refreshAll()), [refreshAll]);
 

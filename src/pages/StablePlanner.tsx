@@ -155,6 +155,8 @@ export function StablePlanner() {
   const loads = useMemo(() => Array.isArray(loadsApi.data) ? loadsApi.data.filter(Boolean) : [], [loadsApi.data]);
   const sites = useMemo(() => Array.isArray(sitesApi.data) ? sitesApi.data.filter((site) => site?.active !== false) : [], [sitesApi.data]);
   const planningOrders = useMemo(() => controlApi.data?.orders || [], [controlApi.data]);
+  const refreshLoads = loadsApi.refresh;
+  const refreshControl = controlApi.refresh;
 
   useEffect(() => {
     if (loadsApi.loading || controlApi.loading) return;
@@ -392,7 +394,7 @@ export function StablePlanner() {
         plannerNotes: withPlannerPeriod(load?.plannerNotes, run.period),
       }, accessToken);
 
-      await Promise.all([loadsApi.refresh(), controlApi.refresh()]);
+      await Promise.all([refreshLoads(), refreshControl()]);
       signalPlanningChange();
       setMessage(`Run ${runNumber} saved · ${run.period} · ${totalPallets} pallets. Split balances remain in Orders until fully planned.`);
     } catch (error) {
@@ -406,9 +408,9 @@ export function StablePlanner() {
   const error = loadsApi.error || controlApi.error || sitesApi.error;
 
   useEffect(() => subscribePlanningChanges(() => {
-    void loadsApi.refresh();
-    void controlApi.refresh();
-  }), [controlApi.refresh, loadsApi.refresh]);
+    void refreshLoads();
+    void refreshControl();
+  }), [refreshControl, refreshLoads]);
 
   return <section className="simple-planner">
     <datalist id="planner-site-options">

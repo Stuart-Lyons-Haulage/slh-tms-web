@@ -102,7 +102,11 @@ export function TmsAssistant() {
       result.skipped ? `${result.skipped} item${result.skipped === 1 ? "" : "s"} left for review or temporarily unavailable.` : "",
       skipped,
     ].filter(Boolean).join("\n"));
-    setMessage(result.applied ? "Corrections were written to the TMS and the available validation checks have been refreshed." : "No safe automatic change was applied. Any remaining items stay visible for review.");
+    setMessage(result.applied
+      ? "Corrections were written to the TMS and the available validation checks have been refreshed."
+      : result.skipped && result.skippedReasons?.length
+        ? `No safe automatic change was applied. ${result.skippedReasons[0]}`
+        : "No safe automatic change was applied. Any remaining items stay visible for review.");
     await refresh();
     return result;
   }
