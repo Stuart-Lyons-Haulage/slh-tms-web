@@ -34,7 +34,7 @@ type LiveRunRow = {
 const UK_TIME_ZONE = "Europe/London";
 const timeFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
-const carryOverHandoverFormatter = new Intl.DateTimeFormat("en-GB", {
+const localDateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: UK_TIME_ZONE,
   year: "numeric",
   month: "2-digit",
@@ -68,14 +68,19 @@ function shiftIsoDate(value: string, days: number) {
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
 }
 
-function fallbackCarryOverHandoverMs(date: string) {
-  const [year, month, day] = date.split("-").map(Number);
-  const noonUtc = Date.UTC(year, month - 1, day, 12);
-  const parts = carryOverHandoverFormatter.formatToParts(new Date(noonUtc));
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const localNoonAsUtc = Date.UTC(Number(byType.year), Number(byType.month) - 1, Number(byType.day), Number(byType.hour), Number(byType.minute));
-  const offsetMinutes = (localNoonAsUtc - noonUtc) / 60000;
-  return Date.UTC(year, month - 1, day, 6, 0) - offsetMinutes * 60000;
+function explicitRunPeriod(load: Load, firstPlannedUtc?: string) {
+  const label = displayRunReference(load.reference, load.plannerNotes, firstPlannedUtc);
+  const explicit = label.match(/\b(AM|PM)\b/i)?.[1]?.toUpperCase();
+  if (explicit === "AM" || explicit === "PM") return explicit;
+  const parsed = parseApiDateTime(firstPlannedUtc);
+  if (!parsed) return undefined;
+  const hour = Number(localDateTimeFormatter.formatToParts(parsed).find((part) => part.type === "hour")?.value);
+  if (!Number.isFinite(hour)) return undefined;
+  return hour >= 15 || hour < 3 ? "PM" : "AM";
+}
+
+function isPmOvernightCarryOver(load: Load, previousDate: string, firstPlannedUtc?: string) {
+  return load.planningDate === previousDate && explicitRunPeriod(load, firstPlannedUtc) === "PM";
 }
 
 function statusFor(progress: RunProgressRecord | undefined, vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
@@ -291,9 +296,6 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       etaByLoad.set(eta.loadId, existing);
     }
 
-    const handoverMs = fallbackCarryOverHandoverMs(date);
-    const afterNewDayHandover = now.getTime() >= handoverMs;
-
     const vehicleCandidates = new Map<string, Array<{ load: Load; progress?: RunProgressRecord; planned?: string }>>();
     for (const load of loadData || []) {
       const assignment = assignmentByLoad.get(load.id);
@@ -337,7 +339,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       const finalEta = runEtas.at(-1);
       const firstPlannedUtc = firstPlanned(load) || vehicle?.plannedDutyUtc;
       const state = statusFor(progress, vehicle, relevantEtas);
-      const carryOver = load.planningDate === previousDate;
+      const carryOver = isPmOvernightCarryOver(load, previousDate, firstPlannedUtc);
       return {
         load,
         progress,
@@ -358,9 +360,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
       if (row.load.planningDate === date) return true;
       if (row.load.planningDate !== previousDate) return false;
       if (row.progress?.runState === "Completed" || row.load.status === "Completed" || row.load.status === "Cancelled") return false;
-      // Before the first new-day run is due, preserve every unfinished previous-night run.
-      // After handover, keep it only while there is operational evidence that it is still alive.
-      return !afterNewDayHandover || carryOverIsOperationallyActive(row);
+      return row.carryOver && carryOverIsOperationallyActive(row);
     }).sort((left, right) => {
       if (left.carryOver !== right.carryOver) return left.carryOver ? -1 : 1;
       const leftCompleted = left.progress?.runState === "Completed" ? 1 : 0;
@@ -420,6 +420,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
         const tracking = currentTracking(row.progress, row.vehicle, clock);
         const sortedStops = [...(row.load.stops || [])].sort((left, right) => left.sequence - right.sequence);
         const currentSequence = row.progress?.nextStop?.sequence ?? row.nextEta?.sequence;
+        const completedStops = row.progress?.completedStops ?? 0;
         const completed = row.progress?.runState === "Completed";
         const baseRunLabel = displayRunReference(row.load.reference, row.load.plannerNotes, row.firstPlannedUtc);
         const runLabel = row.carryOver ? `${baseRunLabel} · CARRY-OVER` : baseRunLabel;
@@ -427,8 +428,12 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
           <div className="run-identity"><span className="run-truck">▰</span><div><strong>{row.registration}</strong><span>{row.driver}</span><small>{row.trailer ? `${runLabel} · Trailer ${row.trailer}` : runLabel}</small></div></div>
           <div className="run-route">
             <strong>{sortedStops.length ? sortedStops.map((stop) => stop.name).join(" → ") : runLabel}</strong>
-            {sortedStops.length > 0 && <div className="run-progress" aria-label={`${row.progress?.completedStops ?? 0} of ${sortedStops.length} stops completed`}>
-              {sortedStops.map((stop) => <i key={stop.id} className={completed || (currentSequence != null && stop.sequence < currentSequence) ? "done" : currentSequence === stop.sequence ? "current" : ""} />)}
+            {sortedStops.length > 0 && <div className="run-progress" aria-label={`${completedStops} of ${sortedStops.length} stops completed`}>
+              {sortedStops.map((stop) => {
+                const sequenceDone = completed || stop.sequence <= completedStops || (currentSequence != null && stop.sequence < currentSequence);
+                const sequenceCurrent = !sequenceDone && (currentSequence === stop.sequence || (currentSequence == null && completedStops > 0 && stop.sequence === completedStops + 1));
+                return <i key={stop.id} className={sequenceDone ? "done" : sequenceCurrent ? "current" : ""} />;
+              })}
             </div>}
           </div>
           <div className="run-time"><strong>{formatTime(row.firstPlannedUtc)}</strong><small>{sortedStops[0]?.name || "First stop TBC"}</small></div>
