@@ -49,6 +49,7 @@
 </div>
 <script>
 (function(){
+  var UK_ZONE='Europe/London';
   var STORAGE_KEY='slh-tv-display-key';
   var displayKey='';
   var refreshTimer=null;
@@ -58,9 +59,12 @@
   var feedError=document.getElementById('feedError');
 
   function pad(n){return n<10?'0'+n:String(n)}
-  function localDate(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
-  function timeText(value){if(!value)return '—';var d=new Date(value);if(isNaN(d.getTime()))return '—';return pad(d.getHours())+':'+pad(d.getMinutes())}
-  function updateClock(){var d=new Date();document.getElementById('clock').innerHTML=pad(d.getHours())+':'+pad(d.getMinutes());document.getElementById('dateLabel').innerHTML=d.toLocaleDateString?d.toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}):localDate(d)}
+  function parseApiDate(value){if(!value)return null;if(value instanceof Date)return isNaN(value.getTime())?null:value;var raw=String(value);if(raw.indexOf('T')>=0&&!/(Z|[+-]\d{2}:?\d{2})$/i.test(raw))raw+='Z';var d=new Date(raw);return isNaN(d.getTime())?null:d}
+  function londonParts(d,options){if(window.Intl&&Intl.DateTimeFormat){var parts=new Intl.DateTimeFormat('en-GB',Object.assign({timeZone:UK_ZONE},options)).formatToParts(d);var out={};for(var i=0;i<parts.length;i++)out[parts[i].type]=parts[i].value;return out}return null}
+  function localDate(d){var p=londonParts(d,{year:'numeric',month:'2-digit',day:'2-digit'});return p?p.year+'-'+p.month+'-'+p.day:d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+  function timeText(value){var d=parseApiDate(value);if(!d)return '—';var p=londonParts(d,{hour:'2-digit',minute:'2-digit',hourCycle:'h23'});return p?p.hour+':'+p.minute:pad(d.getHours())+':'+pad(d.getMinutes())}
+  function dateText(d){if(d.toLocaleDateString)return d.toLocaleDateString('en-GB',{timeZone:UK_ZONE,weekday:'long',day:'2-digit',month:'long',year:'numeric'});return localDate(d)}
+  function updateClock(){var d=new Date();document.getElementById('clock').innerHTML=timeText(d);document.getElementById('dateLabel').innerHTML=dateText(d)}
   function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
   function stateClass(s){s=String(s||'').toLowerCase();if(s.indexOf('risk')>=0||s.indexOf('stale')>=0||s.indexOf('allocation')>=0)return 'risk';if(s.indexOf('moving')>=0)return 'moving';if(s.indexOf('stationary')>=0||s.indexOf('progress')>=0)return 'stationary';if(s.indexOf('completed')>=0)return 'complete';return ''}
   function ajax(method,url,body,headers,done){
