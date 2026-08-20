@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, request, type DeliveryEta, type DriverAssignment, type Load } from "../lib/api";
+import { api, request, type DeliveryEta, type DeliveryEtas, type DriverAssignment, type Load } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
@@ -162,19 +162,32 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
   const token = useAccessToken();
   const today = todayIsoDate();
   const previous = shiftIsoDate(today, -1);
+  const tvAccessKey = tvMode ? new URLSearchParams(window.location.search).get("key")?.trim() : undefined;
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
 
   const { data, error, loading, refresh } = useApi(useCallback(async () => {
-    const access = await token();
+    const access = tvAccessKey ? undefined : await token();
+    const tvInit = tvAccessKey ? { headers: { "X-TMS-TV-Key": tvAccessKey } } : undefined;
+    const getLoads = (date: string) => tvAccessKey
+      ? request<Load[]>(`/api/v1/loads?date=${encodeURIComponent(date)}`, undefined, tvInit)
+      : api.loads(date, access);
+    const getDeliveryEtas = (date: string) => tvAccessKey
+      ? request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(date)}`, undefined, tvInit, 40000)
+      : api.deliveryEtas(date, access);
+    const getRunProgress = (date: string) =>
+      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(date)}`, access, tvInit);
+    const getAssignments = (from: string, to: string) => tvAccessKey
+      ? request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, undefined, tvInit)
+      : api.driverAssignments(from, to, access);
     const [previousLoads, currentLoads, previousEtas, currentEtas, previousProgress, currentProgress, assignments] = await Promise.all([
-      api.loads(previous, access).catch(() => []),
-      api.loads(today, access),
-      api.deliveryEtas(previous, access).catch(() => undefined),
-      api.deliveryEtas(today, access),
-      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(previous)}`, access).catch(() => undefined),
-      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(today)}`, access),
-      api.driverAssignments(previous, today, access),
+      getLoads(previous).catch(() => []),
+      getLoads(today),
+      getDeliveryEtas(previous).catch(() => undefined),
+      getDeliveryEtas(today),
+      getRunProgress(previous).catch(() => undefined),
+      getRunProgress(today),
+      getAssignments(previous, today),
     ]);
     return {
       loads: [...previousLoads, ...currentLoads],
@@ -188,7 +201,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       latestTrackingUtc: currentProgress.latestTrackingUtc || previousProgress?.latestTrackingUtc,
       calculatedAtUtc: currentEtas.calculatedAtUtc,
     };
-  }, [previous, today, token]));
+  }, [previous, today, token, tvAccessKey]));
 
   useEffect(() => {
     const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
