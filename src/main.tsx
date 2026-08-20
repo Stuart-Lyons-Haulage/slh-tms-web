@@ -22,6 +22,7 @@ import './commercialRemovalPatch';
 import './routeGeocodeFallbackPatch';
 import './pollingLoadGuard';
 import './wallboardSnapshotFetchPatch';
+import './overnightWallboardFetchPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
