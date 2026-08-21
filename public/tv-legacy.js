@@ -23,51 +23,58 @@
   }
 
   function pad(value) { return value < 10 ? '0' + value : String(value); }
-  function todayIso() {
-    var d = new Date();
-    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  function lastSundayUtc(year, month) {
+    var d = new Date(Date.UTC(year, month + 1, 0));
+    return new Date(Date.UTC(year, month, d.getUTCDate() - d.getUTCDay(), 1, 0, 0));
   }
-  function formatClock(date) { return pad(date.getHours()) + ':' + pad(date.getMinutes()); }
-  function formatDate(date) {
+  function ukOffsetMinutes(date) {
+    var year = date.getUTCFullYear();
+    var start = lastSundayUtc(year, 2);
+    var end = lastSundayUtc(year, 9);
+    return date >= start && date < end ? 60 : 0;
+  }
+  function ukDate(value) {
+    var date = value instanceof Date ? value : new Date(value);
+    if (isNaN(date.getTime())) { return null; }
+    return new Date(date.getTime() + ukOffsetMinutes(date) * 60000);
+  }
+  function todayIso() {
+    var d = ukDate(new Date());
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+  }
+  function formatClock(value) {
+    var d = ukDate(value instanceof Date ? value : new Date(value));
+    return d ? pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) : '--:--';
+  }
+  function formatDate(value) {
+    var d = ukDate(value instanceof Date ? value : new Date(value));
+    if (!d) { return ''; }
     var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    return days[date.getDay()] + ', ' + pad(date.getDate()) + ' ' + months[date.getMonth()] + ' ' + date.getFullYear();
+    return days[d.getUTCDay()] + ', ' + pad(d.getUTCDate()) + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
   }
-  function formatTime(value) {
-    if (!value) { return '--:--'; }
-    var d = new Date(value);
-    if (isNaN(d.getTime())) { return '--:--'; }
-    return formatClock(d);
-  }
+  function formatTime(value) { return value ? formatClock(value) : '--:--'; }
+
   function firstStop(load) {
     var stops = load && load.stops ? load.stops.slice(0) : [];
     stops.sort(function (a, b) { return (a.sequence || 0) - (b.sequence || 0); });
     return stops.length ? stops[0] : null;
   }
-  function runLabel(reference, plannedUtc) {
-    var text = String(reference || 'RUN TBC').replace(/^Run\s+/i, '').trim();
-    var match = /^L0*(\d+)$/i.exec(text);
-    if (match) {
-      var n = parseInt(match[1], 10) || 1;
-      var d = plannedUtc ? new Date(plannedUtc) : null;
-      var pm = d && !isNaN(d.getTime()) ? d.getHours() >= 15 : false;
-      return 'Run ' + (pm ? 49 + n : n) + (pm ? ' PM' : ' AM');
+
+  function runNumber(reference, plannedUtc) {
+    var text = String(reference || '').replace(/^Run\s+/i, '').trim();
+    var direct = /^(\d+)/.exec(text);
+    if (direct) { return String(parseInt(direct[1], 10)); }
+    var legacy = /^L0*(\d+)$/i.exec(text);
+    if (legacy) {
+      var n = parseInt(legacy[1], 10) || 1;
+      var d = plannedUtc ? ukDate(plannedUtc) : null;
+      var pm = d ? d.getUTCHours() >= 15 : false;
+      return String(pm ? 49 + n : n);
     }
-    if (/^\d+\s*(AM|PM)$/i.test(text)) { return 'Run ' + text.toUpperCase(); }
-    if (/^\d+$/.test(text)) { return 'Run ' + text; }
-    return /^RUN\b/i.test(String(reference || '')) ? String(reference) : 'Run ' + text;
+    return text || '—';
   }
-  function routeText(load) {
-    var stops = load && load.stops ? load.stops.slice(0) : [];
-    stops.sort(function (a, b) { return (a.sequence || 0) - (b.sequence || 0); });
-    if (!stops.length) { return 'Route not confirmed'; }
-    var names = [];
-    var i;
-    for (i = 0; i < stops.length; i += 1) {
-      names.push(String(stops[i].name || '').replace(/^Collect · |^Deliver · /i, ''));
-    }
-    return names.join(' → ');
-  }
+
   function indexBy(items, field) {
     var result = {};
     var i;
@@ -94,24 +101,62 @@
     }
     return values.length ? values[values.length - 1] : null;
   }
+
   function statusInfo(progress, eta) {
+    if (progress && progress.currentVisit && progress.currentVisit.isDelayed) {
+      return ['SITE DELAY', progress.currentVisit.geofenceName || 'On site', 'late', true];
+    }
+    if (eta && eta.source === 'Live' && eta.risk === 'Late') {
+      return ['LATE ETA', eta.stopName || 'Delivery', 'late', true];
+    }
+    if (eta && eta.source === 'Live' && eta.risk === 'AtRisk') {
+      return ['AT RISK', eta.stopName || 'Delivery', 'risk', false];
+    }
     if (progress && progress.currentVisit) {
-      if (progress.currentVisit.isDelayed) { return ['SITE DELAY', progress.currentVisit.geofenceName || 'On site', 'late']; }
-      return ['ON SITE', progress.currentVisit.geofenceName || 'Matched geofence', 'onsite'];
+      return ['ON SITE', progress.currentVisit.geofenceName || 'Matched geofence', 'onsite', false];
     }
-    if (eta && eta.source === 'Live' && eta.risk === 'Late') { return ['LATE ETA', eta.stopName || 'Delivery', 'late']; }
-    if (eta && eta.source === 'Live' && eta.risk === 'AtRisk') { return ['AT RISK', eta.stopName || 'Delivery', 'risk']; }
     if ((progress && progress.completedStops > 0) || (eta && (eta.source === 'Live' || eta.source === 'Estimated'))) {
-      return ['ON ROUTE', progress && progress.nextStop ? progress.nextStop.name : (eta ? eta.stopName : ''), 'route'];
+      return ['ON ROUTE', progress && progress.nextStop ? progress.nextStop.name : (eta ? eta.stopName : ''), 'route', false];
     }
-    return ['SCHEDULED', eta ? eta.stopName : 'Awaiting tracker/geofence evidence', 'scheduled'];
+    return ['SCHEDULED', eta ? eta.stopName : 'Awaiting live evidence', 'scheduled', false];
+  }
+
+  function shortName(value) {
+    var text = String(value || 'Job').replace(/^Collect · |^Deliver · /i, '');
+    return text.length > 30 ? text.substr(0, 28) + '…' : text;
+  }
+
+  function timelineMarkup(load, progress, eta) {
+    var stops = load && load.stops ? load.stops.slice(0) : [];
+    stops.sort(function (a, b) { return (a.sequence || 0) - (b.sequence || 0); });
+    var total = progress ? progress.totalStops || stops.length : stops.length;
+    if (!total) { total = stops.length; }
+    var done = progress ? progress.completedStops || 0 : 0;
+    var nextSequence = progress && progress.nextStop ? progress.nextStop.sequence : null;
+    var onsite = Boolean(progress && progress.currentVisit);
+    var dots = '';
+    var count = Math.max(total, stops.length, 1);
+    var i;
+    for (i = 0; i < count; i += 1) {
+      var pct = count <= 1 ? 50 : (i / (count - 1)) * 100;
+      var cls = '';
+      if (i < done) { cls = ' done'; }
+      else if (onsite && i === done) { cls = ' onsite'; }
+      else if (nextSequence != null && stops[i] && stops[i].sequence === nextSequence) { cls = ' next'; }
+      else if (!onsite && i === done) { cls = ' next'; }
+      dots += '<span class="timeline-dot' + cls + '" style="left:' + pct + '%"></span>';
+    }
+    var progressPct = count <= 1 ? (done ? 100 : 0) : Math.max(0, Math.min(100, (done / (count - 1)) * 100));
+    var next = progress && progress.currentVisit ? progress.currentVisit.geofenceName : (progress && progress.nextStop ? progress.nextStop.name : (eta ? eta.stopName : 'Next job TBC'));
+    var prefix = onsite ? 'On site: ' : 'Next: ';
+    return '<div class="timeline"><span class="timeline-line"></span><span class="timeline-done" style="width:' + progressPct + '%"></span>' + dots + '</div><div class="next-job">' + esc(prefix + shortName(next)) + '</div>';
   }
 
   var key = queryValue('key');
   var date = todayIso();
   var state = { loads: [], assignments: [], progress: [], etas: [], error: '' };
 
-  root.innerHTML = '<div id="legacy-tv"><div class="legacy-head"><div><div class="legacy-brand">STUART LYONS HAULAGE</div><h1>Arrivals &amp; Departures</h1></div><div class="legacy-clock"><b id="legacy-clock"></b><span id="legacy-date"></span></div></div><div id="legacy-message">Connecting to live TMS data…</div><div id="legacy-board"></div><div class="legacy-foot"><span>Auto refresh every 20 seconds</span><span id="legacy-refresh"></span></div></div>';
+  root.innerHTML = '<div id="legacy-tv"><div class="legacy-head"><div><div class="legacy-brand">STUART LYONS HAULAGE</div><h1>Live Runs</h1></div><div class="legacy-clock"><b id="legacy-clock"></b><span id="legacy-date"></span></div></div><div id="legacy-message">Connecting to live TMS data…</div><div id="legacy-board"></div><div class="legacy-foot"><span>Updates every 60 seconds</span><span id="legacy-refresh"></span></div></div>';
 
   function updateClock() {
     var now = new Date();
@@ -148,8 +193,9 @@
       message.innerHTML = '<b>Wallboard connection problem:</b> ' + esc(state.error);
     } else {
       message.className = 'legacy-ok';
-      message.innerHTML = 'LIVE OPERATIONS · ' + esc(state.loads.length) + ' runs loaded';
+      message.innerHTML = 'LIVE · ' + esc(state.loads.length) + ' runs';
     }
+
     var assignments = indexBy(state.assignments, 'loadId');
     var progress = indexBy(state.progress, 'loadId');
     var etaGroups = etasByLoad(state.etas);
@@ -166,33 +212,38 @@
       var stop = firstStop(load);
       rows.push({ load: load, prog: prog, assignment: assignment, eta: eta, status: status, time: stop && stop.plannedArrivalUtc ? new Date(stop.plannedArrivalUtc).getTime() : 9999999999999 });
     }
-    rows.sort(function (a, b) { return a.time - b.time; });
-    var html = '<table><thead><tr><th>RUN</th><th>VEHICLE</th><th>DRIVER</th><th>PROGRESS</th><th>ETA</th><th>STATUS</th></tr></thead><tbody>';
+    rows.sort(function (a, b) {
+      if (a.status[3] && !b.status[3]) { return -1; }
+      if (b.status[3] && !a.status[3]) { return 1; }
+      return a.time - b.time;
+    });
+
+    var html = '<table><thead><tr><th>RUN</th><th>VEHICLE</th><th>DRIVER</th><th>TIMELINE</th><th>ETA / STATUS</th></tr></thead><tbody>';
     for (i = 0; i < rows.length; i += 1) {
       var row = rows[i];
-      var total = row.prog ? row.prog.totalStops || 0 : (row.load.stops ? row.load.stops.length : 0);
-      var done = row.prog ? row.prog.completedStops || 0 : 0;
-      var pct = total ? Math.round((done / total) * 100) : 0;
-      var vehicle = row.assignment.vehicle && row.assignment.vehicle.registration ? row.assignment.vehicle.registration : (row.eta && row.eta.vehicleRegistration ? row.eta.vehicleRegistration : 'VEHICLE TBC');
-      var trailer = row.assignment.trailerNumber ? 'Trailer ' + row.assignment.trailerNumber : '';
-      var driver = row.assignment.driver && row.assignment.driver.displayName ? row.assignment.driver.displayName : (row.eta && row.eta.tachoDriverName ? row.eta.tachoDriverName : 'DRIVER TBC');
+      var vehicle = row.assignment.vehicle && row.assignment.vehicle.registration ? row.assignment.vehicle.registration : (row.eta && row.eta.vehicleRegistration ? row.eta.vehicleRegistration : 'TBC');
+      var driver = row.assignment.driver && row.assignment.driver.displayName ? row.assignment.driver.displayName : (row.eta && row.eta.tachoDriverName ? row.eta.tachoDriverName : 'TBC');
       var planned = firstStop(row.load);
-      var etaTime = row.eta && row.eta.etaUtc ? formatTime(row.eta.etaUtc) : (planned ? formatTime(planned.plannedArrivalUtc) : '--:--');
-      html += '<tr><td><b>' + esc(runLabel(row.load.reference, planned ? planned.plannedArrivalUtc : '')) + '</b><small>' + esc(routeText(row.load)) + '</small></td>';
-      html += '<td><b>' + esc(vehicle) + '</b><small>' + esc(trailer) + '</small></td>';
+      var etaTime = row.eta && row.eta.etaUtc ? formatTime(row.eta.etaUtc) : '--:--';
+      var etaSource = row.eta && row.eta.source ? String(row.eta.source).toUpperCase() : 'PENDING';
+      var exceptionDetail = row.status[3] ? '<small class="exception-detail">' + esc(row.status[1]) + '</small>' : '';
+      html += '<tr class="' + (row.status[3] ? 'exception' : '') + '">';
+      html += '<td><b>' + esc(runNumber(row.load.reference, planned ? planned.plannedArrivalUtc : '')) + '</b></td>';
+      html += '<td><b>' + esc(vehicle) + '</b></td>';
       html += '<td><b>' + esc(driver) + '</b></td>';
-      html += '<td><b>' + esc(done + ' of ' + total + ' stops') + '</b><div class="bar"><i style="width:' + pct + '%"></i></div><small>' + pct + '% complete</small></td>';
-      html += '<td><b>' + esc(etaTime) + '</b><small>' + esc(row.eta && row.eta.source ? row.eta.source + ' ETA' : 'planned') + '</small></td>';
-      html += '<td><strong class="status ' + esc(row.status[2]) + '">' + esc(row.status[0]) + '</strong><small>' + esc(row.status[1]) + '</small></td></tr>';
+      html += '<td>' + timelineMarkup(row.load, row.prog, row.eta) + '</td>';
+      html += '<td><span class="eta">' + esc(etaTime) + '</span> <strong class="status ' + esc(row.status[2]) + '">' + esc(row.status[0]) + '</strong><small class="eta-sub">' + esc(etaSource + ' ETA') + '</small>' + exceptionDetail + '</td>';
+      html += '</tr>';
     }
     html += '</tbody></table>';
-    if (!rows.length && !state.error) { html = '<div class="legacy-empty">No active runs are currently available for ' + esc(date) + '.</div>'; }
+    if (!rows.length && !state.error) { html = '<div class="legacy-empty">No active runs.</div>'; }
     board.innerHTML = html;
     var refreshed = document.getElementById('legacy-refresh');
-    if (refreshed) { refreshed.innerHTML = 'Last refresh ' + esc(formatClock(new Date())); }
+    if (refreshed) { refreshed.innerHTML = 'Updated ' + esc(formatClock(new Date())); }
   }
 
   function refresh() {
+    date = todayIso();
     if (!key) {
       state.error = 'This TV link has no access key. Open the dedicated keyed TV link.';
       render();
@@ -218,5 +269,5 @@
   updateClock();
   window.setInterval(updateClock, 1000);
   refresh();
-  window.setInterval(refresh, 20000);
+  window.setInterval(refresh, 60000);
 }());
