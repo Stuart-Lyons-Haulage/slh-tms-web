@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { request } from '../lib/api';
 import { useAccessToken } from '../lib/auth';
 
@@ -11,16 +11,45 @@ type SystemState = {
   providers: Array<{ name: string; configured: boolean; state: string; lastUpdatedUtc?: string; ageMinutes?: number }>;
 };
 
+type RoadTechStatus = {
+  configured: boolean;
+  connected: boolean;
+  recordCount: number;
+  latestEventUtc?: string;
+  missingSettings: string[];
+  message: string;
+};
+
+function roadTechState(status: RoadTechStatus) {
+  if (!status.configured) return { label: 'Setup incomplete', className: 'integration-state pending' };
+  if (!status.connected && status.recordCount === 0) return { label: 'Configured · no live records', className: 'integration-state pending' };
+  return { label: 'Connected', className: 'integration-state ready' };
+}
+
 export function AdminIntegrationSyncControls() {
   const token = useAccessToken();
   const [busy, setBusy] = useState<string>();
   const [message, setMessage] = useState<string>();
   const [state, setState] = useState<SystemState>();
+  const [roadTech, setRoadTech] = useState<RoadTechStatus>();
+  const [roadTechError, setRoadTechError] = useState<string>();
 
   const loadState = async () => {
-    try { setState(await request<SystemState>('/api/v1/system-sync/state', await token())); }
-    catch { /* Existing admin integration cards remain available. */ }
+    setRoadTechError(undefined);
+    try {
+      const accessToken = await token();
+      const [system, tracking] = await Promise.all([
+        request<SystemState>('/api/v1/system-sync/state', accessToken),
+        request<RoadTechStatus>('/api/v1/integrations/roadtech/status', accessToken),
+      ]);
+      setState(system);
+      setRoadTech(tracking);
+    } catch (error) {
+      setRoadTechError(error instanceof Error ? error.message : 'RoadTech diagnostic check failed.');
+    }
   };
+
+  useEffect(() => { void loadState(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const force = async (provider: 'tacho' | 'sage' | 'fleetio' | 'all') => {
     setBusy(provider);
@@ -37,6 +66,8 @@ export function AdminIntegrationSyncControls() {
     }
   };
 
+  const trackingState = roadTech ? roadTechState(roadTech) : undefined;
+
   return <section className="panel" style={{ marginBottom: 18 }}>
     <div className="title-row">
       <div>
@@ -46,6 +77,29 @@ export function AdminIntegrationSyncControls() {
       </div>
       <button onClick={() => void loadState()}>Check system state</button>
     </div>
+
+    <div className="admin-card" style={{ marginBottom: 14 }}>
+      <div className="title-row" style={{ marginBottom: 8 }}>
+        <div>
+          <p className="eyebrow">RoadTech / DOT diagnostics</p>
+          <h3>Tracking runtime status</h3>
+        </div>
+        {trackingState && <span className={trackingState.className}>{trackingState.label}</span>}
+      </div>
+      {!roadTech && !roadTechError && <p className="hint">Checking RoadTech runtime settings and live connectivity…</p>}
+      {roadTech && <>
+        <p>{roadTech.message}</p>
+        {!roadTech.configured && roadTech.missingSettings.length > 0 && <div className="notice inline-notice">
+          <strong>Specific settings to amend:</strong> {roadTech.missingSettings.join(' · ')}
+        </div>}
+        {roadTech.configured && !roadTech.connected && <div className="notice inline-notice">
+          <strong>Configuration is present.</strong> RoadTech is not currently returning live vehicle records. This is a connectivity/credentials/provider-data issue rather than missing setup.
+        </div>}
+        {roadTech.connected && <p className="hint"><strong>{roadTech.recordCount}</strong> live RoadTech vehicle record{roadTech.recordCount === 1 ? '' : 's'} returned{roadTech.latestEventUtc ? ` · latest event ${new Date(roadTech.latestEventUtc).toLocaleString('en-GB')}` : ''}.</p>}
+      </>}
+      {roadTechError && <p className="notice inline-notice"><strong>Diagnostic request failed:</strong> {roadTechError}</p>}
+    </div>
+
     <div className="actions" style={{ flexWrap: 'wrap' }}>
       <button onClick={() => void force('tacho')} disabled={Boolean(busy)}>{busy === 'tacho' ? 'Refreshing…' : 'Force TachoMaster'}</button>
       <button onClick={() => void force('sage')} disabled={Boolean(busy)}>{busy === 'sage' ? 'Refreshing…' : 'Force Sage HR'}</button>
