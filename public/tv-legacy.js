@@ -61,18 +61,27 @@
     return stops.length ? stops[0] : null;
   }
 
-  function runNumber(reference, plannedUtc) {
-    var text = String(reference || '').replace(/^Run\s+/i, '').trim();
-    var direct = /^(\d+)/.exec(text);
-    if (direct) { return String(parseInt(direct[1], 10)); }
-    var legacy = /^L0*(\d+)$/i.exec(text);
-    if (legacy) {
-      var n = parseInt(legacy[1], 10) || 1;
+  function runLabel(reference, plannedUtc) {
+    var raw = String(reference || '').trim();
+    var match = /^Run\s+(\d+)\s*(AM|PM)$/i.exec(raw);
+    if (match) { return 'Run ' + parseInt(match[1], 10) + ' ' + match[2].toUpperCase(); }
+    match = /^(\d+)\s*(AM|PM)$/i.exec(raw);
+    if (match) { return 'Run ' + parseInt(match[1], 10) + ' ' + match[2].toUpperCase(); }
+    match = /^L0*(\d+)$/i.exec(raw);
+    if (match) {
+      var n = parseInt(match[1], 10) || 1;
       var d = plannedUtc ? ukDate(plannedUtc) : null;
       var pm = d ? d.getUTCHours() >= 15 : false;
-      return String(pm ? 49 + n : n);
+      return 'Run ' + (pm ? 49 + n : n) + ' ' + (pm ? 'PM' : 'AM');
     }
-    return text || '—';
+    match = /^(\d+)$/.exec(raw);
+    if (match) {
+      var direct = parseInt(match[1], 10) || 1;
+      var planned = plannedUtc ? ukDate(plannedUtc) : null;
+      var isPm = direct >= 50 || (planned && planned.getUTCHours() >= 15);
+      return 'Run ' + direct + ' ' + (isPm ? 'PM' : 'AM');
+    }
+    return raw || 'Run TBC';
   }
 
   function indexBy(items, field) {
@@ -95,7 +104,13 @@
     var values = (list || []).slice(0);
     values.sort(function (a, b) { return (a.sequence || 0) - (b.sequence || 0); });
     var seq = progress && progress.nextStop ? progress.nextStop.sequence : null;
+    var nextId = progress && progress.nextStopId ? String(progress.nextStopId) : '';
     var i;
+    if (nextId) {
+      for (i = 0; i < values.length; i += 1) {
+        if (String(values[i].stopId || values[i].loadStopId || '') === nextId) { return values[i]; }
+      }
+    }
     if (seq != null) {
       for (i = 0; i < values.length; i += 1) { if ((values[i].sequence || 0) >= seq) { return values[i]; } }
     }
@@ -104,7 +119,7 @@
 
   function statusInfo(progress, eta) {
     if (progress && progress.currentVisit && progress.currentVisit.isDelayed) {
-      return ['SITE DELAY', progress.currentVisit.geofenceName || 'On site', 'late', true];
+      return ['SITE DELAY', progress.currentVisit.geofenceName || progress.focusStop || 'On site', 'late', true];
     }
     if (eta && eta.source === 'Live' && eta.risk === 'Late') {
       return ['LATE ETA', eta.stopName || 'Delivery', 'late', true];
@@ -112,11 +127,14 @@
     if (eta && eta.source === 'Live' && eta.risk === 'AtRisk') {
       return ['AT RISK', eta.stopName || 'Delivery', 'risk', false];
     }
-    if (progress && progress.currentVisit) {
-      return ['ON SITE', progress.currentVisit.geofenceName || 'Matched geofence', 'onsite', false];
+    if (progress && progress.geofenceOnSite) {
+      return ['ON SITE', progress.focusStop || 'Matched geofence', 'onsite', false];
+    }
+    if (progress && progress.trackingMoving) {
+      return ['ON ROUTE', progress.focusStop || (eta ? eta.stopName : ''), 'route', false];
     }
     if ((progress && progress.completedStops > 0) || (eta && (eta.source === 'Live' || eta.source === 'Estimated'))) {
-      return ['ON ROUTE', progress && progress.nextStop ? progress.nextStop.name : (eta ? eta.stopName : ''), 'route', false];
+      return ['ON ROUTE', progress && progress.focusStop ? progress.focusStop : (eta ? eta.stopName : ''), 'route', false];
     }
     return ['SCHEDULED', eta ? eta.stopName : 'Awaiting live evidence', 'scheduled', false];
   }
@@ -126,30 +144,41 @@
     return text.length > 30 ? text.substr(0, 28) + '…' : text;
   }
 
-  function timelineMarkup(load, progress, eta) {
+  function fallbackStops(load) {
     var stops = load && load.stops ? load.stops.slice(0) : [];
     stops.sort(function (a, b) { return (a.sequence || 0) - (b.sequence || 0); });
-    var total = progress ? progress.totalStops || stops.length : stops.length;
-    if (!total) { total = stops.length; }
+    return stops;
+  }
+
+  function timelineMarkup(load, progress, eta) {
+    var stops = progress && progress.stops && progress.stops.length ? progress.stops.slice(0) : fallbackStops(load);
+    stops.sort(function (a, b) { return (a.sequence || 0) - (b.sequence || 0); });
+    var count = Math.max(stops.length, progress ? progress.totalStops || 0 : 0, 1);
     var done = progress ? progress.completedStops || 0 : 0;
-    var nextSequence = progress && progress.nextStop ? progress.nextStop.sequence : null;
-    var onsite = Boolean(progress && progress.currentVisit);
     var dots = '';
-    var count = Math.max(total, stops.length, 1);
     var i;
     for (i = 0; i < count; i += 1) {
       var pct = count <= 1 ? 50 : (i / (count - 1)) * 100;
+      var state = stops[i] && stops[i].state ? String(stops[i].state).toLowerCase() : '';
       var cls = '';
-      if (i < done) { cls = ' done'; }
-      else if (onsite && i === done) { cls = ' onsite'; }
-      else if (nextSequence != null && stops[i] && stops[i].sequence === nextSequence) { cls = ' next'; }
-      else if (!onsite && i === done) { cls = ' next'; }
+      if (state === 'completed' || (!state && i < done)) { cls = ' done'; }
+      else if (state === 'onsite') { cls = ' onsite'; }
+      else if (state === 'heading' || (!state && i === done)) { cls = ' next'; }
       dots += '<span class="timeline-dot' + cls + '" style="left:' + pct + '%"></span>';
     }
-    var progressPct = count <= 1 ? (done ? 100 : 0) : Math.max(0, Math.min(100, (done / (count - 1)) * 100));
-    var next = progress && progress.currentVisit ? progress.currentVisit.geofenceName : (progress && progress.nextStop ? progress.nextStop.name : (eta ? eta.stopName : 'Next job TBC'));
-    var prefix = onsite ? 'On site: ' : 'Next: ';
-    return '<div class="timeline"><span class="timeline-line"></span><span class="timeline-done" style="width:' + progressPct + '%"></span>' + dots + '</div><div class="next-job">' + esc(prefix + shortName(next)) + '</div>';
+
+    var truckPct = progress && progress.truckPositionPercent != null ? Number(progress.truckPositionPercent) : null;
+    if (truckPct == null || isNaN(truckPct)) {
+      truckPct = count <= 1 ? 0 : Math.max(0, Math.min(100, (done / (count - 1)) * 100));
+    }
+    truckPct = Math.max(0, Math.min(100, truckPct));
+    var liveMarker = progress && (progress.trackingFresh || progress.trackingMoving || progress.geofenceOnSite || done > 0)
+      ? '<span class="timeline-vehicle' + (progress.trackingMoving ? ' moving' : '') + '" style="left:' + truckPct + '%"></span>'
+      : '';
+    var next = progress && progress.focusStop ? progress.focusStop : (eta ? eta.stopName : 'Next job TBC');
+    var prefix = progress && progress.geofenceOnSite ? 'On site: ' : 'Next: ';
+    var speed = progress && progress.trackingMoving && progress.speedKph != null ? ' · ' + Math.round(Number(progress.speedKph)) + ' km/h' : '';
+    return '<div class="timeline"><span class="timeline-line"></span><span class="timeline-done" style="width:' + truckPct + '%"></span>' + dots + liveMarker + '</div><div class="next-job">' + esc(prefix + shortName(next) + speed) + '</div>';
   }
 
   var key = queryValue('key');
@@ -205,7 +234,7 @@
       var load = state.loads[i];
       if (load.status === 'Cancelled') { continue; }
       var prog = progress[load.id];
-      if (prog && prog.runState === 'Completed') { continue; }
+      if (prog && String(prog.phase).toLowerCase() === 'complete') { continue; }
       var assignment = assignments[load.id] || {};
       var eta = nextEta(etaGroups[load.id], prog);
       var status = statusInfo(prog, eta);
@@ -228,7 +257,7 @@
       var etaSource = row.eta && row.eta.source ? String(row.eta.source).toUpperCase() : 'PENDING';
       var exceptionDetail = row.status[3] ? '<small class="exception-detail">' + esc(row.status[1]) + '</small>' : '';
       html += '<tr class="' + (row.status[3] ? 'exception' : '') + '">';
-      html += '<td><b>' + esc(runNumber(row.load.reference, planned ? planned.plannedArrivalUtc : '')) + '</b></td>';
+      html += '<td><b class="run-name">' + esc(runLabel(row.load.reference, planned ? planned.plannedArrivalUtc : '')) + '</b></td>';
       html += '<td><b>' + esc(vehicle) + '</b></td>';
       html += '<td><b>' + esc(driver) + '</b></td>';
       html += '<td>' + timelineMarkup(row.load, row.prog, row.eta) + '</td>';
@@ -255,14 +284,14 @@
       if (err) { errors.push(name + ': ' + err.message); }
       else if (name === 'loads') { state.loads = data || []; }
       else if (name === 'assignments') { state.assignments = data || []; }
-      else if (name === 'progress') { state.progress = data && data.records ? data.records : []; }
+      else if (name === 'progress') { state.progress = data && data.runs ? data.runs : []; }
       else if (name === 'etas') { state.etas = data && data.records ? data.records : []; }
       pending -= 1;
       if (pending === 0) { state.error = errors.join(' '); render(); }
     }
     request('/api/v1/loads?date=' + encodeURIComponent(date), function (e, d) { done('loads', e, d); });
     request('/api/v1/driver-assignments?from=' + encodeURIComponent(date) + '&to=' + encodeURIComponent(date), function (e, d) { done('assignments', e, d); });
-    request('/api/v1/run-progress?date=' + encodeURIComponent(date), function (e, d) { done('progress', e, d); });
+    request('/api/v1/tv-display/route-progress?date=' + encodeURIComponent(date), function (e, d) { done('progress', e, d); });
     request('/api/v1/operations/delivery-etas?date=' + encodeURIComponent(date), function (e, d) { done('etas', e, d); });
   }
 
