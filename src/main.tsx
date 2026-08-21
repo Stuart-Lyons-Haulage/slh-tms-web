@@ -25,6 +25,7 @@ import './wallboardSnapshotFetchPatch';
 import './overnightWallboardFetchPatch';
 import './liveVehiclePopupPatch';
 import './naturalRunOrderPatch';
+import './plannerSourceLineImportFetchPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
