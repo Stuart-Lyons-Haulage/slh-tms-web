@@ -95,12 +95,6 @@ if (wallboardPaths.has(window.location.pathname)) {
     return [...merged.values()];
   }
 
-  function latestIso(left?: string, right?: string) {
-    if (!left) return right;
-    if (!right) return left;
-    return Date.parse(left) >= Date.parse(right) ? left : right;
-  }
-
   function warningText(...values: Array<string | undefined>) {
     return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))].join(' ');
   }
@@ -119,12 +113,6 @@ if (wallboardPaths.has(window.location.pathname)) {
     if (progress.currentVisit) return true;
     if ((progress.completedStops || 0) > 0) return true;
     return /between\s*stops|arrived|on\s*site|site\s*delay/i.test(String(progress.runState || ''));
-  }
-
-  async function fetchPrevious(url: URL, init?: RequestInit) {
-    const previous = new URL(url.toString());
-    previous.searchParams.set('date', previousIsoDate(ukIsoDate()));
-    return nativeFetch(previous.toString(), init);
   }
 
   async function loadCarryoverEvidence(sourceUrl: URL, init?: RequestInit): Promise<CarryoverEvidence | undefined> {
@@ -278,7 +266,6 @@ if (wallboardPaths.has(window.location.pathname)) {
       return jsonResponse({
         ...current,
         carryoverPlanningDate: evidence.activeLoadIds.size > 0 ? previous : undefined,
-        latestTrackingUtc: latestIso(current.latestTrackingUtc, carryover.length ? undefined : undefined),
         warning: warningText(current.warning),
         records: mergeBy(carryover, current.records || [], (item) => item.loadId),
       }, currentResponse);
