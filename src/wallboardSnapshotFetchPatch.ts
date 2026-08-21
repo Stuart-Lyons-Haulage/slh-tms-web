@@ -12,7 +12,6 @@ const wallboardActive = wallboardPaths.has(window.location.pathname);
 
 if (wallboardActive) {
   const nativeFetch = window.fetch.bind(window);
-  const nativeSetInterval = window.setInterval.bind(window);
 
   type CachedResponse = {
     storedAt: number;
@@ -100,11 +99,4 @@ if (wallboardActive) {
       throw error;
     }
   };
-
-  // OperationsWallboard currently owns a 20-second timer. Promote only that cadence
-  // to one minute on wallboard routes; unrelated application timers keep their values.
-  window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
-    const effectiveTimeout = timeout === 20_000 ? 60_000 : timeout;
-    return nativeSetInterval(handler, effectiveTimeout, ...args);
-  }) as typeof window.setInterval;
 }

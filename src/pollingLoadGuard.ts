@@ -1,21 +1,18 @@
 // Reduce unnecessary background polling across the TMS without affecting short UI timers.
-// Operational polling should pause while a tab is hidden, and the wallboard's historical
-// 20-second cadence is deliberately relaxed to 60 seconds.
+// Operational polling should pause while a tab is hidden. The wallboard's cadence is left
+// exactly as each screen requests it: the API and the on-screen footer both advertise a
+// 20-second refresh, so the client must not silently poll at a different rate (previously
+// this file rewrote every 20s wallboard timer to 60s, which meant the wallboard was three
+// times slower than the "Refreshes every 20 seconds" text it was showing operators).
 
 const nativeSetInterval = window.setInterval.bind(window);
 const operationalPollThresholdMs = 15_000;
-const wallboardLegacyPollMs = 20_000;
-const wallboardPollMs = 60_000;
-const wallboardPaths = new Set(['/tv', '/operations-wallboard', '/operations-wallboard/tv', '/live-runs', '/live-runs/tv', '/tv-display']);
 
 window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
   const requestedMs = Number(timeout ?? 0);
-  const effectiveMs = wallboardPaths.has(window.location.pathname) && requestedMs === wallboardLegacyPollMs
-    ? wallboardPollMs
-    : requestedMs;
 
-  if (typeof handler !== 'function' || effectiveMs < operationalPollThresholdMs) {
-    return nativeSetInterval(handler, effectiveMs, ...args);
+  if (typeof handler !== 'function' || requestedMs < operationalPollThresholdMs) {
+    return nativeSetInterval(handler, requestedMs, ...args);
   }
 
   const guardedHandler = () => {
@@ -25,5 +22,5 @@ window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown
     handler(...args);
   };
 
-  return nativeSetInterval(guardedHandler, effectiveMs);
+  return nativeSetInterval(guardedHandler, requestedMs);
 }) as typeof window.setInterval;
