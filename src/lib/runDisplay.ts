@@ -1,5 +1,6 @@
 const INTERNAL_RUN_REFERENCE = /^PLAN-\d{8}-(.+)$/i;
 const NUMERIC_RUN = /^(?:RUN[\s:_-]*)?(\d+)(?:[\s_-]*(AM|PM))?$/i;
+const LEGACY_LOAD_RUN = /^L0*(\d+)$/i;
 const PERIOD = /\b(AM|PM)\b/i;
 
 function noteValue(notes: string | undefined, key: string) {
@@ -54,19 +55,37 @@ function stripInternalReference(reference: string) {
   return match ? match[1] : reference.trim();
 }
 
+function legacyOperationalRunNumber(source: string, period?: string) {
+  const match = source.trim().match(LEGACY_LOAD_RUN);
+  if (!match) return undefined;
+  const legacyNumber = Number(match[1]);
+  if (!Number.isInteger(legacyNumber) || legacyNumber <= 0) return undefined;
+
+  // Legacy planner/import references restart at L001 for each shift. Operationally
+  // SLH wants the morning sequence to display from Run 1 and the post-15:00
+  // sequence to start at Run 50. Keep already-numbered 50+ references unchanged.
+  if (period === "PM" && legacyNumber < 50) return legacyNumber + 49;
+  return legacyNumber;
+}
+
 function formatChoice(source: string, period?: string) {
   const clean = source.trim();
+  const resolvedPeriod = explicitPeriod(clean) || period;
+  const legacyNumber = legacyOperationalRunNumber(clean, resolvedPeriod);
+  if (legacyNumber != null) {
+    return `Run ${legacyNumber}${resolvedPeriod ? ` ${resolvedPeriod}` : ""}`;
+  }
+
   const numeric = clean.match(NUMERIC_RUN);
   if (numeric) {
     const number = String(Number(numeric[1]));
-    const resolvedPeriod = explicitPeriod(numeric[2]) || period;
-    return `Run ${number}${resolvedPeriod ? ` ${resolvedPeriod}` : ""}`;
+    const numericPeriod = explicitPeriod(numeric[2]) || resolvedPeriod;
+    return `Run ${number}${numericPeriod ? ` ${numericPeriod}` : ""}`;
   }
 
   const embeddedPeriod = explicitPeriod(clean);
   const withoutRun = clean.replace(/^RUN[\s:_-]*/i, "").replace(/[-_]+/g, " ").trim() || "TBC";
   const withoutPeriod = embeddedPeriod ? withoutRun.replace(PERIOD, "").trim() : withoutRun;
-  const resolvedPeriod = embeddedPeriod || period;
   return `Run ${withoutPeriod}${resolvedPeriod ? ` ${resolvedPeriod}` : ""}`;
 }
 
