@@ -4,8 +4,6 @@ import { useCallback } from 'react';
 
 const productionApiScope = 'api://497f6ea5-9753-43ee-8ccf-afaa0a3869c2/Tms.Access';
 export const apiScope = import.meta.env.VITE_ENTRA_API_SCOPE || productionApiScope;
-let interactiveTokenRequest: Promise<string> | undefined;
-
 export function useAccessToken() {
   const { instance, accounts } = useMsal();
   return useCallback(async () => {
@@ -13,14 +11,6 @@ export function useAccessToken() {
     const account: AccountInfo | undefined = instance.getActiveAccount() || accounts[0];
     if (!account) throw new Error('Your Microsoft sign-in has expired. Please sign in again.');
     try { return (await instance.acquireTokenSilent({ account, scopes: [apiScope] })).accessToken; }
-    catch {
-      if (!interactiveTokenRequest) {
-        interactiveTokenRequest = instance.acquireTokenPopup({ account, scopes: [apiScope] })
-          .then(result => result.accessToken)
-          .finally(() => { interactiveTokenRequest = undefined; });
-      }
-      try { return await interactiveTokenRequest; }
-      catch { throw new Error('Microsoft sign-in needs refreshing before live data can load. Use Refresh or sign in again.'); }
-    }
+    catch { throw new Error('Microsoft sign-in needs refreshing before live data can load. Reconnect securely, then retry this panel.'); }
   }, [accounts, instance]);
 }

@@ -1,0 +1,292 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { request } from "../lib/api";
+import { useAccessToken } from "../lib/auth";
+import { useApi } from "../lib/useApi";
+
+type ViewMode = "outstanding" | "ordered" | "planned";
+type Allocation = { loadId: string; loadReference?: string; pallets: number; updatedAtUtc: string; updatedBy?: string };
+type PlanningOrder = {
+  id: string; reference: string; customerCode: string; collectionDate: string; deliveryDate?: string;
+  deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; orderedPallets: number; plannedPallets: number;
+  outstandingPallets: number; overplannedPallets: number; collection: string; destination: string; planningGroup: string;
+  temperature?: string; palletType?: string; source?: string; receivedAtUtc: string; lateAddition: boolean; allocations: Allocation[];
+};
+type PlanningCell = { planningGroup: string; destination: string; ordered: number; planned: number; outstanding: number; overplanned: number; orderIds: string[] };
+type PlanningRun = { id: string; reference: string; status: string; palletSpacesUsed?: number; totalPalletSpaces?: number; capacityType?: string; stopCount: number };
+type PlanningControlData = {
+  date: string; generatedAtUtc: string;
+  summary: { ordered: number; planned: number; outstanding: number; overplanned: number; lateAdditions: number; orders: number; runs: number };
+  planningGroups: string[]; destinations: string[]; cells: PlanningCell[]; orders: PlanningOrder[]; runs: PlanningRun[];
+};
+type RegionData = { date: string; destinations: string[]; destinationRegions: Record<string, string> };
+
+type PalletTone = "standard" | "euro" | "mixed" | "unknown";
+const PLANNING_CHANNEL = "slh-planning-control";
+const PLANNING_STORAGE_KEY = "slh:planning-control-changed";
+
+function planningDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function ukDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${value}T12:00:00`));
+}
+function fmtTime(value?: string) {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+function palletTone(value?: string): PalletTone {
+  const clean = String(value || "").toLowerCase();
+  if (clean.includes("euro")) return "euro";
+  if (clean.includes("standard") || clean.includes("std")) return "standard";
+  return "unknown";
+}
+function palletLabel(value?: string) {
+  const tone = palletTone(value);
+  return tone === "standard" ? "Standard" : tone === "euro" ? "Euro" : value || "Unknown";
+}
+function toneBackground(tone: PalletTone) {
+  if (tone === "standard") return "#dbeafe";
+  if (tone === "euro") return "#ffedd5";
+  if (tone === "mixed") return "linear-gradient(135deg, #dbeafe 0 50%, #ffedd5 50% 100%)";
+  return "#f3f4f6";
+}
+function toneBorder(tone: PalletTone) {
+  if (tone === "standard") return "#2563eb";
+  if (tone === "euro") return "#ea580c";
+  if (tone === "mixed") return "#7c3aed";
+  return "#9ca3af";
+}
+function notifyPlanningChanged() {
+  window.dispatchEvent(new Event("slh:orders-changed"));
+  try { window.localStorage.setItem(PLANNING_STORAGE_KEY, String(Date.now())); } catch { /* storage may be unavailable */ }
+  if ("BroadcastChannel" in window) {
+    const channel = new BroadcastChannel(PLANNING_CHANNEL);
+    channel.postMessage({ type: "planning-changed", at: Date.now() });
+    channel.close();
+  }
+}
+
+export function PalletPlanningControl() {
+  const token = useAccessToken();
+  const [date, setDate] = useState(planningDate());
+  const [mode, setMode] = useState<ViewMode>("outstanding");
+  const [selectedCell, setSelectedCell] = useState<{ group: string; destination: string }>();
+  const [message, setMessage] = useState<string>();
+  const [busyKey, setBusyKey] = useState<string>();
+  const [allocationDrafts, setAllocationDrafts] = useState<Record<string, { loadId: string; pallets: string }>>({});
+
+  const control = useApi(useCallback(async () => request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, await token()), [date, token]));
+  const regions = useApi(useCallback(async () => request<RegionData>(`/api/v1/planning-control/regions?date=${encodeURIComponent(date)}`, await token()), [date, token]));
+  const refreshControl = control.refresh;
+  const refreshRegions = regions.refresh;
+
+  useEffect(() => {
+    const refresh = () => { void refreshControl(); void refreshRegions(); };
+    const id = window.setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 2000);
+    const onFocus = () => refresh();
+    const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
+    const onOrderChanged = () => refresh();
+    const onStorage = (event: StorageEvent) => { if (event.key === PLANNING_STORAGE_KEY) refresh(); };
+    const channel = "BroadcastChannel" in window ? new BroadcastChannel(PLANNING_CHANNEL) : undefined;
+    if (channel) channel.onmessage = () => refresh();
+
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("slh:orders-changed", onOrderChanged);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(id);
+      channel?.close();
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("slh:orders-changed", onOrderChanged);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refreshControl, refreshRegions]);
+
+  const data = control.data;
+  const orderById = useMemo(() => new Map((data?.orders || []).map((order) => [order.id, order])), [data?.orders]);
+  const orderedDestinations = useMemo(() => {
+    if (!data) return [];
+    const live = new Set(data.destinations);
+    const ranked = (regions.data?.destinations || []).filter((destination) => live.has(destination));
+    const missing = data.destinations.filter((destination) => !ranked.includes(destination));
+    return [...ranked, ...missing];
+  }, [data, regions.data]);
+  const regionGroups = useMemo(() => {
+    const groups: Array<{ region: string; destinations: string[] }> = [];
+    for (const destination of orderedDestinations) {
+      const region = regions.data?.destinationRegions?.[destination] || "Other";
+      const last = groups[groups.length - 1];
+      if (last?.region === region) last.destinations.push(destination);
+      else groups.push({ region, destinations: [destination] });
+    }
+    return groups;
+  }, [orderedDestinations, regions.data]);
+  const cellMap = useMemo(() => new Map((data?.cells || []).map((cell) => [`${cell.planningGroup}|||${cell.destination}`, cell])), [data?.cells]);
+  const selectedOrders = useMemo(() => !data || !selectedCell ? [] : data.orders.filter((order) => order.planningGroup === selectedCell.group && order.destination === selectedCell.destination), [data, selectedCell]);
+  const metric = (cell?: PlanningCell) => mode === "ordered" ? cell?.ordered || 0 : mode === "planned" ? cell?.planned || 0 : cell?.outstanding || 0;
+  const orderMetric = (order: PlanningOrder) => mode === "ordered" ? order.orderedPallets : mode === "planned" ? order.plannedPallets : order.outstandingPallets;
+  const showCell = (cell?: PlanningCell) => mode !== "outstanding" || (cell?.outstanding || 0) > 0 || (cell?.overplanned || 0) > 0;
+
+  function cellTone(cell?: PlanningCell): PalletTone {
+    if (!cell) return "unknown";
+    const tones = new Set<PalletTone>();
+    for (const id of cell.orderIds) {
+      const order = orderById.get(id);
+      if (!order || orderMetric(order) <= 0) continue;
+      const tone = palletTone(order.palletType);
+      if (tone !== "unknown") tones.add(tone);
+    }
+    if (tones.has("standard") && tones.has("euro")) return "mixed";
+    if (tones.has("standard")) return "standard";
+    if (tones.has("euro")) return "euro";
+    return "unknown";
+  }
+
+  function currentDraft(order: PlanningOrder) {
+    return allocationDrafts[order.id] || {
+      loadId: order.allocations[0]?.loadId || data?.runs[0]?.id || "",
+      pallets: String(order.allocations[0]?.pallets ?? order.outstandingPallets ?? order.orderedPallets),
+    };
+  }
+
+  function selectRun(order: PlanningOrder, loadId: string) {
+    const existing = order.allocations.find((allocation) => allocation.loadId === loadId)?.pallets;
+    setAllocationDrafts((current) => ({
+      ...current,
+      [order.id]: { loadId, pallets: String(existing ?? order.outstandingPallets) },
+    }));
+  }
+
+  async function saveAllocation(order: PlanningOrder) {
+    const draftValue = currentDraft(order);
+    if (!draftValue.loadId) { setMessage("Select a run before allocating pallets."); return; }
+    const pallets = Number(draftValue.pallets);
+    if (!Number.isInteger(pallets) || pallets < 0) { setMessage("Enter a whole pallet quantity of zero or more."); return; }
+    setBusyKey(order.id); setMessage(undefined);
+    try {
+      const result = await request<{ outstandingPallets: number; overplannedPallets: number; loadReference: string; runCapacityStatus?: string; runUtilisationPercent?: number }>("/api/v1/planning-control/allocations", await token(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, loadId: draftValue.loadId, date, pallets, note: "Updated from live Pallet Control" }),
+      });
+      const capacity = result.runUtilisationPercent == null ? "" : ` · run ${result.runUtilisationPercent.toFixed(1)}% ${result.runCapacityStatus || ""}`;
+      setMessage(`${order.reference}: ${pallets} pallet${pallets === 1 ? "" : "s"} allocated. ${result.outstandingPallets} remaining${result.overplannedPallets > 0 ? ` · ${result.overplannedPallets} over-planned` : ""}${capacity}.`);
+      setAllocationDrafts((current) => { const next = { ...current }; delete next[order.id]; return next; });
+      notifyPlanningChanged();
+      await Promise.all([refreshControl(), refreshRegions()]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The pallet allocation could not be saved.");
+    } finally {
+      setBusyKey(undefined);
+    }
+  }
+
+  return <section>
+    <div className="title-row">
+      <div>
+        <p className="eyebrow">Planner second screen · live quantity control</p>
+        <h1>Pallet control</h1>
+        <p className="intro">Approved orders appear here before they are allocated to a run. Split allocations reduce the outstanding balance only, so planners can keep this screen beside Planner and build runs from the remaining work.</p>
+      </div>
+      <div className="title-actions">
+        <label>Planning date <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setSelectedCell(undefined); }} /></label>
+        <button onClick={() => { void refreshControl(); void refreshRegions(); }} disabled={control.loading}>Refresh</button>
+        <Link className="button-like primary" to="/">Open planner</Link>
+      </div>
+    </div>
+
+    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", margin: "10px 0 4px" }}>
+      <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 18, height: 18, borderRadius: 4, background: toneBackground("standard"), border: `2px solid ${toneBorder("standard")}` }} />Standard pallets</span>
+      <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 18, height: 18, borderRadius: 4, background: toneBackground("euro"), border: `2px solid ${toneBorder("euro")}` }} />Euro pallets</span>
+      <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 18, height: 18, borderRadius: 4, background: toneBackground("mixed"), border: `2px solid ${toneBorder("mixed")}` }} />Mixed cell</span>
+    </div>
+
+    {message && <p className="notice inline-notice">{message}</p>}
+    {control.error && <p className="notice inline-notice">{control.error}</p>}
+    {data && data.summary.orders === 0 && <div className="state">No approved pallet orders are available for {ukDate(date)}. Check the planning date or Order Control if you expected work here.</div>}
+
+    {data && <>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, margin: "14px 0" }}>
+        {[["Ordered", data.summary.ordered], ["Planned", data.summary.planned], ["Outstanding", data.summary.outstanding], ["Over-planned", data.summary.overplanned], ["Late additions", data.summary.lateAdditions]].map(([label, value]) =>
+          <div key={String(label)} className="panel" style={{ padding: 12 }}><small>{label}</small><div style={{ fontSize: 28, fontWeight: 800, marginTop: 4 }}>{value}</div></div>)}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+        <strong>{ukDate(date)}</strong>
+        {(["outstanding", "ordered", "planned"] as ViewMode[]).map((item) =>
+          <button key={item} className={mode === item ? "primary" : ""} onClick={() => setMode(item)}>{item === "outstanding" ? "Outstanding" : item === "ordered" ? "Current orders" : "Planned"}</button>)}
+        <span style={{ marginLeft: "auto" }}><small>Live refresh every 2 seconds + instant cross-screen updates · {data.summary.orders} orders · {data.summary.runs} runs · updated {fmtTime(data.generatedAtUtc)}</small></span>
+      </div>
+
+      <div className="master-table-wrap" style={{ overflow: "auto", maxHeight: "65vh", border: "1px solid #d5e0e4", borderRadius: 8 }}>
+        <table className="master-table" style={{ minWidth: Math.max(1050, 210 + orderedDestinations.length * 92), borderCollapse: "separate", borderSpacing: 0 }}>
+          <thead>
+            <tr><th style={{ position: "sticky", left: 0, zIndex: 5, background: "#dfeaed" }}>Region</th>{regionGroups.map((group) => <th key={group.region} colSpan={group.destinations.length} style={{ textAlign: "center", background: "#dfeaed", fontWeight: 900 }}>{group.region}</th>)}<th style={{ background: "#dfeaed" }} /></tr>
+            <tr><th style={{ position: "sticky", left: 0, zIndex: 4, minWidth: 210, background: "#eef4f5" }}>Collection site</th>{orderedDestinations.map((destination) => <th key={destination} style={{ minWidth: 88, writingMode: "vertical-rl", transform: "rotate(180deg)", height: 150 }}>{destination}</th>)}<th style={{ minWidth: 90 }}>Total</th></tr>
+          </thead>
+          <tbody>
+            {data.planningGroups.map((group) => {
+              const groupCells = orderedDestinations.map((destination) => cellMap.get(`${group}|||${destination}`));
+              const rowTotal = groupCells.reduce((sum, cell) => sum + metric(cell), 0);
+              if (mode === "outstanding" && rowTotal === 0 && !groupCells.some((cell) => (cell?.overplanned || 0) > 0)) return null;
+              return <tr key={group}>
+                <td style={{ position: "sticky", left: 0, zIndex: 2, background: "white", fontWeight: 700 }}>{group}</td>
+                {orderedDestinations.map((destination, index) => {
+                  const cell = groupCells[index];
+                  const number = metric(cell);
+                  const over = cell?.overplanned || 0;
+                  const tone = cellTone(cell);
+                  return <td key={destination} style={{ textAlign: "center", padding: 3 }}>
+                    {showCell(cell) && (number > 0 || over > 0) ? <button type="button" onClick={() => setSelectedCell({ group, destination })}
+                      title={`${group} → ${destination}: ${cell?.ordered || 0} ordered, ${cell?.planned || 0} planned, ${cell?.outstanding || 0} outstanding`}
+                      style={{ width: "100%", minHeight: 38, fontWeight: 800, border: over > 0 ? "2px solid #b42318" : `2px solid ${toneBorder(tone)}`, background: over > 0 ? "#fff1f0" : toneBackground(tone) }}>
+                      {number}{over > 0 && <small style={{ display: "block", color: "#b42318" }}>+{over}</small>}
+                    </button> : ""}
+                  </td>;
+                })}
+                <td style={{ textAlign: "center", fontWeight: 800 }}>{rowTotal}</td>
+              </tr>;
+            })}
+            <tr><td style={{ position: "sticky", left: 0, background: "#eef4f5", fontWeight: 800 }}>Destination total</td>{orderedDestinations.map((destination) => { const total = data.planningGroups.reduce((sum, group) => sum + metric(cellMap.get(`${group}|||${destination}`)), 0); return <td key={destination} style={{ textAlign: "center", fontWeight: 800 }}>{total || ""}</td>; })}<td style={{ textAlign: "center", fontWeight: 900 }}>{mode === "ordered" ? data.summary.ordered : mode === "planned" ? data.summary.planned : data.summary.outstanding}</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      {selectedCell && <div className="panel" style={{ marginTop: 16 }}>
+        <div className="title-row"><div><p className="eyebrow">Underlying orders</p><h2>{selectedCell.group} → {selectedCell.destination}</h2><p>Orders exist before runs. Each saved run quantity is deducted from the ordered quantity; if only part is allocated, only the remaining balance stays outstanding.</p></div><button onClick={() => setSelectedCell(undefined)}>Close</button></div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="master-table" style={{ minWidth: 1350 }}>
+            <thead><tr><th>Order</th><th>Customer</th><th>Collection</th><th>Destination</th><th>Pallet type</th><th>Temp</th><th>Ordered</th><th>Planned</th><th>Remaining</th><th>Received / amended</th><th>Source</th><th>Run allocation</th></tr></thead>
+            <tbody>{selectedOrders.map((order) => {
+              const d = currentDraft(order);
+              const tone = palletTone(order.palletType);
+              return <tr key={order.id}>
+                <td><strong>{order.reference}</strong>{order.lateAddition && <><br/><small style={{ color: "#0969da", fontWeight: 700 }}>NEW AFTER PLANNING STARTED</small></>}</td>
+                <td>{order.customerCode}</td><td>{order.collection}</td><td>{order.destination}</td>
+                <td><span style={{ display: "inline-block", minWidth: 74, textAlign: "center", fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: toneBackground(tone), border: `2px solid ${toneBorder(tone)}` }}>{palletLabel(order.palletType)}</span></td>
+                <td>{order.temperature || "—"}</td>
+                <td style={{ textAlign: "center" }}>{order.orderedPallets}</td>
+                <td style={{ textAlign: "center" }}>{order.plannedPallets}</td>
+                <td style={{ textAlign: "center", fontWeight: 800, color: order.overplannedPallets > 0 ? "#b42318" : undefined }}>{order.outstandingPallets}{order.overplannedPallets > 0 ? ` (+${order.overplannedPallets} over)` : ""}</td>
+                <td>{fmtTime(order.receivedAtUtc)}</td><td>{order.source || "TMS order"}</td>
+                <td>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(190px,1fr) 80px auto", gap: 6, alignItems: "center" }}>
+                    <select value={d.loadId} onChange={(e) => selectRun(order, e.target.value)}><option value="">Select run…</option>{data.runs.map((run) => <option key={run.id} value={run.id}>{run.reference} · {run.palletSpacesUsed ?? 0}/{run.totalPalletSpaces ?? "—"}{run.capacityType ? ` · ${run.capacityType}` : ""}</option>)}</select>
+                    <input type="number" min="0" step="1" value={d.pallets} onChange={(e) => setAllocationDrafts((current) => ({ ...current, [order.id]: { ...d, pallets: e.target.value } }))} />
+                    <button className="primary" disabled={busyKey === order.id} onClick={() => void saveAllocation(order)}>{busyKey === order.id ? "Saving…" : "Save"}</button>
+                  </div>
+                  {order.allocations.length > 0 && <small style={{ display: "block", marginTop: 5 }}>{order.allocations.map((a) => `${a.loadReference || "Run"}: ${a.pallets}`).join(" · ")}</small>}
+                </td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+      </div>}
+    </>}
+  </section>;
+}

@@ -1,6 +1,6 @@
 # SLH TMS Web
 
-Production React and TypeScript operations portal for the [SLH TMS API](https://github.com/danwilliams201302-max/slh-tms-api). The API and Azure SQL database remain the system of record; this repository only contains the user-facing portal.
+Production React and TypeScript operations portal for the [SLH TMS API](https://github.com/Stuart-Lyons-Haulage/slh-tms-api). The API and Azure SQL database remain the system of record; this repository only contains the user-facing portal.
 
 The production portal runs in Azure Container Apps and publishes automatically when `main` changes.
 
