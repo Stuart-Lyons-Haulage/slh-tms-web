@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { RunPlannerLive } from "./RunPlannerLive";
 import { SubcontractorQuickAdd } from "./SubcontractorQuickAdd";
+import { ImportedPlanRuns } from "./ImportedPlanRuns";
 
 export function PlannerEnhanced() {
   return <section className="planner-enhanced-page">
@@ -13,6 +14,7 @@ export function PlannerEnhanced() {
       <Link className="button-like primary" to="/pallet-control" target="_blank" rel="noopener noreferrer">Open Pallet Control · Screen 2 ↗</Link>
     </div>
     <SubcontractorQuickAdd />
+    <ImportedPlanRuns />
     <RunPlannerLive />
     <div className="mobile-planner-handoff">
       <strong>Allocation and dispatch are on Runs.</strong>
