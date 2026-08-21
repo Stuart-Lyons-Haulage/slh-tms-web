@@ -54,6 +54,14 @@ type LiveVehicleDetail = {
     workAvailableWeekMinutes?: number;
   };
   run?: { id: string; reference: string; status: string };
+  geofence?: {
+    state: string;
+    fenceName?: string;
+    enteredAtUtc?: string;
+    dwellMinutes?: number;
+    latestTrackingUtc?: string;
+  };
+  compliance: { status: string; message: string };
 };
 
 const state: {
@@ -139,6 +147,7 @@ function renderDetail(detail: LiveVehicleDetail) {
   const content = root.querySelector('.live-vehicle-popup-content');
   if (!content) return;
   const identityClass = detail.driver.identityState === 'Mismatch' ? ' warning' : detail.driver.identityState === 'Confirmed' ? ' confirmed' : '';
+  const complianceClass = detail.compliance.status === 'Matched' ? ' confirmed' : detail.compliance.status === 'IdentityMismatch' ? ' warning' : '';
   content.innerHTML = `
     <p class="eyebrow">Live vehicle intelligence</p>
     <h2>${esc(detail.vehicle.registration)}</h2>
@@ -148,12 +157,15 @@ function renderDetail(detail: LiveVehicleDetail) {
       <article><span>Tracking</span><strong>${esc(detail.tracking.state)}</strong><small>${esc(detail.tracking.speedKph ?? 0)} km/h · ${esc(detail.tracking.ageMinutes ?? '—')}m old</small></article>
       <article><span>Tacho duty</span><strong>${detail.tacho ? `Started ${esc(when(detail.tacho.dutyStartUtc))}` : 'No duty returned'}</strong><small>${detail.tacho ? `${esc(minutes(detail.tacho.driveAvailableTodayMinutes))} drive left today` : 'Tracking identity retained without invented duty data'}</small></article>
       <article><span>Current run</span><strong>${esc(detail.run?.reference || 'No active run')}</strong><small>${esc(detail.run?.status || '')}</small></article>
+      <article><span>Geofence</span><strong>${esc(detail.geofence?.fenceName || (detail.run ? 'No active fence' : 'No active run'))}</strong><small>${detail.geofence ? `${esc(detail.geofence.state)}${detail.geofence.dwellMinutes != null ? ` · ${esc(detail.geofence.dwellMinutes)}m dwell` : ''}` : 'Geofence progression not applicable'}</small></article>
+      <article><span>Compliance evidence</span><strong class="identity-state${complianceClass}">${esc(detail.compliance.status)}</strong><small>${esc(detail.compliance.message)}</small></article>
     </div>
     ${detail.driver.identityState === 'Mismatch' ? '<p class="live-vehicle-popup-warning">DOT/Falcon and TachoMaster card identities disagree. Tacho figures should not be applied to this vehicle until they match.</p>' : ''}
     <div class="live-vehicle-popup-meta">
       <span>Falcon: ${esc(detail.driver.falconName || '—')}</span>
       <span>TachoMaster: ${esc(detail.driver.tachoMasterName || '—')}</span>
       <span>Last communication: ${esc(when(detail.tracking.lastEventTimeUtc))}</span>
+      ${detail.geofence?.enteredAtUtc ? `<span>Geofence entered: ${esc(when(detail.geofence.enteredAtUtc))}</span>` : ''}
     </div>`;
 }
 
