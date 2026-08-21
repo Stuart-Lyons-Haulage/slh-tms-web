@@ -42,6 +42,7 @@ const msal = new PublicClientApplication({ auth: { clientId: clientId || '000000
 
 const tvPaths = new Set(['/tv', '/operations-wallboard/tv', '/live-runs/tv']);
 const publicTvLink = tvPaths.has(window.location.pathname) && new URLSearchParams(window.location.search).has('key');
+const legacyTvRuntime = Boolean((window as Window & { __SLH_LEGACY_TV__?: boolean }).__SLH_LEGACY_TV__);
 
 function renderApp() {
   const root = document.getElementById('root');
@@ -59,10 +60,12 @@ function showStartupFailure(error: unknown) {
 
 async function start() {
   try {
+    if (legacyTvRuntime && tvPaths.has(window.location.pathname)) {
+      // The TV compatibility runtime is intentionally plain ES5/XHR so older
+      // Hisense/VIDAA browsers do not depend on modules, React, MSAL or fetch.
+      return;
+    }
     if (publicTvLink) {
-      // The keyed TV wallboard authenticates its API calls with X-TMS-TV-Key.
-      // Render immediately so an older TV browser cannot be left on a white
-      // screen simply because Microsoft sign-in initialisation is unavailable.
       renderApp();
       void msal.initialize().catch((error) => console.warn('MSAL unavailable in keyed TV mode; continuing with TV-key access.', error));
       return;
