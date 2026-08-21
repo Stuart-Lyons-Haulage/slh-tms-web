@@ -197,10 +197,17 @@
 
   function request(path, callback) {
     var xhr;
+    var requestPath = path;
+    if (key && requestPath.indexOf('/api/v1/tv-display/route-progress') === 0) {
+      requestPath += (requestPath.indexOf('?') >= 0 ? '&' : '?') + 'key=' + encodeURIComponent(key);
+    }
     try { xhr = new XMLHttpRequest(); } catch (e) { callback(e); return; }
-    xhr.open('GET', '/tms-api' + path, true);
+    xhr.open('GET', '/tms-api' + requestPath, true);
     xhr.setRequestHeader('Accept', 'application/json');
-    if (key) { xhr.setRequestHeader('X-TMS-TV-Key', key); }
+    if (key) {
+      xhr.setRequestHeader('X-TMS-TV-Key', key);
+      if (requestPath.indexOf('/api/v1/tv-display/route-progress') === 0) { xhr.setRequestHeader('X-TV-Display-Key', key); }
+    }
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) { return; }
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -281,10 +288,12 @@
     var pending = 4;
     var errors = [];
     function done(name, err, data) {
-      if (err) { errors.push(name + ': ' + err.message); }
+      if (err) {
+        if (name !== 'progress') { errors.push(name + ': ' + err.message); }
+      }
       else if (name === 'loads') { state.loads = data || []; }
       else if (name === 'assignments') { state.assignments = data || []; }
-      else if (name === 'progress') { state.progress = data && data.runs ? data.runs : []; }
+      else if (name === 'progress') { state.progress = data && data.runs ? data.runs : state.progress; }
       else if (name === 'etas') { state.etas = data && data.records ? data.records : []; }
       pending -= 1;
       if (pending === 0) { state.error = errors.join(' '); render(); }
