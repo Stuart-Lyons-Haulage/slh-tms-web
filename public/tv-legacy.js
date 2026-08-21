@@ -133,6 +133,9 @@
     if (progress && progress.trackingMoving) {
       return ['ON ROUTE', progress.focusStop || (eta ? eta.stopName : ''), 'route', false];
     }
+    if (progress && progress.trackingFresh === false && progress.trackingAgeSeconds != null && progress.trackingAgeSeconds > 300) {
+      return ['TRACKING STALE', progress.focusStop || (eta ? eta.stopName : ''), 'scheduled', false];
+    }
     if ((progress && progress.completedStops > 0) || (eta && (eta.source === 'Live' || eta.source === 'Estimated'))) {
       return ['ON ROUTE', progress && progress.focusStop ? progress.focusStop : (eta ? eta.stopName : ''), 'route', false];
     }
@@ -142,6 +145,15 @@
   function shortName(value) {
     var text = String(value || 'Job').replace(/^Collect · |^Deliver · /i, '');
     return text.length > 30 ? text.substr(0, 28) + '…' : text;
+  }
+
+  function trackingAgeText(progress) {
+    if (!progress || progress.trackingAgeSeconds == null) { return ''; }
+    var seconds = Math.max(0, Number(progress.trackingAgeSeconds) || 0);
+    if (progress.trackingFresh) {
+      return seconds < 90 ? ' · live ' + Math.round(seconds) + 's' : ' · live ' + Math.max(1, Math.round(seconds / 60)) + 'm';
+    }
+    return ' · tracking ' + Math.max(1, Math.round(seconds / 60)) + 'm old';
   }
 
   function fallbackStops(load) {
@@ -158,7 +170,9 @@
     var dots = '';
     var i;
     for (i = 0; i < count; i += 1) {
-      var pct = count <= 1 ? 50 : (i / (count - 1)) * 100;
+      // 0% is an implicit journey START. Stop 1 follows it, so a vehicle heading to
+      // its first job is never drawn beyond that job before the geofence is reached.
+      var pct = ((i + 1) / count) * 100;
       var state = stops[i] && stops[i].state ? String(stops[i].state).toLowerCase() : '';
       var cls = '';
       if (state === 'completed' || (!state && i < done)) { cls = ' done'; }
@@ -169,23 +183,24 @@
 
     var truckPct = progress && progress.truckPositionPercent != null ? Number(progress.truckPositionPercent) : null;
     if (truckPct == null || isNaN(truckPct)) {
-      truckPct = count <= 1 ? 0 : Math.max(0, Math.min(100, (done / (count - 1)) * 100));
+      truckPct = Math.max(0, Math.min(100, (done / count) * 100));
     }
     truckPct = Math.max(0, Math.min(100, truckPct));
-    var liveMarker = progress && (progress.trackingFresh || progress.trackingMoving || progress.geofenceOnSite || done > 0)
+    var liveMarker = progress && progress.trackingFresh
       ? '<span class="timeline-vehicle' + (progress.trackingMoving ? ' moving' : '') + '" style="left:' + truckPct + '%"></span>'
       : '';
     var next = progress && progress.focusStop ? progress.focusStop : (eta ? eta.stopName : 'Next job TBC');
     var prefix = progress && progress.geofenceOnSite ? 'On site: ' : 'Next: ';
     var speed = progress && progress.trackingMoving && progress.speedKph != null ? ' · ' + Math.round(Number(progress.speedKph)) + ' km/h' : '';
-    return '<div class="timeline"><span class="timeline-line"></span><span class="timeline-done" style="width:' + truckPct + '%"></span>' + dots + liveMarker + '</div><div class="next-job">' + esc(prefix + shortName(next) + speed) + '</div>';
+    var freshness = trackingAgeText(progress);
+    return '<div class="timeline"><span class="timeline-line"></span><span class="timeline-done" style="width:' + truckPct + '%"></span>' + dots + liveMarker + '</div><div class="next-job">' + esc(prefix + shortName(next) + speed + freshness) + '</div>';
   }
 
   var key = queryValue('key');
   var date = todayIso();
   var state = { loads: [], assignments: [], progress: [], etas: [], error: '' };
 
-  root.innerHTML = '<div id="legacy-tv"><div class="legacy-head"><div><div class="legacy-brand">STUART LYONS HAULAGE</div><h1>Live Runs</h1></div><div class="legacy-clock"><b id="legacy-clock"></b><span id="legacy-date"></span></div></div><div id="legacy-message">Connecting to live TMS data…</div><div id="legacy-board"></div><div class="legacy-foot"><span>Updates every 60 seconds</span><span id="legacy-refresh"></span></div></div>';
+  root.innerHTML = '<div id="legacy-tv"><div class="legacy-head"><div><div class="legacy-brand">STUART LYONS HAULAGE</div><h1>Live Runs</h1></div><div class="legacy-clock"><b id="legacy-clock"></b><span id="legacy-date"></span></div></div><div id="legacy-message">Connecting to live TMS data…</div><div id="legacy-board"></div><div class="legacy-foot"><span>RoadTech ingest 1m · board update 60s</span><span id="legacy-refresh"></span></div></div>';
 
   function updateClock() {
     var now = new Date();
