@@ -1,6 +1,6 @@
 // SLH TMS Service Worker - network-first strategy
 // Does not cache authenticated API responses
-const CACHE_NAME = 'slh-tms-v2';
+const CACHE_NAME = 'slh-tms-v3';
 const STATIC_ASSETS = ['/', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -48,6 +48,9 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
+          // Never cache a failed/missing bundle response. This matters on wallboard TVs
+          // that can stay open across deployments and briefly request an expired hash.
+          if (!response.ok) return response;
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return response;
