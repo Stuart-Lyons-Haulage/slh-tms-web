@@ -23,6 +23,7 @@ import './routeGeocodeFallbackPatch';
 import './pollingLoadGuard';
 import './wallboardSnapshotFetchPatch';
 import './overnightWallboardFetchPatch';
+import './liveVehiclePopupPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
@@ -35,6 +36,7 @@ import './ops-cleanup.css';
 import './mobile-v2.css';
 import './mobile-planner.css';
 import './master-fleet.css';
+import './live-vehicle-popup.css';
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
