@@ -1132,12 +1132,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ note }),
     }),
-  clearPendingStaging: (token?: string) =>
-    request<{ deleted: number }>(
-      "/api/v1/staging/pending?confirm=CLEAR-PENDING",
-      token,
-      { method: "DELETE" },
-    ),
+  archivePendingStaging: (reason: string, token?: string) =>
+    request<{ archived: number }>("/api/v1/staging/pending/archive", token, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
   operationsConfidence: (token?: string) =>
     request<IntegrationConfidence>(
       "/api/v1/operations/confidence",

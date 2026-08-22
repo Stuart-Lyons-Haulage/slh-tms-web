@@ -4615,19 +4615,22 @@ export function StagingQueue() {
       setReviewing(undefined);
     }
   }
-  async function clearPending() {
+  async function archivePending() {
     if (
       !confirm(
-        "Clear all pending staging records? Promoted master data will stay in place.",
+        "Archive all pending staging records? They will remain in SQL with their source evidence and audit history.",
       )
     )
       return;
     setReviewing("clear");
     setBulkMessage(undefined);
     try {
-      const result = await api.clearPendingStaging(await token());
+      const result = await api.archivePendingStaging(
+        "Archived by an authorised planner from the staging review queue.",
+        await token(),
+      );
       setBulkMessage(
-        `${result.deleted} pending staging record${result.deleted === 1 ? "" : "s"} cleared. You can now re-import fresh.`,
+        `${result.archived} pending staging record${result.archived === 1 ? "" : "s"} archived. Their SQL history and source links have been retained.`,
       );
       setSelected(undefined);
       await refresh();
@@ -4635,7 +4638,7 @@ export function StagingQueue() {
       setBulkMessage(
         exception instanceof Error
           ? exception.message
-          : "Could not clear pending staging records.",
+          : "Could not archive pending staging records.",
       );
     } finally {
       setReviewing(undefined);
@@ -4667,9 +4670,9 @@ export function StagingQueue() {
           <button
             className="reject"
             disabled={reviewing === "clear"}
-            onClick={() => void clearPending()}
+            onClick={() => void archivePending()}
           >
-            {reviewing === "clear" ? "Clearing..." : "Clear pending"}
+            {reviewing === "clear" ? "Archiving..." : "Archive pending"}
           </button>
         </div>
       </div>
