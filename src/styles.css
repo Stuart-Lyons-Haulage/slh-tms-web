@@ -77,3 +77,13 @@
   .tab-bar .tab { padding: 8px 12px; font-size: .82rem; }
   .driver-mobile { padding: 0 4px; }
 }
+.driver-column-filters th {
+  padding-top: 6px;
+  padding-bottom: 8px;
+}
+
+.driver-column-filters input {
+  box-sizing: border-box;
+  min-width: 86px;
+  width: 100%;
+}
