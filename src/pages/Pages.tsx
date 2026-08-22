@@ -1,9373 +1,1934 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type DragEvent,
-  type FormEvent,
-  type ReactNode,
-} from "react";
-import * as XLSX from "xlsx";
-import * as atlas from "azure-maps-control";
-import { useMsal } from "@azure/msal-react";
-import { Link } from "react-router-dom";
-import "azure-maps-control/dist/atlas.min.css";
-import {
-  api,
-  type Customer,
-  type CustomerContact,
-  type DeliveryEta,
-  type DiagnosticsTables,
-  type Driver,
-  type DriverAssignment,
-  type FleetStatus,
-  type Load,
-  type LoadDispatch,
-  type MarketContact,
-  type MasterApplyResponse,
-  type MailboxAttachment,
-  type MailboxEmailIntakeRequest,
-  type ReturnLoadSuggestions,
-  type Site,
-  type StageBatchRequest,
-  type StagedImport,
-  type Telemetry,
-  type Trailer,
-  type TransportOrder,
-  type Vehicle,
-} from "../lib/api";
-import { apiScope, useAccessToken } from "../lib/auth";
-import { useApi } from "../lib/useApi";
+Y™Áäx-ÆÈ‹j◊ù¢Îi∫⁄+äßj[hëÈ‹¢ÈÌ◊O5ÁTËµ©h∫⁄n∂XßzÕZ[\‹ù¬à\ŸPÿ[òX⁄Àà\ŸQYôôX›à\ŸSY[[Àà\ŸTôYãà\ŸT›]Kà\HòY—]ô[ùà\Hõ‹õQ]ô[ùà\HôXX›õŸKüHúõ€HúôXX›é¬ö[\‹ù
+à\»÷úõ€Hûﬁé¬ö[\‹ù
+à\»]\»úõ€Hò^ù\ôK[X\ÀX€€ùõ€é¬ö[\‹ù»\ŸS\ÿ[Húõ€Hê^ù\ôK€\ÿ[\ôXX›é¬ö[\‹ù»[ö»Húõ€HúôXX›\õ›]\ãY€Hé¬ö[\‹ùò^ù\ôK[X\ÀX€€ùõ€Ÿ\›ÿ]\ÀõZ[ãò‹‹»é¬ö[\‹ù¬à\Kà\H›\›€Y\ãà\H›\›€Y\ê€€ùX›à\H[]ô\ûQ]Kà\HXY€õ‹›X‹’Xõ\Àà\Hö]ô\ãà\Hö]ô\ê\‹⁄Y€õY[ùà\HõY]›]\Àà\HÿYà\HÿY\‹]⁄à\HX\öŸ]€€ùX›à\HX\›\ê\Tô\‹€úŸKà\HXZ[õﬁ]X⁄Y[ùà\HXZ[õﬁ[XZ[[ùZŸTô\]Y\›à\Hô]\õìÿY›YŸŸ\›[€úÀà\H⁄]Kà\H›YŸPò]⁄ô\]Y\›à\H›YŸY[\‹ùà\H[[Y]ûKà\HòZ[\ãà\Hò[ú‹‹ù‹ô\ãà\HôZX€KüHúõ€Hããã€Xãÿ\Hé¬ö[\‹ù»\Tÿ€‹K\ŸPXÿŸ\‹’⁄Ÿ[àHúõ€Hããã€Xãÿ]]é¬ö[\‹ù»\ŸP\HHúõ€Hããã€Xã›\ŸP\Hé¬Çôù[ò›[€àôX€€õôX›ZX‹õ‹€Ÿù
 
-function ReconnectMicrosoft() {
-  const { instance } = useMsal();
-  return (
-    <button
-      className="primary"
-      onClick={() =>
-        void instance.loginRedirect({
-          scopes: apiScope ? [apiScope] : [],
-          prompt: "select_account",
-        })
-      }
-    >
-      Reconnect Microsoft
-    </button>
-  );
-}
-function State({
-  loading,
-  error,
-  empty,
-  children,
-}: {
-  loading: boolean;
-  error?: string;
-  empty?: boolean;
-  children: ReactNode;
-}) {
-  if (loading) return <div className="state">Loading operational data‚Ä¶</div>;
-  if (error)
-    return (
-      <div className="state error">
-        <p>{error}</p>
-        {error.includes("Microsoft sign-in") && <ReconnectMicrosoft />}
-      </div>
-    );
-  if (empty)
-    return <div className="state">No records are available for this view.</div>;
-  return <>{children}</>;
-}
-const localDate = () => {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
-const formatDate = (value?: string) =>
-  value
-    ? new Intl.DateTimeFormat("en-GB", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(new Date(value))
-    : "‚Äî";
-const formatCurrency = (value?: number) =>
-  new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-const formatMinutes = (value?: number) =>
-  value == null
-    ? "Not returned"
-    : `${Math.floor(value / 60)}h ${String(value % 60).padStart(2, "0")}m`;
-const stagingStatuses = [
-  "PendingReview",
-  "Approved",
-  "Rejected",
-  "Promoted",
-  "Failed",
-];
-const marketOrder = ["Western", "Spit", "Covent"];
-const stagingStatus = (value: string | number | undefined) =>
-  typeof value === "number"
-    ? stagingStatuses[value] || String(value)
-    : value || "PendingReview";
-const statusClass = (value: string | number | undefined) =>
-  stagingStatus(value).toLowerCase();
+H¬à€€ú›»[ú›[òŸHHH\ŸS\ÿ[
 
-export function Dashboard() {
-  const token = useAccessToken();
-  const [date, setDate] = useState(localDate());
-  const staging = useApi(
-    useCallback(async () => api.staging(await token(), ""), [token]),
-  );
-  const loads = useApi(
-    useCallback(async () => api.loads(date, await token()), [date, token]),
-  );
-  const orders = useApi(
-    useCallback(
-      async () => api.orders(date, date, await token()),
-      [date, token],
-    ),
-  );
-  const fleet = useApi(
-    useCallback(async () => api.fleetStatus(await token()), [token]),
-  );
-  const etaApi = useApi(
-    useCallback(
-      async () => api.deliveryEtas(date, await token()),
-      [date, token],
-    ),
-  );
-  const assignments = useApi(
-    useCallback(
-      async () => api.driverAssignments(date, date, await token()),
-      [date, token],
-    ),
-  );
-  const pending =
-    staging.data?.filter(
-      (item) => stagingStatus(item.status) === "PendingReview",
-    ).length ?? 0;
-  const deliveryRisks = [...(etaApi.data?.records || [])].sort(
-    (left, right) =>
-      ({ Late: 3, AtRisk: 2, Pending: 1, OnTrack: 0 })[right.risk] -
-      { Late: 3, AtRisk: 2, Pending: 1, OnTrack: 0 }[left.risk],
-  );
-  const urgent = deliveryRisks.filter(
-    (item) =>
-      item.risk === "Late" ||
-      item.risk === "AtRisk" ||
-      item.tachoStatus === "InsufficientDriveTime",
-  ).length;
-  const utilisedSpaces = (loads.data || []).reduce((total, load) => total + (load.palletSpacesUsed || 0), 0);
-  const availableSpaces = (loads.data || []).reduce((total, load) => total + (load.totalPalletSpaces || 0), 0);
-  const utilisationPercent = availableSpaces > 0 ? (utilisedSpaces / availableSpaces) * 100 : undefined;
-  const overCapacity = (loads.data || []).filter((load) => load.totalPalletSpaces && (load.palletSpacesUsed || 0) > load.totalPalletSpaces).length;
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Operations</p>
-          <h1>Transport control dashboard</h1>
-        </div>
-        <label className="dashboard-date">
-          Operating date{" "}
-          <input
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-          />
-        </label>
-      </div>
-      <State
-        loading={staging.loading || loads.loading || orders.loading}
-        error={staging.error || loads.error || orders.error}
-      >
-        {[fleet.error, etaApi.error, assignments.error].filter(Boolean).length >
-          0 && (
-          <p className="notice inline-notice">
-            Some live insight panels could not refresh yet; core orders and
-            loads remain available.
-          </p>
-        )}
-        <div className="metrics">
-          <Metric
-            label="Staging reviews"
-            value={String(pending)}
-            detail="Awaiting decision"
-          />
-          <Metric
-            label="Operational loads"
-            value={String(loads.data?.length || 0)}
-            detail={`Saved for ${date}`}
-          />
-          <Metric
-            label="Fleet started"
-            value={`${fleet.data?.readyCount || 0}/${fleet.data?.vehicleCount || 0}`}
-            detail="Green means moving now"
-          />
-          <Metric
-            label="Delivery risks"
-            value={String(urgent)}
-            detail="Late or close to window"
-          />
-          <Metric
-            label="Utilisation"
-            value={utilisationPercent == null ? "‚Äî" : `${utilisationPercent.toFixed(1)}%`}
-            detail={`${overCapacity} over-capacity warning${overCapacity === 1 ? "" : "s"}`}
-          />
-        </div>
-        <FleetRollout fleet={fleet.data} etas={deliveryRisks} />
-        <AssignmentSnapshot rows={assignments.data || []} date={date} />
-        <div className="delivery-panel">
-          <div>
-            <p className="eyebrow">Delivery-window control</p>
-            <h2>Tracking + tacho-aware ETA</h2>
-          </div>
-          {deliveryRisks.length ? (
-            <div className="delivery-list">
-              {deliveryRisks.slice(0, 12).map((item) => (
-                <article
-                  className={`delivery-risk ${item.risk === "AtRisk" ? "risk" : item.risk.toLowerCase()} ${item.tachoStatus === "InsufficientDriveTime" ? "tacho-critical" : ""}`}
-                  key={`${item.loadId}-${item.stopId}`}
-                >
-                  <strong>{item.loadReference}</strong>
-                  <span>
-                    {item.orderReference ||
-                      item.customerCode ||
-                      "Unlinked stop"}{" "}
-                    ¬∑ {item.stopName}
-                  </span>
-                  <small>
-                    ETA {formatDate(item.etaUtc)} ¬∑ Window ends{" "}
-                    {formatDate(item.deliveryWindowEndUtc)} ¬∑{" "}
-                    {item.vehicleRegistration || "Vehicle not assigned"}
-                  </small>
-                  <small>{item.tachoExplanation}</small>
-                  <em>
-                    {item.tachoStatus === "InsufficientDriveTime"
-                      ? "Drive time risk"
-                      : item.breakMinutesIncluded
-                        ? `${item.breakMinutesIncluded}m break included`
-                        : item.risk === "AtRisk"
-                      ? "At risk"
-                      : item.risk === "OnTrack"
-                        ? `On target to ${item.stopName}`
-                        : item.risk}
-                  </em>
-                  <i className={`eta-source ${item.source.toLowerCase()}`}>
-                    {item.source} ETA
-                  </i>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="hint">
-              No mapped delivery stops are available for this date. Save stops
-              and delivery windows in the Planner.
-            </p>
-          )}
-        </div>
-        <div className="panel">
-          <h2>Planner focus</h2>
-          <p>
-            Plan today‚Äôs work, allocate the fleet, set route points and
-            calculate ETAs from the Planner.
-          </p>
-          <Link to="/">Open planner ‚Üí</Link>
-        </div>
-      </State>
-    </section>
-  );
-}
-function FleetRollout({
-  fleet,
-  etas = [],
-}: {
-  fleet?: FleetStatus;
-  etas?: DeliveryEta[];
-}) {
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>();
-  const [fleetFilter, setFleetFilter] = useState<"live" | "all" | "attention" | "allocated">("live");
-  const dueTime = (value?: string) =>
-    value ? new Date(value).getTime() : Number.MAX_SAFE_INTEGER;
-  const conditionPriority: Record<string, number> = { Moving: 0, Started: 1, SignedOn: 2, Stationary: 3, Parked: 4, Stale: 5, NotSignedOn: 6 };
-  const allVehicles = [...(fleet?.vehicles || [])].sort(
-    (left, right) =>
-      (conditionPriority[left.condition] ?? 9) - (conditionPriority[right.condition] ?? 9) ||
-      dueTime(left.plannedDutyUtc) - dueTime(right.plannedDutyUtc) ||
-      left.registration.localeCompare(right.registration),
-  );
-  const vehicles = allVehicles.filter((vehicle) =>
-    fleetFilter === "all" ? true
-      : fleetFilter === "attention" ? ["Stale", "NotSignedOn"].includes(vehicle.condition)
-      : fleetFilter === "allocated" ? Boolean(vehicle.loadId)
-      : ["Moving", "Started", "SignedOn", "Stationary"].includes(vehicle.condition),
-  );
-  const selected =
-    vehicles.find((vehicle) => vehicle.vehicleId === selectedVehicleId) ||
-    vehicles.find(
-      (vehicle) => vehicle.latitude != null && vehicle.longitude != null,
-    );
-  const selectedMapUrl =
-    selected?.latitude != null && selected.longitude != null
-      ? `https://www.google.com/maps/search/?api=1&query=${selected.latitude},${selected.longitude}`
-      : undefined;
-  const nextEta = selected?.loadId
-    ? etas
-        .filter((item) => item.loadId === selected.loadId)
-        .sort((left, right) => left.sequence - right.sequence)[0]
-    : undefined;
-  return (
-    <div className="rollout-panel">
-      <div className="rollout-heading">
-        <div>
-          <p className="eyebrow">Live vehicle status</p>
-          <h2>Vehicle, card-holder and current job</h2>
-        </div>
-        <div className="fleet-view-filter">
-          <label>Show <select value={fleetFilter} onChange={(event) => setFleetFilter(event.target.value as typeof fleetFilter)}>
-            <option value="live">Live / active first</option>
-            <option value="all">All vehicles</option>
-            <option value="allocated">With current jobs</option>
-            <option value="attention">Needs attention</option>
-          </select></label>
-          <span>{vehicles.length} shown ¬∑ {fleet?.attentionCount || 0} to watch</span>
-        </div>
-      </div>
-      {selected && (
-        <div className="vehicle-detail-panel">
-          <div className="vehicle-detail-main">
-            <div>
-              <strong>{selected.registration}</strong>
-              <span>
-                {fleetConditionLabel(selected.condition)} ¬∑{" "}
-                {selected.trackingIdentifier ||
-                  selected.fleetNumber ||
-                  "RoadTech match pending"}
-              </span>
-              {selected.driverName && (
-                <small className="live-driver-name">
-                {selected.driverSource === "TachoMaster"
-  ? "TachoMaster driver"
-  : selected.driverSource === "DOT/Falcon"
-    ? "Live DOT driver"
-    : "Planned driver"}
-                  : {selected.driverName}
-                  {selected.driverMatchReason === "Unmatched" && selected.tachoName && (
-                    <span className="driver-mismatch"> ‚Äî Tacho driver not linked to TMS</span>
-                  )}
-                  {selected.driverMatchReason && selected.driverMatchReason !== "Unmatched" && (
-                    <span className="match-reason"> ‚Äî matched by {selected.driverMatchReason}</span>
-                  )}
-                </small>
-              )}
-              {selected.tacho?.cardNumber && (
-                <small>Driver card: {selected.tacho.cardNumber}</small>
-              )}
-              {selected.driverMismatch && (
-                <small className="driver-mismatch">
-                  TachoMaster driver differs from allocated driver{" "}
-                  {selected.allocatedDriverName}.
-                </small>
-              )}
-              <small>
-                {selected.lastEventTimeUtc
-                  ? "Vehicle update " +
-                    formatDate(selected.lastEventTimeUtc) +
-                    " ¬∑ " +
-                    (selected.speedKph ?? 0) +
-                    " km/h"
-                  : "No live DOT point matched yet"}
-              </small>
-              {selected.loadId && (
-                <a
-                  className="job-link"
-                  href={`/?loadId=${encodeURIComponent(selected.loadId)}`}
-                >
-                  Open job {selected.loadReference || ""} ‚Üí
-                </a>
-              )}
-              {nextEta && (
-                <aside
-                  className={`job-eta ${nextEta.tachoStatus === "InsufficientDriveTime" ? "critical" : ""}`}
-                >
-                  <strong>
-                    Next: {nextEta.stopName} ¬∑ {formatDate(nextEta.etaUtc)}
-                  </strong>
-                  <span>
-                    {nextEta.breakMinutesIncluded
-                      ? `${nextEta.breakMinutesIncluded}m tacho break included`
-                      : nextEta.tachoStatus === "WithinDriveTime"
-                        ? "Within current drive time"
-                        : nextEta.tachoExplanation}
-                  </span>
-                </aside>
-              )}
-              {selected.fleetioStatus && (
-                <small
-                  className={
-                    "fleetio-chip " + fleetioStatusClass(selected.fleetioStatus)
-                  }
-                >
-                  Fleetio: {selected.fleetioStatus}
-                  {selected.fleetioName ? " ¬∑ " + selected.fleetioName : ""}
-                </small>
-              )}
-            </div>
-            {selected.tacho ? (
-              <div className="tacho-detail">
-                <div className="tacho-metrics">
-                  <article>
-                    <span>Driving used</span>
-                    <strong>
-                      {formatMinutes(selected.tacho.driveMinutes)}
-                    </strong>
-                  </article>
-                  <article>
-                    <span>Driving left today</span>
-                    <strong>
-                      {formatMinutes(selected.tacho.driveAvailableTodayMinutes)}
-                    </strong>
-                  </article>
-                  <article>
-                    <span>Rest / break recorded</span>
-                    <strong>{formatMinutes(selected.tacho.restMinutes)}</strong>
-                    <small>
-                      {selected.tacho.breakCount
-                        ? `${selected.tacho.breakCount} WTD break${selected.tacho.breakCount === 1 ? "" : "s"} ¬∑ ${formatMinutes(selected.tacho.breakMinutes)}`
-                        : "No separate WTD break returned"}
-                    </small>
-                  </article>
-                  <article>
-                    <span>Work left this week</span>
-                    <strong>
-                      {formatMinutes(selected.tacho.workAvailableWeekMinutes)}
-                    </strong>
-                  </article>
-                </div>
-                <small>
-                  Duty from {formatDate(selected.tacho.dutyStartUtc)}
-                  {selected.tacho.dutyEndUtc
-                    ? ` to ${formatDate(selected.tacho.dutyEndUtc)}`
-                    : " ¬∑ currently open in TachoMaster"}
-                </small>
-                <small>
-                  Driving available: week{" "}
-                  {formatMinutes(selected.tacho.driveAvailableWeekMinutes)} ¬∑
-                  fortnight{" "}
-                  {formatMinutes(selected.tacho.driveAvailableFortnightMinutes)}
-                </small>
-                <small>
-                  Long days this week{" "}
-                  {selected.tacho.longDaysWorkedThisWeek ?? "‚Äî"} ¬∑ shortened
-                  daily rests{" "}
-                  {selected.tacho.shortDailyRestTakenThisWeek ?? "‚Äî"}
-                </small>
-                <small className="tacho-valid">
-                  Tacho figures valid at{" "}
-                  {formatDate(selected.tacho.metricsValidAtUtc)}
-                </small>
-              </div>
-            ) : (
-              <p className="tacho-unavailable">
-                No TachoMaster duty or driver-card record has been returned for
-                this vehicle.
-              </p>
-            )}
-          </div>
-          {selectedMapUrl ? (
-            <a
-              className="vehicle-map-link"
-              href={selectedMapUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open map location ‚Üí
-            </a>
-          ) : (
-            <span className="hint">
-              No latitude/longitude returned for this vehicle yet.
-            </span>
-          )}
-        </div>
-      )}
-      {vehicles.length ? (
-        <div className="rollout-grid">
-          {vehicles.map((vehicle) => {
-            const hasMap =
-              vehicle.latitude != null && vehicle.longitude != null;
-            return (
-              <article
-                className={`rollout-card ${vehicleStatusClass(vehicle)} ${selectedVehicleId === vehicle.vehicleId ? "selected" : ""}`}
-                key={vehicle.vehicleId}
-              >
-                <button
-                  type="button"
-                  className="rollout-select"
-                  onClick={() => setSelectedVehicleId(vehicle.vehicleId)}
-                >
-                  <span className="condition-dot" />
-                  <span className="rollout-vehicle">
-                    <strong>{vehicle.registration}</strong>
-                    <small>
-                      {vehicle.fleetNumber ||
-                        vehicle.trackingIdentifier ||
-                        "Fleet vehicle"}
-                    </small>
-                  </span>
-                  <span className="rollout-state">
-                    <b>{fleetConditionLabel(vehicle.condition)}</b>
-                    {vehicle.driverName && (
-                      <small className="rollout-driver">
-                     {vehicle.driverSource === "TachoMaster"
-  ? "Tacho"
-  : vehicle.driverSource === "DOT/Falcon"
-    ? "DOT"
-    : "Planned"}
-                        : {vehicle.driverName}
-                        {vehicle.driverMatchReason === "Unmatched" && vehicle.tachoName && (
-                          <span className="driver-mismatch"> ‚Äî not linked</span>
-                        )}
-                      </small>
-                    )}
-                    {vehicle.driverMismatch && (
-                      <small className="driver-mismatch">
-                        Allocated: {vehicle.allocatedDriverName}
-                      </small>
-                    )}
-                    <small>
-                      {vehicle.plannedDutyUtc
-                        ? `Due ${formatDate(vehicle.plannedDutyUtc)}`
-                        : hasMap
-                          ? "Live RoadTech point"
-                          : "No planned sign-on time"}
-                    </small>
-                    <small>
-                      {vehicle.lastEventTimeUtc
-                        ? `${vehicle.speedKph ?? 0} km/h ¬∑ ${formatDate(vehicle.lastEventTimeUtc)}`
-                        : "Awaiting RoadTech match today"}
-                    </small>
-                    {vehicle.fleetioStatus && (
-                      <small
-                        className={`fleetio-chip ${fleetioStatusClass(vehicle.fleetioStatus)}`}
-                      >
-                        Fleetio: {vehicle.fleetioStatus}
-                      </small>
-                    )}
-                  </span>
-                </button>
-                {vehicle.loadId ? (
-                  <a
-                    className="rollout-job"
-                    href={`/?loadId=${encodeURIComponent(vehicle.loadId)}`}
-                  >
-                    <strong>
-                      {vehicle.loadReference || "Open current job"}
-                    </strong>
-                    <span>{vehicle.loadStatus || "Planned"} ‚Üí</span>
-                  </a>
-                ) : (
-                  <span className="rollout-job empty">No current job</span>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="hint">No active vehicles are held in Master Data yet.</p>
-      )}
-    </div>
-  );
-}
-function AssignmentSnapshot({
-  rows,
-  date,
-}: {
-  rows: DriverAssignment[];
-  date: string;
-}) {
-  const allocated = rows.filter((item) => item.driver && item.vehicle);
-  return (
-    <div className="assignment-snapshot">
-      <div className="rollout-heading">
-        <div>
-          <p className="eyebrow">Driver history</p>
-          <h2>Who was on what</h2>
-        </div>
-        <a href={`/driver-assignments?from=${date}&to=${date}`}>
-          Open full history ‚Üí
-        </a>
-      </div>
-      {rows.length ? (
-        <div className="assignment-snapshot-grid">
-          {rows.slice(0, 10).map((item) => (
-            <article key={item.loadId}>
-              <strong>{item.loadReference}</strong>
-              <span>
-                {item.driver?.displayName || "No driver assigned"} ¬∑{" "}
-                {item.vehicle?.registration || "No vehicle"}
-              </span>
-              <small>
-                {item.finalStop || "Final stop not mapped"} ¬∑ {item.stopCount}{" "}
-                stop{item.stopCount === 1 ? "" : "s"}
-              </small>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <p className="hint">
-          No driver assignments are saved for {date}. Once loads are planned and
-          allocated, they remain available here historically.
-        </p>
-      )}
-      <p className="hint">
-        {allocated.length}/{rows.length || 0} loads have both driver and vehicle
-        recorded for this date.
-      </p>
-    </div>
-  );
-}
-function fleetConditionLabel(
-  condition: FleetStatus["vehicles"][number]["condition"],
-) {
-  return {
-    Moving: "Moving",
-    Started: "Engine on ¬∑ stationary",
-    Parked: "Not active",
-    Stationary: "Not active",
-    SignedOn: "TachoMaster duty ¬∑ stationary",
-    Stale: "Tracking stale",
-    NotSignedOn: "Not active",
-  }[condition];
-}
-function vehicleStatusClass(vehicle: FleetStatus["vehicles"][number]) {
-  return vehicle.condition === "Moving"
-    ? "signedon"
-    : vehicle.condition === "Stale"
-      ? "stale"
-      : "parked";
-}
-function fleetioStatusClass(status?: string) {
-  const value = (status || "").toLowerCase();
-  if (
-    value.includes("out") ||
-    value.includes("vor") ||
-    value.includes("down") ||
-    value.includes("repair")
-  )
-    return "fleetio-bad";
-  if (
-    value.includes("service") ||
-    value.includes("maintenance") ||
-    value.includes("issue")
-  )
-    return "fleetio-watch";
-  return "fleetio-good";
-}
-function Metric({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <article className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
-    </article>
-  );
-}
+N¬àô]\õà
+àù]€Çà€\‹”ò[YOHúö[X\ûHÇà€ê€X⁄œ^ 
+HOÇàõ⁄Y[ú›[òŸKõŸ⁄[îôY\ôX›
+¬àÿ€‹\Œà\Tÿ€‹H»ÿ\Tÿ€‹WHà◊Kàõ€\àúŸ[X›ÿXÿ€›[ùãàJBàBàÇàôX€€õôX›ZX‹õ‹€Ÿùàÿù]€èÇà
+N¬üBôù[ò›[€à›]J¬àÿY[ôÀà\úõ‹ãà[\Kà⁄[ô[ãüNà¬àÿY[ôŒàõ€€X[é¬à\úõ‹èŒà›ö[ôŒ¬à[\OŒàõ€€X[é¬à⁄[ô[éàôXX›õŸN¬üJH¬àYà
+ÿY[ô Hô]\õà]à€\‹”ò[YOHú›]HèìÿY[ô»‹\ò][€ò[]x†)èŸ]èé¬àYà
+\úõ‹äBàô]\õà
+à]à€\‹”ò[YOHú›]H\úõ‹àèÇàûŸ\úõ‹üO‹ÇàŸ\úõ‹ãö[ò€Y\ ìZX‹õ‹€Ÿù⁄Y€ãZ[àäH	âàôX€€õôX›ZX‹õ‹€ŸùœüBàŸ]èÇà
+N¬àYà
+[\JBàô]\õà]à€\‹”ò[YOHú›]Hèìõ»ôX€‹ô»\ôH]òZ[XõHõ‹à\»öY]ÀèŸ]èé¬àô]\õàûÿ⁄[ô[üOœé¬üBò€€ú›ÿÿ[]HH
 
-type ImportRow = Record<string, string>;
-const expectedColumns = [
-  "poNumber",
-  "customerCode",
-  "collectionDate",
-  "pallets",
-];
-const marketColumns = [
-  "deliveryWindowStartUtc",
-  "deliveryWindowEndUtc",
-  "sellerName",
-  "marketName",
-  "stallNumber",
-  "averagePalletWeightKg",
-  "estimatedWeightKg",
-  "driverInstructions",
-  "mapLink",
-];
-type SheetRow = Record<string, string | number | boolean | Date | undefined>;
-function parseCsv(text: string): ImportRow[] {
-  const [header, ...lines] = text
-    .replace(/^\uFEFF/, "")
-    .trim()
-    .split(/\r?\n/);
-  if (!header) return [];
-  const fields = header.split(",").map((value) => value.trim());
-  return lines
-    .filter(Boolean)
-    .map((line) =>
-      Object.fromEntries(
-        fields.map((field, index) => [
-          field,
-          line.split(",")[index]?.trim() || "",
-        ]),
-      ),
-    );
-}
-function validateImportRows(rows: ImportRow[]) {
-  const seen = new Set<string>();
-  return rows.flatMap((row, index) => {
-    const missing = expectedColumns.filter((column) => !row[column]?.trim());
-    const dates = [row.collectionDate, row.deliveryDate]
-      .filter(Boolean)
-      .some((value) => !/^\d{4}-\d{2}-\d{2}$/.test(value));
-    const pallets = Number(row.pallets || 1);
-    const key =
-      `${row.poNumber}|${row.customerCode}|${row.collectionDate}`.toLowerCase();
-    const duplicate = seen.has(key);
-    seen.add(key);
-    const invalidMap = Boolean(
-      row.mapLink && !/^https?:\/\//i.test(row.mapLink),
-    );
-    const issues = [
-      missing.length ? `missing ${missing.join(", ")}` : "",
-      dates ? "dates must use YYYY-MM-DD" : "",
-      !Number.isFinite(pallets) || pallets <= 0
-        ? "pallets must be greater than zero"
-        : "",
-      duplicate ? "duplicate order row" : "",
-      invalidMap ? "map link must start with http:// or https://" : "",
-    ].filter(Boolean);
-    return issues.length ? [`Row ${index + 2}: ${issues.join("; ")}.`] : [];
-  });
-}
-const normaliseHeader = (value: unknown) =>
-  String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-type OrderField =
-  | "poNumber"
-  | "customerCode"
-  | "collectionDate"
-  | "deliveryDate"
-  | "pallets"
-  | "deliveryWindowStartUtc"
-  | "deliveryWindowEndUtc"
-  | "sellerName"
-  | "marketName"
-  | "stallNumber"
-  | "averagePalletWeightKg"
-  | "estimatedWeightKg"
-  | "driverInstructions"
-  | "mapLink";
-const orderAliases: Record<OrderField, string[]> = {
-  poNumber: [
-    "ponumber",
-    "po",
-    "poref",
-    "purchaseorder",
-    "ordernumber",
-    "orderno",
-    "orderref",
-    "reference",
-    "ref",
-    "load",
-    "loadreference",
-    "bookingref",
-    "bookingreference",
-    "du",
-    "label",
-    "depotref",
-    "runref",
-  ],
-  customerCode: [
-    "customercode",
-    "customer",
-    "customername",
-    "account",
-    "accountcode",
-    "deliverylocation",
-    "site",
-    "sitename",
-    "destination",
-    "depot",
-    "deliverystop",
-    "deliveryaddress",
-    "location",
-    "consignee",
-    "receiver",
-    "deliveries",
-  ],
-  collectionDate: [
-    "collectiondate",
-    "collectdate",
-    "collection",
-    "pickupdate",
-    "pickupdate",
-    "loadingdate",
-    "despatchdate",
-    "dispatchdate",
-    "planneddate",
-    "date",
-    "runoutdate",
-    "exfarm",
-    "fromdate",
-  ],
-  deliveryDate: [
-    "deliverydate",
-    "deliverdate",
-    "delivery",
-    "deliverby",
-    "planneddate",
-    "date",
-    "duedate",
-    "marketdate",
-  ],
-  pallets: [
-    "pallets",
-    "pallet",
-    "palletsdelivered",
-    "palletqty",
-    "quantity",
-    "qty",
-    "spaces",
-    "trays",
-    "dollies",
-    "stacks",
-    "plt",
-    "plts",
-  ],
-  deliveryWindowStartUtc: [
-    "deliverywindowstartutc",
-    "windowstart",
-    "from",
-    "deliveryfrom",
-    "slotstart",
-  ],
-  deliveryWindowEndUtc: [
-    "deliverywindowendutc",
-    "windowend",
-    "to",
-    "deliveryto",
-    "slotend",
-  ],
-  sellerName: [
-    "sellername",
-    "seller",
-    "salesman",
-    "salesperson",
-    "supplier",
-    "grower",
-    "vendor",
-    "sender",
-    "haulier",
-    "farm",
-    "source",
-  ],
-  marketName: ["marketname", "market", "wholesalemarket", "marketdestination"],
-  stallNumber: [
-    "stallnumber",
-    "stall",
-    "stand",
-    "standnumber",
-    "standlocation",
-    "location",
-    "unit",
-    "arch",
-  ],
-  averagePalletWeightKg: [
-    "averagepalletweightkg",
-    "avgpalletweight",
-    "averageweight",
-    "avgweight",
-    "palletweight",
-    "weightperpallet",
-  ],
-  estimatedWeightKg: [
-    "estimatedweightkg",
-    "totalweight",
-    "weightkg",
-    "grossweight",
-    "estimatedweight",
-    "weight",
-    "kgs",
-    "kg",
-  ],
-  driverInstructions: [
-    "driverinstructions",
-    "instructions",
-    "notes",
-    "deliverynotes",
-    "collectionnotes",
-    "specialinstructions",
-    "temperature",
-    "temp",
-    "product",
-    "goods",
-  ],
-  mapLink: ["maplink", "map", "maps", "googlemaps", "what3words", "what3word"],
-};
-function orderDate(value: unknown) {
-  if (value instanceof Date && !Number.isNaN(value.getTime()))
-    return value.toISOString().slice(0, 10);
-  if (typeof value === "number" && value > 25000 && value < 90000)
-    return new Date(Math.round((value - 25569) * 86400 * 1000))
-      .toISOString()
-      .slice(0, 10);
-  const text = String(value || "").trim();
-  if (!text) return "";
-  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
-  const uk = text.match(/^(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?$/);
-  if (uk)
-    return `${uk[3] ? (uk[3].length === 2 ? `20${uk[3]}` : uk[3]) : new Date().getFullYear()}-${uk[2].padStart(2, "0")}-${uk[1].padStart(2, "0")}`;
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime())
-    ? text
-    : parsed.toISOString().slice(0, 10);
-}
-function orderCell(value: unknown) {
-  return value instanceof Date ? orderDate(value) : String(value ?? "").trim();
-}
-function firstMapped(row: unknown[], headers: string[], field: OrderField) {
-  const index = headers.findIndex((header) =>
-    orderAliases[field].some(
-      (alias) =>
-        header === alias || header.includes(alias) || alias.includes(header),
-    ),
-  );
-  return index >= 0 ? orderCell(row[index]) : "";
-}
-function inferMarket(value: string) {
-  const normalised = normaliseHeader(value);
-  if (normalised.includes("covent")) return "Covent";
-  if (normalised.includes("spit") || normalised.includes("spital"))
-    return "Spit";
-  if (normalised.includes("western")) return "Western";
-  return "";
-}
-function cleanOrderRow(
-  row: ImportRow,
-  index: number,
-  source: string,
-): ImportRow | undefined {
-  const marketName =
-    row.marketName ||
-    inferMarket(`${source} ${row.customerCode} ${row.driverInstructions}`);
-  const collectionDate =
-    orderDate(row.collectionDate) || orderDate(row.deliveryDate) || localDate();
-  const deliveryDate = orderDate(row.deliveryDate) || collectionDate;
-  const customerCode =
-    row.customerCode ||
-    marketName ||
-    row.sellerName ||
-    row.senderName ||
-    "MARKET";
-  const pallets = row.pallets || "1";
-  const poNumber =
-    row.poNumber ||
-    `${
-      normaliseHeader(customerCode || source)
-        .toUpperCase()
-        .slice(0, 18) || "ORDER"
-    }-${collectionDate.replaceAll("-", "")}-${index + 1}`;
-  if (!customerCode || !collectionDate) return undefined;
-  const weight =
-    row.estimatedWeightKg ||
-    (Number(pallets) > 0 && Number(row.averagePalletWeightKg) > 0
-      ? String(Math.round(Number(pallets) * Number(row.averagePalletWeightKg)))
-      : "");
-  const driverInstructions = [
-    row.senderName ? `Sender: ${row.senderName}` : "",
-    weight ? `Weight: ${weight} kg` : "",
-    row.driverInstructions,
-  ]
-    .filter(Boolean)
-    .join(" ¬∑ ");
-  return {
-    ...row,
-    poNumber,
-    customerCode,
-    collectionDate,
-    deliveryDate,
-    pallets,
-    marketName,
-    estimatedWeightKg: weight,
-    driverInstructions,
-    importSource: row.importSource || source,
-  };
-}
-function parsePositionOrderRows(
-  rows: unknown[][],
-  sheetName: string,
-): ImportRow[] {
-  const marketName = inferMarket(sheetName);
-  if (!marketName) return [];
-  return rows.flatMap((row, index): ImportRow[] => {
-    const cells = row.map(orderCell).filter(Boolean);
-    if (
-      cells.length < 3 ||
-      cells.some((cell) =>
-        [
-          "total",
-          "totals",
-          "salesman",
-          "salesmen",
-          "seller",
-          "sender",
-        ].includes(normaliseHeader(cell)),
-      )
-    )
-      return [];
-    const date =
-      cells.map(orderDate).find((value) => /^\d{4}-\d{2}-\d{2}$/.test(value)) ||
-      "";
-    const pallets = cells.find((value) => /^\d+(\.\d+)?$/.test(value)) || "1";
-    const sellerName =
-      cells.find(
-        (value) =>
-          /[a-z]/i.test(value) && !/^https?:/i.test(value) && !orderDate(value),
-      ) || "";
-    const stallNumber =
-      cells.find((value) => /\b(stall|stand|arch|unit)\b/i.test(value)) || "";
-    const mapLink = cells.find((value) => /^https?:\/\//i.test(value)) || "";
-    const notes = cells
-      .filter(
-        (value) =>
-          value !== sellerName &&
-          value !== pallets &&
-          value !== date &&
-          value !== stallNumber &&
-          value !== mapLink,
-      )
-      .join(" ¬∑ ");
-    const cleaned = cleanOrderRow(
-      {
-        poNumber: "",
-        customerCode: marketName,
-        collectionDate: date,
-        deliveryDate: date,
-        pallets,
-        sellerName,
-        marketName,
-        stallNumber,
-        mapLink,
-        driverInstructions: notes,
-        importSource: sheetName,
-      },
-      index,
-      sheetName,
-    );
-    return cleaned ? [cleaned] : [];
-  });
-}
-function parseOrderWorkbook(workbook: XLSX.WorkBook): ImportRow[] {
-  return workbook.SheetNames.flatMap((sheetName) => {
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(
-      workbook.Sheets[sheetName],
-      { header: 1, defval: "", raw: false, blankrows: false },
-    );
-    const headerIndex = rows.findIndex(
-      (row) =>
-        row
-          .map(normaliseHeader)
-          .filter((header) =>
-            Object.values(orderAliases).some((aliases) =>
-              aliases.some(
-                (alias) =>
-                  header === alias ||
-                  header.includes(alias) ||
-                  alias.includes(header),
-              ),
-            ),
-          ).length >= 2,
-    );
-    if (headerIndex < 0) return parsePositionOrderRows(rows, sheetName);
-    const headers = rows[headerIndex].map(normaliseHeader);
-    const lowerSheet = sheetName.toLowerCase();
-    const direction =
-      lowerSheet.includes("inbound") || lowerSheet.includes("natures")
-        ? "Inbound"
-        : lowerSheet.includes("outbound")
-          ? "Outbound"
-          : "Order";
-    return rows
-      .slice(headerIndex + 1)
-      .map((row, index): ImportRow => {
-        const customer = firstMapped(row, headers, "customerCode");
-        const collectionDate = orderDate(
-          firstMapped(row, headers, "collectionDate"),
-        );
-        const deliveryDate =
-          orderDate(firstMapped(row, headers, "deliveryDate")) ||
-          collectionDate;
-        const deliveryLocation =
-          customer || firstMapped(row, headers, "marketName");
-        const senderName =
-          firstMapped(row, headers, "sellerName") &&
-          headers.some((header) => header === "sender")
-            ? firstMapped(row, headers, "sellerName")
-            : "";
-        return (
-          cleanOrderRow(
-            {
-              poNumber:
-                firstMapped(row, headers, "poNumber") ||
-                `${direction.toUpperCase()}-${sheetName.replace(/[^a-z0-9]/gi, "").slice(0, 14)}-${index + 1}`,
-              customerCode:
-                customer ||
-                (direction === "Inbound" ? "NATURES-WAY" : deliveryLocation),
-              collectionDate,
-              deliveryDate,
-              pallets: firstMapped(row, headers, "pallets"),
-              deliveryWindowStartUtc: firstMapped(
-                row,
-                headers,
-                "deliveryWindowStartUtc",
-              ),
-              deliveryWindowEndUtc: firstMapped(
-                row,
-                headers,
-                "deliveryWindowEndUtc",
-              ),
-              sellerName: senderName
-                ? ""
-                : firstMapped(row, headers, "sellerName"),
-              senderName,
-              marketName:
-                firstMapped(row, headers, "marketName") ||
-                inferMarket(sheetName) ||
-                deliveryLocation,
-              stallNumber: firstMapped(row, headers, "stallNumber"),
-              averagePalletWeightKg: firstMapped(
-                row,
-                headers,
-                "averagePalletWeightKg",
-              ),
-              estimatedWeightKg:
-                firstMapped(row, headers, "estimatedWeightKg") ||
-                (Number(firstMapped(row, headers, "pallets")) > 0 &&
-                Number(firstMapped(row, headers, "averagePalletWeightKg")) > 0
-                  ? String(
-                      Math.round(
-                        Number(firstMapped(row, headers, "pallets")) *
-                          Number(
-                            firstMapped(row, headers, "averagePalletWeightKg"),
-                          ),
-                      ),
-                    )
-                  : ""),
-              driverInstructions: [
-                direction !== "Order" ? `${direction} planning sheet` : "",
-                firstMapped(row, headers, "estimatedWeightKg") ||
-                firstMapped(row, headers, "averagePalletWeightKg")
-                  ? `Weight: ${firstMapped(row, headers, "estimatedWeightKg") || "calculated"} kg`
-                  : "",
-                firstMapped(row, headers, "driverInstructions"),
-              ]
-                .filter(Boolean)
-                .join(" ¬∑ "),
-              mapLink: firstMapped(row, headers, "mapLink"),
-              importSource: sheetName,
-              orderDirection: direction,
-            },
-            index,
-            sheetName,
-          ) || {}
-        );
-      })
-      .filter((row) => Object.values(row).some(Boolean));
-  });
-}
+HOà¬à€€ú›]HHô]»]J
+N¬àô]\õà	Ÿ]KôŸ]ù[YX\ä
+_KI‘›ö[ô ]KôŸ][€ù
 
-function parseEmailOrders(input: string): ImportRow[] {
-  const textValue = input.replace(/\r/g, "").replace(/\u00a0/g, " ");
-  const subjectRef =
-    textValue.match(
-      /(?:booking ref|order|po ref|po)[:\s#-]+([a-z0-9-]+)/i,
-    )?.[1] || `EMAIL-${Date.now().toString().slice(-6)}`;
-  const collectionDate =
-    parseEmailDate(
-      textValue.match(
-        /Collection:[^\n]*(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+|\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)/i,
-      )?.[1],
-    ) || localDate();
-  const deliveryDate =
-    parseEmailDate(
-      textValue.match(
-        /Delivery[^\n]*(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+|\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)/i,
-      )?.[1],
-    ) || collectionDate;
-  const marketName = /covent/i.test(textValue)
-    ? "Covent Garden"
-    : /spital/i.test(textValue)
-      ? "Spitalfields"
-      : /western/i.test(textValue)
-        ? "Western International"
-        : "";
-  const collectionLines = collectFollowingLines(textValue, /Collection:/i, 5);
-  const rows: ImportRow[] = [];
-  const rowPattern =
-    /\*\*?([^*\n-][^\n]*?)\s*-\s*(\d+)\s+pallets?,\s*([\d,.]+)\s*kg\*\*?/gi;
-  let match: RegExpExecArray | null;
-  while ((match = rowPattern.exec(textValue))) {
-    const after = textValue.slice(match.index + match[0].length);
-    const address = after
-      .split(/\n\s*\n/)[0]
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .slice(0, 5)
-      .join(", ");
-    rows.push({
-      poNumber: `${subjectRef}-${rows.length + 1}`,
-      customerCode: marketName || match[1].trim(),
-      collectionDate,
-      deliveryDate,
-      pallets: match[2],
-      estimatedWeightKg: match[3].replace(/,/g, ""),
-      sellerName: match[1].trim(),
-      marketName,
-      stallNumber: "",
-      driverInstructions: [
-        collectionLines ? `Collect: ${collectionLines}` : "",
-        address ? `Deliver: ${address}` : "",
-        "Imported from email body",
-      ]
-        .filter(Boolean)
-        .join(" ¬∑ "),
-      mapLink: address
-        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
-        : "",
-      importSource: "Email body",
-    });
-  }
-  if (rows.length) return rows;
-  const simple = textValue.match(
-    /(?:Collection from|collection)\s+(.+?)\s+to\s+(.+?)(?:\n|$)/i,
-  );
-  return simple
-    ? [
-        {
-          poNumber: subjectRef,
-          customerCode: simple[2].trim(),
-          collectionDate,
-          deliveryDate,
-          pallets: textValue.match(/(\d+)\s+pallet/i)?.[1] || "1",
-          sellerName: simple[1].trim(),
-          marketName,
-          driverInstructions: `Collect: ${simple[1].trim()} ¬∑ Deliver: ${simple[2].trim()} ¬∑ Imported from email body`,
-          mapLink: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(simple[2].trim())}`,
-          importSource: "Email body",
-        },
-      ]
-    : [];
-}
-function collectFollowingLines(
-  value: string,
-  marker: RegExp,
-  maxLines: number,
-) {
-  const lines = value.split("\n");
-  const index = lines.findIndex((line) => marker.test(line));
-  if (index < 0) return "";
-  return lines
-    .slice(index + 1, index + 1 + maxLines)
-    .map((line) => line.trim())
-    .filter((line) => line && !/^delivery/i.test(line))
-    .join(", ");
-}
-function parseEmailDate(value?: string) {
-  const textValue = value?.replace(/(st|nd|rd|th)/gi, "").trim();
-  if (!textValue) return "";
-  const withYear = /\d{4}/.test(textValue)
-    ? textValue
-    : `${textValue} ${new Date().getFullYear()}`;
-  const parsed = new Date(
-    withYear.replace(
-      /(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/,
-      (_, day, month, year) =>
-        `${year ? (String(year).length === 2 ? `20${year}` : year) : new Date().getFullYear()}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-    ),
-  );
-  return Number.isNaN(parsed.getTime())
-    ? ""
-    : parsed.toISOString().slice(0, 10);
-}
-export function Orders() {
-  const token = useAccessToken();
-  const [rows, setRows] = useState<ImportRow[]>([]);
-  const [issues, setIssues] = useState<string[]>([]);
-  const [message, setMessage] = useState<string>();
-  const [submitting, setSubmitting] = useState(false);
-  const [emailText, setEmailText] = useState("");
-  function downloadTemplate() {
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet([
-      {
-        poNumber: "SLH-10001",
-        customerCode: "CUSTOMER-001",
-        collectionDate: "2026-08-12",
-        deliveryDate: "2026-08-13",
-        deliveryWindowStartUtc: "2026-08-13T08:00:00+01:00",
-        deliveryWindowEndUtc: "2026-08-13T10:00:00+01:00",
-        pallets: "8",
-        averagePalletWeightKg: "750",
-        estimatedWeightKg: "6000",
-        sellerName: "Example seller",
-        marketName: "Example market",
-        stallNumber: "A12",
-        driverInstructions: "Gate access from 05:30",
-        mapLink: "https://maps.google.com/?q=53.4808,-2.2426",
-      },
-    ]);
-    worksheet["!cols"] = [...expectedColumns, ...marketColumns].map(
-      (column) => ({ wch: Math.max(column.length + 3, 18) }),
-    );
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Orders");
-    XLSX.writeFile(workbook, "slh-order-import-template.xlsx");
-  }
-  function acceptRows(parsed: ImportRow[]) {
-    const cleaned = parsed
-      .map((row, index) =>
-        cleanOrderRow(row, index, row.importSource || "Uploaded order file"),
-      )
-      .filter((row): row is ImportRow => Boolean(row));
-    if (!cleaned.length) {
-      setRows([]);
-      setMessage(
-        "No usable orders were found. Check the sheet has a date plus customer, market, seller or delivery information.",
-      );
-      return;
-    }
-    const validationIssues = validateImportRows(cleaned);
-    setRows(validationIssues.length ? [] : cleaned);
-    setIssues(validationIssues);
-    setMessage(
-      validationIssues.length
-        ? undefined
-        : `${cleaned.length} order${cleaned.length === 1 ? "" : "s"} ready to submit.`,
-    );
-  }
-  async function selectFile(file?: File) {
-    if (!file) return;
-    setMessage(undefined);
-    setIssues([]);
-    try {
-      const extension = file.name.split(".").pop()?.toLowerCase();
-      let parsed: ImportRow[] = [];
-      if (extension === "csv") parsed = parseCsv(await file.text());
-      else if (["xlsx", "xls", "xlsm"].includes(extension || "")) {
-        const workbook = XLSX.read(await file.arrayBuffer(), {
-          type: "array",
-          cellDates: true,
-        });
-        parsed = parseOrderWorkbook(workbook);
-        if (!parsed.length) {
-          const sheet = workbook.Sheets[workbook.SheetNames[0]];
-          parsed = XLSX.utils
-            .sheet_to_json<Record<string, unknown>>(sheet, { defval: "" })
-            .map((row) =>
-              Object.fromEntries(
-                Object.entries(row).map(([key, value]) => [
-                  key.trim(),
-                  orderCell(value),
-                ]),
-              ),
-            );
-        }
-      }
-      acceptRows(parsed);
-    } catch {
-      setRows([]);
-      setMessage(
-        "The workbook could not be read. Use the first worksheet with a header row.",
-      );
-    }
-  }
-  function parseEmail() {
-    setMessage(undefined);
-    setIssues([]);
-    const parsed = parseEmailOrders(emailText);
-    acceptRows(parsed);
-  }
-  async function submit() {
-    setSubmitting(true);
-    setMessage(undefined);
-    try {
-      const accessToken = await token();
-      const results = await Promise.all(
-        rows.map((row, index) =>
-          api.stageOrder(
-            row,
-            `web-import:${row.poNumber || "row"}:${row.customerCode || "unknown"}:${row.collectionDate || index}`,
-            accessToken,
-          ),
-        ),
-      );
-      setMessage(
-        `${results.length} order${results.length === 1 ? "" : "s"} submitted to staging for review.`,
-      );
-      setRows([]);
-      setEmailText("");
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error ? exception.message : "Order import failed.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-  return (
-    <section>
-      <p className="eyebrow">Order intake</p>
-      <h1>New order</h1>
-      <QuickOrderForm />
-      <div className="panel import-panel">
-        <h2>Import Excel or CSV</h2>
-        <p>
-          Upload customer workbooks, market tabs or CSV batches. The portal now
-          recognises common PO, customer, depot, market, seller, sender, stall,
-          pallet and date headings before staging orders.
-        </p>
-        <button type="button" onClick={downloadTemplate}>
-          Download Excel template
-        </button>
-        <input
-          type="file"
-          accept=".xlsx,.xls,.xlsm,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-          onChange={(event) => void selectFile(event.target.files?.[0])}
-        />
-        <p className="hint">
-          Best columns are <code>{expectedColumns.join(", ")}</code>, but
-          Barfoots/APS/market-style sheets are accepted if they include enough
-          date, market/customer and quantity detail.
-        </p>
-        {issues.length > 0 && (
-          <div className="import-issues">
-            <strong>Correct the following before import</strong>
-            <ul>
-              {issues.map((issue) => (
-                <li key={issue}>{issue}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {rows.length > 0 && (
-          <>
-            <p>
-              <strong>{rows.length}</strong> checked rows ready to submit.
-            </p>
-            <button
-              className="primary"
-              onClick={() => void submit()}
-              disabled={submitting}
-            >
-              {submitting
-                ? "Submitting‚Ä¶"
-                : `Submit ${rows.length} order${rows.length === 1 ? "" : "s"} for review`}
-            </button>
-          </>
-        )}
-        {message && <p className="notice inline-notice">{message}</p>}
-      </div>
-      <div className="panel import-panel">
-        <h2>Email body intake</h2>
-        <p>
-          Paste the body of a market/order email here. It recognises APS
-          Covent-style lines, pallet counts, weights and delivery addresses,
-          then stages each stop for review.
-        </p>
-        <textarea
-          className="email-import-box"
-          value={emailText}
-          onChange={(event) => setEmailText(event.target.value)}
-          placeholder="Paste the customer email body here‚Ä¶"
-        />
-        <button type="button" onClick={parseEmail} disabled={!emailText.trim()}>
-          Parse email body
-        </button>
-        <p className="hint">
-          PDF delivery notes stay attached in Outlook; the portal stages the
-          order data from the email text. Power Automate can post the same
-          normalised rows later.
-        </p>
-        <Link to="/staging">Open staging review ‚Üí</Link>
-      </div>
-    </section>
-  );
-}
-function QuickOrderForm() {
-  const token = useAccessToken();
-  const customers = useApi(
-    useCallback(async () => api.customers(await token()), [token]),
-  );
-  const sites = useApi(
-    useCallback(async () => api.sites(await token()), [token]),
-  );
-  const marketContacts = useApi(
-    useCallback(async () => api.marketContacts(await token()), [token]),
-  );
-  const customerContacts = useApi(
-    useCallback(async () => api.customerContacts(await token()), [token]),
-  );
-  const [orderKind, setOrderKind] = useState<"market" | "customer">("market");
-  const [form, setForm] = useState({
-    poNumber: "",
-    customerCode: "",
-    collectionDate: localDate(),
-    deliveryDate: "",
-    deliveryWindowStartUtc: "",
-    deliveryWindowEndUtc: "",
-    pallets: "",
-    averagePalletWeightKg: "",
-    estimatedWeightKg: "",
-    sellerName: "",
-    marketName: "",
-    stallNumber: "",
-    senderName: "",
-    driverInstructions: "",
-    mapLink: "",
-  });
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const markets = useMemo(() => {
-    const imported = [
-      ...new Set(
-        (marketContacts.data || [])
-          .filter((contact) => contact.active && contact.market !== "Sender")
-          .map((contact) => contact.market)
-          .filter(Boolean),
-      ),
-    ];
-    return [
-      ...marketOrder.filter((market) => imported.includes(market)),
-      ...imported.filter((market) => !marketOrder.includes(market)).sort(),
-    ];
-  }, [marketContacts.data]);
-  const sellers = useMemo(
-    () =>
-      (marketContacts.data || [])
-        .filter(
-          (contact) =>
-            contact.active &&
-            (!form.marketName || contact.market === form.marketName),
-        )
-        .sort((left, right) => left.name.localeCompare(right.name)),
-    [marketContacts.data, form.marketName],
-  );
-  const senders = useMemo(() => {
-    const options = [
-      ...(marketContacts.data || [])
-        .filter((contact) => contact.active && contact.market === "Sender")
-        .map((contact) => ({
-          id: contact.id,
-          name: contact.name,
-          standOrLocation: contact.standOrLocation,
-        })),
-      ...(marketContacts.data || [])
-        .filter((contact) => contact.active && contact.sender)
-        .map((contact) => ({
-          id: `sender:${contact.sender}`,
-          name: contact.sender || "",
-          standOrLocation: contact.market,
-        })),
-    ].filter((option) => option.name);
-    return options
-      .filter(
-        (option, index, all) =>
-          all.findIndex(
-            (other) => other.name.toLowerCase() === option.name.toLowerCase(),
-          ) === index,
-      )
-      .sort((left, right) => left.name.localeCompare(right.name));
-  }, [marketContacts.data]);
-  const customerOptions = useMemo(
-    () =>
-      [
-        ...(customers.data || [])
-          .filter((customer) => customer.active)
-          .map((customer) => ({
-            code: customer.code,
-            label: `${customer.code} ¬∑ ${customer.name}`,
-          })),
-        ...(customerContacts.data || [])
-          .filter((contact) => contact.active)
-          .map((contact) => ({
-            code: contact.customerCode,
-            label: `${contact.customerCode} ¬∑ ${contact.name}`,
-          })),
-      ]
-        .filter(
-          (item, index, all) =>
-            all.findIndex((other) => other.code === item.code) === index,
-        )
-        .sort((left, right) => left.label.localeCompare(right.label)),
-    [customers.data, customerContacts.data],
-  );
-  const update = (name: keyof typeof form, value: string) =>
-    setForm((current) => ({ ...current, [name]: value }));
-  function chooseCustomer(customerCode: string) {
-    const site = (sites.data || []).find(
-      (item) =>
-        item.externalCode === customerCode || item.name === customerCode,
-    );
-    setForm((current) => ({
-      ...current,
-      customerCode,
-      marketName: "",
-      sellerName: "",
-      stallNumber: "",
-      senderName: "",
-      mapLink: site?.mapLink || current.mapLink,
-      driverInstructions:
-        site?.collectionInstructions || current.driverInstructions,
-    }));
-  }
-  function chooseMarket(marketName: string) {
-    setForm((current) => ({
-      ...current,
-      marketName,
-      customerCode: marketName || current.customerCode,
-      sellerName: "",
-      stallNumber: "",
-    }));
-  }
-  function chooseSeller(name: string) {
-    const seller = sellers.find((contact) => contact.name === name);
-    setForm((current) => ({
-      ...current,
-      sellerName: name,
-      stallNumber: seller?.standOrLocation || current.stallNumber,
-      senderName: seller?.sender || current.senderName,
-      customerCode: current.marketName || current.customerCode || "MARKET",
-    }));
-  }
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      const calculatedWeight =
-        form.estimatedWeightKg ||
-        (Number(form.pallets) > 0 && Number(form.averagePalletWeightKg) > 0
-          ? String(
-              Math.round(
-                Number(form.pallets) * Number(form.averagePalletWeightKg),
-              ),
-            )
-          : "");
-      const payload = {
-        ...form,
-        customerCode: form.customerCode || form.marketName || "MARKET",
-        estimatedWeightKg: calculatedWeight,
-        driverInstructions: [
-          calculatedWeight ? `Weight: ${calculatedWeight} kg` : "",
-          form.senderName ? `Sender: ${form.senderName}` : "",
-          form.driverInstructions,
-        ]
-          .filter(Boolean)
-          .join(" ¬∑ "),
-        deliveryWindowStartUtc: form.deliveryWindowStartUtc
-          ? new Date(form.deliveryWindowStartUtc).toISOString()
-          : "",
-        deliveryWindowEndUtc: form.deliveryWindowEndUtc
-          ? new Date(form.deliveryWindowEndUtc).toISOString()
-          : "",
-      };
-      await api.stageOrder(
-        payload,
-        `web-manual:${form.poNumber}:${form.collectionDate}`,
-        await token(),
-      );
-      setMessage("Order sent to staging review.");
-      setForm((current) => ({
-        ...current,
-        poNumber: "",
-        customerCode: "",
-        deliveryDate: "",
-        deliveryWindowStartUtc: "",
-        deliveryWindowEndUtc: "",
-        pallets: "",
-        averagePalletWeightKg: "",
-        estimatedWeightKg: "",
-        sellerName: "",
-        marketName: "",
-        stallNumber: "",
-        senderName: "",
-        driverInstructions: "",
-        mapLink: "",
-      }));
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Order could not be submitted.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <form className="quick-order" onSubmit={(event) => void submit(event)}>
-      <div>
-        <p className="eyebrow">Quick entry</p>
-        <h2>Plan a market or customer order</h2>
-        <p className="hint">
-          Master data now drives the dropdowns, so market orders carry seller,
-          salesman, sender, stall and map details into driver messages.
-        </p>
-      </div>
-      <div className="field-grid">
-        <label>
-          Order type
-          <select
-            value={orderKind}
-            onChange={(event) => {
-              const value = event.target.value as "market" | "customer";
-              setOrderKind(value);
-              setForm((current) => ({
-                ...current,
-                customerCode: "",
-                marketName: "",
-                sellerName: "",
-                stallNumber: "",
-                senderName: "",
-              }));
-            }}
-          >
-            <option value="market">Market order</option>
-            <option value="customer">Customer / site order</option>
-          </select>
-        </label>
-        <label>
-          Order / PO
-          <input
-            required
-            value={form.poNumber}
-            onChange={(event) => update("poNumber", event.target.value)}
-          />
-        </label>
-        {orderKind === "market" ? (
-          <>
-            <label>
-              Market
-              <select
-                required
-                value={form.marketName}
-                onChange={(event) => chooseMarket(event.target.value)}
-              >
-                <option value="">Select market‚Ä¶</option>
-                {markets.map((market) => (
-                  <option key={market} value={market}>
-                    {market}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Seller
-              <select
-                required
-                value={form.sellerName}
-                onChange={(event) => chooseSeller(event.target.value)}
-                disabled={!form.marketName && markets.length > 0}
-              >
-                <option value="">Select seller‚Ä¶</option>
-                {sellers.map((seller) => (
-                  <option key={seller.id} value={seller.name}>
-                    {seller.name}
-                    {seller.salesman ? ` ¬∑ Salesman: ${seller.salesman}` : ""}
-                    {seller.standOrLocation
-                      ? ` ¬∑ ${seller.standOrLocation}`
-                      : ""}
-                    {seller.sender ? ` ¬∑ Sender: ${seller.sender}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Sender
-              <select
-                value={form.senderName}
-                onChange={(event) => update("senderName", event.target.value)}
-              >
-                <option value="">Select sender‚Ä¶</option>
-                {senders.map((sender) => (
-                  <option key={sender.id} value={sender.name}>
-                    {sender.name}
-                    {sender.standOrLocation
-                      ? ` ¬∑ ${sender.standOrLocation}`
-                      : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Stall number
-              <input
-                value={form.stallNumber}
-                onChange={(event) => update("stallNumber", event.target.value)}
-                placeholder="Auto from seller"
-              />
-            </label>
-          </>
-        ) : (
-          <>
-            <label>
-              Customer
-              <select
-                required
-                value={form.customerCode}
-                onChange={(event) => chooseCustomer(event.target.value)}
-              >
-                <option value="">Select customer‚Ä¶</option>
-                {customerOptions.map((customer) => (
-                  <option key={customer.code} value={customer.code}>
-                    {customer.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Site
-              <select
-                value={form.mapLink}
-                onChange={(event) => {
-                  const site = sites.data?.find(
-                    (item) => item.id === event.target.value,
-                  );
-                  if (site)
-                    setForm((current) => ({
-                      ...current,
-                      customerCode: current.customerCode || site.externalCode,
-                      mapLink: site.mapLink || "",
-                      driverInstructions:
-                        site.collectionInstructions ||
-                        current.driverInstructions,
-                    }));
-                }}
-              >
-                <option value="">Optional site/map‚Ä¶</option>
-                {(sites.data || [])
-                  .filter((site) => site.active)
-                  .map((site) => (
-                    <option key={site.id} value={site.id}>
-                      {site.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          </>
-        )}
-        <label>
-          Collection date
-          <input
-            required
-            type="date"
-            value={form.collectionDate}
-            onChange={(event) => update("collectionDate", event.target.value)}
-          />
-        </label>
-        <label>
-          Delivery date
-          <input
-            type="date"
-            value={form.deliveryDate}
-            onChange={(event) => update("deliveryDate", event.target.value)}
-          />
-        </label>
-        <label>
-          Delivery window start
-          <input
-            type="datetime-local"
-            value={form.deliveryWindowStartUtc}
-            onChange={(event) =>
-              update("deliveryWindowStartUtc", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          Delivery window end
-          <input
-            type="datetime-local"
-            value={form.deliveryWindowEndUtc}
-            onChange={(event) =>
-              update("deliveryWindowEndUtc", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          Pallets
-          <input
-            inputMode="numeric"
-            value={form.pallets}
-            onChange={(event) => update("pallets", event.target.value)}
-          />
-        </label>
-        <label>
-          Avg weight kg
-          <input
-            inputMode="decimal"
-            value={form.averagePalletWeightKg}
-            onChange={(event) =>
-              update("averagePalletWeightKg", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          Estimated weight kg
-          <input
-            inputMode="decimal"
-            value={form.estimatedWeightKg}
-            onChange={(event) =>
-              update("estimatedWeightKg", event.target.value)
-            }
-            placeholder="Auto if blank"
-          />
-        </label>
-        <label className="wide">
-          Map link
-          <input
-            type="url"
-            value={form.mapLink}
-            onChange={(event) => update("mapLink", event.target.value)}
-            placeholder="https://maps.google.com/..."
-          />
-        </label>
-        <label className="wide">
-          Driver instructions
-          <textarea
-            value={form.driverInstructions}
-            onChange={(event) =>
-              update("driverInstructions", event.target.value)
-            }
-            placeholder="Collection point, access notes, goods handling‚Ä¶"
-          />
-        </label>
-      </div>
-      {(marketContacts.error || customers.error || sites.error) && (
-        <p className="notice inline-notice">
-          Some dropdown data could not load yet. Manual fields still save into
-          staging once API access is available.
-        </p>
-      )}
-      <DriverMessagePreview form={form} />
-      <button className="primary" disabled={saving}>
-        {saving ? "Saving‚Ä¶" : "Send for review"}
-      </button>
-      {message && <p className="hint">{message}</p>}
-    </form>
-  );
-}
-function DriverMessagePreview({ form }: { form: Record<string, string> }) {
-  const lines = [
-    `SLH run ${form.poNumber || "‚Äî"}`,
-    form.marketName
-      ? `${form.marketName}${form.stallNumber ? ` ¬∑ Stall ${form.stallNumber}` : ""}`
-      : form.customerCode || "Customer to confirm",
-    form.sellerName ? `Seller: ${form.sellerName}` : "",
-    form.senderName ? `Sender: ${form.senderName}` : "",
-    form.collectionDate ? `Collection: ${form.collectionDate}` : "",
-    form.estimatedWeightKg ||
-    (Number(form.pallets) > 0 && Number(form.averagePalletWeightKg) > 0)
-      ? `Weight: ${form.estimatedWeightKg || Math.round(Number(form.pallets) * Number(form.averagePalletWeightKg))} kg`
-      : "",
-    form.driverInstructions ? `Notes: ${form.driverInstructions}` : "",
-    form.mapLink ? `Map: ${form.mapLink}` : "",
-  ].filter(Boolean);
-  return (
-    <aside className="driver-message">
-      <p className="eyebrow">Driver message preview</p>
-      <strong>Planner review required before send</strong>
-      <pre>{lines.join("\n")}</pre>
-    </aside>
-  );
-}
+H
+»JKúY›\ù
+ãåä_KI‘›ö[ô ]KôŸ]]J
+JKúY›\ù
+ãåä_X¬üN¬ò€€ú›õ‹õX]]HH
+ò[YOŒà›ö[ô HOÇàò[YBà»ô]»[ùë]U[YQõ‹õX]
+ô[ãQ–àã¬à]T›[NàõYY][Hãà[YT›[Nàú⁄‹ùãàJKôõ‹õX]
+ô]»]Jò[YJJBàà∏†%é¬ò€€ú›õ‹õX]›\úô[òﬁHH
+ò[YOŒàù[Xô\äHOÇàô]»[ùìù[Xô\ëõ‹õX]
+ô[ãQ–àã¬à›[Nàò›\úô[òﬁHãà›\úô[òﬁNàë–îãàX^[][QúòX›[€ëY⁄]ŒààJKôõ‹õX]
+ò[YH
+N¬ò€€ú›õ‹õX]Z[ù]\»H
+ò[YOŒàù[Xô\äHOÇàò[YHOHù[à»ìõ›ô]\õôYÇàà	”X]ôõ€‹äò[YH»å
+_Z	‘›ö[ô ò[YH	Hå
+KúY›\ù
+ãåä_[X¬ò€€ú››Y⁄[ô‘›]\Ÿ\»H¬àî[ô[ô‘ô]öY]»ãàê\õ›ôYãàîôZôX›Yãàîõ€[›YãàëòZ[YãóN¬ò€€ú›X\öŸ]‹ô\àH»ïŸ\›\õàãî‹]ãê€›ô[ùóN¬ò€€ú››Y⁄[ô‘›]\»H
+ò[YNà›ö[ô»ù[Xô\à[ôYö[ôY
+HOÇà\[Ÿàò[YHOOHõù[Xô\àÇà»›Y⁄[ô‘›]\Ÿ\÷›ò[YWH›ö[ô ò[YJBààò[YHî[ô[ô‘ô]öY]»é¬ò€€ú››]\–€\‹»H
+ò[YNà›ö[ô»ù[Xô\à[ôYö[ôY
+HOÇà›Y⁄[ô‘›]\ ò[YJKù”›Ÿ\êÿ\ŸJ
+N¬Çô^‹ùù[ò›[€à\⁄õÿ\ô
 
-type PlanningOrder = {
-  id: string;
-  poNumber: string;
-  customerCode: string;
-  collectionDate: string;
-  deliveryDate: string;
-  deliveryWindowStartUtc?: string;
-  deliveryWindowEndUtc?: string;
-  pallets: string;
-  status: string;
-  marketName?: string;
-  sellerName?: string;
-  stallNumber?: string;
-  driverInstructions?: string;
-  mapLink?: string;
-};
-function planningOrders(items?: TransportOrder[]): PlanningOrder[] {
-  return (items || [])
-    .filter((item) => item.status !== "Cancelled")
-    .map((item) => ({
-      id: item.id,
-      poNumber: item.reference,
-      customerCode: item.customerCode,
-      collectionDate: item.collectionDate,
-      deliveryDate: item.deliveryDate || "‚Äî",
-      deliveryWindowStartUtc: item.deliveryWindowStartUtc,
-      deliveryWindowEndUtc: item.deliveryWindowEndUtc,
-      pallets: item.pallets?.toString() || "‚Äî",
-      status: item.status,
-      marketName: item.marketName,
-      sellerName: item.sellerName,
-      stallNumber: item.stallNumber,
-      driverInstructions: item.driverInstructions,
-      mapLink: item.mapLink,
-    }))
-    .sort((left, right) =>
-      left.collectionDate.localeCompare(right.collectionDate),
-    );
-}
+H¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú›Ÿ]KŸ]]WHH\ŸT›]Jÿÿ[]J
+JN¬à€€ú››Y⁄[ô»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
 
-function FullPlanningBoard() {
-  const token = useAccessToken();
-  const [date, setDate] = useState(localDate());
-  const ordersApi = useApi(
-    useCallback(
-      async () => api.orders(date, date, await token()),
-      [date, token],
-    ),
-  );
-  const loads = useApi(
-    useCallback(async () => api.loads(date, await token()), [date, token]),
-  );
-  const returns = useApi(
-    useCallback(
-      async () => api.returnLoadSuggestions(date, await token()),
-      [date, token],
-    ),
-  );
-  const vehicles = useApi(
-    useCallback(async () => api.vehicles(await token()), [token]),
-  );
-  const drivers = useApi(
-    useCallback(async () => api.drivers(await token()), [token]),
-  );
-  const trailers = useApi(
-    useCallback(async () => api.trailers(await token()), [token]),
-  );
-  const [selected, setSelected] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string>();
-  const today = planningOrders(ordersApi.data);
-  const planned = loads.data || [];
-  const incompleteLoads = planned.filter(
-    (load) => !load.driverId || !load.vehicleId,
-  ).length;
-  const selectedOrders = today.filter((order) => selected.includes(order.id));
-  const toggle = (id: string) =>
-    setSelected((current) =>
-      current.includes(id)
-        ? current.filter((value) => value !== id)
-        : [...current, id],
-    );
-  const refreshAll = () => {
-    void ordersApi.refresh();
-    void loads.refresh();
-    void returns.refresh();
-    void vehicles.refresh();
-    void drivers.refresh();
-    void trailers.refresh();
-  };
-  async function buildLoad() {
-    const chosen = today.filter((order) => selected.includes(order.id));
-    if (!chosen.length) return;
-    setSaving(true);
-    setMessage(undefined);
-    try {
-      await api.createLoad(
-        {
-          reference: `LOAD-${date.replaceAll("-", "")}-${String(planned.length + 1).padStart(2, "0")}`,
-          planningDate: date,
-          palletSpacesUsed: chosen.reduce(
-            (total, order) => total + (Number(order.pallets) || 0),
-            0,
-          ),
-          capacityType: "Standard pallets",
-          stops: chosen.map((order) => ({
-            orderId: order.id,
-            name: `${order.poNumber} ¬∑ ${order.customerCode}`,
-          })),
-        },
-        await token(),
-      );
-      setSelected([]);
-      await loads.refresh();
-      await returns.refresh();
-      setMessage(
-        "Load saved. Allocate the fleet, add addresses and calculate route/ETA. Market details are retained for dispatch.",
-      );
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Could not save the load.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Plan and control</p>
-          <h1>Planning board</h1>
-          <p className="intro">
-            Build the day from approved work, then allocate and route each load
-            without losing the board if one service is slow.
-          </p>
-        </div>
-        <button onClick={refreshAll}>Refresh board</button>
-      </div>
-      <div className="planner-health">
-        <article>
-          <span>Ready to plan</span>
-          <strong>{today.length}</strong>
-          <small>Approved orders</small>
-        </article>
-        <article>
-          <span>Planned loads</span>
-          <strong>{planned.length}</strong>
-          <small>Saved for this day</small>
-        </article>
-        <article className={incompleteLoads ? "attention" : ""}>
-          <span>Need allocation</span>
-          <strong>{incompleteLoads}</strong>
-          <small>Driver or vehicle missing</small>
-        </article>
-      </div>
-      <div className="planner-toolbar">
-        <label>
-          Plan date{" "}
-          <input
-            type="date"
-            value={date}
-            onChange={(event) => {
-              setDate(event.target.value);
-              setSelected([]);
-            }}
-          />
-        </label>
-        <span>
-          {today.length} approved order{today.length === 1 ? "" : "s"} awaiting
-          load allocation
-        </span>
-        <button
-          className="primary"
-          disabled={!selected.length || saving}
-          onClick={() => void buildLoad()}
-        >
-          {saving ? "Saving‚Ä¶" : `Build load (${selected.length})`}
-        </button>
-      </div>
-      <PlannerMailboxImport
-        planningDate={date}
-        onImported={async () => {
-          await ordersApi.refresh();
-          await loads.refresh();
-        }}
-      />
-      <DriverReturnSuggestions
-        data={returns.data}
-        loading={returns.loading}
-        error={returns.error}
-      />
-      <PlanningSuggestions
-        orders={today}
-        selected={selected}
-        onSelect={setSelected}
-      />
-      <SelectedLoadPreview orders={selectedOrders} />
-      {message && <p className="notice inline-notice">{message}</p>}
-      <ResourceAllocationBoard loads={planned} vehicles={vehicles.data || []} drivers={drivers.data || []} onSaved={loads.refresh} />
-      <div className="planner-workspace">
-        <article className="lane unallocated">
-          <h2>
-            Ready to plan <span>{today.length}</span>
-          </h2>
-          {ordersApi.loading && !ordersApi.data ? (
-            <p className="lane-state">Loading approved orders‚Ä¶</p>
-          ) : ordersApi.error ? (
-            <div className="lane-state error">
-              <p>{ordersApi.error}</p>
-              {ordersApi.error.includes("Microsoft sign-in") && (
-                <ReconnectMicrosoft />
-              )}
-              <button onClick={() => void ordersApi.refresh()}>
-                Retry orders
-              </button>
-            </div>
-          ) : today.length ? (
-            today.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                selected={selected.includes(order.id)}
-                onToggle={() => toggle(order.id)}
-              />
-            ))
-          ) : (
-            <p className="hint">
-              No approved orders are ready for this date. Review new orders in
-              Staging.
-            </p>
-          )}
-        </article>
-        <article className="lane planner-lanes">
-          <h2>
-            Planned loads <span>{planned.length}</span>
-          </h2>
-          {loads.loading && !loads.data ? (
-            <p className="lane-state">Loading planned loads‚Ä¶</p>
-          ) : loads.error ? (
-            <div className="lane-state error">
-              <p>{loads.error}</p>
-              {loads.error.includes("Microsoft sign-in") && (
-                <ReconnectMicrosoft />
-              )}
-              <button onClick={() => void loads.refresh()}>Retry loads</button>
-            </div>
-          ) : planned.length ? (
-            planned.map((load) => (
-              <LoadCard key={load.id} load={load} vehicles={vehicles.data || []} drivers={drivers.data || []} trailers={trailers.data || []} onSaved={loads.refresh} />
-            ))
-          ) : (
-            <p className="hint">
-              Create a load from approved orders to allocate it here.
-            </p>
-          )}
-        </article>
-        <OperationalMap loads={planned} telemetry={undefined} />
-      </div>
-    </section>
-  );
-}
+HOà\Kú›Y⁄[ô ]ÿZ]⁄Ÿ[ä
+KàäK›⁄Ÿ[óJKà
+N¬à€€ú›ÿY»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
 
-export function AllocationBoard() {
-  const token = useAccessToken();
-  const [date, setDate] = useState(localDate());
-  const loads = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
-  const vehicles = useApi(useCallback(async () => api.vehicles(await token()), [token]));
-  const drivers = useApi(useCallback(async () => api.drivers(await token()), [token]));
-  const trailers = useApi(useCallback(async () => api.trailers(await token()), [token]));
-  const planned = loads.data || [];
-  const refresh = () => { void loads.refresh(); void vehicles.refresh(); void drivers.refresh(); void trailers.refresh(); };
-  return (
-    <section>
-      <div className="title-row">
-        <div><p className="eyebrow">Fast allocation</p><h1>Driver, vehicle & trailer allocation</h1><p className="intro">A lighter allocation view with one shared master-data refresh.</p></div>
-        <button onClick={refresh}>Refresh allocation</button>
-      </div>
-      <div className="planner-toolbar">
-        <label>Plan date <input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
-        <span>{planned.length} load{planned.length === 1 ? "" : "s"} ¬∑ {planned.filter((load) => !load.driverId || !load.vehicleId).length} need allocation</span>
-      </div>
-      <State loading={loads.loading || vehicles.loading || drivers.loading || trailers.loading} error={loads.error || vehicles.error || drivers.error || trailers.error} empty={!planned.length}>
-        <ResourceAllocationBoard loads={planned} vehicles={vehicles.data || []} drivers={drivers.data || []} onSaved={loads.refresh} />
-        <div className="allocation-load-list">
-          {planned.map((load) => <LoadCard key={load.id} load={load} vehicles={vehicles.data || []} drivers={drivers.data || []} trailers={trailers.data || []} onSaved={loads.refresh} />)}
-        </div>
-      </State>
-    </section>
-  );
-}
+HOà\KõÿY ]K]ÿZ]⁄Ÿ[ä
+JKŸ]K⁄Ÿ[óJKà
+N¬à€€ú›‹ô\ú»H\ŸP\Jà\ŸPÿ[òX⁄ à\ﬁ[ò»
 
-export function PlanningBoard() {
-  return window.location.pathname === "/allocation" ? <AllocationBoard /> : <FullPlanningBoard />;
-}
-const mailboxQueueListId =
-  import.meta.env.VITE_MAILBOX_INTAKE_LIST_ID ||
-  "78db5249-de29-4134-8db0-79e1fe9d84c6";
-const mailboxQueueHost =
-  import.meta.env.VITE_MAILBOX_INTAKE_HOST ||
-  "stuartlyonshaulage.sharepoint.com";
-const mailboxAddress =
-  import.meta.env.VITE_MAILBOX_INTAKE_ADDRESS || "info@lyonshaulage.com";
-const graphScopes = [
-  import.meta.env.VITE_GRAPH_SITES_SCOPE || "Sites.ReadWrite.All",
-  import.meta.env.VITE_GRAPH_MAIL_SCOPE || "Mail.Read.Shared",
-];
-type MailboxQueueItem = {
-  id: string;
-  subject: string;
-  sender?: string;
-  senderEmail?: string;
-  receivedAt?: string;
-  classification?: string;
-  plannerStatus?: string;
-  messageId?: string;
-  conversationId?: string;
-  attachmentNames?: string;
-};
-type PlannerImportResult = {
-  imported: number;
-  existing: number;
-  needsReview: MailboxQueueItem[];
-  warnings: string[];
-};
-function fieldValue(
-  fields: Record<string, unknown>,
-  ...names: string[]
-): string | undefined {
-  const normalise = (value: string) =>
-    value.replace(/_x0020_/gi, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-  for (const name of names) {
-    const direct = fields[name];
-    if (typeof direct === "string" && direct.trim()) return direct.trim();
-  }
-  for (const [key, value] of Object.entries(fields)) {
-    if (names.some((name) => normalise(name) === normalise(key))) {
-      if (typeof value === "string" && value.trim()) return value.trim();
-      if (typeof value === "number") return String(value);
-    }
-  }
-  return undefined;
-}
-async function graphJson<T>(path: string, token: string, init?: RequestInit) {
-  const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      Authorization: `Bearer ${token}`,
-      ...(init?.headers || {}),
-    },
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Microsoft returned ${response.status}.`);
-  }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
-}
-async function readMailboxQueue(graphToken: string): Promise<MailboxQueueItem[]> {
-  const site = await graphJson<{ id: string }>(
-    `/sites/${mailboxQueueHost}:/`,
-    graphToken,
-  );
-  const result = await graphJson<{
-    value: Array<{ id: string; fields?: Record<string, unknown> }>;
-  }>(
-    `/sites/${encodeURIComponent(site.id)}/lists/${encodeURIComponent(mailboxQueueListId)}/items?$expand=fields&$top=100`,
-    graphToken,
-  );
-  return result.value.map((item) => {
-    const fields = item.fields || {};
-    return {
-      id: item.id,
-      subject: fieldValue(fields, "Email Subject", "EmailSubject", "Title") || "No subject",
-      sender: fieldValue(fields, "Sender"),
-      senderEmail: fieldValue(fields, "Sender Email", "SenderEmail"),
-      receivedAt: fieldValue(fields, "Received At", "ReceivedAt"),
-      classification: fieldValue(fields, "Classification"),
-      plannerStatus: fieldValue(fields, "Planner Status", "PlannerStatus"),
-      messageId: fieldValue(fields, "Outlook Message ID", "OutlookMessageID"),
-      conversationId: fieldValue(fields, "Conversation ID", "ConversationID"),
-      attachmentNames: fieldValue(fields, "Attachment Names", "AttachmentNames"),
-    };
-  });
-}
-async function readMailboxMessage(
-  queueItem: MailboxQueueItem,
-  graphToken: string,
-): Promise<MailboxEmailIntakeRequest> {
-  if (!queueItem.messageId) throw new Error("The queue item has no Outlook message ID.");
-  const messageId = encodeURIComponent(queueItem.messageId);
-  const message = await graphJson<{
-    id: string;
-    internetMessageId?: string;
-    subject?: string;
-    receivedDateTime?: string;
-    bodyPreview?: string;
-    webLink?: string;
-    from?: { emailAddress?: { address?: string; name?: string } };
-    body?: { content?: string };
-  }>(
-    `/users/${encodeURIComponent(mailboxAddress)}/messages/${messageId}?$select=id,internetMessageId,subject,receivedDateTime,from,body,bodyPreview,webLink`,
-    graphToken,
-  );
-  const attachmentsResult = await graphJson<{
-    value: Array<{
-      name?: string;
-      contentType?: string;
-      contentBytes?: string;
-      isInline?: boolean;
-      "@odata.type"?: string;
-    }>;
-  }>(
-    `/users/${encodeURIComponent(mailboxAddress)}/messages/${messageId}/attachments?$top=20`,
-    graphToken,
-  );
-  const attachments: MailboxAttachment[] = (attachmentsResult.value || [])
-    .filter((attachment) => attachment["@odata.type"]?.includes("fileAttachment"))
-    .map((attachment) => ({
-      name: attachment.name,
-      contentType: attachment.contentType,
-      contentBase64: attachment.contentBytes,
-      isInline: attachment.isInline,
-    }));
-  return {
-    messageId: message.id,
-    internetMessageId: message.internetMessageId,
-    mailbox: mailboxAddress,
-    senderAddress: message.from?.emailAddress?.address || queueItem.senderEmail,
-    senderName: message.from?.emailAddress?.name || queueItem.sender,
-    subject: message.subject || queueItem.subject,
-    receivedAtUtc: message.receivedDateTime || queueItem.receivedAt,
-    bodyText: message.bodyPreview,
-    bodyHtml: message.body?.content,
-    webLink: message.webLink,
-    attachments,
-  };
-}
-function isAmendmentQueueItem(item: MailboxQueueItem) {
-  const text = `${item.subject} ${item.classification || ""}`.toLowerCase();
-  return /\b(amend|update|change|revised|cancel|eta|delay|resched|correction)\b/.test(text);
-}
-function PlannerMailboxImport({
-  planningDate,
-  onImported,
-}: {
-  planningDate: string;
-  onImported: () => Promise<void>;
-}) {
-  const { instance, accounts } = useMsal();
-  const token = useAccessToken();
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<PlannerImportResult>();
-  const [message, setMessage] = useState<string>();
-  const account = instance.getActiveAccount() || accounts[0];
-  async function graphToken() {
-    if (!account) throw new Error("Your Microsoft sign-in has expired. Please sign in again.");
-    try {
-      return (
-        await instance.acquireTokenSilent({
-          account,
-          scopes: graphScopes,
-        })
-      ).accessToken;
-    } catch {
-      return (
-        await instance.acquireTokenPopup({
-          account,
-          scopes: graphScopes,
-        })
-      ).accessToken;
-    }
-  }
-  async function importOrders() {
-    setRunning(true);
-    setMessage(undefined);
-    setResult(undefined);
-    const needsReview: MailboxQueueItem[] = [];
-    const warnings: string[] = [];
-    let imported = 0;
-    let existing = 0;
-    try {
-      const graphAccessToken = await graphToken();
-      const apiToken = await token();
-      const queue = await readMailboxQueue(graphAccessToken);
-      const candidates = queue.filter((item) => {
-        const status = (item.plannerStatus || "").toLowerCase();
-        return !status.includes("imported") && !status.includes("complete");
-      });
-      for (const item of candidates) {
-        try {
-          if (isAmendmentQueueItem(item)) {
-            needsReview.push(item);
-            continue;
-          }
-          const mailboxEmail = await readMailboxMessage(item, graphAccessToken);
-          const preview = await api.previewMailboxEmail(mailboxEmail, apiToken);
-          if (
-            preview.ignored ||
-            !preview.orders.length ||
-            !preview.orders.some(
-              (order) => String(order.payload.collectionDate || "") === planningDate,
-            )
-          ) {
-            needsReview.push(item);
-            continue;
-          }
-          const intake = await api.intakeMailboxEmail(mailboxEmail, apiToken);
-          existing += intake.existing || 0;
-          for (const record of intake.records || []) {
-            try {
-              await api.approveStaging(
-                record.stagingId,
-                `Imported from info mailbox queue for ${planningDate}.`,
-                apiToken,
-              );
-              imported++;
-            } catch (exception) {
-              existing++;
-              const detail =
-                exception instanceof Error ? exception.message : "Already reviewed or not ready.";
-              if (!/Only PendingReview|preorder_not_ready/i.test(detail))
-                warnings.push(`${item.subject}: ${detail}`);
-            }
-          }
-        } catch (exception) {
-          needsReview.push(item);
-          warnings.push(
-            `${item.subject}: ${
-              exception instanceof Error ? exception.message : "Could not import this email."
-            }`,
-          );
-        }
-      }
-      setResult({ imported, existing, needsReview, warnings });
-      setMessage(
-        `${imported} order${imported === 1 ? "" : "s"} imported for ${planningDate}. ${existing} already existed. ${needsReview.length} email${needsReview.length === 1 ? "" : "s"} need planner review.`,
-      );
-      await onImported();
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "The mailbox import could not run.",
-      );
-    } finally {
-      setRunning(false);
-    }
-  }
-  return (
-    <div className="panel planner-import-panel">
-      <div className="title-row compact-title-row">
-        <div>
-          <p className="eyebrow">Info mailbox</p>
-          <h2>Import orders for {planningDate}</h2>
-          <p className="hint">
-            Pulls queued mailbox items, reads the original email and attachments,
-            then adds clean orders to the selected collection date.
-          </p>
-        </div>
-        <button className="primary" onClick={() => void importOrders()} disabled={running}>
-          {running ? "Importing‚Ä¶" : "Import orders"}
-        </button>
-      </div>
-      {message && <p className="notice inline-notice">{message}</p>}
-      {result && result.needsReview.length > 0 && (
-        <div className="amendment-list">
-          <h3>Amendments or needs review</h3>
-          {result.needsReview.slice(0, 8).map((item) => (
-            <article key={item.id}>
-              <strong>{item.subject}</strong>
-              <small>
-                {item.sender || item.senderEmail || "Unknown sender"} ¬∑{" "}
-                {item.receivedAt ? new Date(item.receivedAt).toLocaleString() : "No received time"}
-              </small>
-            </article>
-          ))}
-        </div>
-      )}
-      {result && result.warnings.length > 0 && (
-        <div className="import-issues">
-          <strong>Import warnings</strong>
-          <ul>
-            {result.warnings.slice(0, 6).map((warning) => (
-              <li key={warning}>{warning}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-function ResourceAllocationBoard({
-  loads,
-  vehicles,
-  drivers,
-  onSaved,
-}: {
-  loads: Load[];
-  vehicles: Vehicle[];
-  drivers: Driver[];
-  onSaved: () => Promise<void>;
-}) {
-  const token = useAccessToken();
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const activeVehicles = vehicles.filter(
-    (item) => item.active && item.fleetioVor !== true,
-  );
-  const activeDrivers = drivers.filter((item) => item.active);
-  function startDrag(event: DragEvent<HTMLElement>, loadId: string) {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/slh-load-id", loadId);
-  }
-  async function assign(
-    event: DragEvent<HTMLElement>,
-    type: "driver" | "vehicle",
-    resourceId: string,
-  ) {
-    event.preventDefault();
-    const loadId = event.dataTransfer.getData("text/slh-load-id");
-    const load = loads.find((item) => item.id === loadId);
-    if (!load || saving) return;
-    setSaving(true);
-    setMessage(undefined);
-    try {
-      await api.allocateLoad(
-        load.id,
-        {
-          vehicleId: type === "vehicle" ? resourceId : load.vehicleId,
-          driverId: type === "driver" ? resourceId : load.driverId,
-          trailerId: load.trailerId,
-        },
-        await token(),
-      );
-      const label =
-        type === "vehicle"
-          ? activeVehicles.find((item) => item.id === resourceId)?.registration
-          : activeDrivers.find((item) => item.id === resourceId)?.displayName;
-      setMessage(`${load.reference} assigned to ${label || "resource"}.`);
-      await onSaved();
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "The allocation could not be saved.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  if (!loads.length) return null;
-  return (
-    <section className="resource-board">
-      <div className="resource-board-heading">
-        <div>
-          <p className="eyebrow">Fast allocation</p>
-          <h2>Drag a load onto a driver or vehicle</h2>
-        </div>
-        <span>{saving ? "Saving allocation‚Ä¶" : "Changes save immediately"}</span>
-      </div>
-      <div className="drag-loads">
-        {loads.map((load) => (
-          <article
-            key={load.id}
-            draggable={!saving}
-            onDragStart={(event) => startDrag(event, load.id)}
-            className={load.driverId && load.vehicleId ? "allocated" : ""}
-          >
-            <strong>{load.reference}</strong>
-            <small>
-              {load.stops.length} stops ¬∑ {load.driverId ? "driver ‚úì" : "driver needed"} ¬∑{" "}
-              {load.vehicleId ? "vehicle ‚úì" : "vehicle needed"}
-            </small>
-          </article>
-        ))}
-      </div>
-      <div className="resource-columns">
-        <div>
-          <h3>Drivers ({activeDrivers.length})</h3>
-          <div className="resource-targets">
-            {activeDrivers.map((driver) => (
-              <article
-                key={driver.id}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => void assign(event, "driver", driver.id)}
-              >
-                <strong>{driver.displayName}</strong>
-                <small>{driver.tachoName || "Tacho match required"}</small>
-              </article>
-            ))}
-          </div>
-        </div>
-        <div>
-          <h3>Available fleet ({activeVehicles.length})</h3>
-          <div className="resource-targets">
-            {activeVehicles.map((vehicle) => (
-              <article
-                key={vehicle.id}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => void assign(event, "vehicle", vehicle.id)}
-              >
-                <strong>{vehicle.registration}</strong>
-                <small>{vehicle.fleetNumber || vehicle.abbreviation || "Fleet vehicle"}</small>
-              </article>
-            ))}
-          </div>
-        </div>
-      </div>
-      {message && <p className="notice inline-notice">{message}</p>}
-    </section>
-  );
-}
-function ordinal(value: number) {
-  const remainder = value % 100;
-  return `${value}${remainder >= 11 && remainder <= 13 ? "th" : value % 10 === 1 ? "st" : value % 10 === 2 ? "nd" : value % 10 === 3 ? "rd" : "th"}`;
-}
-function DriverReturnSuggestions({
-  data,
-  loading,
-  error,
-}: {
-  data?: ReturnLoadSuggestions;
-  loading: boolean;
-  error?: string;
-}) {
-  if (loading)
-    return (
-      <aside className="return-suggestions">
-        <p>Checking drivers already away‚Ä¶</p>
-      </aside>
-    );
-  if (error)
-    return (
-      <aside className="return-suggestions warning">
-        <p>Return-work suggestions are temporarily unavailable.</p>
-      </aside>
-    );
-  if (!data?.suggestions.length) return null;
-  const urgent = data.suggestions.filter(
-    (item) => item.priority >= 80 || item.consecutiveDays >= 4,
-  ).length;
-  return (
-    <aside className="return-suggestions">
-      <div className="return-heading">
-        <div>
-          <p className="eyebrow">Next-day driver positioning</p>
-          <h2>Bring-away drivers toward home</h2>
-        </div>
-        <span>{urgent} high priority</span>
-      </div>
-      <p className="hint">
-        Prioritises full-time, casual, LTD then agency cover; flags drivers on
-        day 5/6 and away in the north so planners can pull them south before
-        assigning fresh local work.
-      </p>
-      <div className="return-grid">
-        {data.suggestions.slice(0, 8).map((item) => (
-          <article
-            className={
-              item.priority >= 80 || item.consecutiveDays >= 4
-                ? "urgent-return"
-                : ""
-            }
-            key={item.driverId}
-          >
-            <span
-              className={
-                item.priority >= 80 || item.consecutiveDays >= 4
-                  ? "priority urgent"
-                  : "priority"
-              }
-            >
-              {ordinal(item.consecutiveDays + 1)} day
-            </span>
-            <strong>{item.driverName}</strong>
-            <small>
-              {item.previousLoadReference} ¬∑{" "}
-              {item.lastLocation || "last stop not mapped"}
-            </small>
-            <p>{item.reason}</p>
-            <dl>
-              <div>
-                <dt>Employee</dt>
-                <dd>{item.employeeNumber}</dd>
-              </div>
-              <div>
-                <dt>Priority</dt>
-                <dd>{item.priority}/100</dd>
-              </div>
-            </dl>
-            {item.suggestedLoadReference ? (
-              <b>Suggested return load: {item.suggestedLoadReference}</b>
-            ) : (
-              <b className="needs-load">Needs southbound load match</b>
-            )}
-          </article>
-        ))}
-      </div>
-    </aside>
-  );
-}
-function SelectedLoadPreview({ orders }: { orders: PlanningOrder[] }) {
-  if (!orders.length) return null;
-  const pallets = orders.reduce(
-    (total, order) => total + (Number(order.pallets) || 0),
-    0,
-  );
-  const groups = [
-    ...new Set(orders.map((order) => order.marketName || order.customerCode)),
-  ];
-  return (
-    <aside className="selected-load-preview">
-      <div>
-        <p className="eyebrow">Draft load preview</p>
-        <h2>
-          {orders.length} stop{orders.length === 1 ? "" : "s"} ¬∑ {pallets}{" "}
-          pallets
-        </h2>
-      </div>
-      <span>
-        {groups.slice(0, 4).join(" ‚Üí ")}
-        {groups.length > 4 ? ` +${groups.length - 4} more` : ""}
-      </span>
-      <small>
-        Check the sequence and map points after saving, then allocate driver,
-        vehicle and trailer.
-      </small>
-    </aside>
-  );
-}
-function PlanningSuggestions({
-  orders,
-  selected,
-  onSelect,
-}: {
-  orders: PlanningOrder[];
-  selected: string[];
-  onSelect: (ids: string[]) => void;
-}) {
-  const groups = Object.values(
-    orders.reduce<Record<string, PlanningOrder[]>>((result, order) => {
-      const key = order.marketName
-        ? `Market ¬∑ ${order.marketName}`
-        : `Customer ¬∑ ${order.customerCode}`;
-      (result[key] ||= []).push(order);
-      return result;
-    }, {}),
-  )
-    .filter((group) => group.length > 1)
-    .sort((left, right) => right.length - left.length)
-    .slice(0, 3);
-  if (!groups.length) return null;
-  return (
-    <aside className="suggestions">
-      <div>
-        <p className="eyebrow">Run suggestions</p>
-        <h2>Group compatible collections</h2>
-      </div>
-      {groups.map((group) => (
-        <button
-          key={group[0].id}
-          type="button"
-          className={
-            group.every((order) => selected.includes(order.id))
-              ? "selected"
-              : ""
-          }
-          onClick={() => onSelect(group.map((order) => order.id))}
-        >
-          <strong>{group[0].marketName || group[0].customerCode}</strong>
-          <span>
-            {group.length} collection{group.length === 1 ? "" : "s"} ¬∑ select
-            for a suggested run
-          </span>
-        </button>
-      ))}
-    </aside>
-  );
-}
-type RouteLine = { loadId: string; coordinates: [number, number][] };
-function OperationalMap({
-  loads,
-  telemetry,
-}: {
-  loads: Load[];
-  telemetry?: Telemetry;
-}) {
-  const token = useAccessToken();
-  const container = useRef<HTMLDivElement>(null);
-  const [routes, setRoutes] = useState<RouteLine[]>([]);
-  const [mapError, setMapError] = useState<string>();
-  const all = useMemo(
-    () => [
-      ...loads.flatMap((load) =>
-        load.stops
-          .filter((stop) => stop.latitude != null && stop.longitude != null)
-          .map((stop) => ({
-            label: `${load.reference}: ${stop.name}`,
-            latitude: stop.latitude!,
-            longitude: stop.longitude!,
-            type: "stop" as const,
-          })),
-      ),
-      ...(telemetry?.records || [])
-        .filter((record) => record.latitude != null && record.longitude != null)
-        .map((record) => ({
-          label: record.vehicleIdentifier,
-          latitude: record.latitude!,
-          longitude: record.longitude!,
-          type: "vehicle" as const,
-        })),
-    ],
-    [loads, telemetry],
-  );
-  const points = all.filter((point) => point.type === "stop");
-  const vehicles = all.filter((point) => point.type === "vehicle");
-  const mapsClientId = import.meta.env.VITE_AZURE_MAPS_CLIENT_ID;
-  const appClientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
-  const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
-  useEffect(() => {
-    let cancelled = false;
-    if (!loads.length) {
-      setRoutes([]);
-      return () => {
-        cancelled = true;
-      };
-    }
-    async function fetchRoutes() {
-      try {
-        const accessToken = await token();
-        const results = await Promise.all(
-          loads
-            .filter(
-              (load) =>
-                load.stops.filter(
-                  (stop) => stop.latitude != null && stop.longitude != null,
-                ).length > 1,
-            )
-            .map(async (load) => {
-              try {
-                const result = (await api.route(load.id, accessToken)) as {
-                  routes?: Array<{
-                    legs?: Array<{
-                      points?: Array<{ latitude?: number; longitude?: number }>;
-                    }>;
-                  }>;
-                };
-                const coordinates =
-                  result.routes?.[0]?.legs?.flatMap((leg) =>
-                    (leg.points || []).flatMap((point) =>
-                      point.longitude != null && point.latitude != null
-                        ? [
-                            [point.longitude, point.latitude] as [
-                              number,
-                              number,
-                            ],
-                          ]
-                        : [],
-                    ),
-                  ) || [];
-                return coordinates.length > 1
-                  ? { loadId: load.id, coordinates }
-                  : undefined;
-              } catch {
-                return undefined;
-              }
-            }),
-        );
-        if (!cancelled)
-          setRoutes(
-            results.filter((route): route is RouteLine => Boolean(route)),
-          );
-      } catch {
-        if (!cancelled) setRoutes([]);
-      }
-    }
-    void fetchRoutes();
-    return () => {
-      cancelled = true;
-    };
-  }, [loads, token]);
-  useEffect(() => {
-    if (!container.current || !mapsClientId || !appClientId || !tenantId)
-      return;
-    setMapError(undefined);
-    let map: atlas.Map | undefined;
-    try {
-      map = new atlas.Map(container.current, {
-        authOptions: {
-          authType: atlas.AuthenticationType.aad,
-          clientId: mapsClientId,
-          aadAppId: appClientId,
-          aadTenant: tenantId,
-        },
-        center: [-1.5, 53.5],
-        zoom: 5.5,
-      });
-      map.events.add("ready", () => {
-        try {
-          if (!map) return;
-          const source = new atlas.source.DataSource();
-          map.sources.add(source);
-          source.add(
-            all.map(
-              (point) =>
-                new atlas.data.Feature(
-                  new atlas.data.Point([point.longitude, point.latitude]),
-                  { label: point.label, type: point.type },
-                ),
-            ),
-          );
-          source.add(
-            routes.map(
-              (route) =>
-                new atlas.data.Feature(
-                  new atlas.data.LineString(route.coordinates),
-                  { type: "route" },
-                ),
-            ),
-          );
-          map.layers.add(
-            new atlas.layer.LineLayer(source, undefined, {
-              strokeColor: "#006d6c",
-              strokeWidth: 4,
-              strokeOpacity: 0.8,
-              filter: ["==", ["get", "type"], "route"],
-            }),
-          );
-          map.layers.add(
-            new atlas.layer.BubbleLayer(source, undefined, {
-              color: [
-                "match",
-                ["get", "type"],
-                "vehicle",
-                "#087f8c",
-                "#e39d30",
-              ],
-              radius: 8,
-              strokeColor: "#ffffff",
-              strokeWidth: 2,
-              filter: ["!=", ["get", "type"], "route"],
-            }),
-          );
-          map.layers.add(
-            new atlas.layer.SymbolLayer(source, undefined, {
-              textField: ["get", "label"],
-              textOffset: [0, 1.2],
-              textSize: 11,
-              textColor: "#17344a",
-              filter: ["!=", ["get", "type"], "route"],
-            }),
-          );
-          const cameraPoints = [
-            ...all.map(
-              (point) => [point.longitude, point.latitude] as [number, number],
-            ),
-            ...routes.flatMap((route) => route.coordinates),
-          ];
-          if (cameraPoints.length > 1)
-            map.setCamera({
-              bounds: atlas.data.BoundingBox.fromPositions(cameraPoints),
-              padding: 55,
-            });
-        } catch {
-          setMapError(
-            "The map could not initialise, but the planning board is still available.",
-          );
-        }
-      });
-    } catch {
-      setMapError(
-        "The map could not initialise, but the planning board is still available.",
-      );
-    }
-    return () => map?.dispose();
-  }, [all, appClientId, mapsClientId, routes, tenantId]);
-  return (
-    <article className="map-panel">
-      <p className="eyebrow">Route workspace</p>
-      <h2>Stops, routes & live fleet</h2>
-      {mapError && <p className="notice inline-notice">{mapError}</p>}
-      {mapsClientId ? (
-        <div ref={container} className="azure-map" />
-      ) : (
-        <div className="map-grid live-map">
-          <p className="map-empty">
-            Set <code>VITE_AZURE_MAPS_CLIENT_ID</code> in GitHub Variables to
-            enable the Azure Maps tiles. Route points are still saved and routed
-            through the API.
-          </p>
-        </div>
-      )}
-      <p className="hint">
-        {points.length} route points ¬∑ {routes.length} route
-        {routes.length === 1 ? "" : "s"} drawn ¬∑ {vehicles.length} live DOT
-        vehicle positions
-      </p>
-    </article>
-  );
-}
-function OrderCard({
-  order,
-  selected,
-  onToggle,
-}: {
-  order: PlanningOrder;
-  selected: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      className={`order-card selectable ${selected ? "selected" : ""}`}
-      onClick={onToggle}
-    >
-      <strong>{order.poNumber}</strong>
-      <span>{order.customerCode}</span>
-      <small>
-        {order.pallets} pallets ¬∑ Delivery {order.deliveryDate}
-      </small>
-      <em className={`status ${order.status.toLowerCase()}`}>
-        {selected ? "Selected" : order.status}
-      </em>
-    </button>
-  );
-}
-function LoadCard({
-  load,
-  vehicles,
-  drivers,
-  trailers,
-  onSaved,
-}: {
-  load: Load;
-  vehicles: Vehicle[];
-  drivers: Driver[];
-  trailers: Trailer[];
-  onSaved: () => Promise<void>;
-}) {
-  const token = useAccessToken();
-  const [vehicleId, setVehicleId] = useState(load.vehicleId || "");
-  const [driverId, setDriverId] = useState(load.driverId || "");
-  const [trailerId, setTrailerId] = useState(load.trailerId || "");
-  const [saving, setSaving] = useState(false);
-  const [dispatchMessage, setDispatchMessage] = useState<string>();
-  const selectedDriver = drivers.find((driver) => driver.id === driverId);
-  async function save() {
-    setSaving(true);
-    try {
-      await api.allocateLoad(
-        load.id,
-        {
-          vehicleId: vehicleId || undefined,
-          driverId: driverId || undefined,
-          trailerId: trailerId || undefined,
-        },
-        await token(),
-      );
-      await onSaved();
-      setDispatchMessage(
-        "Allocation saved. The driver brief can now be dispatched.",
-      );
-    } catch (exception) {
-      setDispatchMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Could not save allocation.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function updateStatus(status: "InProgress" | "Completed") {
-    setSaving(true);
-    try {
-      await api.updateLoadStatus(load.id, status, await token());
-      await onSaved();
-      setDispatchMessage(
-        status === "InProgress"
-          ? "Load marked in progress."
-          : "Load marked completed.",
-      );
-    } catch (exception) {
-      setDispatchMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Could not update load status.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function copyDispatch() {
-    setSaving(true);
-    try {
-      const accessToken = await token();
-      const dispatch: LoadDispatch = await api.dispatch(load.id, accessToken);
-      const stops = dispatch.stops
-        .map((stop) => {
-          const order = stop.order;
-          return [
-            `${stop.sequence}. ${stop.name}`,
-            order?.marketName
-              ? `Market: ${order.marketName}${order.stallNumber ? ` ¬∑ Stall ${order.stallNumber}` : ""}`
-              : "",
-            order?.sellerName ? `Seller: ${order.sellerName}` : "",
-            stop.address ? `Address: ${stop.address}` : "",
-            order?.driverInstructions
-              ? `Notes: ${order.driverInstructions}`
-              : "",
-            order?.mapLink ? `Map: ${order.mapLink}` : "",
-          ]
-            .filter(Boolean)
-            .join("\n");
-        })
-        .join("\n\n");
-      const message = [
-        `SLH run ${dispatch.reference}`,
-        dispatch.driver ? `Driver: ${dispatch.driver.displayName}` : "",
-        dispatch.vehicle ? `Vehicle: ${dispatch.vehicle.registration}` : "",
-        dispatch.trailer ? `Trailer: ${dispatch.trailer.trailerNumber}` : "",
-        load.palletSpacesUsed != null
-          ? `Load: ${load.palletSpacesUsed}${load.totalPalletSpaces ? ` / ${load.totalPalletSpaces}` : ""} ${load.capacityType || "pallet spaces"}${load.utilisationPercent != null ? ` ¬∑ ${load.utilisationPercent}% utilised` : ""}`
-          : "",
-        load.depotSplits ? `Depot split: ${load.depotSplits}` : "",
-        load.temperatureC != null ? `Temperature: ${load.temperatureC > 0 ? "+" : ""}${load.temperatureC}¬∞C` : "",
-        load.plannerNotes ? `Planner notes: ${load.plannerNotes}` : "",
-        "",
-        stops,
-      ]
-        .filter(Boolean)
-        .join("\n");
-      await navigator.clipboard.writeText(message);
-      if (load.status === "Planned") {
-        await api.updateLoadStatus(load.id, "Dispatched", accessToken);
-        await onSaved();
-      }
-      setDispatchMessage(
-        load.status === "Planned"
-          ? `Driver message copied for ${dispatch.driver?.mobileNumber || "driver mobile missing"}; load marked dispatched.`
-          : `Driver message copied for ${dispatch.driver?.mobileNumber || "driver mobile missing"}.`,
-      );
-    } catch (exception) {
-      setDispatchMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Could not prepare the driver dispatch.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function sendSms() {
-    setSaving(true);
-    try {
-      const receipt = await api.sendDispatchSms(load.id, await token());
-      await onSaved();
-      setDispatchMessage(
-        `${receipt.provider || "SMS provider"} accepted the driver text for the mobile ending ${receipt.mobileSuffix}.`,
-      );
-    } catch (exception) {
-      setDispatchMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Could not send the driver SMS.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <div className="order-card allocation-card">
-      <strong>{load.reference}</strong>
-      <span>
-        {load.stops.length} planned stop{load.stops.length === 1 ? "" : "s"}
-      </span>
-      <small>
-        {load.stops.map((stop) => stop.name).join(" ‚Üí ") ||
-          "No map points added yet"}
-      </small>
-      {load.palletSpacesUsed != null && (
-        <strong className={load.utilisationPercent != null && load.utilisationPercent > 100 ? "capacity-warning" : ""}>
-          {load.palletSpacesUsed}{load.totalPalletSpaces ? ` / ${load.totalPalletSpaces}` : ""} {load.capacityType || "pallet spaces"}
-          {load.utilisationPercent != null ? ` ¬∑ ${load.utilisationPercent}% utilised` : " ¬∑ capacity needed"}
-        </strong>
-      )}
-      <div className="allocation-fields">
-        <select
-          value={vehicleId}
-          onChange={(event) => setVehicleId(event.target.value)}
-        >
-          <option value="">Vehicle</option>
-          {vehicles
-            .filter((item) => item.active)
-            .map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.registration}
-              </option>
-            ))}
-        </select>
-        <select
-          value={driverId}
-          onChange={(event) => setDriverId(event.target.value)}
-        >
-          <option value="">Driver</option>
-          {drivers
-            .filter((item) => item.active)
-            .map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.displayName}
-              </option>
-            ))}
-        </select>
-        <select
-          value={trailerId}
-          onChange={(event) => setTrailerId(event.target.value)}
-        >
-          <option value="">Trailer</option>
-          {trailers
-            .filter((item) => item.active)
-            .map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.trailerNumber}
-              </option>
-            ))}
-        </select>
-        <button onClick={() => void save()} disabled={saving}>
-          {saving ? "Saving‚Ä¶" : "Assign"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void copyDispatch()}
-          disabled={saving}
-        >
-          Copy for MightyText
-        </button>
-        <button
-          type="button"
-          className="primary"
-          onClick={() => void sendSms()}
-          disabled={saving}
-        >
-          Send driver SMS
-        </button>
-        {load.status === "Dispatched" && (
-          <button
-            type="button"
-            onClick={() => void updateStatus("InProgress")}
-            disabled={saving}
-          >
-            Start load
-          </button>
-        )}
-        {load.status === "InProgress" && (
-          <button
-            type="button"
-            onClick={() => void updateStatus("Completed")}
-            disabled={saving}
-          >
-            Complete load
-          </button>
-        )}
-      </div>
-      {selectedDriver && (
-        <aside className="driver-copy-panel">
-          <div>
-            <span>MightyText recipient</span>
-            <strong>
-              {selectedDriver.mobileNumber ||
-                "Mobile number needs approval in Master Data"}
-            </strong>
-            <small>{selectedDriver.displayName}</small>
-          </div>
-          <button
-            type="button"
-            onClick={() =>
-              void navigator.clipboard.writeText(
-                selectedDriver.mobileNumber || "",
-              )
-            }
-            disabled={!selectedDriver.mobileNumber}
-          >
-            Copy phone
-          </button>
-        </aside>
-      )}
-      {dispatchMessage && <p className="hint">{dispatchMessage}</p>}
-      <UtilisationEditor load={load} onSaved={onSaved} />
-      <CommercialEditor load={load} onSaved={onSaved} />
-      <StopEditor load={load} onSaved={onSaved} />
-      <em className={`status ${load.status.toLowerCase()}`}>{load.status}</em>
-    </div>
-  );
-}
-function UtilisationEditor({
-  load,
-  onSaved,
-}: {
-  load: Load;
-  onSaved: () => Promise<void>;
-}) {
-  const token = useAccessToken();
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string>();
-  const [form, setForm] = useState({
-    palletSpacesUsed: load.palletSpacesUsed?.toString() || "",
-    totalPalletSpaces: load.totalPalletSpaces?.toString() || "",
-    capacityType: load.capacityType || "Standard pallets",
-    depotSplits: load.depotSplits || "",
-    temperatureC: load.temperatureC?.toString() || "",
-    plannerNotes: load.plannerNotes || "",
-  });
-  const used = Number(form.palletSpacesUsed || 0);
-  const capacity = Number(form.totalPalletSpaces || 0);
-  const utilisation = capacity > 0 ? (used / capacity) * 100 : undefined;
-  const numberOrUndefined = (value: string) =>
-    value.trim() === "" ? undefined : Number(value);
-  async function saveUtilisation() {
-    setSaving(true);
-    setMessage(undefined);
-    try {
-      await api.updateLoadUtilisation(
-        load.id,
-        {
-          palletSpacesUsed: numberOrUndefined(form.palletSpacesUsed),
-          totalPalletSpaces: numberOrUndefined(form.totalPalletSpaces),
-          capacityType: form.capacityType,
-          depotSplits: form.depotSplits,
-          temperatureC: numberOrUndefined(form.temperatureC),
-          plannerNotes: form.plannerNotes,
-        },
-        await token(),
-      );
-      await onSaved();
-      setMessage("Utilisation and load details saved.");
-    } catch (exception) {
-      setMessage(exception instanceof Error ? exception.message : "Utilisation could not be saved.");
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <div className="commercial-editor">
-      <button type="button" onClick={() => setOpen((value) => !value)}>
-        {open ? "Hide utilisation" : "Utilisation, depot split & temperature"}
-      </button>
-      {utilisation != null && (
-        <strong className={utilisation > 100 ? "capacity-warning" : ""}>
-          {utilisation.toFixed(1)}% full ¬∑ {utilisation > 100 ? `${(used - capacity).toFixed(1)} spaces over ‚Äî review pallet split` : `${(capacity - used).toFixed(1)} spaces free`}
-        </strong>
-      )}
-      {open && (
-        <div className="commercial-fields">
-          <label>
-            Capacity type
-            <select value={form.capacityType} onChange={(event) => setForm((current) => ({ ...current, capacityType: event.target.value }))}>
-              <option>Standard pallets</option>
-              <option>Euro pallets</option>
-              <option>Trolleys</option>
-              <option>Mixed load</option>
-            </select>
-          </label>
-          <label>Spaces used<input type="number" min="0" step="0.1" value={form.palletSpacesUsed} onChange={(event) => setForm((current) => ({ ...current, palletSpacesUsed: event.target.value }))} /></label>
-          <label>Total capacity<input type="number" min="0" step="0.1" value={form.totalPalletSpaces} onChange={(event) => setForm((current) => ({ ...current, totalPalletSpaces: event.target.value }))} /></label>
-          <label>Temperature ¬∞C<input type="number" step="0.5" value={form.temperatureC} onChange={(event) => setForm((current) => ({ ...current, temperatureC: event.target.value }))} /></label>
-          <label>Depot split<input type="text" placeholder="Drayton 17 ¬∑ Merston 5" value={form.depotSplits} onChange={(event) => setForm((current) => ({ ...current, depotSplits: event.target.value }))} /></label>
-          <label>Planner / customer notes<input type="text" value={form.plannerNotes} onChange={(event) => setForm((current) => ({ ...current, plannerNotes: event.target.value }))} /></label>
-          <button type="button" className="primary" disabled={saving} onClick={() => void saveUtilisation()}>
-            {saving ? "Saving‚Ä¶" : "Save utilisation"}
-          </button>
-          {capacity > 0 && used > capacity && <p className="notice inline-notice">Over capacity is allowed because pallets may be split down. Review and confirm the physical loading plan.</p>}
-          {message && <p className="hint">{message}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-function CommercialEditor({
-  load,
-  onSaved,
-}: {
-  load: Load;
-  onSaved: () => Promise<void>;
-}) {
-  const token = useAccessToken();
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string>();
-  const [form, setForm] = useState({
-    revenueAmount: load.revenueAmount?.toString() || "",
-    fuelSurchargeAmount: load.fuelSurchargeAmount?.toString() || "",
-    estimatedCostAmount: load.estimatedCostAmount?.toString() || "",
-    actualCostAmount: load.actualCostAmount?.toString() || "",
-    estimatedDistanceMiles: load.estimatedDistanceMiles?.toString() || "",
-    emptyMiles: load.emptyMiles?.toString() || "",
-    invoiceStatus: load.invoiceStatus || "Not ready",
-    commercialNotes: load.commercialNotes || "",
-  });
-  const revenue = Number(form.revenueAmount || 0) + Number(form.fuelSurchargeAmount || 0);
-  const cost = Number(form.actualCostAmount || form.estimatedCostAmount || 0);
-  const margin = revenue - cost;
-  const numberOrUndefined = (value: string) =>
-    value.trim() === "" ? undefined : Number(value);
-  async function saveCommercial() {
-    setSaving(true);
-    setMessage(undefined);
-    try {
-      await api.updateLoadCommercial(
-        load.id,
-        {
-          revenueAmount: numberOrUndefined(form.revenueAmount),
-          fuelSurchargeAmount: numberOrUndefined(form.fuelSurchargeAmount),
-          estimatedCostAmount: numberOrUndefined(form.estimatedCostAmount),
-          actualCostAmount: numberOrUndefined(form.actualCostAmount),
-          estimatedDistanceMiles: numberOrUndefined(form.estimatedDistanceMiles),
-          emptyMiles: numberOrUndefined(form.emptyMiles),
-          invoiceStatus: form.invoiceStatus,
-          commercialNotes: form.commercialNotes,
-        },
-        await token(),
-      );
-      await onSaved();
-      setMessage("Commercial control updated.");
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Commercial values could not be saved.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  const field = (name: keyof typeof form, label: string) => (
-    <label>
-      {label}
-      <input
-        type={name === "invoiceStatus" || name === "commercialNotes" ? "text" : "number"}
-        min={name === "invoiceStatus" || name === "commercialNotes" ? undefined : 0}
-        step={name.includes("Miles") ? "0.1" : "0.01"}
-        value={form[name]}
-        onChange={(event) =>
-          setForm((current) => ({ ...current, [name]: event.target.value }))
-        }
-      />
-    </label>
-  );
-  return (
-    <div className="commercial-editor">
-      <button type="button" onClick={() => setOpen((value) => !value)}>
-        {open ? "Hide commercial control" : "Rate, cost & margin"}
-      </button>
-      {(load.revenueAmount != null || load.estimatedCostAmount != null) && (
-        <strong className={margin < 0 ? "negative-margin" : ""}>
-          Margin ¬£{margin.toFixed(2)}
-          {revenue > 0 ? ` ¬∑ ${((margin / revenue) * 100).toFixed(1)}%` : ""}
-        </strong>
-      )}
-      {open && (
-        <div className="commercial-fields">
-          {field("revenueAmount", "Agreed rate ¬£")}
-          {field("fuelSurchargeAmount", "Fuel surcharge ¬£")}
-          {field("estimatedCostAmount", "Estimated cost ¬£")}
-          {field("actualCostAmount", "Actual cost ¬£")}
-          {field("estimatedDistanceMiles", "Total miles")}
-          {field("emptyMiles", "Empty miles")}
-          <label>
-            Invoice status
-            <select
-              value={form.invoiceStatus}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  invoiceStatus: event.target.value,
-                }))
-              }
-            >
-              <option>Not ready</option>
-              <option>Ready to invoice</option>
-              <option>Invoiced</option>
-              <option>Query</option>
-            </select>
-          </label>
-          {field("commercialNotes", "Commercial notes")}
-          <button
-            type="button"
-            className="primary"
-            disabled={saving}
-            onClick={() => void saveCommercial()}
-          >
-            {saving ? "Saving‚Ä¶" : "Save commercial control"}
-          </button>
-          {message && <p className="hint">{message}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-function StopEditor({
-  load,
-  onSaved,
-}: {
-  load: Load;
-  onSaved: () => Promise<void>;
-}) {
-  const token = useAccessToken();
-  const [open, setOpen] = useState(false);
-  const [stops, setStops] = useState(
-    load.stops.map((stop) => ({
-      ...stop,
-      latitude: stop.latitude?.toString() || "",
-      longitude: stop.longitude?.toString() || "",
-    })),
-  );
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string>();
-  const [routeSummary, setRouteSummary] = useState<string>();
-  const update = (
-    index: number,
-    field: "address" | "latitude" | "longitude" | "plannedArrivalUtc",
-    value: string,
-  ) =>
-    setStops((current) =>
-      current.map((stop, itemIndex) =>
-        itemIndex === index ? { ...stop, [field]: value } : stop,
-      ),
-    );
-  async function locateStops() {
-    const addresses = stops
-      .map((stop, index) => ({ index, address: stop.address?.trim() }))
-      .filter((stop): stop is { index: number; address: string } =>
-        Boolean(stop.address),
-      );
-    if (!addresses.length) {
-      setMessage("Enter at least one stop address before locating it.");
-      return;
-    }
-    setSaving(true);
-    setMessage(undefined);
-    try {
-      const accessToken = await token();
-      const results = await Promise.all(
-        addresses.map(async (stop) => {
-          const response = (await api.geocode(stop.address, accessToken)) as {
-            results?: Array<{ position?: { lat?: number; lon?: number } }>;
-          };
-          const position = response.results?.[0]?.position;
-          if (position?.lat == null || position.lon == null)
-            throw new Error(`No map point found for ${stop.address}.`);
-          return {
-            index: stop.index,
-            latitude: String(position.lat),
-            longitude: String(position.lon),
-          };
-        }),
-      );
-      setStops((current) =>
-        current.map((stop, index) => {
-          const result = results.find((item) => item.index === index);
-          return result
-            ? {
-                ...stop,
-                latitude: result.latitude,
-                longitude: result.longitude,
-              }
-            : stop;
-        }),
-      );
-      setMessage(
-        `${results.length} stop${results.length === 1 ? "" : "s"} located. Save route points, then calculate the ETA.`,
-      );
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Azure Maps could not locate the stop.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function save() {
-    setSaving(true);
-    try {
-      await api.updateLoadStops(
-        load.id,
-        stops.map((stop) => ({
-          orderId: stop.orderId,
-          name: stop.name,
-          address: stop.address,
-          latitude: stop.latitude ? Number(stop.latitude) : undefined,
-          longitude: stop.longitude ? Number(stop.longitude) : undefined,
-          plannedArrivalUtc: stop.plannedArrivalUtc
-            ? new Date(stop.plannedArrivalUtc).toISOString()
-            : undefined,
-        })),
-        await token(),
-      );
-      await onSaved();
-      setMessage("Stops and planned ETAs saved.");
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Could not save stops.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function calculateRoute() {
-    setSaving(true);
-    try {
-      const accessToken = await token();
-      const result = (await api.route(load.id, accessToken)) as {
-        routes?: Array<{
-          summary?: { lengthInMeters?: number; travelTimeInSeconds?: number };
-        }>;
-      };
-      const summary = result.routes?.[0]?.summary;
-      if (!summary) throw new Error("Azure Maps did not return a route.");
-      const miles = ((summary.lengthInMeters || 0) / 1609.344).toFixed(1);
-      const minutes = Math.round((summary.travelTimeInSeconds || 0) / 60);
-      setStops((current) =>
-        current.map((stop, index) =>
-          index === current.length - 1
-            ? {
-                ...stop,
-                plannedArrivalUtc: new Date(
-                  Date.now() + minutes * 60_000,
-                ).toISOString(),
-              }
-            : stop,
-        ),
-      );
-      await api.updateLoadCommercial(
-        load.id,
-        {
-          revenueAmount: load.revenueAmount,
-          fuelSurchargeAmount: load.fuelSurchargeAmount,
-          estimatedCostAmount: load.estimatedCostAmount,
-          actualCostAmount: load.actualCostAmount,
-          estimatedDistanceMiles: Number(miles),
-          emptyMiles: load.emptyMiles,
-          invoiceStatus: load.invoiceStatus,
-          commercialNotes: load.commercialNotes,
-        },
-        accessToken,
-      );
-      await onSaved();
-      setRouteSummary(
-        `${miles} miles ¬∑ estimated drive time ${Math.floor(minutes / 60)}h ${minutes % 60}m. Mileage saved for forecasting; final-stop ETA populated for review.`,
-      );
-    } catch (exception) {
-      setRouteSummary(
-        exception instanceof Error
-          ? exception.message
-          : "Route calculation failed.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <div className="stop-editor">
-      <button type="button" onClick={() => setOpen((current) => !current)}>
-        {open ? "Hide route points" : "Edit route points"}
-      </button>
-      {open && (
-        <>
-          <p className="hint">
-            Enter an address, locate it with Azure Maps, then review the
-            calculated final-stop ETA against the delivery window.
-          </p>
-          {stops.map((stop, index) => (
-            <div className="stop-row" key={stop.id || index}>
-              <strong>
-                {index + 1}. {stop.name}
-              </strong>
-              <input
-                placeholder="Address"
-                value={stop.address || ""}
-                onChange={(event) =>
-                  update(index, "address", event.target.value)
-                }
-              />
-              <input
-                placeholder="Latitude"
-                inputMode="decimal"
-                value={stop.latitude}
-                onChange={(event) =>
-                  update(index, "latitude", event.target.value)
-                }
-              />
-              <input
-                placeholder="Longitude"
-                inputMode="decimal"
-                value={stop.longitude}
-                onChange={(event) =>
-                  update(index, "longitude", event.target.value)
-                }
-              />
-              <input
-                aria-label={`Planned ETA for ${stop.name}`}
-                type="datetime-local"
-                value={
-                  stop.plannedArrivalUtc
-                    ? new Date(stop.plannedArrivalUtc)
-                        .toISOString()
-                        .slice(0, 16)
-                    : ""
-                }
-                onChange={(event) =>
-                  update(index, "plannedArrivalUtc", event.target.value)
-                }
-              />
-            </div>
-          ))}
-          <div className="route-actions">
-            <button
-              type="button"
-              onClick={() => void locateStops()}
-              disabled={saving}
-            >
-              Locate addresses
-            </button>
-            <button
-              type="button"
-              className="primary"
-              onClick={() => void save()}
-              disabled={saving}
-            >
-              {saving ? "Saving‚Ä¶" : "Save route & ETA"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void calculateRoute()}
-              disabled={saving}
-            >
-              Calculate route & ETA
-            </button>
-          </div>
-          {message && <p className="hint">{message}</p>}
-          {routeSummary && <p className="route-summary">{routeSummary}</p>}
-        </>
-      )}
-    </div>
-  );
-}
+HOà\Kõ‹ô\ú ]K]K]ÿZ]⁄Ÿ[ä
+JKàŸ]K⁄Ÿ[óKà
+Kà
+N¬à€€ú›õY]H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
 
-export function Loads() {
-  const token = useAccessToken();
-  const load = useCallback(
-    async () => api.orders(undefined, undefined, await token()),
-    [token],
-  );
-  const { data, loading, error } = useApi(load);
-  const orders = planningOrders(data);
-  function exportCsv() {
-    const rows = [
-      [
-        "Collection date",
-        "Order / PO",
-        "Customer",
-        "Pallets",
-        "Delivery date",
-        "Readiness",
-      ],
-      ...orders.map((order) => [
-        order.collectionDate,
-        order.poNumber,
-        order.customerCode,
-        order.pallets,
-        order.deliveryDate,
-        order.status,
-      ]),
-    ];
-    const csv = rows
-      .map((row) =>
-        row
-          .map((value) => `"${String(value).replaceAll('"', '""')}"`)
-          .join(","),
-      )
-      .join("\n");
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(
-      new Blob([csv], { type: "text/csv;charset=utf-8" }),
-    );
-    link.download = `slh-loads-${localDate()}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  }
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Loads</p>
-          <h1>Approved order load list</h1>
-        </div>
-        <button onClick={exportCsv} disabled={!orders.length}>
-          Download CSV
-        </button>
-      </div>
-      <State loading={loading} error={error} empty={!orders.length}>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Collection</th>
-                <th>Order</th>
-                <th>Customer</th>
-                <th>Pallets</th>
-                <th>Delivery</th>
-                <th>Readiness</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr key={order.id}>
-                  <td>{order.collectionDate}</td>
-                  <td>{order.poNumber}</td>
-                  <td>{order.customerCode}</td>
-                  <td>{order.pallets}</td>
-                  <td>{order.deliveryDate}</td>
-                  <td>
-                    <span className={`status ${order.status.toLowerCase()}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </State>
-    </section>
-  );
-}
+HOà\KôõY]›]\ ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›]P\HH\ŸP\Jà\ŸPÿ[òX⁄ à\ﬁ[ò»
 
-export function DriverAssignments() {
-  const token = useAccessToken();
-  const today = localDate();
-  const params = new URLSearchParams(window.location.search);
-  const initialFrom = params.get("from") || today;
-  const initialTo = params.get("to") || initialFrom;
-  const [from, setFrom] = useState(initialFrom);
-  const [to, setTo] = useState(initialTo);
-  const assignments = useApi(
-    useCallback(
-      async () => api.driverAssignments(from, to, await token()),
-      [from, to, token],
-    ),
-  );
-  const rows = assignments.data || [];
-  const allocated = rows.filter((item) => item.driver && item.vehicle).length;
-  const unallocated = rows.length - allocated;
-  function exportAssignments() {
-    downloadCsv(`slh-driver-assignments-${from}-to-${to}`, [
-      [
-        "Date",
-        "Load",
-        "Driver",
-        "Employee number",
-        "Vehicle",
-        "Trailer",
-        "Final stop",
-        "Stops",
-        "Status",
-      ],
-      ...rows.map((item) => [
-        item.planningDate,
-        item.loadReference,
-        item.driver?.displayName,
-        item.driver?.employeeNumber,
-        item.vehicle?.registration,
-        item.trailerNumber,
-        item.finalStop,
-        item.stopCount,
-        item.status,
-      ]),
-    ]);
-  }
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Driver history</p>
-          <h1>Driver assignments</h1>
-        </div>
-        <button onClick={exportAssignments} disabled={!rows.length}>
-          Download CSV
-        </button>
-      </div>
-      <div className="assignment-toolbar">
-        <label>
-          From{" "}
-          <input
-            type="date"
-            value={from}
-            onChange={(event) => setFrom(event.target.value)}
-          />
-        </label>
-        <label>
-          To{" "}
-          <input
-            type="date"
-            value={to}
-            min={from}
-            onChange={(event) => setTo(event.target.value)}
-          />
-        </label>
-        <button onClick={() => void assignments.refresh()}>Refresh</button>
-      </div>
-      <div className="metrics">
-        <Metric
-          label="Loads"
-          value={String(rows.length)}
-          detail={`${from} to ${to}`}
-        />
-        <Metric
-          label="Fully allocated"
-          value={String(allocated)}
-          detail="Driver and vehicle recorded"
-        />
-        <Metric
-          label="Unallocated"
-          value={String(unallocated)}
-          detail="Historic gaps to review"
-        />
-        <Metric
-          label="Drivers used"
-          value={String(
-            new Set(
-              rows.flatMap((item) => (item.driver ? [item.driver.id] : [])),
-            ).size,
-          )}
-          detail="Distinct assigned drivers"
-        />
-      </div>
-      <State
-        loading={assignments.loading}
-        error={assignments.error}
-        empty={!rows.length}
-      >
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Load</th>
-                <th>Driver</th>
-                <th>Vehicle</th>
-                <th>Trailer</th>
-                <th>Final stop</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((item: DriverAssignment) => (
-                <tr key={item.loadId}>
-                  <td>{item.planningDate}</td>
-                  <td>
-                    <strong>{item.loadReference}</strong>
-                    <small>
-                      {item.stopCount} stop{item.stopCount === 1 ? "" : "s"}
-                    </small>
-                  </td>
-                  <td>
-                    {item.driver ? (
-                      <>
-                        <strong>{item.driver.displayName}</strong>
-                        <small>{item.driver.employeeNumber}</small>
-                      </>
-                    ) : (
-                      <span className="status failed">Not assigned</span>
-                    )}
-                  </td>
-                  <td>{item.vehicle?.registration || "‚Äî"}</td>
-                  <td>{item.trailerNumber || "‚Äî"}</td>
-                  <td>{item.finalStop || "‚Äî"}</td>
-                  <td>
-                    <span className={`status ${statusClass(item.status)}`}>
-                      {stagingStatus(item.status)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </State>
-    </section>
-  );
-}
+HOà\Kô[]ô\ûQ]\ ]K]ÿZ]⁄Ÿ[ä
+JKàŸ]K⁄Ÿ[óKà
+Kà
+N¬à€€ú›\‹⁄Y€õY[ù»H\ŸP\Jà\ŸPÿ[òX⁄ à\ﬁ[ò»
 
-type CsvCell = string | number | undefined;
-function downloadCsv(
-  name: string,
-  rows: Array<Array<CsvCell> | Array<Array<CsvCell>>>,
-) {
-  const normalized = rows.flatMap((row) =>
-    Array.isArray(row[0])
-      ? (row as Array<Array<CsvCell>>)
-      : [row as Array<CsvCell>],
-  );
-  const csv = normalized
-    .map((row) =>
-      row
-        .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
-        .join(","),
-    )
-    .join("\n");
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(
-    new Blob([csv], { type: "text/csv;charset=utf-8" }),
-  );
-  link.download = `${name}-${localDate()}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
-export function ExportCentre() {
-  const token = useAccessToken();
-  const [date, setDate] = useState(localDate());
-  const [selectedCustomer, setSelectedCustomer] = useState("");
-  const ordersApi = useApi(
-    useCallback(
-      async () => api.orders(undefined, undefined, await token()),
-      [token],
-    ),
-  );
-  const loads = useApi(
-    useCallback(async () => api.loads(undefined, await token()), [token]),
-  );
-  const vehicles = useApi(
-    useCallback(async () => api.vehicles(await token()), [token]),
-  );
-  const drivers = useApi(
-    useCallback(async () => api.drivers(await token()), [token]),
-  );
-  const customerContacts = useApi(
-    useCallback(async () => api.customerContacts(await token()), [token]),
-  );
-  const telemetry = useApi(
-    useCallback(async () => api.telemetry(await token()), [token]),
-  );
-  const etaApi = useApi(
-    useCallback(
-      async () => api.deliveryEtas(date, await token()),
-      [date, token],
-    ),
-  );
-  const orders = planningOrders(ordersApi.data);
-  const vehicleById = new Map(
-    (vehicles.data || []).map((vehicle) => [vehicle.id, vehicle]),
-  );
-  const driverById = new Map(
-    (drivers.data || []).map((driver) => [driver.id, driver]),
-  );
-  const etaEmailByCustomer = new Map(
-    (customerContacts.data || [])
-      .filter((contact) => contact.receivesEtaUpdates && contact.email)
-      .map((contact) => [contact.customerCode, contact.email]),
-  );
-  const allCustomerEtaRecords = (etaApi.data?.records || []).filter(
-    (item) => item.customerCode,
-  );
-  const customerOptions = [
-    ...new Set(allCustomerEtaRecords.map((item) => item.customerCode || "")),
-  ].filter(Boolean).sort();
-  const customerEtaRecords = allCustomerEtaRecords.filter(
-    (item) => !selectedCustomer || item.customerCode === selectedCustomer,
-  );
-  const customerEtaRows = customerEtaRecords.map((item) => {
-    const load = loads.data?.find((value) => value.id === item.loadId);
-    return [
-      item.customerCode,
-      etaEmailByCustomer.get(item.customerCode || ""),
-      item.orderReference,
-      item.loadReference,
-      item.vehicleRegistration,
-      driverById.get(load?.driverId || "")?.displayName,
-      item.stopName,
-      item.deliveryWindowStartUtc,
-      item.deliveryWindowEndUtc,
-      item.etaUtc,
-      item.source,
-      item.risk,
-      item.tachoDriverName,
-      item.driveAvailableTodayMinutes,
-      item.routeDrivingMinutes,
-      item.breakMinutesIncluded,
-      item.tachoStatus,
-      item.tachoExplanation,
-    ];
-  });
-  const etaRiskCounts = customerEtaRecords.reduce<Record<string, number>>(
-    (counts, item) => ({
-      ...counts,
-      [item.risk]: (counts[item.risk] || 0) + 1,
-    }),
-    {},
-  );
-  const customerEtaMessage = customerEtaRecords
-    .slice(0, 12)
-    .map((item) => {
-      const load = loads.data?.find((value) => value.id === item.loadId);
-      return [
-        `${item.customerCode || "Customer"} ¬∑ ${item.orderReference || item.loadReference}`,
-        `Vehicle: ${item.vehicleRegistration || "TBC"} ¬∑ Driver: ${driverById.get(load?.driverId || "")?.displayName || "TBC"}`,
-        `ETA: ${formatDate(item.etaUtc)} (${item.source}) ¬∑ Window: ${formatDate(item.deliveryWindowStartUtc)} - ${formatDate(item.deliveryWindowEndUtc)}`,
-        `Status: ${item.risk}`,
-        `Tacho: ${item.breakMinutesIncluded ? `${item.breakMinutesIncluded} minute break included` : item.tachoStatus} ¬∑ ${item.tachoExplanation}`,
-      ].join("\n");
-    })
-    .join("\n\n");
-  const ready = Boolean(
-    orders.length ||
-      loads.data?.length ||
-      telemetry.data?.records.length ||
-      customerEtaRows.length,
-  );
-  const exportErrors = [
-    ordersApi.error,
-    loads.error,
-    vehicles.error,
-    drivers.error,
-    customerContacts.error,
-    etaApi.error,
-  ].filter(Boolean);
-  const refresh = () => {
-    void ordersApi.refresh();
-    void loads.refresh();
-    void vehicles.refresh();
-    void drivers.refresh();
-    void customerContacts.refresh();
-    void etaApi.refresh();
-  };
-  async function copyCustomerEtas() {
-    await navigator.clipboard.writeText(
-      customerEtaMessage || "No customer ETA records available for this date.",
-    );
-  }
-  function downloadCustomerPlanningWorkbook() {
-    const workbook = XLSX.utils.book_new();
-    const selectedLoads = (loads.data || []).filter((load) => load.planningDate === date);
-    const orderById = new Map(orders.map((order) => [order.id, order]));
-    const selectedOrders = orders.filter((order) => {
-      const deliveryDate = order.deliveryDate === "‚Äî" ? order.collectionDate : order.deliveryDate;
-      return deliveryDate === date && (!selectedCustomer || order.customerCode === selectedCustomer);
-    });
-    const depotRows = selectedLoads.flatMap((load) => {
-      const linked = load.stops.map((stop) => ({ stop, order: stop.orderId ? orderById.get(stop.orderId) : undefined }));
-      const matches = linked.filter(({ order }) => !selectedCustomer || order?.customerCode === selectedCustomer);
-      if (selectedCustomer && !matches.length) return [];
-      return (matches.length ? matches : linked.length ? linked : [{ stop: undefined, order: undefined }]).map(({ stop, order }) => ({
-        "Planning date": load.planningDate,
-        "Load reference": load.reference,
-        Customer: order?.customerCode || "",
-        "Order / SO": order?.poNumber || "",
-        Destination: stop?.name || "",
-        "Spaces used": load.palletSpacesUsed ?? "",
-        "Total capacity": load.totalPalletSpaces ?? "",
-        "Utilisation %": load.utilisationPercent ?? "",
-        "Capacity type": load.capacityType || "",
-        "Depot split": load.depotSplits || "",
-        "Temperature ¬∞C": load.temperatureC ?? "",
-        "Planner notes": load.plannerNotes || "",
-        Vehicle: vehicleById.get(load.vehicleId || "")?.registration || "",
-        Driver: driverById.get(load.driverId || "")?.displayName || "",
-      }));
-    });
-    const bookingRows = selectedOrders.map((order) => {
-      const load = selectedLoads.find((item) => item.stops.some((stop) => stop.orderId === order.id));
-      const stop = load?.stops.find((item) => item.orderId === order.id);
-      return {
-        Market: order.marketName || "",
-        Customer: order.customerCode,
-        "Delivery address": stop?.address || "",
-        "Delivery date": order.deliveryDate === "‚Äî" ? date : order.deliveryDate,
-        "Delivery time from": order.deliveryWindowStartUtc || "",
-        "Delivery time to": order.deliveryWindowEndUtc || "",
-        "Temperature ¬∞C": load?.temperatureC ?? "",
-        "No. of pallets": order.pallets ?? "",
-        "SO / order reference": order.poNumber,
-        "Load reference": load?.reference || "",
-        Seller: order.sellerName || "",
-        "Stall / location": order.stallNumber || "",
-      };
-    });
-    const selectedDate = new Date(`${date}T12:00:00`);
-    const sunday = new Date(selectedDate);
-    sunday.setDate(selectedDate.getDate() - selectedDate.getDay());
-    const weekDates = Array.from({ length: 7 }, (_, index) => {
-      const value = new Date(sunday);
-      value.setDate(sunday.getDate() + index);
-      return value.toISOString().slice(0, 10);
-    });
-    const marketMap = new Map<string, Record<string, string | number>>();
-    orders.filter((order) => {
-      const deliveryDate = order.deliveryDate === "‚Äî" ? order.collectionDate : order.deliveryDate;
-      return weekDates.includes(deliveryDate) && Boolean(order.marketName) && (!selectedCustomer || order.customerCode === selectedCustomer);
-    }).forEach((order) => {
-      const destination = [order.marketName, order.sellerName, order.stallNumber].filter(Boolean).join(" ¬∑ ");
-      const row = marketMap.get(destination) || { Destination: destination };
-      const deliveryDate = order.deliveryDate === "‚Äî" ? order.collectionDate : order.deliveryDate;
-      row[deliveryDate] = Number(row[deliveryDate] || 0) + (Number(order.pallets) || 0);
-      row.Total = Number(row.Total || 0) + (Number(order.pallets) || 0);
-      marketMap.set(destination, row);
-    });
-    const append = (name: string, rows: Array<Record<string, unknown>>) => {
-      const sheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Status: "No matching records" }]);
-      sheet["!cols"] = Object.keys(rows[0] || { Status: "" }).map((key) => ({ wch: Math.max(14, Math.min(36, key.length + 4)) }));
-      XLSX.utils.book_append_sheet(workbook, sheet, name);
-    };
-    append("Depot Splits", depotRows);
-    append("Wholesale Booking", bookingRows);
-    append("Weekly Market", [...marketMap.values()]);
-    XLSX.writeFile(workbook, `SLH-customer-planning-${selectedCustomer || "all"}-${date}.xlsx`);
-  }
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Handover & reporting</p>
-          <h1>Operational exports</h1>
-        </div>
-        <button onClick={refresh}>Refresh data</button>
-      </div>
-      <div className="report-toolbar">
-        <label>
-          ETA operating date{" "}
-          <input
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-          />
-        </label>
-        <label>
-          Customer{" "}
-          <select
-            value={selectedCustomer}
-            onChange={(event) => setSelectedCustomer(event.target.value)}
-          >
-            <option value="">All customers</option>
-            {customerOptions.map((customer) => (
-              <option key={customer}>{customer}</option>
-            ))}
-          </select>
-        </label>
-        <span>
-          Customer ETA exports use job-linked live tracking and show whether a
-          TachoMaster break has been included or legal drive time is insufficient.
-        </span>
-      </div>
-      <State
-        loading={
-          ordersApi.loading ||
-          loads.loading ||
-          vehicles.loading ||
-          drivers.loading ||
-          customerContacts.loading ||
-          etaApi.loading
-        }
-        error={exportErrors[0]}
-        empty={!ready}
-      >
-        {telemetry.error && (
-          <p className="notice inline-notice">
-            Live fleet export could not refresh yet; order and ETA exports are
-            still available.
-          </p>
-        )}
-        <div className="eta-summary">
-          <strong>
-            {customerEtaRows.length} customer ETA line
-            {customerEtaRows.length === 1 ? "" : "s"}
-          </strong>
-          <span>
-            {etaRiskCounts.Late || 0} late ¬∑ {etaRiskCounts.AtRisk || 0} at risk
-            ¬∑ {etaRiskCounts.OnTrack || 0} on track ¬∑{" "}
-            {etaRiskCounts.Pending || 0} pending
-          </span>
-          <button
-            onClick={() => void copyCustomerEtas()}
-            disabled={!customerEtaRows.length}
-          >
-            Copy customer ETA brief
-          </button>
-        </div>
-        <div className="export-grid">
-          <article className="export-card">
-            <h2>Customer planning workbook</h2>
-            <p>
-              One Excel file with depot splits and utilisation, wholesale booking
-              lines, and the weekly market pallet summary based on the attached
-              customer formats.
-            </p>
-            <button onClick={downloadCustomerPlanningWorkbook} disabled={!loads.data?.length && !orders.length}>
-              Download customer workbook
-            </button>
-          </article>
-          <article className="export-card">
-            <h2>Customer ETA update</h2>
-            <p>
-              Approved recipient, order, load, vehicle, driver, delivery window,
-              ETA source, delivery risk, remaining drive time and any break
-              included in the ETA.
-            </p>
-            <button
-              onClick={() =>
-                downloadCsv(
-                  `slh-customer-eta-${(selectedCustomer || "all").replace(/[^a-z0-9-]/gi, "-")}`,
-                  [
-                  [
-                    "Customer",
-                    "Recipient email",
-                    "Order",
-                    "Load",
-                    "Vehicle",
-                    "Driver",
-                    "Delivery stop",
-                    "Window start",
-                    "Window end",
-                    "ETA",
-                    "ETA source",
-                    "Status",
-                    "Tacho driver",
-                    "Drive minutes available today",
-                    "Route driving minutes",
-                    "Break minutes included",
-                    "Tacho status",
-                    "Tacho explanation",
-                  ],
-                    customerEtaRows,
-                  ],
-                )
-              }
-              disabled={!customerEtaRows.length}
-            >
-              Download customer ETA CSV
-            </button>
-          </article>
-          <article className="export-card">
-            <h2>Approved order list</h2>
-            <p>
-              Approved orders with collection and delivery dates, ready for
-              operational export.
-            </p>
-            <button
-              onClick={() =>
-                downloadCsv("slh-orders", [
-                  [
-                    "Collection date",
-                    "Order / PO",
-                    "Customer",
-                    "Pallets",
-                    "Delivery date",
-                    "Status",
-                  ],
-                  ...orders.map((order) => [
-                    order.collectionDate,
-                    order.poNumber,
-                    order.customerCode,
-                    order.pallets,
-                    order.deliveryDate,
-                    order.status,
-                  ]),
-                ])
-              }
-              disabled={!orders.length}
-            >
-              Download orders CSV
-            </button>
-          </article>
-          <article className="export-card">
-            <h2>Planned loads</h2>
-            <p>
-              Load references, assignment status and route stop count for daily
-              control.
-            </p>
-            <button
-              onClick={() =>
-                downloadCsv("slh-planned-loads", [
-                  [
-                    "Planning date",
-                    "Load reference",
-                    "Status",
-                    "Vehicle",
-                    "Driver",
-                    "Trailer ID",
-                    "Stops",
-                    "Spaces used",
-                    "Total capacity",
-                    "Utilisation %",
-                    "Capacity type",
-                    "Depot split",
-                    "Temperature ¬∞C",
-                  ],
-                  ...(loads.data || []).map((load) => [
-                    load.planningDate,
-                    load.reference,
-                    load.status,
-                    vehicleById.get(load.vehicleId || "")?.registration,
-                    driverById.get(load.driverId || "")?.displayName,
-                    load.trailerId,
-                    load.stops.length,
-                    load.palletSpacesUsed,
-                    load.totalPalletSpaces,
-                    load.utilisationPercent,
-                    load.capacityType,
-                    load.depotSplits,
-                    load.temperatureC,
-                  ]),
-                ])
-              }
-              disabled={!loads.data?.length}
-            >
-              Download loads CSV
-            </button>
-          </article>
-          <article className="export-card">
-            <h2>Live fleet positions</h2>
-            <p>
-              Latest DOT tracking data for escalation, customer updates and ETA
-              review.
-            </p>
-            <button
-              onClick={() =>
-                downloadCsv("slh-live-fleet", [
-                  [
-                    "Vehicle",
-                    "Updated",
-                    "Latitude",
-                    "Longitude",
-                    "Speed kph",
-                    "Moving",
-                    "Status",
-                  ],
-                  ...(telemetry.data?.records || []).map((record) => [
-                    record.vehicleIdentifier,
-                    record.eventTimeUtc,
-                    record.latitude,
-                    record.longitude,
-                    record.speedKph,
-                    record.isMoving ? "Yes" : "No",
-                    record.status,
-                  ]),
-                ])
-              }
-              disabled={!telemetry.data?.records.length}
-            >
-              Download tracking CSV
-            </button>
-          </article>
-        </div>
-        <div className="panel export-note">
-          <h2>Automated intake</h2>
-          <p>
-            The protected batch endpoint accepts up to 500 idempotent email or
-            workbook rows into Staging for planner approval.
-          </p>
-        </div>
-      </State>
-    </section>
-  );
-}
+HOà\Kôö]ô\ê\‹⁄Y€õY[ù ]K]K]ÿZ]⁄Ÿ[ä
+JKàŸ]K⁄Ÿ[óKà
+Kà
+N¬à€€ú›[ô[ô»Bà›Y⁄[ôÀô]OÀôö[\äà
+][JHOà›Y⁄[ô‘›]\ ][Kú›]\ HOOHî[ô[ô‘ô]öY]»ãà
+Kõ[ô›œ»¬à€€ú›[]ô\ûTö\⁄‹»HÀããä]P\Kô]OÀúôX€‹ô»◊JWKú€‹ù
+à
+YùöY⁄
+HOÇà
+»]NàÀ]ö\⁄Œàã[ô[ôŒàK€ïòX⁄ŒàJV‹öY⁄úö\⁄◊HBà»]NàÀ]ö\⁄Œàã[ô[ôŒàK€ïòX⁄ŒàV€Yùúö\⁄◊Kà
+N¬à€€ú›\ôŸ[ùH[]ô\ûTö\⁄‹Àôö[\äà
+][JHOÇà][Kúö\⁄»OOHì]Hàà][Kúö\⁄»OOHê]ö\⁄»àà][KùX⁄‘›]\»OOHí[ú›YôöX⁄Y[ùö]ôU[YHãà
+Kõ[ô›¬à€€ú›][\ŸY‹XŸ\»H
+ÿYÀô]H◊JKúôYXŸJ
+›[ÿY
+HOà›[
+»
+ÿYú[]‹XŸ\’\ŸY
+K
+N¬à€€ú›]òZ[XõT‹XŸ\»H
+ÿYÀô]H◊JKúôYXŸJ
+›[ÿY
+HOà›[
+»
+ÿYù›[[]‹XŸ\»
+K
+N¬à€€ú›][\ÿ][€î\òŸ[ùH]òZ[XõT‹XŸ\»à»
+][\ŸY‹XŸ\»»]òZ[XõT‹XŸ\ H
+àLà[ôYö[ôY¬à€€ú››ô\êÿ\X⁄]HH
+ÿYÀô]H◊JKôö[\ä
+ÿY
+HOàÿYù›[[]‹XŸ\»	âà
+ÿYú[]‹XŸ\’\ŸY
+HàÿYù›[[]‹XŸ\ Kõ[ô›¬àô]\õà
+àŸX›[€èÇà]à€\‹”ò[YOHù]K\õ›»èÇà]èÇà€\‹”ò[YOHô^YXúõ›»èì‹\ò][€úœ‹ÇàOïò[ú‹‹ù€€ùõ€\⁄õÿ\ô⁄OÇàŸ]èÇàXô[€\‹”ò[YOHô\⁄õÿ\ôY]HèÇà‹\ò][ô»]^»àüBà[ú]à\OHô]HÇàò[YO^Ÿ]_Bà€ê⁄[ôŸO^ ]ô[ù
+HOàŸ]]J]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[ÇàŸ]èÇà›]BàÿY[ôœ^‹›Y⁄[ôÀõÿY[ô»ÿYÀõÿY[ô»‹ô\úÀõÿY[ôﬂBà\úõ‹è^‹›Y⁄[ôÀô\úõ‹àÿYÀô\úõ‹à‹ô\úÀô\úõ‹üBàÇà÷ŸõY]ô\úõ‹ã]P\Kô\úõ‹ã\‹⁄Y€õY[ùÀô\úõ‹óKôö[\äõ€€X[äKõ[ô›Çà	âà
+à€\‹”ò[YOHõõ›XŸH[õ[ôK[õ›XŸHèÇà€€YH]ôH[ú⁄Y⁄[ô[»€›[õ›ôYúô\⁄Y]»€‹ôH‹ô\ú»[ôàÿY»ô[XZ[à]òZ[XõKÇà‹Çà
+_Bà]à€\‹”ò[YOHõY]öX‹»èÇàY]öX¬àXô[Hî›Y⁄[ô»ô]öY]‹»Çàò[YO^‘›ö[ô [ô[ô _Bà]Z[Hê]ÿZ][ô»X⁄\⁄[€àÇàœÇàY]öX¬àXô[Hì‹\ò][€ò[ÿY»Çàò[YO^‘›ö[ô ÿYÀô]OÀõ[ô›
+_Bà]Z[^ÿÿ]ôYõ‹à	Ÿ]_XBàœÇàY]öX¬àXô[HëõY]›\ùYÇàò[YO^ÿ	ŸõY]ô]OÀúôXYP€›[ùK…ŸõY]ô]OÀùôZX€P€›[ùXBà]Z[Hë‹ôY[àYX[ú»[›ö[ô»õ›»ÇàœÇàY]öX¬àXô[Hë[]ô\ûHö\⁄‹»Çàò[YO^‘›ö[ô \ôŸ[ù
+_Bà]Z[Hì]H‹à€‹ŸH»⁄[ô›»ÇàœÇàY]öX¬àXô[Hï][\ÿ][€àÇàò[YO^›][\ÿ][€î\òŸ[ùOHù[»∏†%àà	›][\ÿ][€î\òŸ[ùù—ö^Y
+J_IXBà]Z[^ÿ	€›ô\êÿ\X⁄]_H›ô\ãXÿ\X⁄]Hÿ\õö[ô…€›ô\êÿ\X⁄]HOOHH»àààú»üXBàœÇàŸ]èÇàõY]õ€›]õY]^ŸõY]ô]_H]\œ^Ÿ[]ô\ûTö\⁄‹ﬂHœÇà\‹⁄Y€õY[ù€ò\⁄›õ›‹œ^ÿ\‹⁄Y€õY[ùÀô]H◊_H]O^Ÿ]_HœÇà]à€\‹”ò[YOHô[]ô\ûK\[ô[èÇà]èÇà€\‹”ò[YOHô^YXúõ›»èë[]ô\ûK]⁄[ô›»€€ùõ€‹ÇàèïòX⁄⁄[ô»
+»X⁄ÀX]ÿ\ôHUO⁄èÇàŸ]èÇàŸ[]ô\ûTö\⁄‹Àõ[ô›»
+à]à€\‹”ò[YOHô[]ô\ûK[\›èÇàŸ[]ô\ûTö\⁄‹Àú€XŸJLäKõX\
 
-export function StagingQueue() {
-  const token = useAccessToken();
-  const [entityFilter, setEntityFilter] = useState("");
-  const load = useCallback(
-    async () => api.staging(await token(), "PendingReview", entityFilter, 2000),
-    [token, entityFilter],
-  );
-  const { data, loading, error, refresh } = useApi(load);
-  const [reviewing, setReviewing] = useState<string>();
-  const [selected, setSelected] = useState<StagedImport>();
-  const [bulkEntity, setBulkEntity] = useState("vehicle");
-  const [bulkMessage, setBulkMessage] = useState<string>();
-  async function review(item: StagedImport, approved: boolean) {
-    setReviewing(item.id);
-    try {
-      await api.review(item.id, approved, "", await token());
-      await refresh();
-    } finally {
-      setReviewing(undefined);
-    }
-  }
-  async function approveBulk() {
-    const pending = (data || []).filter(
-      (item) =>
-        stagingStatus(item.status) === "PendingReview" &&
-        item.entityType === bulkEntity,
-    );
-    if (!pending.length) return;
-    setReviewing("bulk");
-    setBulkMessage(undefined);
-    try {
-      const accessToken = await token();
-      for (const item of pending)
-        await api.review(
-          item.id,
-          true,
-          `Bulk approved ${bulkEntity} master data`,
-          accessToken,
-        );
-      setBulkMessage(
-        `${pending.length} ${bulkEntity} record${pending.length === 1 ? "" : "s"} approved and promoted.`,
-      );
-      await refresh();
-    } catch (exception) {
-      setBulkMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Bulk approval failed.",
-      );
-    } finally {
-      setReviewing(undefined);
-    }
-  }
-  async function clearPending() {
-    if (
-      !confirm(
-        "Clear all pending staging records? Promoted master data will stay in place.",
-      )
-    )
-      return;
-    setReviewing("clear");
-    setBulkMessage(undefined);
-    try {
-      const result = await api.clearPendingStaging(await token());
-      setBulkMessage(
-        `${result.deleted} pending staging record${result.deleted === 1 ? "" : "s"} cleared. You can now re-import fresh.`,
-      );
-      setSelected(undefined);
-      await refresh();
-    } catch (exception) {
-      setBulkMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Could not clear pending staging records.",
-      );
-    } finally {
-      setReviewing(undefined);
-    }
-  }
-  const payload = selected
-    ? (() => {
-        try {
-          return JSON.parse(selected.payloadJson) as Record<string, unknown>;
-        } catch {
-          return {};
-        }
-      })()
-    : undefined;
-  const pendingCounts = (data || [])
-    .filter((item) => stagingStatus(item.status) === "PendingReview")
-    .reduce<
-      Record<string, number>
-    >((counts, item) => ({ ...counts, [item.entityType]: (counts[item.entityType] || 0) + 1 }), {});
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Control gate</p>
-          <h1>Staging review queue</h1>
-        </div>
-        <div className="actions">
-          <button onClick={() => void refresh()}>Refresh</button>
-          <button
-            className="reject"
-            disabled={reviewing === "clear"}
-            onClick={() => void clearPending()}
-          >
-            {reviewing === "clear" ? "Clearing..." : "Clear pending"}
-          </button>
-        </div>
-      </div>
-      <div className="planner-toolbar staging-filter">
-        <label>
-          Show pending{" "}
-          <select
-            value={entityFilter}
-            onChange={(event) => {
-              setEntityFilter(event.target.value);
-              setSelected(undefined);
-            }}
-          >
-            <option value="">All record types</option>
-            {[
-              "vehicle",
-              "driver",
-              "trailer",
-              "site",
-              "customercontact",
-              "marketcontact",
-              "customer",
-              "order",
-            ].map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span>
-          {data?.length || 0} pending record{data?.length === 1 ? "" : "s"}{" "}
-          shown
-        </span>
-      </div>
-      <State loading={loading} error={error} empty={!data?.length}>
-        <div className="bulk-review panel">
-          <div>
-            <h2>Bulk approve master data</h2>
-            <p>
-              Use this after checking the imported workbook. Vehicles must be
-              promoted before Live Tracking can show the fleet.
-            </p>
-          </div>
-          <label>
-            Record type{" "}
-            <select
-              value={bulkEntity}
-              onChange={(event) => setBulkEntity(event.target.value)}
-            >
-              {[
-                "vehicle",
-                "driver",
-                "trailer",
-                "site",
-                "customercontact",
-                "marketcontact",
-                "customer",
-                "order",
-              ].map((type) => (
-                <option key={type} value={type}>
-                  {type} ({pendingCounts[type] || 0})
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="primary"
-            disabled={!pendingCounts[bulkEntity] || reviewing === "bulk"}
-            onClick={() => void approveBulk()}
-          >
-            {reviewing === "bulk"
-              ? "Approving..."
-              : `Approve ${pendingCounts[bulkEntity] || 0}`}
-          </button>
-          {bulkMessage && <p className="notice inline-notice">{bulkMessage}</p>}
-        </div>
-        {selected && (
-          <div className="panel review-panel">
-            <div>
-              <p className="eyebrow">Reviewing {selected.entityType}</p>
-              <h2>
-                {String(
-                  payload?.poNumber ||
-                    payload?.name ||
-                    payload?.displayName ||
-                    payload?.externalCode ||
-                    selected.id,
-                )}
-              </h2>
-            </div>
-            <button onClick={() => setSelected(undefined)}>Close</button>
-            <dl>
-              {Object.entries(payload || {}).map(([key, value]) => (
-                <div key={key}>
-                  <dt>{key.replace(/([A-Z])/g, " $1")}</dt>
-                  <dd>{String(value || "‚Äî")}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        )}
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Received</th>
-                <th>Type</th>
-                <th>Source</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data?.map((item) => (
-                <tr key={item.id}>
-                  <td>{formatDate(item.receivedAtUtc)}</td>
-                  <td>{item.entityType}</td>
-                  <td>{item.source || "‚Äî"}</td>
-                  <td>
-                    <span className={`status ${statusClass(item.status)}`}>
-                      {stagingStatus(item.status)}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="actions">
-                      <button onClick={() => setSelected(item)}>
-                        Review details
-                      </button>
-                      {stagingStatus(item.status) === "PendingReview" && (
-                        <>
-                          <button
-                            className="approve"
-                            disabled={
-                              reviewing === item.id || reviewing === "bulk"
-                            }
-                            onClick={() => void review(item, true)}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            className="reject"
-                            disabled={
-                              reviewing === item.id || reviewing === "bulk"
-                            }
-                            onClick={() => void review(item, false)}
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-                      {stagingStatus(item.status) !== "PendingReview" &&
-                        (item.reviewNote || "‚Äî")}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </State>
-    </section>
-  );
-}
+][JHOà
+à\ùX€Bà€\‹”ò[YO^ÿ[]ô\ûK\ö\⁄»	⁄][Kúö\⁄»OOHê]ö\⁄»à»úö\⁄»àà][Kúö\⁄Àù”›Ÿ\êÿ\ŸJ
+_H	⁄][KùX⁄‘›]\»OOHí[ú›YôöX⁄Y[ùö]ôU[YHà»ùX⁄ÀX‹ö]Xÿ[àààüXBàŸ^O^ÿ	⁄][KõÿYYKI⁄][Kú›‹YXBàÇà›õ€ôœû⁄][KõÿYôYô\ô[òŸ_O‹›õ€ôœÇà‹[èÇà⁄][Kõ‹ô\îôYô\ô[òŸHà][Kò›\›€Y\ê€ŸHàï[õ[öŸY›‹ü^»àüBà0≠»⁄][Kú›‹ò[Y_Bà‹‹[èÇà€X[ÇàUHŸõ‹õX]]J][Kô]U] _H0≠»⁄[ô›»[ôﬁ»àüBàŸõ‹õX]]J][Kô[]ô\ûU⁄[ô›—[ô] _H0≠ﬁ»àüBà⁄][KùôZX€TôY⁄\›ò][€àïôZX€Hõ›\‹⁄Y€ôYüBà‹€X[Çà€X[û⁄][KùX⁄—^[ò][€üO‹€X[Çà[OÇà⁄][KùX⁄‘›]\»OOHí[ú›YôöX⁄Y[ùö]ôU[YHÇà»ëö]ôH[YHö\⁄»Çàà][KòúôXZ”Z[ù]\“[ò€YYà»	⁄][KòúôXZ”Z[ù]\“[ò€YY[HúôXZ»[ò€YYàà][Kúö\⁄»OOHê]ö\⁄»Çà»ê]ö\⁄»Çàà][Kúö\⁄»OOHì€ïòX⁄»Çà»€à\ôŸ]»	⁄][Kú›‹ò[Y_Xàà][Kúö\⁄ﬂBàŸ[OÇàH€\‹”ò[YO^ÿ]K\€›\òŸH	⁄][Kú€›\òŸKù”›Ÿ\êÿ\ŸJ
+_XOÇà⁄][Kú€›\òŸ_HUBà⁄OÇàÿ\ùX€OÇà
+J_BàŸ]èÇà
+Hà
+à€\‹”ò[YOHö[ùèÇàõ»X\Y[]ô\ûH›‹»\ôH]òZ[XõHõ‹à\»]Kàÿ]ôH›‹¬à[ô[]ô\ûH⁄[ô›‹»[àH[õô\ãÇà‹Çà
+_BàŸ]èÇà]à€\‹”ò[YOHú[ô[èÇàèî[õô\àõÿ›\œ⁄èÇàÇà[àŸ^x†&\»€‹öÀ[ÿÿ]HHõY]Ÿ]õ›]H⁄[ù»[ôàÿ[›[]HU\»úõ€HH[õô\ãÇà‹Çà[ö»œHã»èì‹[à[õô\à8°§è”[öœÇàŸ]èÇà‘›]OÇà‹ŸX›[€èÇà
+N¬üBôù[ò›[€àõY]õ€›]
+¬àõY]à]\»H◊KüNà¬àõY]ŒàõY]›]\Œ¬à]\œŒà[]ô\ûQ]V◊N¬üJH¬à€€ú›‹Ÿ[X›YôZX€RYŸ]Ÿ[X›YôZX€RYHH\ŸT›]O›ö[ôœä
+N¬à€€ú›ŸõY]ö[\ãŸ]õY]ö[\óHH\ŸT›]Oõ]ôHàò[àò][ù[€ààò[ÿÿ]Yèäõ]ôHäN¬à€€ú›YU[YHH
+ò[YOŒà›ö[ô HOÇàò[YH»ô]»]Jò[YJKôŸ][YJ
+Hàù[Xô\ãìPV‘–QëW“SïQ—Té¬à€€ú›€€ô][€îö[‹ö]NàôX€‹ô›ö[ôÀù[Xô\èàH»[›ö[ôŒà›\ùYàK⁄Y€ôY€éàã›][€ò\ûNàÀ\öŸYà›[NàKõ›⁄Y€ôY€éààN¬à€€ú›[ôZX€\»HÀããäõY]ÀùôZX€\»◊JWKú€‹ù
+à
+YùöY⁄
+HOÇà
+€€ô][€îö[‹ö]V€Yùò€€ô][€óHœ»JHH
+€€ô][€îö[‹ö]V‹öY⁄ò€€ô][€óHœ»JHàYU[YJYùú[õôY]U] HHYU[YJöY⁄ú[õôY]U] HàYùúôY⁄\›ò][€ãõÿÿ[P€€\\ôJöY⁄úôY⁄\›ò][€äKà
+N¬à€€ú›ôZX€\»H[ôZX€\Àôö[\ä
+ôZX€JHOÇàõY]ö[\àOOHò[à»ùYBààõY]ö[\àOOHò][ù[€àà»»î›[Hãìõ›⁄Y€ôY€àóKö[ò€Y\ ôZX€Kò€€ô][€äBààõY]ö[\àOOHò[ÿÿ]Yà»õ€€X[äôZX€KõÿYY
+Bàà»ì[›ö[ô»ãî›\ùYãî⁄Y€ôY€àãî›][€ò\ûHóKö[ò€Y\ ôZX€Kò€€ô][€äKà
+N¬à€€ú›Ÿ[X›YBàôZX€\Àôö[ô
 
-async function loadFleetStatus(accessToken: string): Promise<FleetStatus> {
-  try {
-    return await api.fleetStatus(accessToken);
-  } catch {
-    const [vehiclesResult, telemetryResult] = await Promise.allSettled([
-      api.vehicles(accessToken),
-      api.telemetry(accessToken),
-    ]);
-    const vehicles =
-      vehiclesResult.status === "fulfilled" ? vehiclesResult.value : [];
-    const telemetry =
-      telemetryResult.status === "fulfilled"
-        ? telemetryResult.value
-        : undefined;
-    if (telemetry?.records.length)
-      return fleetStatusFromTelemetry(vehicles, telemetry);
-    if (vehicles.length)
-      return {
-        provider: "Master data",
-        retrievedAtUtc: new Date().toISOString(),
-        vehicleCount: vehicles.length,
-        readyCount: 0,
-        attentionCount: vehicles.length,
-        vehicles: vehicles.map((vehicle) => ({
-          vehicleId: vehicle.id,
-          registration: vehicle.registration,
-          fleetNumber: vehicle.fleetNumber,
-          condition: "NotSignedOn",
-        })),
-      };
-    return {
-      provider: "Tracking unavailable",
-      retrievedAtUtc: new Date().toISOString(),
-      vehicleCount: 0,
-      readyCount: 0,
-      attentionCount: 0,
-      vehicles: [],
-    };
-  }
-}
-function fleetStatusFromTelemetry(
-  vehicles: Vehicle[],
-  telemetry: Telemetry,
-): FleetStatus {
-  const latest = new Map<string, Telemetry["records"][number]>();
-  for (const record of telemetry.records)
-    for (const alias of trackingAliases(record.vehicleIdentifier)) {
-      const current = latest.get(alias);
-      if (
-        !current ||
-        new Date(record.eventTimeUtc).getTime() >
-          new Date(current.eventTimeUtc).getTime()
-      )
-        latest.set(alias, record);
-    }
-  const matched = new Set<Telemetry["records"][number]>();
-  const rows = vehicles.map((vehicle) => {
-    const aliases = [
-      vehicle.registration,
-      vehicle.fleetNumber,
-      vehicle.abbreviation,
-    ]
-      .filter(Boolean)
-      .flatMap((value) => trackingAliases(value || ""));
-    const record = aliases
-      .map((alias) => latest.get(alias))
-      .filter(Boolean)
-      .sort(
-        (left, right) =>
-          new Date(right!.eventTimeUtc).getTime() -
-          new Date(left!.eventTimeUtc).getTime(),
-      )[0];
-    if (record) matched.add(record);
-    return record
-      ? telemetryVehicle(
-          vehicle.id,
-          vehicle.registration,
-          vehicle.fleetNumber,
-          record,
-        )
-      : {
-          vehicleId: vehicle.id,
-          registration: vehicle.registration,
-          fleetNumber: vehicle.fleetNumber,
-          condition: "NotSignedOn" as const,
-        };
-  });
-  rows.push(
-    ...telemetry.records
-      .filter((record) => !matched.has(record))
-      .map((record) =>
-        telemetryVehicle(
-          `roadtech-${record.vehicleIdentifier}`,
-          record.vehicleIdentifier,
-          undefined,
-          record,
-        ),
-      ),
-  );
-  const readyCount = rows.filter((row) => row.condition === "Moving").length;
-  return {
-    provider: "RoadTech Falcon ¬∑ direct telemetry",
-    retrievedAtUtc: telemetry.retrievedAtUtc,
-    vehicleCount: rows.length,
-    readyCount,
-    attentionCount: rows.length - readyCount,
-    vehicles: rows,
-  };
-}
-function telemetryVehicle(
-  vehicleId: string,
-  registration: string,
-  fleetNumber: string | undefined,
-  record: Telemetry["records"][number],
-): FleetStatus["vehicles"][number] {
-  const eventTime = new Date(record.eventTimeUtc);
-  const ageMinutes = Math.max(
-    0,
-    Math.floor((Date.now() - eventTime.getTime()) / 60_000),
-  );
-  const today = localDate();
-  const condition: FleetStatus["vehicles"][number]["condition"] =
-    record.eventTimeUtc.slice(0, 10) !== today
-      ? "NotSignedOn"
-      : ageMinutes > 30
-        ? "Stale"
-        : record.isMoving || (record.speedKph || 0) > 3
-          ? "Moving"
-          : "NotSignedOn";
-  return {
-    vehicleId,
-    registration,
-    fleetNumber,
-    trackingIdentifier: record.vehicleIdentifier,
-    condition,
-    lastEventTimeUtc: record.eventTimeUtc,
-    ageMinutes,
-    isMoving: record.isMoving,
-    speedKph: record.speedKph,
-    latitude: record.latitude,
-    longitude: record.longitude,
-  };
-}
-function trackingAliases(value: string) {
-  const normalised = value.replace(/[^a-z0-9]/gi, "").toUpperCase();
-  const aliases = new Set<string>([normalised]);
-  if (normalised.length > 3) aliases.add(normalised.slice(-3));
-  if (normalised.endsWith("H") && normalised.length > 4)
-    aliases.add(normalised.slice(0, -1));
-  return [...aliases].filter(Boolean);
-}
+ôZX€JHOàôZX€KùôZX€RYOOHŸ[X›YôZX€RY
+HàôZX€\Àôö[ô
+à
+ôZX€JHOàôZX€Kõ]]YHOHù[	âàôZX€Kõ€ô⁄]YHOHù[à
+N¬à€€ú›Ÿ[X›YX\\õBàŸ[X›YÀõ]]YHOHù[	âàŸ[X›Yõ€ô⁄]YHOHù[à»ŒãÀ›››Àô€€Ÿ€Kò€€K€X\À‹ŸX\ò⁄œÿ\OLIú]Y\ûOI‹Ÿ[X›Yõ]]Y_K	‹Ÿ[X›Yõ€ô⁄]Y_Xàà[ôYö[ôY¬à€€ú›ô^]HHŸ[X›YÀõÿYYà»]\¬àôö[\ä
+][JHOà][KõÿYYOOHŸ[X›YõÿYY
+Bàú€‹ù
 
-export function LiveTracking() {
-  const token = useAccessToken();
-  const [date, setDate] = useState(localDate());
-  const [mode, setMode] = useState<"live" | "history">("live");
-  const fleet = useApi(
-    useCallback(async () => loadFleetStatus(await token()), [token]),
-  );
-  const roadTech = useApi(
-    useCallback(async () => api.roadTechStatus(await token()), [token]),
-  );
-  const tachoMaster = useApi(
-    useCallback(async () => api.tachoMasterStatus(await token()), [token]),
-  );
-  const liveEtas = useApi(
-    useCallback(
-      async () => api.deliveryEtas(localDate(), await token()),
-      [token],
-    ),
-  );
-  const history = useApi(
-    useCallback(
-      async () => api.trackingHistory(date, await token()),
-      [date, token],
-    ),
-  );
-  const loading =
-    mode === "live" ? fleet.loading || roadTech.loading : history.loading;
-  const error = mode === "live" ? fleet.error : history.error;
-  const refresh =
-    mode === "live"
-      ? async () => {
-          await Promise.all([
-            fleet.refresh(),
-            roadTech.refresh(),
-            tachoMaster.refresh(),
-            liveEtas.refresh(),
-          ]);
-        }
-      : history.refresh;
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">RoadTech Falcon + TachoMaster</p>
-          <h1>Live fleet control</h1>
-        </div>
-        <button onClick={() => void refresh()}>Refresh</button>
-      </div>
-      <div className="tracking-controls">
-        <button
-          className={mode === "live" ? "active" : ""}
-          onClick={() => setMode("live")}
-        >
-          Live fleet
-        </button>
-        <button
-          className={mode === "history" ? "active" : ""}
-          onClick={() => setMode("history")}
-        >
-          Historic day
-        </button>
-        {mode === "history" && (
-          <label>
-            Tracking date{" "}
-            <input
-              type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-            />
-          </label>
-        )}
-      </div>
-      <State loading={loading} error={error}>
-        {mode === "live" ? (
-          <>
-            <div className="panel">
-              <strong>{fleet.data?.vehicleCount || 0} fleet vehicles</strong>
-              <span>
-                {fleet.data?.readyCount || 0} moving now ¬∑{" "}
-                {fleet.data?.attentionCount || 0} stale or not signed on ¬∑
-                refreshed {formatDate(fleet.data?.retrievedAtUtc)}
-              </span>
-            </div>
-            {roadTech.data && (
-              <p
-                className={roadTech.data.connected ? "notice ready" : "notice"}
-              >
-                {roadTech.data.message}
-              </p>
-            )}
-            {tachoMaster.data && (
-              <p
-                className={
-                  tachoMaster.data.connected ? "notice ready" : "notice"
-                }
-              >
-                {tachoMaster.data.message}
-              </p>
-            )}
-            {tachoMaster.error && (
-              <p className="notice">
-                TachoMaster status could not be checked. Vehicle positions
-                remain available, but card-holder names may be missing.
-              </p>
-            )}
-            {fleet.data?.provider === "Master data" && (
-              <p className="notice">
-                Fleet status endpoint is unavailable, so this view is showing
-                Master Data only.
-              </p>
-            )}
-            {fleet.data?.provider.includes("direct telemetry") && (
-              <p className="notice">
-                The combined fleet endpoint failed, so this is raw RoadTech
-                telemetry. Job links and TachoMaster card-holders are
-                unavailable until the API/database issue is repaired.
-              </p>
-            )}
-            {fleet.data?.vehicleCount ? (
-              <FleetRollout fleet={fleet.data} etas={liveEtas.data?.records} />
-            ) : (
-              <div className="state">
-                <strong>No active vehicles are in Master Data yet.</strong>
-                <span>
-                  Import the Transport Operations master workbook, then approve
-                  vehicle records in Staging Review.
-                </span>
-                <Link to="/master-data">Import Master Data</Link>
-                <Link to="/staging">Open Staging Review</Link>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="panel">
-              <strong>
-                {history.data?.recordCount || 0} stored tracking events
-              </strong>
-              <span>History for {date}</span>
-            </div>
-            <div className="tracking-grid">
-              {history.data?.records.map((record) => (
-                <article
-                  className="vehicle-card"
-                  key={`${record.vehicleIdentifier}-${record.eventTimeUtc}`}
-                >
-                  <h2>{record.vehicleIdentifier}</h2>
-                  <p>
-                    {record.isMoving ? "Moving" : "Stationary"} ¬∑{" "}
-                    {record.speedKph ?? 0} km/h
-                  </p>
-                  <small>Recorded {formatDate(record.eventTimeUtc)}</small>
-                </article>
-              ))}
-            </div>
-          </>
-        )}
-      </State>
-    </section>
-  );
-}
+YùöY⁄
+HOàYùúŸ\]Y[òŸHHöY⁄úŸ\]Y[òŸJVÃBàà[ôYö[ôY¬àô]\õà
+à]à€\‹”ò[YOHúõ€›]\[ô[èÇà]à€\‹”ò[YOHúõ€›]ZXY[ô»èÇà]èÇà€\‹”ò[YOHô^YXúõ›»èì]ôHôZX€H›]\œ‹ÇàèïôZX€Kÿ\ôZ€\à[ô›\úô[ùõÿè⁄èÇàŸ]èÇà]à€\‹”ò[YOHôõY]]öY]ÀYö[\àèÇàXô[î⁄›»Ÿ[X›ò[YO^ŸõY]ö[\üH€ê⁄[ôŸO^ ]ô[ù
+HOàŸ]õY]ö[\ä]ô[ùù\ôŸ]ùò[YH\»\[ŸàõY]ö[\ä_OÇà‹[€àò[YOHõ]ôHèì]ôH»X›]ôHö\ú›€‹[€èÇà‹[€àò[YOHò[èê[ôZX€\œ€‹[€èÇà‹[€àò[YOHò[ÿÿ]Yèï⁄]›\úô[ùõÿúœ€‹[€èÇà‹[€àò[YOHò][ù[€àèìôYY»][ù[€è€‹[€èÇà‹Ÿ[X›è€Xô[Çà‹[èû›ôZX€\Àõ[ô›H⁄›€à0≠»ŸõY]Àò][ù[€ê€›[ùH»ÿ]⁄‹‹[èÇàŸ]èÇàŸ]èÇà‹Ÿ[X›Y	âà
+à]à€\‹”ò[YOHùôZX€KY]Z[\[ô[èÇà]à€\‹”ò[YOHùôZX€KY]Z[[XZ[àèÇà]èÇà›õ€ôœû‹Ÿ[X›YúôY⁄\›ò][€üO‹›õ€ôœÇà‹[èÇàŸõY]€€ô][€ìXô[
+Ÿ[X›Yò€€ô][€ä_H0≠ﬁ»àüBà‹Ÿ[X›YùòX⁄⁄[ô“Y[ùYöY\ààŸ[X›YôõY]ù[Xô\ààîõÿYX⁄X]⁄[ô[ô»üBà‹‹[èÇà‹Ÿ[X›Yôö]ô\ìò[YH	âà
+à€X[€\‹”ò[YOHõ]ôKYö]ô\ã[ò[YHèÇà‹Ÿ[X›Yôö]ô\î€›\òŸHOOHïX⁄”X\›\àÇà»ïX⁄”X\›\àö]ô\àÇààŸ[X›Yôö]ô\î€›\òŸHOOHë’—ò[€€àÇà»ì]ôH’ö]ô\àÇààî[õôYö]ô\àüBàà‹Ÿ[X›Yôö]ô\ìò[Y_Bà‹Ÿ[X›Yôö]ô\ìX]⁄ôX\€€àOOHï[õX]⁄Yà	âàŸ[X›YùX⁄”ò[YH	âà
+à‹[à€\‹”ò[YOHôö]ô\ã[Z\€X]⁄èà8†%X⁄»ö]ô\àõ›[öŸY»Tœ‹‹[èÇà
+_Bà‹Ÿ[X›Yôö]ô\ìX]⁄ôX\€€à	âàŸ[X›Yôö]ô\ìX]⁄ôX\€€àOOHï[õX]⁄Yà	âà
+à‹[à€\‹”ò[YOHõX]⁄\ôX\€€àèà8†%X]⁄YûH‹Ÿ[X›Yôö]ô\ìX]⁄ôX\€€üO‹‹[èÇà
+_Bà‹€X[Çà
+_Bà‹Ÿ[X›YùX⁄œÀòÿ\ôù[Xô\à	âà
+à€X[ëö]ô\àÿ\ôà‹Ÿ[X›YùX⁄Àòÿ\ôù[Xô\üO‹€X[Çà
+_Bà‹Ÿ[X›Yôö]ô\ìZ\€X]⁄	âà
+à€X[€\‹”ò[YOHôö]ô\ã[Z\€X]⁄èÇàX⁄”X\›\àö]ô\àYôô\ú»úõ€H[ÿÿ]Yö]ô\û»àüBà‹Ÿ[X›Yò[ÿÿ]Yö]ô\ìò[Y_KÇà‹€X[Çà
+_Bà€X[Çà‹Ÿ[X›Yõ\›]ô[ù[YU]¬à»ïôZX€H\]Hà
+¬àõ‹õX]]JŸ[X›Yõ\›]ô[ù[YU] H
+¬àà0≠»à
+¬à
+Ÿ[X›Yú‹YY‹œ»
+H
+¬àà€K⁄Çààìõ»]ôH’⁄[ùX]⁄YY]üBà‹€X[Çà‹Ÿ[X›YõÿYY	âà
+àBà€\‹”ò[YOHöõÿã[[ö»ÇàôYè^ÿœ€ÿYYIŸ[ò€ŸUTíP€€\€ô[ù
+Ÿ[X›YõÿYY
+_XBàÇà‹[àõÿà‹Ÿ[X›YõÿYôYô\ô[òŸHàüH8°§ÇàÿOÇà
+_Bà€ô^]H	âà
+à\⁄YBà€\‹”ò[YO^ÿõÿãY]H	€ô^]KùX⁄‘›]\»OOHí[ú›YôöX⁄Y[ùö]ôU[YHà»ò‹ö]Xÿ[àààüXBàÇà›õ€ôœÇàô^à€ô^]Kú›‹ò[Y_H0≠»Ÿõ‹õX]]Jô^]Kô]U] _Bà‹›õ€ôœÇà‹[èÇà€ô^]KòúôXZ”Z[ù]\“[ò€YYà»	€ô^]KòúôXZ”Z[ù]\“[ò€YY[HX⁄»úôXZ»[ò€YYààô^]KùX⁄‘›]\»OOHï⁄][ëö]ôU[YHÇà»ï⁄][à›\úô[ùö]ôH[YHÇààô^]KùX⁄—^[ò][€üBà‹‹[èÇàÿ\⁄YOÇà
+_Bà‹Ÿ[X›YôõY][‘›]\»	âà
+à€X[à€\‹”ò[YO^¬àôõY][ÀX⁄\à
+»õY][‘›]\–€\‹ Ÿ[X›YôõY][‘›]\ BàBàÇàõY][Œà‹Ÿ[X›YôõY][‘›]\ﬂBà‹Ÿ[X›YôõY][”ò[YH»à0≠»à
+»Ÿ[X›YôõY][”ò[YHààüBà‹€X[Çà
+_BàŸ]èÇà‹Ÿ[X›YùX⁄»»
+à]à€\‹”ò[YOHùX⁄ÀY]Z[èÇà]à€\‹”ò[YOHùX⁄À[Y]öX‹»èÇà\ùX€OÇà‹[èëö]ö[ô»\ŸY‹‹[èÇà›õ€ôœÇàŸõ‹õX]Z[ù]\ Ÿ[X›YùX⁄Àôö]ôSZ[ù]\ _Bà‹›õ€ôœÇàÿ\ùX€OÇà\ùX€OÇà‹[èëö]ö[ô»YùŸ^O‹‹[èÇà›õ€ôœÇàŸõ‹õX]Z[ù]\ Ÿ[X›YùX⁄Àôö]ôP]òZ[XõUŸ^SZ[ù]\ _Bà‹›õ€ôœÇàÿ\ùX€OÇà\ùX€OÇà‹[èîô\›»úôXZ»ôX€‹ôY‹‹[èÇà›õ€ôœûŸõ‹õX]Z[ù]\ Ÿ[X›YùX⁄Àúô\›Z[ù]\ _O‹›õ€ôœÇà€X[Çà‹Ÿ[X›YùX⁄ÀòúôXZ–€›[ùà»	‹Ÿ[X›YùX⁄ÀòúôXZ–€›[ùH’úôXZ…‹Ÿ[X›YùX⁄ÀòúôXZ–€›[ùOOHH»àààú»üH0≠»	Ÿõ‹õX]Z[ù]\ Ÿ[X›YùX⁄ÀòúôXZ”Z[ù]\ _Xààìõ»Ÿ\\ò]H’úôXZ»ô]\õôYüBà‹€X[Çàÿ\ùX€OÇà\ùX€OÇà‹[èï€‹ö»Yù\»ŸYZœ‹‹[èÇà›õ€ôœÇàŸõ‹õX]Z[ù]\ Ÿ[X›YùX⁄Àù€‹ö–]òZ[XõUŸYZ”Z[ù]\ _Bà‹›õ€ôœÇàÿ\ùX€OÇàŸ]èÇà€X[Çà]Húõ€HŸõ‹õX]]JŸ[X›YùX⁄Àô]T›\ù] _Bà‹Ÿ[X›YùX⁄Àô]Q[ô]¬à»»	Ÿõ‹õX]]JŸ[X›YùX⁄Àô]Q[ô] _Xààà0≠»›\úô[ùH‹[à[àX⁄”X\›\àüBà‹€X[Çà€X[Çàö]ö[ô»]òZ[XõNàŸYZﬁ»àüBàŸõ‹õX]Z[ù]\ Ÿ[X›YùX⁄Àôö]ôP]òZ[XõUŸYZ”Z[ù]\ _H0≠¬àõ‹ùöY⁄»àüBàŸõ‹õX]Z[ù]\ Ÿ[X›YùX⁄Àôö]ôP]òZ[XõQõ‹ùöY⁄Z[ù]\ _Bà‹€X[Çà€X[Çà€ô»^\»\»ŸYZﬁ»àüBà‹Ÿ[X›YùX⁄Àõ€ô—^\’€‹öŸY\’ŸYZ»œ»∏†%üH0≠»⁄‹ù[ôYàZ[Hô\›ﬁ»àüBà‹Ÿ[X›YùX⁄Àú⁄‹ùZ[Tô\›ZŸ[ï\’ŸYZ»œ»∏†%üBà‹€X[Çà€X[€\‹”ò[YOHùX⁄À]ò[YèÇàX⁄»öY›\ô\»ò[Y]»àüBàŸõ‹õX]]JŸ[X›YùX⁄ÀõY]öX‹’ò[Y]] _Bà‹€X[ÇàŸ]èÇà
+Hà
+à€\‹”ò[YOHùX⁄À][ò]òZ[XõHèÇàõ»X⁄”X\›\à]H‹àö]ô\ãXÿ\ôôX€‹ô\»ôY[àô]\õôYõ‹Çà\»ôZX€KÇà‹Çà
+_BàŸ]èÇà‹Ÿ[X›YX\\õ»
+àBà€\‹”ò[YOHùôZX€K[X\[[ö»ÇàôYè^‹Ÿ[X›YX\\õBà\ôŸ]Hóÿõ[ö»Çàô[Hõõ‹ôYô\úô\àÇàÇà‹[àX\ÿÿ][€à8°§ÇàÿOÇà
+Hà
+à‹[à€\‹”ò[YOHö[ùèÇàõ»]]YK€€ô⁄]YHô]\õôYõ‹à\»ôZX€HY]Çà‹‹[èÇà
+_BàŸ]èÇà
+_Bà›ôZX€\Àõ[ô›»
+à]à€\‹”ò[YOHúõ€›]Y‹öYèÇà›ôZX€\ÀõX\
 
-export function Exceptions() {
-  const token = useAccessToken();
-  const staging = useApi(
-    useCallback(async () => api.staging(await token(), ""), [token]),
-  );
-  const fleet = useApi(
-    useCallback(async () => loadFleetStatus(await token()), [token]),
-  );
-  const rejected =
-    staging.data?.filter((item) =>
-      ["Rejected", "Failed"].includes(stagingStatus(item.status)),
-    ) || [];
-  const stale = (fleet.data?.vehicles || []).filter(
-    (vehicle) => vehicle.condition === "Stale",
-  );
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Attention required</p>
-          <h1>Exceptions</h1>
-        </div>
-        <button
-          onClick={() => {
-            void staging.refresh();
-          }}
-        >
-          Refresh
-        </button>
-      </div>
-      <div className="metrics">
-        <Metric
-          label="Import issues"
-          value={String(rejected.length)}
-          detail="Rejected or failed records"
-        />
-        <Metric
-          label="Stale vehicle updates"
-          value={String(stale.length)}
-          detail="No update in 30 minutes"
-        />
-        <Metric
-          label="Review queue"
-          value={String(
-            staging.data?.filter(
-              (item) => stagingStatus(item.status) === "PendingReview",
-            ).length || 0,
-          )}
-          detail="Needs planner decision"
-        />
-        <Metric
-          label="Fleet vehicles"
-          value={String(fleet.data?.vehicleCount || 0)}
-          detail="Master data plus telemetry status"
-        />
-      </div>
-      <State
-        loading={staging.loading}
-        error={staging.error}
-        empty={!rejected.length && !stale.length}
-      >
-        <div className="exception-list">
-          {rejected.map((item) => (
-            <article key={item.id}>
-              <strong>Import {statusClass(item.status)}</strong>
-              <span>
-                {item.entityType} ¬∑ {item.source || "Unknown source"}
-              </span>
-              <small>{formatDate(item.receivedAtUtc)}</small>
-            </article>
-          ))}
-          {stale.map((vehicle) => (
-            <article key={vehicle.vehicleId}>
-              <strong>Tracking update overdue</strong>
-              <span>
-                {vehicle.registration} ¬∑{" "}
-                {fleetConditionLabel(vehicle.condition)}
-              </span>
-              <small>{formatDate(vehicle.lastEventTimeUtc)}</small>
-            </article>
-          ))}
-        </div>
-      </State>
-    </section>
-  );
-}
+ôZX€JHOà¬à€€ú›\”X\BàôZX€Kõ]]YHOHù[	âàôZX€Kõ€ô⁄]YHOHù[¬àô]\õà
+à\ùX€Bà€\‹”ò[YO^ÿõ€›]Xÿ\ô	›ôZX€T›]\–€\‹ ôZX€J_H	‹Ÿ[X›YôZX€RYOOHôZX€KùôZX€RY»úŸ[X›YàààüXBàŸ^O^›ôZX€KùôZX€RYBàÇàù]€Çà\OHòù]€àÇà€\‹”ò[YOHúõ€›]\Ÿ[X›Çà€ê€X⁄œ^ 
+HOàŸ]Ÿ[X›YôZX€RY
+ôZX€KùôZX€RY
+_BàÇà‹[à€\‹”ò[YOHò€€ô][€ãY›àœÇà‹[à€\‹”ò[YOHúõ€›]]ôZX€HèÇà›õ€ôœû›ôZX€KúôY⁄\›ò][€üO‹›õ€ôœÇà€X[Çà›ôZX€KôõY]ù[Xô\ààôZX€KùòX⁄⁄[ô“Y[ùYöY\ààëõY]ôZX€HüBà‹€X[Çà‹‹[èÇà‹[à€\‹”ò[YOHúõ€›]\›]HèÇàèûŸõY]€€ô][€ìXô[
+ôZX€Kò€€ô][€ä_OÿèÇà›ôZX€Kôö]ô\ìò[YH	âà
+à€X[€\‹”ò[YOHúõ€›]Yö]ô\àèÇà›ôZX€Kôö]ô\î€›\òŸHOOHïX⁄”X\›\àÇà»ïX⁄»ÇààôZX€Kôö]ô\î€›\òŸHOOHë’—ò[€€àÇà»ë’Çààî[õôYüBàà›ôZX€Kôö]ô\ìò[Y_Bà›ôZX€Kôö]ô\ìX]⁄ôX\€€àOOHï[õX]⁄Yà	âàôZX€KùX⁄”ò[YH	âà
+à‹[à€\‹”ò[YOHôö]ô\ã[Z\€X]⁄èà8†%õ›[öŸY‹‹[èÇà
+_Bà‹€X[Çà
+_Bà›ôZX€Kôö]ô\ìZ\€X]⁄	âà
+à€X[€\‹”ò[YOHôö]ô\ã[Z\€X]⁄èÇà[ÿÿ]Yà›ôZX€Kò[ÿÿ]Yö]ô\ìò[Y_Bà‹€X[Çà
+_Bà€X[Çà›ôZX€Kú[õôY]U]¬à»YH	Ÿõ‹õX]]JôZX€Kú[õôY]U] _Xàà\”X\à»ì]ôHõÿYX⁄⁄[ùÇààìõ»[õôY⁄Y€ã[€à[YHüBà‹€X[Çà€X[Çà›ôZX€Kõ\›]ô[ù[YU]¬à»	›ôZX€Kú‹YY‹œ»H€K⁄0≠»	Ÿõ‹õX]]JôZX€Kõ\›]ô[ù[YU] _Xààê]ÿZ][ô»õÿYX⁄X]⁄Ÿ^HüBà‹€X[Çà›ôZX€KôõY][‘›]\»	âà
+à€X[à€\‹”ò[YO^ÿõY][ÀX⁄\	ŸõY][‘›]\–€\‹ ôZX€KôõY][‘›]\ _XBàÇàõY][Œà›ôZX€KôõY][‘›]\ﬂBà‹€X[Çà
+_Bà‹‹[èÇàÿù]€èÇà›ôZX€KõÿYY»
+àBà€\‹”ò[YOHúõ€›]ZõÿàÇàôYè^ÿœ€ÿYYIŸ[ò€ŸUTíP€€\€ô[ù
+ôZX€KõÿYY
+_XBàÇà›õ€ôœÇà›ôZX€KõÿYôYô\ô[òŸHì‹[à›\úô[ùõÿàüBà‹›õ€ôœÇà‹[èû›ôZX€KõÿY›]\»î[õôYüH8°§è‹‹[èÇàÿOÇà
+Hà
+à‹[à€\‹”ò[YOHúõ€›]Zõÿà[\Hèìõ»›\úô[ùõÿè‹‹[èÇà
+_Bàÿ\ùX€OÇà
+N¬àJ_BàŸ]èÇà
+Hà
+à€\‹”ò[YOHö[ùèìõ»X›]ôHôZX€\»\ôH[[àX\›\à]HY]è‹Çà
+_BàŸ]èÇà
+N¬üBôù[ò›[€à\‹⁄Y€õY[ù€ò\⁄›
+¬àõ›‹Àà]KüNà¬àõ›‹Œàö]ô\ê\‹⁄Y€õY[ù◊N¬à]Nà›ö[ôŒ¬üJH¬à€€ú›[ÿÿ]YHõ›‹Àôö[\ä
+][JHOà][Kôö]ô\à	âà][KùôZX€JN¬àô]\õà
+à]à€\‹”ò[YOHò\‹⁄Y€õY[ù\€ò\⁄›èÇà]à€\‹”ò[YOHúõ€›]ZXY[ô»èÇà]èÇà€\‹”ò[YOHô^YXúõ›»èëö]ô\à\›‹ûO‹Çàèï⁄»ÿ\»€à⁄]⁄èÇàŸ]èÇàHôYè^ÿŸö]ô\ãX\‹⁄Y€õY[ùœŸúõ€OIŸ]_IùœIŸ]_XOÇà‹[àù[\›‹ûH8°§ÇàÿOÇàŸ]èÇà‹õ›‹Àõ[ô›»
+à]à€\‹”ò[YOHò\‹⁄Y€õY[ù\€ò\⁄›Y‹öYèÇà‹õ›‹Àú€XŸJL
+KõX\
 
-export function Reporting() {
-  const token = useAccessToken();
-  const [date, setDate] = useState(localDate());
-  const staging = useApi(
-    useCallback(async () => api.staging(await token(), ""), [token]),
-  );
-  const loads = useApi(
-    useCallback(async () => api.loads(date, await token()), [date, token]),
-  );
-  const forecast = useApi(
-    useCallback(
-      async () => api.operationsForecast(date, await token()),
-      [date, token],
-    ),
-  );
-  const promoted =
-    staging.data?.filter((item) => stagingStatus(item.status) === "Promoted")
-      .length || 0;
-  const pending =
-    staging.data?.filter(
-      (item) => stagingStatus(item.status) === "PendingReview",
-    ).length || 0;
-  const reportLoads = loads.data || [];
-  const allocated = reportLoads.filter(
-    (load) => load.driverId && load.vehicleId,
-  ).length;
-  const dispatched = reportLoads.filter(
-    (load) => load.status === "Dispatched" || load.status === "InProgress",
-  ).length;
-  const dayUtilisation = forecast.data?.days.find((day) => day.date === date);
-  function exportDay() {
-    const rows = [
-      [
-        "Load",
-        "Status",
-        "Driver allocated",
-        "Vehicle allocated",
-        "Trailer allocated",
-        "Stops",
-        "Revenue",
-        "Fuel surcharge",
-        "Estimated cost",
-        "Actual cost",
-        "Margin",
-        "Miles",
-        "Empty miles",
-        "Invoice status",
-      ],
-      ...reportLoads.map((load) => [
-        load.reference,
-        load.status,
-        load.driverId ? "Yes" : "No",
-        load.vehicleId ? "Yes" : "No",
-        load.trailerId ? "Yes" : "No",
-        String(load.stops.length),
-        String(load.revenueAmount ?? ""),
-        String(load.fuelSurchargeAmount ?? ""),
-        String(load.estimatedCostAmount ?? ""),
-        String(load.actualCostAmount ?? ""),
-        String(
-          (load.revenueAmount || 0) +
-            (load.fuelSurchargeAmount || 0) -
-            (load.actualCostAmount ?? load.estimatedCostAmount ?? 0),
-        ),
-        String(load.estimatedDistanceMiles ?? ""),
-        String(load.emptyMiles ?? ""),
-        load.invoiceStatus || "",
-      ]),
-    ];
-    const csv = rows
-      .map((row) =>
-        row.map((value) => `"${value.replaceAll('"', '""')}"`).join(","),
-      )
-      .join("\n");
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(
-      new Blob([csv], { type: "text/csv;charset=utf-8" }),
-    );
-    link.download = `slh-daily-control-${date}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  }
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Operations insight</p>
-          <h1>Daily control report</h1>
-        </div>
-        <button onClick={exportDay} disabled={!reportLoads.length}>
-          Export day CSV
-        </button>
-      </div>
-      <div className="report-toolbar">
-        <label>
-          Planning date{" "}
-          <input
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-          />
-        </label>
-        <span>
-          One view of capacity, margin, empty mileage and operational exceptions
-          for this day and the following six days.
-        </span>
-      </div>
-      <State
-        loading={staging.loading || loads.loading}
-        error={staging.error || loads.error}
-      >
-        <div className="metrics">
-          <Metric
-            label="Loads planned"
-            value={String(reportLoads.length)}
-            detail={`For ${date}`}
-          />
-          <Metric
-            label="Fleet allocated"
-            value={String(allocated)}
-            detail="Driver and vehicle assigned"
-          />
-          <Metric
-            label="On the road"
-            value={String(dispatched)}
-            detail="Dispatched or in progress"
-          />
-          <Metric
-            label="Seven-day margin"
-            value={formatCurrency(forecast.data?.totals.margin)}
-            detail={`${forecast.data?.totals.loads || 0} forecast loads`}
-          />
-          <Metric
-            label="Load utilisation"
-            value={dayUtilisation?.utilisationPercent == null ? "‚Äî" : `${dayUtilisation.utilisationPercent}%`}
-            detail={`${dayUtilisation?.overCapacityLoads || 0} over-capacity warning${dayUtilisation?.overCapacityLoads === 1 ? "" : "s"}`}
-          />
-        </div>
-        <section className="forecast-panel">
-          <div className="resource-board-heading">
-            <div>
-              <p className="eyebrow">Seven-day load balance</p>
-              <h2>Capacity, margin & empty-mile forecast</h2>
-            </div>
-            <span>
-              {forecast.data?.totals.exceptions || 0} exception
-              {forecast.data?.totals.exceptions === 1 ? "" : "s"} to resolve
-            </span>
-          </div>
-          {forecast.loading && !forecast.data ? (
-            <p className="lane-state">Calculating the seven-day picture‚Ä¶</p>
-          ) : forecast.error ? (
-            <div className="lane-state error">
-              <p>{forecast.error}</p>
-              <button onClick={() => void forecast.refresh()}>
-                Retry forecast
-              </button>
-            </div>
-          ) : (
-            <div className="master-table-wrap">
-              <table className="forecast-table">
-                <thead>
-                  <tr>
-                    <th>Date</th><th>Loads</th><th>Drivers</th><th>Vehicles</th><th>Pallet capacity</th><th>Utilisation</th><th>Revenue</th><th>Cost</th><th>Margin</th><th>Empty miles</th><th>Exceptions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(forecast.data?.days || []).map((day) => (
-                    <tr key={day.date} className={day.exceptions ? "forecast-risk" : ""}>
-                      <td><strong>{day.date}</strong></td>
-                      <td>{day.loads}</td>
-                      <td>{day.assignedDrivers}/{day.availableDrivers}</td>
-                      <td>{day.assignedVehicles}/{day.availableVehicles}</td>
-                      <td>{day.plannedPallets}/{day.availableTrailerPallets || "‚Äî"}</td>
-                      <td className={day.overCapacityLoads ? "capacity-warning" : ""}>{day.utilisationPercent == null ? "‚Äî" : `${day.utilisationPercent}%`}<small>{day.overCapacityLoads ? `${day.overCapacityLoads} over` : ""}</small></td>
-                      <td>{formatCurrency(day.revenue)}</td>
-                      <td>{formatCurrency(day.cost)}</td>
-                      <td><strong>{formatCurrency(day.margin)}</strong><small>{day.marginPercent == null ? "Unpriced" : `${day.marginPercent}%`}</small></td>
-                      <td>{day.emptyMiles} mi<small>{day.emptyMilePercent == null ? "" : `${day.emptyMilePercent}%`}</small></td>
-                      <td>{day.exceptions}<small>{day.unpricedLoads} unpriced ¬∑ {day.uninvoicedLoads} uninvoiced</small></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-        <div className="report-breakdown">
-          <article>
-            <h2>Planning readiness</h2>
-            <p>
-              <strong>{Math.max(reportLoads.length - allocated, 0)}</strong>{" "}
-              load{reportLoads.length - allocated === 1 ? "" : "s"} still need a
-              driver or vehicle.
-            </p>
-            <p>
-              <strong>{pending}</strong> import{pending === 1 ? "" : "s"} await
-              staging review; <strong>{promoted}</strong> have been promoted.
-            </p>
-          </article>
-          <article>
-            <h2>Load status</h2>
-            {[
-              "Draft",
-              "Planned",
-              "Dispatched",
-              "InProgress",
-              "Completed",
-              "Cancelled",
-            ].map((status) => (
-              <div className="status-line" key={status}>
-                <span>{status === "InProgress" ? "In progress" : status}</span>
-                <strong>
-                  {reportLoads.filter((load) => load.status === status).length}
-                </strong>
-              </div>
-            ))}
-          </article>
-        </div>
-      </State>
-    </section>
-  );
-}
+][JHOà
+à\ùX€HŸ^O^⁄][KõÿYYOÇà›õ€ôœû⁄][KõÿYôYô\ô[òŸ_O‹›õ€ôœÇà‹[èÇà⁄][Kôö]ô\èÀô\‹^Sò[YHìõ»ö]ô\à\‹⁄Y€ôYüH0≠ﬁ»àüBà⁄][KùôZX€OÀúôY⁄\›ò][€àìõ»ôZX€HüBà‹‹[èÇà€X[Çà⁄][Kôö[ò[›‹ëö[ò[›‹õ›X\YüH0≠»⁄][Kú›‹€›[ù^»àüBà›‹⁄][Kú›‹€›[ùOOHH»àààú»üBà‹€X[Çàÿ\ùX€OÇà
+J_BàŸ]èÇà
+Hà
+à€\‹”ò[YOHö[ùèÇàõ»ö]ô\à\‹⁄Y€õY[ù»\ôHÿ]ôYõ‹àŸ]_Kà€òŸHÿY»\ôH[õôY[ôà[ÿÿ]Y^Hô[XZ[à]òZ[XõH\ôH\›‹öXÿ[KÇà‹Çà
+_Bà€\‹”ò[YOHö[ùèÇàÿ[ÿÿ]Yõ[ô›Kﬁ‹õ›‹Àõ[ô›HÿY»]ôHõ›ö]ô\à[ôôZX€BàôX€‹ôYõ‹à\»]KÇà‹ÇàŸ]èÇà
+N¬üBôù[ò›[€àõY]€€ô][€ìXô[
+à€€ô][€éàõY]›]\÷»ùôZX€\»óV€ù[Xô\óV»ò€€ô][€àóKäH¬àô]\õà¬à[›ö[ôŒàì[›ö[ô»ãà›\ùYàë[ô⁄[ôH€à0≠»›][€ò\ûHãà\öŸYàìõ›X›]ôHãà›][€ò\ûNàìõ›X›]ôHãà⁄Y€ôY€éàïX⁄”X\›\à]H0≠»›][€ò\ûHãà›[NàïòX⁄⁄[ô»›[Hãàõ›⁄Y€ôY€éàìõ›X›]ôHãàVÿ€€ô][€óN¬üBôù[ò›[€àôZX€T›]\–€\‹ ôZX€NàõY]›]\÷»ùôZX€\»óV€ù[Xô\óJH¬àô]\õàôZX€Kò€€ô][€àOOHì[›ö[ô»Çà»ú⁄Y€ôY€àÇààôZX€Kò€€ô][€àOOHî›[HÇà»ú›[HÇààú\öŸYé¬üBôù[ò›[€àõY][‘›]\–€\‹ ›]\œŒà›ö[ô H¬à€€ú›ò[YHH
+›]\»àäKù”›Ÿ\êÿ\ŸJ
+N¬àYà
+àò[YKö[ò€Y\ õ›]äHàò[YKö[ò€Y\ ùõ‹àäHàò[YKö[ò€Y\ ô›€àäHàò[YKö[ò€Y\ úô\Z\àäBà
+Bàô]\õàôõY][ÀXòYé¬àYà
+àò[YKö[ò€Y\ úŸ\ùöXŸHäHàò[YKö[ò€Y\ õXZ[ù[ò[òŸHäHàò[YKö[ò€Y\ ö\‹›YHäBà
+Bàô]\õàôõY][À]ÿ]⁄é¬àô]\õàôõY][ÀY€€Ÿé¬üBôù[ò›[€àY]öX ¬àXô[àò[YKà]Z[üNà¬àXô[à›ö[ôŒ¬àò[YNà›ö[ôŒ¬à]Z[à›ö[ôŒ¬üJH¬àô]\õà
+à\ùX€H€\‹”ò[YOHõY]öX»èÇà‹[èû€Xô[O‹‹[èÇà›õ€ôœû›ò[Y_O‹›õ€ôœÇà€X[ûŸ]Z[O‹€X[Çàÿ\ùX€OÇà
+N¬üBÇù\H[\‹ùõ›»HôX€‹ô›ö[ôÀ›ö[ôœé¬ò€€ú›^X›Y€€[[ú»H¬àú”ù[Xô\àãàò›\›€Y\ê€ŸHãàò€€X›[€ë]Hãàú[]»ãóN¬ò€€ú›X\öŸ]€€[[ú»H¬àô[]ô\ûU⁄[ô›‘›\ù]»ãàô[]ô\ûU⁄[ô›—[ô]»ãàúŸ[\ìò[YHãàõX\öŸ]ò[YHãàú›[ù[Xô\àãàò]ô\òYŸT[]ŸZY⁄Ÿ»ãàô\›[X]YŸZY⁄Ÿ»ãàôö]ô\í[ú›ùX›[€ú»ãàõX\[ö»ãóN¬ù\H⁄Y]õ›»HôX€‹ô›ö[ôÀ›ö[ô»ù[Xô\àõ€€X[à]H[ôYö[ôYé¬ôù[ò›[€à\úŸP‹›ä^à›ö[ô Nà[\‹ùõ›÷◊H¬à€€ú›⁄XY\ãããõ[ô\◊HH^àúô\XŸJ◊óQëQëãÀàäBàùö[J
+Bàú‹]
+◊è◊ã N¬àYà
+ZXY\äHô]\õà◊N¬à€€ú›öY[»HXY\ãú‹]
+ãäKõX\
 
-function normaliseTableValue(value: unknown) {
-  if (value === true) return "Yes";
-  if (value === false) return "No";
-  return value == null || value === "" ? "‚Äî" : String(value);
-}
-function MasterValidation({
-  issues,
-  entities,
-}: {
-  issues: string[];
-  entities?: string[];
-}) {
-  const token = useAccessToken();
-  const suggestions = useApi(
-    useCallback(async () => api.masterDataSuggestions(await token()), [token]),
-  );
-  const entitySet = useMemo(
-    () => new Set((entities || []).map((entity) => entity.toLowerCase())),
-    [entities],
-  );
-  const rules = (suggestions.data?.suggestions || []).filter(
-    (issue) => !entities || entitySet.has(issue.entity.toLowerCase()),
-  );
-  const combined = [
-    ...issues.map((message) => ({ message, severity: "warning" })),
-    ...rules.slice(0, 8),
-  ];
-  return (
-    <div
-      className={
-        combined.length ? "master-validation warning" : "master-validation"
-      }
-    >
-      <strong>
-        {combined.length
-          ? `${combined.length} validation and improvement item${combined.length === 1 ? "" : "s"}`
-          : "No obvious validation issues"}
-      </strong>
-      {suggestions.loading ? (
-        <span>Checking linked master-data rules‚Ä¶</span>
-      ) : combined.length ? (
-        <ul>
-          {combined.map((issue, index) => (
-            <li key={`${issue.message}-${index}`}>{issue.message}</li>
-          ))}
-        </ul>
-      ) : (
-        <span>Records loaded cleanly from the live cloud master data.</span>
-      )}
-      {suggestions.error && (
-        <small>
-          Background rule check unavailable; local checks are still shown.
-        </small>
-      )}
-    </div>
-  );
-}
-function MasterTable<T>({
-  rows,
-  columns,
-  rowKey,
-}: {
-  rows: T[];
-  columns: Array<[string, (row: T) => unknown]>;
-  rowKey: (row: T) => string;
-}) {
-  const exportRows = [
-    columns.map(([label]) => label),
-    ...rows.map((row) =>
-      columns.map(([, value]) => normaliseTableValue(value(row))),
-    ),
-  ];
-  return (
-    <div className="master-table-wrap">
-      <div className="table-toolbar">
-        <span>
-          {rows.length} record{rows.length === 1 ? "" : "s"}
-        </span>
-        <button
-          onClick={() => downloadCsv("slh-master-export", exportRows)}
-          disabled={!rows.length}
-        >
-          Export CSV
-        </button>
-      </div>
-      <table className="master-table">
-        <thead>
-          <tr>
-            {columns.map(([label]) => (
-              <th key={label}>{label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={rowKey(row)}>
-              {columns.map(([label, value]) => (
-                <td key={label}>{normaliseTableValue(value(row))}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-function MasterFilter({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-}) {
-  return (
-    <label className="master-filter">
-      {label}
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="">All</option>
-        {[...new Set(options.filter(Boolean))]
-          .sort()
-          .map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-      </select>
-    </label>
-  );
-}
+ò[YJHOàò[YKùö[J
+JN¬àô]\õà[ô\¬àôö[\äõ€€X[äBàõX\
 
-export function DriversMaster() {
-  const token = useAccessToken();
-  const drivers = useApi(
-    useCallback(async () => api.drivers(await token()), [token]),
-  );
-  const [nameFilter, setNameFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [groupFilter, setGroupFilter] = useState("");
-  const [agencyFilter, setAgencyFilter] = useState("");
-  const [tachoFilter, setTachoFilter] = useState("");
-  const [tachoSyncing, setTachoSyncing] = useState(false);
-  const [tachoMessage, setTachoMessage] = useState<string>();
-  const allRows = drivers.data || [];
-  const effectiveType = (row: Driver) => row.driverType || (row.agencyName ? "Agency" : "");
-  const rows = allRows.filter(
-    (row) =>
-      (!nameFilter || [row.displayName, row.employeeNumber, row.tachoName].some((value) => value?.toLowerCase().includes(nameFilter.toLowerCase()))) &&
-      (!typeFilter || effectiveType(row) === typeFilter) &&
-      (!groupFilter || row.driverGroup === groupFilter) &&
-      (!agencyFilter || row.agencyName === agencyFilter) &&
-      (!tachoFilter || (tachoFilter === "Linked" ? Boolean(row.tachoMasterDriverId) : !row.tachoMasterDriverId)),
-  );
-  async function syncTachoDrivers() {
-    setTachoSyncing(true);
-    setTachoMessage(undefined);
-    try {
-      const result = await api.syncTachoMasterDrivers(await token());
-      setTachoMessage(result.message);
-      await drivers.refresh();
-    } catch (exception) {
-      setTachoMessage(exception instanceof Error ? exception.message : "TachoMaster driver details could not be refreshed.");
-    } finally {
-      setTachoSyncing(false);
-    }
-  }
-  const issues = rows.flatMap((driver) =>
-    [
-      !driver.employeeNumber
-        ? `${driver.displayName || "Driver"} missing employee number for Sage alignment.`
-        : "",
-      !driver.mobileNumber
-        ? `${driver.displayName} missing driver text mobile.`
-        : "",
-      !driver.tachoName ? `${driver.displayName} missing Tacho name.` : "",
-    ].filter(Boolean),
-  );
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Master data</p>
-          <h1>Drivers</h1>
-        </div>
-        <div className="title-actions">
-          <button onClick={() => void drivers.refresh()}>Refresh</button>
-          <button className="primary" onClick={() => void syncTachoDrivers()} disabled={tachoSyncing}>
-            {tachoSyncing ? "Matching Tacho names‚Ä¶" : "Sync TachoMaster details"}
-          </button>
-        </div>
-      </div>
-      <p className="intro">
-        One live row per driver. Sage and TachoMaster should sync into this page
-        so employee numbers, tacho names, mobile numbers and planning priority
-        stay together.
-      </p>
-      <div className="master-filters">
-        <label className="master-filter">Driver / employee / Tacho name<input value={nameFilter} onChange={(event) => setNameFilter(event.target.value)} placeholder="Search names or ID" /></label>
-        <MasterFilter label="Driver type" value={typeFilter} onChange={setTypeFilter} options={allRows.map(effectiveType)} />
-        <MasterFilter label="Driver group" value={groupFilter} onChange={setGroupFilter} options={allRows.map((row) => row.driverGroup || "")} />
-        <MasterFilter label="Agency" value={agencyFilter} onChange={setAgencyFilter} options={allRows.map((row) => row.agencyName || "")} />
-        <MasterFilter label="TachoMaster link" value={tachoFilter} onChange={setTachoFilter} options={["Linked", "Not linked"]} />
-      </div>
-      {tachoMessage && <p className="notice inline-notice">{tachoMessage}</p>}
-      <MasterValidation issues={issues} entities={["Driver"]} />
-      <MasterWorkbookImport mode="drivers" onApplied={drivers.refresh} />
-      <State
-        loading={drivers.loading}
-        error={drivers.error}
-        empty={!rows.length}
-      >
-        <EditableDriverTable rows={rows} onSaved={drivers.refresh} />
-      </State>
-      <DriverQuickAdd onSaved={drivers.refresh} />
-    </section>
-  );
-}
-function EditableDriverTable({ rows, onSaved }: { rows: Driver[]; onSaved: () => void }) {
-  const token = useAccessToken();
-  const [draft, setDraft] = useState<Driver>();
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string>();
-  const update = (field: keyof Driver, value: string | boolean) => setDraft((current) => current ? { ...current, [field]: value } : current);
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    if (!draft) return;
-    setSaving(true); setMessage(undefined);
-    try {
-      const { id, lastTachoSyncUtc: _lastSync, ...payload } = draft;
-      void _lastSync;
-      await api.updateDriver(id, payload, await token());
-      setMessage(`${draft.displayName} updated.`); setDraft(undefined); onSaved();
-    } catch (exception) {
-      setMessage(exception instanceof Error ? exception.message : "Driver could not be updated.");
-    } finally { setSaving(false); }
-  }
-  return <div>
-    <div className="master-table-wrap"><table className="master-table editable-master-table"><thead><tr>
-      <th>Employee</th><th>Driver</th><th>Tacho name</th><th>Phone</th><th>Type</th><th>Group</th><th>Agency</th><th>Drive left</th><th>Licence</th><th>Actions</th>
-    </tr></thead><tbody>{rows.map((row) => <tr key={row.id}>
-      <td>{row.employeeNumber}</td><td><strong>{row.displayName}</strong></td><td>{normaliseTableValue(row.tachoName)}</td><td>{normaliseTableValue(row.mobileNumber)}</td><td>{normaliseTableValue(row.driverType || (row.agencyName ? "Agency" : ""))}</td><td>{normaliseTableValue(row.driverGroup)}</td><td>{normaliseTableValue(row.agencyName)}</td><td>{formatMinutes(row.tachoDriveAvailableTodayMinutes)}</td><td>{normaliseTableValue(row.licenceStatus)}</td><td><button onClick={() => setDraft({ ...row })}>Edit</button></td>
-    </tr>)}</tbody></table></div>
-    {draft && <form className="quick-order master-edit-form master-record-editor" onSubmit={(event) => void save(event)}>
-      <div className="title-row"><div><p className="eyebrow">Editing driver</p><h2>{draft.displayName}</h2></div><button type="button" onClick={() => setDraft(undefined)}>Cancel</button></div>
-      <div className="field-grid">
-        <label>Employee number<input required value={draft.employeeNumber} onChange={(event) => update("employeeNumber", event.target.value)} /></label>
-        <label>Driver name<input required value={draft.displayName} onChange={(event) => update("displayName", event.target.value)} /></label>
-        <label>Tacho name<input value={draft.tachoName || ""} onChange={(event) => update("tachoName", event.target.value)} /></label>
-        <label>Mobile number<input value={draft.mobileNumber || ""} onChange={(event) => update("mobileNumber", event.target.value)} /></label>
-        <label>Driver type<input value={draft.driverType || ""} onChange={(event) => update("driverType", event.target.value)} /></label>
-        <label>Driver group<input value={draft.driverGroup || ""} onChange={(event) => update("driverGroup", event.target.value)} /></label>
-        <label>Agency<input value={draft.agencyName || ""} onChange={(event) => update("agencyName", event.target.value)} /></label>
-        <label>Skills<input value={draft.skills || ""} onChange={(event) => update("skills", event.target.value)} /></label>
-        <label>Coding<input value={draft.coding || ""} onChange={(event) => update("coding", event.target.value)} /></label>
-        <label>Driving licence<input value={draft.drivingLicenceNumber || ""} onChange={(event) => update("drivingLicenceNumber", event.target.value)} /></label>
-        <label>Licence expiry<input type="date" value={draft.licenceExpiry || ""} onChange={(event) => update("licenceExpiry", event.target.value)} /></label>
-        <label>Licence status<input value={draft.licenceStatus || ""} onChange={(event) => update("licenceStatus", event.target.value)} /></label>
-        <label className="checkbox-label"><input type="checkbox" checked={Boolean(draft.northEligible)} onChange={(event) => update("northEligible", event.target.checked)} /> North eligible</label>
-        <label className="checkbox-label"><input type="checkbox" checked={Boolean(draft.preloadEligible)} onChange={(event) => update("preloadEligible", event.target.checked)} /> Preload eligible</label>
-        <label className="checkbox-label"><input type="checkbox" checked={draft.active} onChange={(event) => update("active", event.target.checked)} /> Active</label>
-        <label className="wide">Notes<textarea value={draft.notes || ""} onChange={(event) => update("notes", event.target.value)} /></label>
-      </div>
-      <button className="primary" disabled={saving}>{saving ? "Saving‚Ä¶" : "Save driver"}</button>
-    </form>}
-    {message && <p className="notice inline-notice">{message}</p>}
-  </div>;
-}
-function DriverQuickAdd({ onSaved }: { onSaved: () => void }) {
-  const token = useAccessToken();
-  const [form, setForm] = useState({
-    employeeNumber: "",
-    displayName: "",
-    tachoName: "",
-    mobileNumber: "",
-    driverType: "",
-    driverGroup: "",
-    skills: "",
-  });
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const update = (name: keyof typeof form, value: string) =>
-    setForm((current) => ({ ...current, [name]: value }));
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      await api.stageRecord(
-        "driver",
-        { ...form, active: true },
-        `web-driver:${form.employeeNumber}`,
-        await token(),
-      );
-      setMessage("Driver sent to staging review.");
-      setForm({
-        employeeNumber: "",
-        displayName: "",
-        tachoName: "",
-        mobileNumber: "",
-        driverType: "",
-        driverGroup: "",
-        skills: "",
-      });
-      onSaved();
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Driver could not be saved.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <form
-      className="quick-order master-edit-form"
-      onSubmit={(event) => void submit(event)}
-    >
-      <h2>Add or update driver</h2>
-      <div className="field-grid">
-        <label>
-          Employee number
-          <input
-            required
-            value={form.employeeNumber}
-            onChange={(event) => update("employeeNumber", event.target.value)}
-          />
-        </label>
-        <label>
-          Display name
-          <input
-            required
-            value={form.displayName}
-            onChange={(event) => update("displayName", event.target.value)}
-          />
-        </label>
-        <label>
-          Tacho name
-          <input
-            value={form.tachoName}
-            onChange={(event) => update("tachoName", event.target.value)}
-          />
-        </label>
-        <label>
-          Driver text mobile
-          <input
-            value={form.mobileNumber}
-            onChange={(event) => update("mobileNumber", event.target.value)}
-          />
-        </label>
-        <label>
-          Driver type
-          <input
-            value={form.driverType}
-            onChange={(event) => update("driverType", event.target.value)}
-          />
-        </label>
-        <label>
-          Driver group
-          <input
-            value={form.driverGroup}
-            onChange={(event) => update("driverGroup", event.target.value)}
-          />
-        </label>
-        <label className="wide">
-          Skills / notes
-          <input
-            value={form.skills}
-            onChange={(event) => update("skills", event.target.value)}
-          />
-        </label>
-      </div>
-      <button className="primary" disabled={saving}>
-        {saving ? "Saving‚Ä¶" : "Send driver for review"}
-      </button>
-      {message && <p className="hint">{message}</p>}
-    </form>
-  );
-}
+[ôJHOÇàÿöôX›ôúõ€Q[ùöY\ àöY[ÀõX\
 
-export function FleetAssetsMaster() {
-  const token = useAccessToken();
-  const vehicles = useApi(
-    useCallback(async () => api.vehicles(await token()), [token]),
-  );
-  const trailers = useApi(
-    useCallback(async () => api.trailers(await token()), [token]),
-  );
-  const fleetio = useApi(
-    useCallback(
-      async () => api.fleetioVehicleAlignment(await token()),
-      [token],
-    ),
-  );
-  const [vehicleFilter, setVehicleFilter] = useState("");
-  const [trailerFilter, setTrailerFilter] = useState("");
-  const allVehicleRows = vehicles.data || [];
-  const allTrailerRows = trailers.data || [];
-  const vehicleRows = allVehicleRows.filter(
-    (row) =>
-      !vehicleFilter ||
-      (vehicleFilter === "Active"
-        ? row.active
-        : row.registration === vehicleFilter ||
-          row.fleetNumber === vehicleFilter ||
-          row.fleetioStatus === vehicleFilter),
-  );
-  const trailerRows = allTrailerRows.filter(
-    (row) =>
-      !trailerFilter ||
-      row.trailerNumber === trailerFilter ||
-      row.type === trailerFilter,
-  );
-  const issues = [
-    ...vehicleRows.flatMap((vehicle) =>
-      [
-        !vehicle.abbreviation
-          ? `${vehicle.registration} missing abbreviation for RoadTech matching.`
-          : "",
-        !vehicle.fuelPinSecretName
-          ? `${vehicle.registration} missing fuel PIN secret reference.`
-          : "",
-        !vehicle.fuelCardLastFour
-          ? `${vehicle.registration} missing fuel card last four.`
-          : "",
-      ].filter(Boolean),
-    ),
-    ...trailerRows.flatMap((trailer) =>
-      [
-        !trailer.standardCapacity
-          ? `Trailer ${trailer.trailerNumber} missing standard capacity.`
-          : "",
-        !trailer.euroCapacity
-          ? `Trailer ${trailer.trailerNumber} missing Euro capacity.`
-          : "",
-      ].filter(Boolean),
-    ),
-    ...(fleetio.data?.records || []).flatMap((record) =>
-      record.status === "Matched"
-        ? []
-        : [
-            `Fleetio alignment: ${record.tmsRegistration || record.fleetioRegistration || record.fleetioName} is ${record.status}.`,
-          ],
-    ),
-  ];
-  const refreshAll = () => {
-    void vehicles.refresh();
-    void trailers.refresh();
-    void fleetio.refresh();
-  };
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Master data</p>
-          <h1>Vehicles, fuel pins & trailers</h1>
-        </div>
-        <button onClick={refreshAll}>Refresh</button>
-      </div>
-      <p className="intro">
-        This is the fleet reference list used for RoadTech matching, fuel-card
-        texts, trailer capacity checks and Fleetio service/VOR alignment.
-      </p>
-      <div className="master-filters">
-        <MasterFilter
-          label="Vehicle / status"
-          value={vehicleFilter}
-          onChange={setVehicleFilter}
-          options={[
-            "Active",
-            ...allVehicleRows.flatMap((row) => [
-              row.registration || "",
-              row.fleetNumber || "",
-              row.fleetioStatus || "",
-            ]),
-          ]}
-        />
-        <MasterFilter
-          label="Trailer / type"
-          value={trailerFilter}
-          onChange={setTrailerFilter}
-          options={allTrailerRows.flatMap((row) => [
-            row.trailerNumber || "",
-            row.type || "",
-          ])}
-        />
-      </div>
-      <MasterValidation issues={issues} entities={["Vehicle", "Trailer"]} />
-      <MasterWorkbookImport mode="vehicles" onApplied={refreshAll} />
-      <FleetioAlignmentPanel
-        data={fleetio.data}
-        loading={fleetio.loading}
-        error={fleetio.error}
-        onRefresh={fleetio.refresh}
-      />
-      <State
-        loading={vehicles.loading || trailers.loading}
-        error={vehicles.error || trailers.error}
-      >
-        <h2 className="master-subtitle">Vehicles + fuel</h2>
-        <EditableVehicleTable rows={vehicleRows} onSaved={refreshAll} />
-        <h2 className="master-subtitle">Trailers</h2>
-        <MasterTable
-          rows={trailerRows}
-          rowKey={(row) => row.id}
-          columns={[
-            ["Trailer", (row) => row.trailerNumber],
-            ["Type", (row) => row.type],
-            ["Standard capacity", (row) => row.standardCapacity],
-            ["Euro capacity", (row) => row.euroCapacity],
-            ["Active", (row) => row.active],
-          ]}
-        />
-      </State>
-      <FleetQuickAdd onSaved={refreshAll} />
-    </section>
-  );
-}
-function EditableVehicleTable({
-  rows,
-  onSaved,
-}: {
-  rows: Vehicle[];
-  onSaved: () => void;
-}) {
-  const token = useAccessToken();
-  const [editing, setEditing] = useState<Record<string, Vehicle>>({});
-  const [message, setMessage] = useState<string>();
-  const startEdit = (row: Vehicle) =>
-    setEditing((current) => ({ ...current, [row.id]: { ...row } }));
-  const update = (id: string, field: keyof Vehicle, value: string | boolean) =>
-    setEditing((current) => ({
-      ...current,
-      [id]: { ...current[id], [field]: value },
-    }));
-  const cancel = (id: string) =>
-    setEditing((current) => {
-      const next = { ...current };
-      delete next[id];
-      return next;
-    });
-  async function save(row: Vehicle) {
-    const draft = editing[row.id];
-    if (!draft) return;
-    try {
-      await api.updateVehicle(
-        row.id,
-        {
-          registration: draft.registration,
-          fleetNumber: draft.fleetNumber,
-          abbreviation: draft.abbreviation,
-          transmission: draft.transmission,
-          dvsCompliant: draft.dvsCompliant,
-          fuelProvider: draft.fuelProvider,
-          cabMobile: draft.cabMobile,
-          fuelPin: draft.fuelPin,
-          shellCard: draft.shellCard,
-          bpRedCard: draft.bpRedCard,
-          bpPlainCard: draft.bpPlainCard,
-          notes: draft.notes,
-          fuelPinSecretName: draft.fuelPinSecretName,
-          fuelCardLastFour: draft.fuelCardLastFour,
-          active: draft.active,
-        },
-        await token(),
-      );
-      cancel(row.id);
-      setMessage(`${draft.registration} updated.`);
-      onSaved();
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Vehicle could not be updated.",
-      );
-    }
-  }
-  return (
-    <div>
-      <div className="master-table-wrap">
-        <table className="master-table editable-master-table">
-          <thead>
-            <tr>
-              <th>Registration</th>
-              <th>Abbreviation</th>
-              <th>Transmission</th>
-              <th>DVS</th>
-              <th>Cab Mobile</th>
-              <th>Fuel PIN</th>
-              <th>Shell Card</th>
-              <th>BP Red Card</th>
-              <th>BP Plain Card</th>
-              <th>Notes</th>
-              <th>Active</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const draft = editing[row.id];
-              const current = draft || row;
-              return (
-                <tr key={row.id}>
-                  <td>
-                    {draft ? (
-                      <input
-                        value={current.registration}
-                        onChange={(event) =>
-                          update(row.id, "registration", event.target.value)
-                        }
-                      />
-                    ) : (
-                      <button
-                        className="link-button"
-                        onClick={() => startEdit(row)}
-                      >
-                        {row.registration}
-                      </button>
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <input
-                        value={current.abbreviation || ""}
-                        onChange={(event) =>
-                          update(row.id, "abbreviation", event.target.value)
-                        }
-                      />
-                    ) : (
-                      normaliseTableValue(row.abbreviation)
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <input
-                        value={current.transmission || ""}
-                        onChange={(event) =>
-                          update(row.id, "transmission", event.target.value)
-                        }
-                      />
-                    ) : (
-                      normaliseTableValue(row.transmission)
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <input
-                        type="checkbox"
-                        checked={Boolean(current.dvsCompliant)}
-                        onChange={(event) =>
-                          update(row.id, "dvsCompliant", event.target.checked)
-                        }
-                      />
-                    ) : (
-                      normaliseTableValue(row.dvsCompliant)
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <input
-                        value={current.cabMobile || ""}
-                        onChange={(event) =>
-                          update(row.id, "cabMobile", event.target.value)
-                        }
-                      />
-                    ) : (
-                      normaliseTableValue(row.cabMobile)
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <input
-                        value={current.fuelPin || ""}
-                        onChange={(event) =>
-                          update(row.id, "fuelPin", event.target.value)
-                        }
-                      />
-                    ) : (
-                      normaliseTableValue(row.fuelPin)
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <input
-                        value={current.shellCard || ""}
-                        onChange={(event) =>
-                          update(row.id, "shellCard", event.target.value)
-                        }
-                      />
-                    ) : (
-                      normaliseTableValue(row.shellCard)
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <input
-                        value={current.bpRedCard || ""}
-                        onChange={(event) =>
-                          update(row.id, "bpRedCard", event.target.value)
-                        }
-                      />
-                    ) : (
-                      normaliseTableValue(row.bpRedCard)
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <input
-                        value={current.bpPlainCard || ""}
-                        onChange={(event) =>
-                          update(row.id, "bpPlainCard", event.target.value)
-                        }
-                      />
-                    ) : (
-                      normaliseTableValue(row.bpPlainCard)
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <input
-                        value={current.notes || ""}
-                        onChange={(event) =>
-                          update(row.id, "notes", event.target.value)
-                        }
-                      />
-                    ) : (
-                      normaliseTableValue(row.notes)
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <input
-                        type="checkbox"
-                        checked={current.active}
-                        onChange={(event) =>
-                          update(row.id, "active", event.target.checked)
-                        }
-                      />
-                    ) : (
-                      normaliseTableValue(row.active)
-                    )}
-                  </td>
-                  <td>
-                    {draft ? (
-                      <span className="table-actions">
-                        <button
-                          className="primary"
-                          onClick={() => void save(row)}
-                        >
-                          Save
-                        </button>
-                        <button onClick={() => cancel(row.id)}>Cancel</button>
-                      </span>
-                    ) : (
-                      <button onClick={() => startEdit(row)}>Edit</button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {message && <p className="hint">{message}</p>}
-    </div>
-  );
-}
-function FleetioAlignmentPanel({
-  data,
-  loading,
-  error,
-  onRefresh,
-}: {
-  data?: import("../lib/api").FleetioVehicleAlignment;
-  loading: boolean;
-  error?: string;
-  onRefresh: () => void;
-}) {
-  if (loading)
-    return (
-      <div className="panel fleetio-panel">
-        <strong>Checking Fleetio vehicle alignment‚Ä¶</strong>
-      </div>
-    );
-  if (error)
-    return (
-      <p className="notice inline-notice">
-        Fleetio alignment could not refresh: {error}
-      </p>
-    );
-  if (!data) return null;
-  const due = (value?: string) => {
-    if (!value) return "‚Äî";
-    const date = new Date(value);
-    const days = Math.ceil((date.getTime() - Date.now()) / 86400000);
-    const label = days < 0 ? "Overdue" : days <= 30 ? "Due soon" : "Scheduled";
-    return `${label} ¬∑ ${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(date)}`;
-  };
-  const complianceIssues = data.records.filter(
-    (row) =>
-      row.fleetioVor ||
-      (row.pmiDueUtc &&
-        new Date(row.pmiDueUtc).getTime() < Date.now() + 30 * 86400000) ||
-      (row.motDueUtc &&
-        new Date(row.motDueUtc).getTime() < Date.now() + 30 * 86400000),
-  ).length;
-  return (
-    <div className="panel fleetio-panel">
-      <div>
-        <p className="eyebrow">Fleetio alignment by registration</p>
-        <h2>
-          {data.connected
-            ? `${data.matched} matched ¬∑ ${complianceIssues} compliance item${complianceIssues === 1 ? "" : "s"} to watch`
-            : "Fleetio setup needed"}
-        </h2>
-        <p>
-          {data.message} Fleetio ID is retained only as metadata; registration
-          is the match key.
-        </p>
-        {Boolean(data.missingSettings?.length) && (
-          <small>{data.missingSettings?.join(", ")}</small>
-        )}
-      </div>
-      <button onClick={() => void onRefresh()}>Refresh Fleetio</button>
-      {data.records.length > 0 && (
-        <div className="master-table-wrap fleetio-table">
-          <table className="master-table">
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Registration</th>
-                <th>Fleetio status</th>
-                <th>VOR</th>
-                <th>PMI / service due</th>
-                <th>MOT due</th>
-                <th>Maintenance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.records.slice(0, 100).map((row, index) => (
-                <tr
-                  key={`${row.status}-${row.tmsRegistration || row.fleetioRegistration || index}`}
-                >
-                  <td>
-                    <span className={`status ${row.status.toLowerCase()}`}>
-                      {row.status}
-                    </span>
-                  </td>
-                  <td>
-                    {row.tmsRegistration || row.fleetioRegistration || "‚Äî"}
-                  </td>
-                  <td>{row.fleetioStatus || "‚Äî"}</td>
-                  <td>
-                    {row.fleetioVor ? (
-                      <span className="status failed">VOR</span>
-                    ) : (
-                      "No"
-                    )}
-                  </td>
-                  <td>{due(row.pmiDueUtc)}</td>
-                  <td>{due(row.motDueUtc)}</td>
-                  <td>{row.serviceStatus || "‚Äî"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-function FleetQuickAdd({ onSaved }: { onSaved: () => void }) {
-  const token = useAccessToken();
-  const [entity, setEntity] = useState<"vehicle" | "trailer">("vehicle");
-  const [first, setFirst] = useState("");
-  const [second, setSecond] = useState("");
-  const [third, setThird] = useState("");
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      const payload =
-        entity === "vehicle"
-          ? {
-              registration: first,
-              fleetNumber: second,
-              abbreviation: third,
-              active: true,
-            }
-          : {
-              trailerNumber: first,
-              type: second,
-              standardCapacity: third ? Number(third) : undefined,
-              active: true,
-            };
-      await api.stageRecord(
-        entity,
-        payload,
-        `web-${entity}:${first}`,
-        await token(),
-      );
-      setMessage(`${entity} sent to staging review.`);
-      setFirst("");
-      setSecond("");
-      setThird("");
-      onSaved();
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Record could not be saved.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <form
-      className="quick-order master-edit-form"
-      onSubmit={(event) => void submit(event)}
-    >
-      <h2>Add or update fleet record</h2>
-      <div className="field-grid">
-        <label>
-          Type
-          <select
-            value={entity}
-            onChange={(event) =>
-              setEntity(event.target.value as "vehicle" | "trailer")
-            }
-          >
-            <option value="vehicle">Vehicle</option>
-            <option value="trailer">Trailer</option>
-          </select>
-        </label>
-        <label>
-          {entity === "vehicle" ? "Registration" : "Trailer number"}
-          <input
-            required
-            value={first}
-            onChange={(event) => setFirst(event.target.value)}
-          />
-        </label>
-        <label>
-          {entity === "vehicle" ? "VehicleID" : "Type"}
-          <input
-            value={second}
-            onChange={(event) => setSecond(event.target.value)}
-          />
-        </label>
-        <label>
-          {entity === "vehicle" ? "Abbreviation" : "Standard capacity"}
-          <input
-            value={third}
-            onChange={(event) => setThird(event.target.value)}
-          />
-        </label>
-      </div>
-      <button className="primary" disabled={saving}>
-        {saving ? "Saving‚Ä¶" : "Send for review"}
-      </button>
-      {message && <p className="hint">{message}</p>}
-    </form>
-  );
-}
+öY[[ô^
+HOà¬àöY[à[ôKú‹]
+ãäV⁄[ô^OÀùö[J
+HàãàJKà
+Kà
+N¬üBôù[ò›[€àò[Y]R[\‹ùõ›‹ õ›‹Œà[\‹ùõ›÷◊JH¬à€€ú›ŸY[àHô]»Ÿ]›ö[ôœä
+N¬àô]\õàõ›‹Àôõ]X\
 
-export function MarketsMaster() {
-  const token = useAccessToken();
-  const contacts = useApi(
-    useCallback(async () => api.marketContacts(await token()), [token]),
-  );
-  const rows = contacts.data || [];
-  const issues = rows.flatMap((contact) =>
-    [
-      !marketStandOrLocation(contact) && contact.market !== "Sender"
-        ? `${contact.market} / ${contact.name} missing stall or stand.`
-        : "",
-      !contact.salesman && contact.market !== "Sender"
-        ? `${contact.market} / ${contact.name} missing salesman.`
-        : "",
-    ].filter(Boolean),
-  );
-  const marketOrder = ["Covent", "Spit", "Western", "Sender"];
-  const grouped = Array.from(new Set([...marketOrder, ...rows.map((row) => row.market)]))
-    .filter((market) => rows.some((row) => row.market === market))
-    .sort((left, right) => {
-      const leftIndex = marketOrder.indexOf(left);
-      const rightIndex = marketOrder.indexOf(right);
-      return (leftIndex < 0 ? 99 : leftIndex) - (rightIndex < 0 ? 99 : rightIndex) || left.localeCompare(right);
-    })
-    .map((market) => [market, rows.filter((row) => row.market === market)] as const);
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Master data</p>
-          <h1>Markets & senders</h1>
-        </div>
-        <button onClick={() => void contacts.refresh()}>Refresh</button>
-      </div>
-      <p className="intro">
-        Market orders use this list for Covent, Spit and Western sellers, stall
-        details, salesman and sender dropdowns.
-      </p>
-      <MasterValidation issues={issues} entities={["MarketContact"]} />
-      <MasterWorkbookImport mode="markets" onApplied={contacts.refresh} />
-      <State
-        loading={contacts.loading}
-        error={contacts.error}
-        empty={!rows.length}
-      >
-        {grouped.map(([market, marketRows]) => (
-          <div className="market-section" key={market}>
-            <h2>{market}</h2>
-            <MasterTable
-              rows={marketRows}
-              rowKey={(row) => row.id}
-              columns={[
-                [market === "Sender" ? "Sender" : "Seller", (row) => row.name],
-                ["Stall / stand", (row) => marketStandOrLocation(row)],
-                ["Salesman", (row) => row.salesman],
-                ["Sender", (row) => row.sender],
-                ["Active", (row) => row.active],
-              ]}
-            />
-          </div>
-        ))}
-      </State>
-      <MarketQuickAdd onSaved={contacts.refresh} />
-    </section>
-  );
-}
-function marketStandOrLocation(contact: MarketContact) {
-  return contact.standOrLocation || inferMarketStandFromName(contact.name);
-}
-function inferMarketStandFromName(value?: string) {
-  if (!value) return "";
-  const bracketed = value.match(/\(([^)]+)\)\s*$/)?.[1]?.trim();
-  if (bracketed && looksLikeMarketStand(bracketed)) return bracketed;
-  const inline = value.match(
-    /\b((?:block|unit|stand|stall|rail\s+arch)\s+[a-z]?\d[\w\s/-]*|\d{1,4}\s*[-/]\s*\d{1,4})\b/i,
-  )?.[1]?.trim();
-  return inline && looksLikeMarketStand(inline) ? inline : "";
-}
-function looksLikeMarketStand(value: string) {
-  const normalised = value.trim().toLowerCase();
-  return (
-    /\b(block|unit|stand|stall|rail\s+arch|flower\s*mkt|mkt)\b/.test(normalised) ||
-    /^[a-z]{1,4}\s*\d[\w\s/-]*$/i.test(value) ||
-    /^\d{1,4}\s*[-/]\s*\d{1,4}$/.test(normalised)
-  );
-}
-function MarketQuickAdd({ onSaved }: { onSaved: () => void }) {
-  const token = useAccessToken();
-  const [form, setForm] = useState({
-    market: "Covent",
-    name: "",
-    standOrLocation: "",
-    salesman: "",
-    sender: "",
-  });
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const update = (name: keyof typeof form, value: string) =>
-    setForm((current) => ({ ...current, [name]: value }));
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      const result = await api.applyMasterData(
-        [{
-          entityType: "marketcontact",
-          payload: { ...form, active: true },
-          idempotencyKey: `web-market:${form.market}:${form.name}:${Date.now()}`,
-          source: "SLH Markets editor",
-        }],
-        await token(),
-      );
-      if (!result.applied) throw new Error(result.results[0]?.error || "Market record could not be applied.");
-      setMessage("Market record saved live.");
-      setForm({
-        market: "Covent",
-        name: "",
-        standOrLocation: "",
-        salesman: "",
-        sender: "",
-      });
-      onSaved();
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Market record could not be saved.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <form
-      className="quick-order master-edit-form"
-      onSubmit={(event) => void submit(event)}
-    >
-      <h2>Add market seller or sender</h2>
-      <div className="field-grid">
-        <label>
-          Market
-          <select
-            value={form.market}
-            onChange={(event) => update("market", event.target.value)}
-          >
-            <option>Covent</option>
-            <option>Spit</option>
-            <option>Western</option>
-            <option>Sender</option>
-          </select>
-        </label>
-        <label>
-          {form.market === "Sender" ? "Sender" : "Seller"}
-          <input
-            required
-            value={form.name}
-            onChange={(event) => update("name", event.target.value)}
-          />
-        </label>
-        <label>
-          Stall / stand
-          <input
-            value={form.standOrLocation}
-            onChange={(event) => update("standOrLocation", event.target.value)}
-          />
-        </label>
-        <label>
-          Salesman
-          <input
-            value={form.salesman}
-            onChange={(event) => update("salesman", event.target.value)}
-          />
-        </label>
-        <label>
-          Sender
-          <input
-            value={form.sender}
-            onChange={(event) => update("sender", event.target.value)}
-          />
-        </label>
-      </div>
-      <button className="primary" disabled={saving}>
-        {saving ? "Saving‚Ä¶" : "Send for review"}
-      </button>
-      {message && <p className="hint">{message}</p>}
-    </form>
-  );
-}
+õ›À[ô^
+HOà¬à€€ú›Z\‹⁄[ô»H^X›Y€€[[úÀôö[\ä
+€€[[äHOà\õ›÷ÿ€€[[óOÀùö[J
+JN¬à€€ú›]\»H‹õ›Àò€€X›[€ë]Kõ›Àô[]ô\ûQ]WBàôö[\äõ€€X[äBàú€€YJ
+ò[YJHOàK◊óÕKWÃüKWÃüIÀù\›
+ò[YJJN¬à€€ú›[]»Hù[Xô\äõ›Àú[]»JN¬à€€ú›Ÿ^HBà	‹õ›Àú”ù[Xô\ü_	‹õ›Àò›\›€Y\ê€Ÿ__	‹õ›Àò€€X›[€ë]_Xù”›Ÿ\êÿ\ŸJ
+N¬à€€ú›\Xÿ]HHŸY[ãö\ Ÿ^JN¬àŸY[ãòY
+Ÿ^JN¬à€€ú›[ùò[YX\Hõ€€X[äàõ›ÀõX\[ö»	âàK◊öœŒó◊À⁄Kù\›
+õ›ÀõX\[ö Kà
+N¬à€€ú›\‹›Y\»H¬àZ\‹⁄[ôÀõ[ô›»Z\‹⁄[ô»	€Z\‹⁄[ôÀöõ⁄[äãä_Xààãà]\»»ô]\»]\›\ŸHVVVKSSKQàààãàSù[Xô\ãö\—ö[ö]J[] H[]»Hà»ú[]»]\›ôH‹ôX]\à[àô\õ»Çàààãà\Xÿ]H»ô\Xÿ]H‹ô\àõ›»àààãà[ùò[YX\»õX\[ö»]\››\ù⁄]ãÀ»‹àŒãÀ»àààãàKôö[\äõ€€X[äN¬àô]\õà\‹›Y\Àõ[ô›»ÿõ›»	⁄[ô^
+»üNà	⁄\‹›Y\Àöõ⁄[äé»ä_KòHà◊N¬àJN¬üBò€€ú›õ‹õX[\ŸRXY\àH
+ò[YNà[ö€õ›€äHOÇà›ö[ô ò[YHàäBàù”›Ÿ\êÿ\ŸJ
+Bàúô\XŸJ÷◊òK^åNWKŸÀàäN¬ù\H‹ô\ëöY[Bàú”ù[Xô\àÇàò›\›€Y\ê€ŸHÇàò€€X›[€ë]HÇàô[]ô\ûQ]HÇàú[]»Çàô[]ô\ûU⁄[ô›‘›\ù]»Çàô[]ô\ûU⁄[ô›—[ô]»ÇàúŸ[\ìò[YHÇàõX\öŸ]ò[YHÇàú›[ù[Xô\àÇàò]ô\òYŸT[]ŸZY⁄Ÿ»Çàô\›[X]YŸZY⁄Ÿ»Çàôö]ô\í[ú›ùX›[€ú»ÇàõX\[ö»é¬ò€€ú›‹ô\ê[X\Ÿ\ŒàôX€‹ô‹ô\ëöY[›ö[ô÷◊OàH¬à”ù[Xô\éà¬àú€ù[Xô\àãàú»ãàú‹ôYàãàú\ò⁄\Ÿ[‹ô\àãàõ‹ô\õù[Xô\àãàõ‹ô\õõ»ãàõ‹ô\úôYàãàúôYô\ô[òŸHãàúôYàãàõÿYãàõÿYôYô\ô[òŸHãàòõ€⁄⁄[ô‹ôYàãàòõ€⁄⁄[ô‹ôYô\ô[òŸHãàôHãàõXô[ãàô\›ôYàãàúù[úôYàãàKà›\›€Y\ê€ŸNà¬àò›\›€Y\ò€ŸHãàò›\›€Y\àãàò›\›€Y\õò[YHãàòXÿ€›[ùãàòXÿ€›[ù€ŸHãàô[]ô\û[ÿÿ][€àãàú⁄]Hãàú⁄][ò[YHãàô\›[ò][€àãàô\›ãàô[]ô\û\›‹ãàô[]ô\ûXYô\‹»ãàõÿÿ][€àãàò€€ú⁄Y€ôYHãàúôXŸZ]ô\àãàô[]ô\öY\»ãàKà€€X›[€ë]Nà¬àò€€X›[€ô]Hãàò€€X›]Hãàò€€X›[€àãàúX⁄›\]HãàúX⁄›\]HãàõÿY[ôŸ]Hãàô\‹]⁄]Hãàô\‹]⁄]Hãàú[õôY]Hãàô]Hãàúù[õ›]]Hãàô^ò\õHãàôúõ€Y]HãàKà[]ô\ûQ]Nà¬àô[]ô\ûY]Hãàô[]ô\ô]Hãàô[]ô\ûHãàô[]ô\òûHãàú[õôY]Hãàô]HãàôYY]HãàõX\öŸ]]HãàKà[]Œà¬àú[]»ãàú[]ãàú[]Ÿ[]ô\ôYãàú[]]Hãàú]X[ù]Hãàú]Hãàú‹XŸ\»ãàùò^\»ãàô€Y\»ãàú›X⁄‹»ãàúãàú»ãàKà[]ô\ûU⁄[ô›‘›\ù]Œà¬àô[]ô\û]⁄[ô›‹›\ù]»ãàù⁄[ô›‹›\ùãàôúõ€Hãàô[]ô\ûYúõ€Hãàú€››\ùãàKà[]ô\ûU⁄[ô›—[ô]Œà¬àô[]ô\û]⁄[ô›Ÿ[ô]»ãàù⁄[ô›Ÿ[ôãàù»ãàô[]ô\û]»ãàú€›[ôãàKàŸ[\ìò[YNà¬àúŸ[\õò[YHãàúŸ[\àãàúÿ[\€X[àãàúÿ[\‹\ú€€àãàú›\Y\àãàô‹õ›Ÿ\àãàùô[ô‹àãàúŸ[ô\àãàö][Y\àãàôò\õHãàú€›\òŸHãàKàX\öŸ]ò[YNà»õX\öŸ]ò[YHãõX\öŸ]ãù⁄€\ÿ[[X\öŸ]ãõX\öŸ]\›[ò][€àóKà›[ù[Xô\éà¬àú›[ù[Xô\àãàú›[ãàú›[ôãàú›[ôù[Xô\àãàú›[ôÿÿ][€àãàõÿÿ][€àãàù[ö]ãàò\ò⁄ãàKà]ô\òYŸT[]ŸZY⁄ŸŒà¬àò]ô\òYŸ\[]ŸZY⁄Ÿ»ãàò]ô‹[]ŸZY⁄ãàò]ô\òYŸ]ŸZY⁄ãàò]ô›ŸZY⁄ãàú[]ŸZY⁄ãàùŸZY⁄\ú[]ãàKà\›[X]YŸZY⁄ŸŒà¬àô\›[X]YŸZY⁄Ÿ»ãàù›[ŸZY⁄ãàùŸZY⁄Ÿ»ãàô‹õ‹‹›ŸZY⁄ãàô\›[X]YŸZY⁄ãàùŸZY⁄ãàöŸ‹»ãàöŸ»ãàKàö]ô\í[ú›ùX›[€úŒà¬àôö]ô\ö[ú›ùX›[€ú»ãàö[ú›ùX›[€ú»ãàõõ›\»ãàô[]ô\û[õ›\»ãàò€€X›[€õõ›\»ãàú‹X⁄X[[ú›ùX›[€ú»ãàù[\\ò]\ôHãàù[\ãàúõŸX›ãàô€€Ÿ»ãàKàX\[öŒà»õX\[ö»ãõX\ãõX\»ãô€€Ÿ€[X\»ãù⁄]›€‹ô»ãù⁄]›€‹ôóKüN¬ôù[ò›[€à‹ô\ë]Jò[YNà[ö€õ›€äH¬àYà
+ò[YH[ú›[òŸ[Ÿà]H	âàSù[Xô\ãö\”òSäò[YKôŸ][YJ
+JJBàô]\õàò[YKù“T”‘›ö[ô 
+Kú€XŸJL
+N¬àYà
+\[Ÿàò[YHOOHõù[Xô\àà	âàò[YHàçL	âàò[YHL
+Bàô]\õàô]»]JX]úõ›[ô
 
-export function FuelMaster() {
-  const token = useAccessToken();
-  const prices = useApi(
-    useCallback(async () => api.fuelPrices(await token()), [token]),
-  );
-  const rows = prices.data || [];
-  const latest = rows[0];
-  const providers = new Set(rows.map((row) => row.provider));
-  const issues = rows.length
-    ? []
-    : ["No fuel prices loaded yet. Add this week‚Äôs provider prices below."];
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Master data</p>
-          <h1>Fuel price history</h1>
-        </div>
-        <button onClick={() => void prices.refresh()}>Refresh</button>
-      </div>
-      <p className="intro">
-        Add weekly fuel prices here so pricing history stays in the cloud and
-        can trend over time.
-      </p>
-      <MasterValidation issues={issues} entities={["FuelPrice"]} />
-      <MasterWorkbookImport mode="fuel" onApplied={prices.refresh} />
-      <div className="metrics">
-        <Metric
-          label="Latest week"
-          value={latest?.weekCommencing || "‚Äî"}
-          detail="Most recent upload"
-        />
-        <Metric
-          label="Providers"
-          value={String(providers.size)}
-          detail="Tracked fuel suppliers"
-        />
-        <Metric
-          label="History rows"
-          value={String(rows.length)}
-          detail="Stored in Azure SQL"
-        />
-        <Metric
-          label="Pricing max"
-          value={String(
-            rows.find((row) => row.isPricingMaximum)?.pricePencePerLitre ?? "‚Äî",
-          )}
-          detail="Current max pence/litre"
-        />
-      </div>
-      <State loading={prices.loading} error={prices.error}>
-        <MasterTable
-          rows={rows}
-          rowKey={(row) => row.id}
-          columns={[
-            ["Week commencing", (row) => row.weekCommencing],
-            ["Provider", (row) => row.provider],
-            ["Pence/litre", (row) => row.pricePencePerLitre],
-            ["Pricing maximum", (row) => row.isPricingMaximum],
-            ["Source", (row) => row.source],
-            ["Notes", (row) => row.notes],
-          ]}
-        />
-      </State>
-      <FuelPriceForm onSaved={prices.refresh} />
-    </section>
-  );
-}
-function FuelPriceForm({ onSaved }: { onSaved: () => void }) {
-  const token = useAccessToken();
-  const [form, setForm] = useState({
-    weekCommencing: localDate(),
-    provider: "",
-    pricePencePerLitre: "",
-    isPricingMaximum: false,
-    notes: "",
-  });
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      await api.saveFuelPrice(
-        {
-          weekCommencing: form.weekCommencing,
-          provider: form.provider,
-          pricePencePerLitre: Number(form.pricePencePerLitre),
-          isPricingMaximum: form.isPricingMaximum,
-          source: "SLH TMS Web",
-          notes: form.notes,
-        },
-        await token(),
-      );
-      setMessage("Fuel price saved to cloud history.");
-      setForm((current) => ({
-        ...current,
-        provider: "",
-        pricePencePerLitre: "",
-        isPricingMaximum: false,
-        notes: "",
-      }));
-      onSaved();
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Fuel price could not be saved.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <form
-      className="quick-order master-edit-form"
-      onSubmit={(event) => void submit(event)}
-    >
-      <h2>Add weekly fuel price</h2>
-      <div className="field-grid">
-        <label>
-          Week commencing
-          <input
-            type="date"
-            required
-            value={form.weekCommencing}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                weekCommencing: event.target.value,
-              }))
-            }
-          />
-        </label>
-        <label>
-          Provider
-          <input
-            required
-            value={form.provider}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                provider: event.target.value,
-              }))
-            }
-          />
-        </label>
-        <label>
-          Pence per litre
-          <input
-            required
-            type="number"
-            step="0.01"
-            value={form.pricePencePerLitre}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                pricePencePerLitre: event.target.value,
-              }))
-            }
-          />
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={form.isPricingMaximum}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                isPricingMaximum: event.target.checked,
-              }))
-            }
-          />{" "}
-          Use as pricing maximum
-        </label>
-        <label className="wide">
-          Notes
-          <input
-            value={form.notes}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, notes: event.target.value }))
-            }
-          />
-        </label>
-      </div>
-      <button className="primary" disabled={saving}>
-        {saving ? "Saving‚Ä¶" : "Save fuel price"}
-      </button>
-      {message && <p className="hint">{message}</p>}
-    </form>
-  );
-}
+ò[YHHçMMéJH
+àç
+àL
+JBàù“T”‘›ö[ô 
+Bàú€XŸJL
+N¬à€€ú›^H›ö[ô ò[YHàäKùö[J
+N¬àYà
+]^
+Hô]\õààé¬àYà
+◊óÕKWÃüKWÃüKÀù\›
+^
+JHô]\õà^ú€XŸJL
+N¬à€€ú›Z»H^õX]⁄
+◊äÃKüJVÀãÀWJÃKüJJŒñÀãÀWJÃãJJO… N¬àYà
+Z Bàô]\õà	›Z÷Ã◊H»
+Z÷Ã◊Kõ[ô›OOHà»å	›Z÷Ã◊_XàZ÷Ã◊JHàô]»]J
+KôŸ]ù[YX\ä
+_KI›Z÷ÃóKúY›\ù
+ãåä_KI›Z÷ÃWKúY›\ù
+ãåä_X¬à€€ú›\úŸYHô]»]J^
+N¬àô]\õàù[Xô\ãö\”òSä\úŸYôŸ][YJ
+JBà»^àà\úŸYù“T”‘›ö[ô 
+Kú€XŸJL
+N¬üBôù[ò›[€à‹ô\êŸ[
+ò[YNà[ö€õ›€äH¬àô]\õàò[YH[ú›[òŸ[Ÿà]H»‹ô\ë]Jò[YJHà›ö[ô ò[YHœ»àäKùö[J
+N¬üBôù[ò›[€àö\ú›X\Y
+õ›Œà[ö€õ›€ñ◊KXY\úŒà›ö[ô÷◊KöY[à‹ô\ëöY[
+H¬à€€ú›[ô^HXY\úÀôö[ô[ô^
 
-export function CustomersMaster() {
-  const token = useAccessToken();
-  const customers = useApi(useCallback(async () => api.customers(await token()), [token]));
-  const contacts = useApi(useCallback(async () => api.customerContacts(await token()), [token]));
-  const [search, setSearch] = useState("");
-  const [customerDraft, setCustomerDraft] = useState<Customer>();
-  const [contactDraft, setContactDraft] = useState<CustomerContact>();
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string>();
-  const customerRows = (customers.data || []).filter((row) => !search || `${row.code} ${row.name}`.toLowerCase().includes(search.toLowerCase()));
-  const contactRows = (contacts.data || []).filter((row) => !search || `${row.customerCode} ${row.name} ${row.email || ""}`.toLowerCase().includes(search.toLowerCase()));
-  const refreshAll = () => { void customers.refresh(); void contacts.refresh(); };
-  async function saveCustomer(event: FormEvent) {
-    event.preventDefault(); if (!customerDraft) return; setSaving(true); setMessage(undefined);
-    try { const { id, ...payload } = customerDraft; await api.updateCustomer(id, payload, await token()); setMessage(`${customerDraft.name} updated.`); setCustomerDraft(undefined); refreshAll(); }
-    catch (exception) { setMessage(exception instanceof Error ? exception.message : "Customer could not be updated."); }
-    finally { setSaving(false); }
-  }
-  async function saveContact(event: FormEvent) {
-    event.preventDefault(); if (!contactDraft) return; setSaving(true); setMessage(undefined);
-    try { const { id, ...payload } = contactDraft; await api.updateCustomerContact(id, payload, await token()); setMessage(`${contactDraft.name} updated.`); setContactDraft(undefined); refreshAll(); }
-    catch (exception) { setMessage(exception instanceof Error ? exception.message : "Customer contact could not be updated."); }
-    finally { setSaving(false); }
-  }
-  return <section>
-    <div className="title-row"><div><p className="eyebrow">Master data & CRM</p><h1>Customers</h1></div><button onClick={refreshAll}>Refresh</button></div>
-    <p className="intro">Edit customer accounts and the contacts who receive ETA updates. Customer codes remain protected against duplicates.</p>
-    <div className="master-filters"><label className="master-filter">Customer / contact<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search code, name or email" /></label></div>
-    <State loading={customers.loading || contacts.loading} error={customers.error || contacts.error}>
-      <h2 className="master-subtitle">Customer accounts</h2>
-      <div className="master-table-wrap"><table className="master-table editable-master-table"><thead><tr><th>Code</th><th>Customer</th><th>Active</th><th>Actions</th></tr></thead><tbody>{customerRows.map((row) => <tr key={row.id}><td>{row.code}</td><td><strong>{row.name}</strong></td><td>{normaliseTableValue(row.active)}</td><td><button onClick={() => setCustomerDraft({ ...row })}>Edit</button></td></tr>)}</tbody></table></div>
-      {customerDraft && <form className="quick-order master-edit-form master-record-editor" onSubmit={(event) => void saveCustomer(event)}><div className="title-row"><h2>Edit customer</h2><button type="button" onClick={() => setCustomerDraft(undefined)}>Cancel</button></div><div className="field-grid">
-        <label>Customer code<input required value={customerDraft.code} onChange={(event) => setCustomerDraft({ ...customerDraft, code: event.target.value })} /></label>
-        <label>Customer name<input required value={customerDraft.name} onChange={(event) => setCustomerDraft({ ...customerDraft, name: event.target.value })} /></label>
-        <label className="checkbox-label"><input type="checkbox" checked={customerDraft.active} onChange={(event) => setCustomerDraft({ ...customerDraft, active: event.target.checked })} /> Active</label>
-      </div><button className="primary" disabled={saving}>{saving ? "Saving‚Ä¶" : "Save customer"}</button></form>}
-      <h2 className="master-subtitle">ETA and customer contacts</h2>
-      <div className="master-table-wrap"><table className="master-table editable-master-table"><thead><tr><th>Customer</th><th>Contact</th><th>Email</th><th>Phone</th><th>ETA updates</th><th>Actions</th></tr></thead><tbody>{contactRows.map((row) => <tr key={row.id}><td>{row.customerCode}</td><td><strong>{row.name}</strong></td><td>{normaliseTableValue(row.email)}</td><td>{normaliseTableValue(row.mobileNumber)}</td><td>{normaliseTableValue(row.receivesEtaUpdates)}</td><td><button onClick={() => setContactDraft({ ...row })}>Edit</button></td></tr>)}</tbody></table></div>
-      {contactDraft && <form className="quick-order master-edit-form master-record-editor" onSubmit={(event) => void saveContact(event)}><div className="title-row"><h2>Edit customer contact</h2><button type="button" onClick={() => setContactDraft(undefined)}>Cancel</button></div><div className="field-grid">
-        <label>Customer code<input required value={contactDraft.customerCode} onChange={(event) => setContactDraft({ ...contactDraft, customerCode: event.target.value })} /></label>
-        <label>Contact name<input required value={contactDraft.name} onChange={(event) => setContactDraft({ ...contactDraft, name: event.target.value })} /></label>
-        <label>Email<input type="email" value={contactDraft.email || ""} onChange={(event) => setContactDraft({ ...contactDraft, email: event.target.value })} /></label>
-        <label>Mobile<input value={contactDraft.mobileNumber || ""} onChange={(event) => setContactDraft({ ...contactDraft, mobileNumber: event.target.value })} /></label>
-        <label className="checkbox-label"><input type="checkbox" checked={contactDraft.receivesEtaUpdates} onChange={(event) => setContactDraft({ ...contactDraft, receivesEtaUpdates: event.target.checked })} /> Receives ETA updates</label>
-        <label className="checkbox-label"><input type="checkbox" checked={contactDraft.active} onChange={(event) => setContactDraft({ ...contactDraft, active: event.target.checked })} /> Active</label>
-      </div><button className="primary" disabled={saving}>{saving ? "Saving‚Ä¶" : "Save contact"}</button></form>}
-    </State>
-    {message && <p className="notice inline-notice">{message}</p>}
-    <CoreMasterDataForm />
-  </section>;
-}
+XY\äHOÇà‹ô\ê[X\Ÿ\÷ŸöY[Kú€€YJà
+[X\ HOÇàXY\àOOH[X\»XY\ãö[ò€Y\ [X\ H[X\Àö[ò€Y\ XY\äKà
+Kà
+N¬àô]\õà[ô^èH»‹ô\êŸ[
+õ›÷⁄[ô^JHààé¬üBôù[ò›[€à[ôô\ìX\öŸ]
+ò[YNà›ö[ô H¬à€€ú›õ‹õX[\ŸYHõ‹õX[\ŸRXY\äò[YJN¬àYà
+õ‹õX[\ŸYö[ò€Y\ ò€›ô[ùäJHô]\õàê€›ô[ùé¬àYà
+õ‹õX[\ŸYö[ò€Y\ ú‹]äHõ‹õX[\ŸYö[ò€Y\ ú‹][äJBàô]\õàî‹]é¬àYà
+õ‹õX[\ŸYö[ò€Y\ ùŸ\›\õàäJHô]\õàïŸ\›\õàé¬àô]\õààé¬üBôù[ò›[€à€X[ì‹ô\îõ› àõ›Œà[\‹ùõ›Àà[ô^àù[Xô\ãà€›\òŸNà›ö[ôÀäNà[\‹ùõ›»[ôYö[ôY¬à€€ú›X\öŸ]ò[YHBàõ›ÀõX\öŸ]ò[YHà[ôô\ìX\öŸ]
+	‹€›\òŸ_H	‹õ›Àò›\›€Y\ê€Ÿ_H	‹õ›Àôö]ô\í[ú›ùX›[€úﬂX
+N¬à€€ú›€€X›[€ë]HBà‹ô\ë]Jõ›Àò€€X›[€ë]JH‹ô\ë]Jõ›Àô[]ô\ûQ]JHÿÿ[]J
+N¬à€€ú›[]ô\ûQ]HH‹ô\ë]Jõ›Àô[]ô\ûQ]JH€€X›[€ë]N¬à€€ú››\›€Y\ê€ŸHBàõ›Àò›\›€Y\ê€ŸHàX\öŸ]ò[YHàõ›ÀúŸ[\ìò[YHàõ›ÀúŸ[ô\ìò[YHàìPTí—Ué¬à€€ú›[]»Hõ›Àú[]»åHé¬à€€ú›”ù[Xô\àBàõ›Àú”ù[Xô\àà	¬àõ‹õX[\ŸRXY\ä›\›€Y\ê€ŸH€›\òŸJBàù’\\êÿ\ŸJ
+Bàú€XŸJN
+Hì‘ëTàÇàKIÿ€€X›[€ë]Kúô\XŸP[
+ãHãàä_KI⁄[ô^
+»_X¬àYà
+X›\›€Y\ê€ŸHX€€X›[€ë]JHô]\õà[ôYö[ôY¬à€€ú›ŸZY⁄Bàõ›Àô\›[X]YŸZY⁄Ÿ»à
+ù[Xô\ä[] Hà	âàù[Xô\äõ›Àò]ô\òYŸT[]ŸZY⁄Ÿ Hàà»›ö[ô X]úõ›[ô
+ù[Xô\ä[] H
+àù[Xô\äõ›Àò]ô\òYŸT[]ŸZY⁄Ÿ JJBàààäN¬à€€ú›ö]ô\í[ú›ùX›[€ú»H¬àõ›ÀúŸ[ô\ìò[YH»Ÿ[ô\éà	‹õ›ÀúŸ[ô\ìò[Y_XààãàŸZY⁄»ŸZY⁄à	›ŸZY⁄HŸÿààãàõ›Àôö]ô\í[ú›ùX›[€úÀàBàôö[\äõ€€X[äBàöõ⁄[äà0≠»äN¬àô]\õà¬àããúõ›Àà”ù[Xô\ãà›\›€Y\ê€ŸKà€€X›[€ë]Kà[]ô\ûQ]Kà[]ÀàX\öŸ]ò[YKà\›[X]YŸZY⁄ŸŒàŸZY⁄àö]ô\í[ú›ùX›[€úÀà[\‹ù€›\òŸNàõ›Àö[\‹ù€›\òŸH€›\òŸKàN¬üBôù[ò›[€à\úŸT‹⁄][€ì‹ô\îõ›‹ àõ›‹Œà[ö€õ›€ñ◊V◊Kà⁄Y]ò[YNà›ö[ôÀäNà[\‹ùõ›÷◊H¬à€€ú›X\öŸ]ò[YHH[ôô\ìX\öŸ]
+⁄Y]ò[YJN¬àYà
+[X\öŸ]ò[YJHô]\õà◊N¬àô]\õàõ›‹Àôõ]X\
 
-export function SitesMaster() {
-  const token = useAccessToken();
-  const sites = useApi(
-    useCallback(async () => api.sites(await token()), [token]),
-  );
-  const contacts = useApi(
-    useCallback(async () => api.customerContacts(await token()), [token]),
-  );
-  const siteRows = sites.data || [];
-  const contactRows = contacts.data || [];
-  const issues = [
-    ...siteRows.flatMap((site) =>
-      [
-        !site.collectionAddress ? `${site.name} missing address.` : "",
-        !site.mapLink ? `${site.name} missing map link.` : "",
-      ].filter(Boolean),
-    ),
-    ...contactRows.flatMap((contact) =>
-      [
-        contact.receivesEtaUpdates && !contact.email
-          ? `${contact.customerCode} / ${contact.name} missing ETA email.`
-          : "",
-      ].filter(Boolean),
-    ),
-  ];
-  const refreshAll = () => {
-    void sites.refresh();
-    void contacts.refresh();
-  };
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Master data</p>
-          <h1>Sites & contacts</h1>
-        </div>
-        <button onClick={refreshAll}>Refresh</button>
-      </div>
-      <p className="intro">
-        All delivery and collection sites plus customer contacts for ETA updates
-        and order communication.
-      </p>
-      <MasterValidation issues={issues} entities={["Site", "CustomerContact"]} />
-      <MasterWorkbookImport mode="sites" onApplied={refreshAll} />
-      <State
-        loading={sites.loading || contacts.loading}
-        error={sites.error || contacts.error}
-      >
-        <h2 className="master-subtitle">Sites</h2>
-        <EditableSiteTable rows={siteRows} onSaved={refreshAll} />
-        <h2 className="master-subtitle">Customer contacts</h2>
-        <MasterTable
-          rows={contactRows}
-          rowKey={(row) => row.id}
-          columns={[
-            ["Customer", (row) => row.customerCode],
-            ["Contact", (row) => row.name],
-            ["Email", (row) => row.email],
-            ["Phone", (row) => row.mobileNumber],
-            ["ETA updates", (row) => row.receivesEtaUpdates],
-            ["Active", (row) => row.active],
-          ]}
-        />
-      </State>
-      <SiteSetupForm />
-    </section>
-  );
-}
-function EditableSiteTable({ rows, onSaved }: { rows: Site[]; onSaved: () => void }) {
-  const token = useAccessToken();
-  const [draft, setDraft] = useState<Site>();
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string>();
-  const update = (field: keyof Site, value: string | boolean | number | undefined) => setDraft((current) => current ? { ...current, [field]: value } : current);
-  async function save(event: FormEvent) {
-    event.preventDefault(); if (!draft) return; setSaving(true); setMessage(undefined);
-    try { const { id, ...payload } = draft; await api.updateSite(id, payload, await token()); setMessage(`${draft.name} updated.`); setDraft(undefined); onSaved(); }
-    catch (exception) { setMessage(exception instanceof Error ? exception.message : "Site could not be updated."); }
-    finally { setSaving(false); }
-  }
-  return <div>
-    <div className="master-table-wrap"><table className="master-table editable-master-table"><thead><tr><th>Code</th><th>Site</th><th>Driver text</th><th>Address</th><th>Map point</th><th>Map link</th><th>Actions</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{row.externalCode}</td><td><strong>{row.name}</strong></td><td>{normaliseTableValue(row.driverTextName)}</td><td>{normaliseTableValue(row.collectionAddress)}</td><td>{row.latitude != null && row.longitude != null ? `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}` : <span className="capacity-warning">Missing</span>}</td><td>{row.mapLink ? <a href={row.mapLink} target="_blank" rel="noreferrer">Open</a> : "‚Äî"}</td><td><button onClick={() => setDraft({ ...row })}>Edit</button></td></tr>)}</tbody></table></div>
-    {draft && <form className="quick-order master-edit-form master-record-editor" onSubmit={(event) => void save(event)}><div className="title-row"><div><p className="eyebrow">Editing site</p><h2>{draft.name}</h2></div><button type="button" onClick={() => setDraft(undefined)}>Cancel</button></div><div className="field-grid">
-      <label>Site code<input required value={draft.externalCode} onChange={(event) => update("externalCode", event.target.value)} /></label>
-      <label>Site name<input required value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
-      <label>Driver text name<input value={draft.driverTextName || ""} onChange={(event) => update("driverTextName", event.target.value)} /></label>
-      <label>Aliases<input value={draft.aliases || ""} onChange={(event) => update("aliases", event.target.value)} /></label>
-      <label className="wide">Address<input value={draft.collectionAddress || ""} onChange={(event) => update("collectionAddress", event.target.value)} /></label>
-      <label>Latitude<input type="number" step="0.000001" min="-90" max="90" value={draft.latitude ?? ""} onChange={(event) => update("latitude", event.target.value ? Number(event.target.value) : undefined)} /></label>
-      <label>Longitude<input type="number" step="0.000001" min="-180" max="180" value={draft.longitude ?? ""} onChange={(event) => update("longitude", event.target.value ? Number(event.target.value) : undefined)} /></label>
-      <label className="wide">Map link<input type="url" value={draft.mapLink || ""} onChange={(event) => update("mapLink", event.target.value)} /></label>
-      <label className="wide">Driver instructions<textarea value={draft.collectionInstructions || ""} onChange={(event) => update("collectionInstructions", event.target.value)} /></label>
-      <label className="checkbox-label"><input type="checkbox" checked={draft.active} onChange={(event) => update("active", event.target.checked)} /> Active</label>
-    </div><button className="primary" disabled={saving}>{saving ? "Saving‚Ä¶" : "Save site & map point"}</button></form>}
-    {message && <p className="notice inline-notice">{message}</p>}
-  </div>;
-}
+õ›À[ô^
+Nà[\‹ùõ›÷◊HOà¬à€€ú›Ÿ[»Hõ›ÀõX\
+‹ô\êŸ[
+Kôö[\äõ€€X[äN¬àYà
+àŸ[Àõ[ô›»àŸ[Àú€€YJ
+Ÿ[
+HOÇà¬àù›[ãàù›[»ãàúÿ[\€X[àãàúÿ[\€Y[àãàúŸ[\àãàúŸ[ô\àãàKö[ò€Y\ õ‹õX[\ŸRXY\äŸ[
+JKà
+Bà
+Bàô]\õà◊N¬à€€ú›]HBàŸ[ÀõX\
+‹ô\ë]JKôö[ô
 
-export function MasterData() {
-  const token = useAccessToken();
-  const customers = useApi(
-    useCallback(async () => api.customers(await token()), [token]),
-  );
-  const customerContacts = useApi(
-    useCallback(async () => api.customerContacts(await token()), [token]),
-  );
-  const vehicles = useApi(
-    useCallback(async () => api.vehicles(await token()), [token]),
-  );
-  const drivers = useApi(
-    useCallback(async () => api.drivers(await token()), [token]),
-  );
-  const trailers = useApi(
-    useCallback(async () => api.trailers(await token()), [token]),
-  );
-  const sites = useApi(
-    useCallback(async () => api.sites(await token()), [token]),
-  );
-  const contacts = useApi(
-    useCallback(async () => api.marketContacts(await token()), [token]),
-  );
-  const diagnostics = useApi(
-    useCallback(async () => api.diagnosticsTables(await token()), [token]),
-  );
-  const errors = [
-    customers.error,
-    customerContacts.error,
-    vehicles.error,
-    drivers.error,
-    trailers.error,
-    sites.error,
-    contacts.error,
-    diagnostics.error,
-  ].filter(Boolean);
-  const loading =
-    customers.loading ||
-    customerContacts.loading ||
-    vehicles.loading ||
-    drivers.loading ||
-    trailers.loading ||
-    sites.loading ||
-    contacts.loading ||
-    diagnostics.loading;
-  const [linking, setLinking] = useState(false);
-  const [linkMessage, setLinkMessage] = useState<string>();
-  async function linkRegistered() {
-    setLinking(true);
-    setLinkMessage(undefined);
-    try {
-      const result = await api.linkMasterRegister(await token());
-      setLinkMessage(result.message);
-      void Promise.all([
-        customers.refresh(),
-        customerContacts.refresh(),
-        vehicles.refresh(),
-        drivers.refresh(),
-        trailers.refresh(),
-        sites.refresh(),
-        contacts.refresh(),
-        diagnostics.refresh(),
-      ]);
-    } catch (exception) {
-      setLinkMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Registered master-data rows could not be linked.",
-      );
-    } finally {
-      setLinking(false);
-    }
-  }
+ò[YJHOà◊óÕKWÃüKWÃüIÀù\›
+ò[YJJHààé¬à€€ú›[]»HŸ[Àôö[ô
 
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Reference data</p>
-          <h1>Master data & CRM</h1>
-        </div>
-        <button onClick={() => void linkRegistered()} disabled={linking}>
-          {linking ? "Linking‚Ä¶" : "Link registered rows"}
-        </button>
-      </div>
-      {linkMessage && <p className="notice inline-notice">{linkMessage}</p>}
-      <MasterWorkbookImport />
-      <CoreMasterDataForm />
-      <SiteSetupForm />
-      {errors.length > 0 && (
-        <p className="notice inline-notice">
-          Some master-data lists could not refresh yet: {errors.join(" ¬∑ ")}
-        </p>
-      )}
-      <MasterDataCounts diagnostics={diagnostics.data} />
-      <State loading={loading} error={undefined}>
-        <div className="master-grid">
-          <DataList
-            title="Customers"
-            data={customers.data}
-            render={(item: Customer) => (
-              <>
-                <strong>{item.name}</strong>
-                <small>{item.code}</small>
-              </>
-            )}
-          />
-          <DataList
-            title="Customer ETA contacts"
-            data={customerContacts.data}
-            render={(item: CustomerContact) => (
-              <>
-                <strong>{item.name}</strong>
-                <small>
-                  {item.customerCode} ¬∑ {item.email || "No ETA email"}
-                  {item.receivesEtaUpdates
-                    ? " ¬∑ ETA updates on"
-                    : " ¬∑ ETA updates off"}
-                </small>
-              </>
-            )}
-          />
-          <DataList
-            title="Vehicles"
-            data={vehicles.data}
-            render={(item: Vehicle) => (
-              <>
-                <strong>{item.registration}</strong>
-                <small>
-                  {item.fleetNumber || item.abbreviation || "Fleet vehicle"}
-                </small>
-              </>
-            )}
-          />
-          <DataList
-            title="Drivers"
-            data={drivers.data}
-            render={(item: Driver) => (
-              <>
-                <strong>{item.displayName}</strong>
-                <small>
-                  {item.employeeNumber}
-                  {item.mobileNumber
-                    ? ` ¬∑ ${item.mobileNumber}`
-                    : " ¬∑ Mobile number required"}
-                </small>
-              </>
-            )}
-          />
-          <DataList
-            title="Trailers"
-            data={trailers.data}
-            render={(item: Trailer) => (
-              <>
-                <strong>{item.trailerNumber}</strong>
-                <small>{item.type || "Trailer"}</small>
-              </>
-            )}
-          />
-          <DataList
-            title="Sites"
-            data={sites.data}
-            render={(item: Site) => (
-              <>
-                <strong>{item.name}</strong>
-                <small>
-                  {item.externalCode}{" "}
-                  {item.collectionAddress ? `¬∑ ${item.collectionAddress}` : ""}
-                </small>
-              </>
-            )}
-          />
-          <DataList
-            title="Market contacts"
-            data={contacts.data}
-            render={(item: MarketContact) => (
-              <>
-                <strong>{item.name}</strong>
-                <small>
-                  {item.market}
-                  {item.standOrLocation ? ` ¬∑ ${item.standOrLocation}` : ""}
-                </small>
-              </>
-            )}
-          />
-        </div>
-      </State>
-    </section>
-  );
-}
-function MasterDataCounts({
-  diagnostics,
-}: {
-  diagnostics?: DiagnosticsTables;
-}) {
-  const cards = [
-    ["Customers", diagnostics?.customers],
-    ["Customer contacts", diagnostics?.customerContacts],
-    ["Drivers", diagnostics?.drivers],
-    ["Vehicles", diagnostics?.vehicles],
-    ["Sites", diagnostics?.sites],
-    ["Market contacts", diagnostics?.marketContacts],
-  ] as const;
-  return (
-    <div className="master-counts">
-      {cards.map(([label, value]) => (
-        <article key={label} className={value?.ok === false ? "error" : ""}>
-          <span>{label}</span>
-          <strong>{value?.ok === false ? "!" : (value?.count ?? "‚Äî")}</strong>
-          {value?.error && <small>{value.error}</small>}
-        </article>
-      ))}
-    </div>
-  );
-}
+ò[YJHOà◊ó
+ ó
+ O…Àù\›
+ò[YJJHåHé¬à€€ú›Ÿ[\ìò[YHBàŸ[Àôö[ô
+à
+ò[YJHOÇà÷ÿK^óK⁄Kù\›
+ò[YJH	âàK◊öœŒã⁄Kù\›
+ò[YJH	âà[‹ô\ë]Jò[YJKà
+Hàé¬à€€ú››[ù[Xô\àBàŸ[Àôö[ô
 
-type MasterEntity =
-  | "customer"
-  | "customercontact"
-  | "vehicle"
-  | "driver"
-  | "trailer"
-  | "marketcontact";
-type MasterImportMode =
-  | "all"
-  | "drivers"
-  | "vehicles"
-  | "trailers"
-  | "sites"
-  | "markets"
-  | "contacts"
-  | "fuel";
-function MasterWorkbookImport({
-  mode = "all",
-  onApplied,
-}: {
-  mode?: MasterImportMode;
-  onApplied?: () => void;
-}) {
-  const token = useAccessToken();
-  const [workbook, setWorkbook] = useState<XLSX.WorkBook>();
-  const [sheetNames, setSheetNames] = useState<string[]>([]);
-  const [selectedSheet, setSelectedSheet] = useState("");
-  const [previewRows, setPreviewRows] = useState<string[][]>([]);
-  const [records, setRecords] = useState<StageBatchRequest[]>([]);
-  const [summary, setSummary] = useState<string>();
-  const [issues, setIssues] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+ò[YJHOà◊ä›[›[ô\ò⁄[ö]
+Wã⁄Kù\›
+ò[YJJHàé¬à€€ú›X\[ö»HŸ[Àôö[ô
 
-  function prepare(nextWorkbook: XLSX.WorkBook, nextSheet: string) {
-    const mapped = filterMasterRecords(mapMasterWorkbook(nextWorkbook), mode);
-    const importRun = Date.now().toString(36);
-    setRecords(
-      mapped.records.map((record, index) => ({
-        ...record,
-        idempotencyKey: scopedImportKey(record, importRun, index),
-      })),
-    );
-    setIssues(mapped.issues);
-    const scope = mode === "all" ? "master-data" : mode;
-    setSummary(
-      `${mapped.records.length} ${scope} record${mapped.records.length === 1 ? "" : "s"} found across the workbook: ${summariseBatch(mapped.records) || "nothing recognised"}. Review and edit the familiar tabs below before applying.`,
-    );
-    loadSheetPreview(nextWorkbook, nextSheet);
-  }
+ò[YJHOà◊öœŒó◊À⁄Kù\›
+ò[YJJHàé¬à€€ú›õ›\»HŸ[¬àôö[\äà
+ò[YJHOÇàò[YHOOHŸ[\ìò[YH	âÇàò[YHOOH[]»	âÇàò[YHOOH]H	âÇàò[YHOOH›[ù[Xô\à	âÇàò[YHOOHX\[öÀà
+Bàöõ⁄[äà0≠»äN¬à€€ú›€X[ôYH€X[ì‹ô\îõ› à¬à”ù[Xô\éààãà›\›€Y\ê€ŸNàX\öŸ]ò[YKà€€X›[€ë]Nà]Kà[]ô\ûQ]Nà]Kà[]ÀàŸ[\ìò[YKàX\öŸ]ò[YKà›[ù[Xô\ãàX\[öÀàö]ô\í[ú›ùX›[€úŒàõ›\Àà[\‹ù€›\òŸNà⁄Y]ò[YKàKà[ô^à⁄Y]ò[YKà
+N¬àô]\õà€X[ôY»ÿ€X[ôYHà◊N¬àJN¬üBôù[ò›[€à\úŸS‹ô\ï€‹öÿõ€⁄ €‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄ Nà[\‹ùõ›÷◊H¬àô]\õà€‹öÿõ€⁄Àî⁄Y]ò[Y\Àôõ]X\
 
-  function loadSheetPreview(nextWorkbook: XLSX.WorkBook, nextSheet: string) {
-    const sheet = nextWorkbook.Sheets[nextSheet];
-    if (!sheet) {
-      setPreviewRows([]);
-      return;
-    }
-    const rows = XLSX.utils.sheet_to_json<Array<unknown>>(sheet, {
-      header: 1,
-      defval: "",
-      blankrows: true,
-      raw: false,
-    });
-    const width = Math.min(100, Math.max(1, ...rows.map((row) => row.length)));
-    setPreviewRows(
-      rows
-        .slice(0, 300)
-        .map((row) =>
-          Array.from({ length: width }, (_, column) => text(row[column])),
-        ),
-    );
-  }
+⁄Y]ò[YJHOà¬à€€ú›õ›‹»H÷ù][Àú⁄Y]›◊⁄ú€€è[ö€õ›€ñ◊Oäà€‹öÿõ€⁄Àî⁄Y]÷‹⁄Y]ò[YWKà»XY\éàKYùò[ààãò]Œàò[ŸKõ[ö‹õ›‹Œàò[ŸHKà
+N¬à€€ú›XY\í[ô^Hõ›‹Àôö[ô[ô^
+à
+õ› HOÇàõ›¬àõX\
+õ‹õX[\ŸRXY\äBàôö[\ä
+XY\äHOÇàÿöôX›ùò[Y\ ‹ô\ê[X\Ÿ\ Kú€€YJ
+[X\Ÿ\ HOÇà[X\Ÿ\Àú€€YJà
+[X\ HOÇàXY\àOOH[X\»àXY\ãö[ò€Y\ [X\ Hà[X\Àö[ò€Y\ XY\äKà
+Kà
+Kà
+Kõ[ô›èHãà
+N¬àYà
+XY\í[ô^
+Hô]\õà\úŸT‹⁄][€ì‹ô\îõ›‹ õ›‹À⁄Y]ò[YJN¬à€€ú›XY\ú»Hõ›‹÷⁄XY\í[ô^KõX\
+õ‹õX[\ŸRXY\äN¬à€€ú››Ÿ\î⁄Y]H⁄Y]ò[YKù”›Ÿ\êÿ\ŸJ
+N¬à€€ú›\ôX›[€àBà›Ÿ\î⁄Y]ö[ò€Y\ ö[òõ›[ôäH›Ÿ\î⁄Y]ö[ò€Y\ õò]\ô\»äBà»í[òõ›[ôÇàà›Ÿ\î⁄Y]ö[ò€Y\ õ›]õ›[ôäBà»ì›]õ›[ôÇààì‹ô\àé¬àô]\õàõ›‹¬àú€XŸJXY\í[ô^
+»JBàõX\
 
-  function editCell(rowIndex: number, columnIndex: number, value: string) {
-    setPreviewRows((current) =>
-      current.map((row, index) =>
-        index === rowIndex
-          ? row.map((cell, column) => (column === columnIndex ? value : cell))
-          : row,
-      ),
-    );
-  }
+õ›À[ô^
+Nà[\‹ùõ›»Oà¬à€€ú››\›€Y\àHö\ú›X\Y
+õ›ÀXY\úÀò›\›€Y\ê€ŸHäN¬à€€ú›€€X›[€ë]HH‹ô\ë]Jàö\ú›X\Y
+õ›ÀXY\úÀò€€X›[€ë]HäKà
+N¬à€€ú›[]ô\ûQ]HBà‹ô\ë]Jö\ú›X\Y
+õ›ÀXY\úÀô[]ô\ûQ]HäJHà€€X›[€ë]N¬à€€ú›[]ô\ûSÿÿ][€àBà›\›€Y\àö\ú›X\Y
+õ›ÀXY\úÀõX\öŸ]ò[YHäN¬à€€ú›Ÿ[ô\ìò[YHBàö\ú›X\Y
+õ›ÀXY\úÀúŸ[\ìò[YHäH	âÇàXY\úÀú€€YJ
+XY\äHOàXY\àOOHúŸ[ô\àäBà»ö\ú›X\Y
+õ›ÀXY\úÀúŸ[\ìò[YHäBàààé¬àô]\õà
+à€X[ì‹ô\îõ› à¬à”ù[Xô\éÇàö\ú›X\Y
+õ›ÀXY\úÀú”ù[Xô\àäHà	Ÿ\ôX›[€ãù’\\êÿ\ŸJ
+_KI‹⁄Y]ò[YKúô\XŸJ÷◊òK^åNWKŸ⁄KàäKú€XŸJM
+_KI⁄[ô^
+»_Xà›\›€Y\ê€ŸNÇà›\›€Y\àà
+\ôX›[€àOOHí[òõ›[ôà»ìêUTëTÀU–VHàà[]ô\ûSÿÿ][€äKà€€X›[€ë]Kà[]ô\ûQ]Kà[]Œàö\ú›X\Y
+õ›ÀXY\úÀú[]»äKà[]ô\ûU⁄[ô›‘›\ù]Œàö\ú›X\Y
+àõ›ÀàXY\úÀàô[]ô\ûU⁄[ô›‘›\ù]»ãà
+Kà[]ô\ûU⁄[ô›—[ô]Œàö\ú›X\Y
+àõ›ÀàXY\úÀàô[]ô\ûU⁄[ô›—[ô]»ãà
+KàŸ[\ìò[YNàŸ[ô\ìò[YBà»àÇààö\ú›X\Y
+õ›ÀXY\úÀúŸ[\ìò[YHäKàŸ[ô\ìò[YKàX\öŸ]ò[YNÇàö\ú›X\Y
+õ›ÀXY\úÀõX\öŸ]ò[YHäHà[ôô\ìX\öŸ]
+⁄Y]ò[YJHà[]ô\ûSÿÿ][€ãà›[ù[Xô\éàö\ú›X\Y
+õ›ÀXY\úÀú›[ù[Xô\àäKà]ô\òYŸT[]ŸZY⁄ŸŒàö\ú›X\Y
+àõ›ÀàXY\úÀàò]ô\òYŸT[]ŸZY⁄Ÿ»ãà
+Kà\›[X]YŸZY⁄ŸŒÇàö\ú›X\Y
+õ›ÀXY\úÀô\›[X]YŸZY⁄Ÿ»äHà
+ù[Xô\äö\ú›X\Y
+õ›ÀXY\úÀú[]»äJHà	âÇàù[Xô\äö\ú›X\Y
+õ›ÀXY\úÀò]ô\òYŸT[]ŸZY⁄Ÿ»äJHàà»›ö[ô àX]úõ›[ô
+àù[Xô\äö\ú›X\Y
+õ›ÀXY\úÀú[]»äJH
+Çàù[Xô\äàö\ú›X\Y
+õ›ÀXY\úÀò]ô\òYŸT[]ŸZY⁄Ÿ»äKà
+Kà
+Kà
+BàààäKàö]ô\í[ú›ùX›[€úŒà¬à\ôX›[€àOOHì‹ô\àà»	Ÿ\ôX›[€üH[õö[ô»⁄Y]ààãàö\ú›X\Y
+õ›ÀXY\úÀô\›[X]YŸZY⁄Ÿ»äHàö\ú›X\Y
+õ›ÀXY\úÀò]ô\òYŸT[]ŸZY⁄Ÿ»äBà»ŸZY⁄à	Ÿö\ú›X\Y
+õ›ÀXY\úÀô\›[X]YŸZY⁄Ÿ»äHòÿ[›[]YüHŸÿàààãàö\ú›X\Y
+õ›ÀXY\úÀôö]ô\í[ú›ùX›[€ú»äKàBàôö[\äõ€€X[äBàöõ⁄[äà0≠»äKàX\[öŒàö\ú›X\Y
+õ›ÀXY\úÀõX\[ö»äKà[\‹ù€›\òŸNà⁄Y]ò[YKà‹ô\ë\ôX›[€éà\ôX›[€ãàKà[ô^à⁄Y]ò[YKà
+HﬂBà
+N¬àJBàôö[\ä
+õ› HOàÿöôX›ùò[Y\ õ› Kú€€YJõ€€X[äJN¬àJN¬üBÇôù[ò›[€à\úŸQ[XZ[‹ô\ú [ú]à›ö[ô Nà[\‹ùõ›÷◊H¬à€€ú›^ò[YHH[ú]úô\XŸJ◊ãŸÀàäKúô\XŸJ◊LLŸÀàäN¬à€€ú››XöôX›ôYàBà^ò[YKõX]⁄
+à Œòõ€⁄⁄[ô»ôYü‹ô\ü»ôYü VŒó»ÀWJ ÿK^åNKWJ K⁄Kà
+OÀñÃWHSPRSI—]Kõõ› 
+Kù‘›ö[ô 
+Kú€XŸJMä_X¬à€€ú›€€X›[€ë]HBà\úŸQ[XZ[]Jà^ò[YKõX]⁄
+à–€€X›[€éñ◊óóJäÃKüJŒú›ôô
+O◊ ÷–KVòK^óJﬂÃKüVÀãÀWWÃKüJŒñÀãÀWWÃãJO K⁄Kà
+OÀñÃWKà
+Hÿÿ[]J
+N¬à€€ú›[]ô\ûQ]HBà\úŸQ[XZ[]Jà^ò[YKõX]⁄
+à—[]ô\ûV◊óóJäÃKüJŒú›ôô
+O◊ ÷–KVòK^óJﬂÃKüVÀãÀWWÃKüJŒñÀãÀWWÃãJO K⁄Kà
+OÀñÃWKà
+H€€X›[€ë]N¬à€€ú›X\öŸ]ò[YHHÿ€›ô[ù⁄Kù\›
+^ò[YJBà»ê€›ô[ùÿ\ô[àÇàà‹‹][⁄Kù\›
+^ò[YJBà»î‹][öY[»Çàà›Ÿ\›\õã⁄Kù\›
+^ò[YJBà»ïŸ\›\õà[ù\õò][€ò[Çàààé¬à€€ú›€€X›[€ì[ô\»H€€X›õ€›⁄[ô”[ô\ ^ò[YK–€€X›[€éã⁄KJN¬à€€ú›õ›‹Œà[\‹ùõ›÷◊HH◊N¬à€€ú›õ›‘]\õàBà◊
+ó
+è ◊äóãWV◊óóJè W ãW ä
+ W ‹[]œÀ ä◊óJ W öŸ◊
+ó
+èÀŸ⁄N¬à]X]⁄àôY—^^X–\úò^Hù[¬à⁄[H
 
-  function commitCell(rowIndex: number, columnIndex: number, value: string) {
-    if (!workbook || !selectedSheet) return;
-    const sheet = workbook.Sheets[selectedSheet];
-    const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
-    if (value === "") delete sheet[address];
-    else
-      sheet[address] = {
-        ...(sheet[address] || {}),
-        t: "s",
-        v: value,
-        w: value,
-      };
-    const range = sheet["!ref"]
-      ? XLSX.utils.decode_range(sheet["!ref"])
-      : { s: { r: 0, c: 0 }, e: { r: rowIndex, c: columnIndex } };
-    range.e.r = Math.max(range.e.r, rowIndex);
-    range.e.c = Math.max(range.e.c, columnIndex);
-    sheet["!ref"] = XLSX.utils.encode_range(range);
-    const nextWorkbook = {
-      ...workbook,
-      Sheets: { ...workbook.Sheets, [selectedSheet]: sheet },
-    };
-    setWorkbook(nextWorkbook);
-    prepare(nextWorkbook, selectedSheet);
-  }
+X]⁄Hõ›‘]\õãô^X ^ò[YJJJH¬à€€ú›Yù\àH^ò[YKú€XŸJX]⁄ö[ô^
+»X]⁄ÃKõ[ô›
+N¬à€€ú›Yô\‹»HYù\Çàú‹]
+◊ó óã VÃBàú‹]
+óàäBàõX\
 
-  async function selectWorkbook(file?: File) {
-    if (!file) return;
-    setSummary(undefined);
-    setIssues([]);
-    setRecords([]);
-    setPreviewRows([]);
-    try {
-      const nextWorkbook = XLSX.read(await file.arrayBuffer(), {
-        type: "array",
-        cellDates: true,
-      });
-      const nextSheet =
-        preferredSheet(nextWorkbook, mode) || nextWorkbook.SheetNames[0] || "";
-      setWorkbook(nextWorkbook);
-      setSheetNames(nextWorkbook.SheetNames);
-      setSelectedSheet(nextSheet);
-      prepare(nextWorkbook, nextSheet);
-    } catch {
-      setSummary("The master-data workbook could not be read.");
-    }
-  }
+[ôJHOà[ôKùö[J
+JBàôö[\äõ€€X[äBàú€XŸJJBàöõ⁄[äãäN¬àõ›‹Àú\⁄
+¬à”ù[Xô\éà	‹›XöôX›ôYüKI‹õ›‹Àõ[ô›
+»_Xà›\›€Y\ê€ŸNàX\öŸ]ò[YHX]⁄ÃWKùö[J
+Kà€€X›[€ë]Kà[]ô\ûQ]Kà[]ŒàX]⁄ÃóKà\›[X]YŸZY⁄ŸŒàX]⁄Ã◊Kúô\XŸJÀŸÀàäKàŸ[\ìò[YNàX]⁄ÃWKùö[J
+KàX\öŸ]ò[YKà›[ù[Xô\éààãàö]ô\í[ú›ùX›[€úŒà¬à€€X›[€ì[ô\»»€€X›à	ÿ€€X›[€ì[ô\ﬂXààãàYô\‹»»[]ô\éà	ÿYô\‹ﬂXààãàí[\‹ùYúõ€H[XZ[õŸHãàBàôö[\äõ€€X[äBàöõ⁄[äà0≠»äKàX\[öŒàYô\‹¬à»ŒãÀ›››Àô€€Ÿ€Kò€€K€X\À‹ŸX\ò⁄œÿ\OLIú]Y\ûOIŸ[ò€ŸUTíP€€\€ô[ù
+Yô\‹ _Xàààãà[\‹ù€›\òŸNàë[XZ[õŸHãàJN¬àBàYà
+õ›‹Àõ[ô›
+Hô]\õàõ›‹Œ¬à€€ú›⁄[\HH^ò[YKõX]⁄
+à Œê€€X›[€àúõ€_€€X›[€äW  äœ W ›◊  äœ JŒóü	
+K⁄Kà
+N¬àô]\õà⁄[\Bà»¬à¬à”ù[Xô\éà›XöôX›ôYãà›\›€Y\ê€ŸNà⁄[\VÃóKùö[J
+Kà€€X›[€ë]Kà[]ô\ûQ]Kà[]Œà^ò[YKõX]⁄
+ 
+ W ‹[]⁄JOÀñÃWHåHãàŸ[\ìò[YNà⁄[\VÃWKùö[J
+KàX\öŸ]ò[YKàö]ô\í[ú›ùX›[€úŒà€€X›à	‹⁄[\VÃWKùö[J
+_H0≠»[]ô\éà	‹⁄[\VÃóKùö[J
+_H0≠»[\‹ùYúõ€H[XZ[õŸXàX\[öŒàŒãÀ›››Àô€€Ÿ€Kò€€K€X\À‹ŸX\ò⁄œÿ\OLIú]Y\ûOIŸ[ò€ŸUTíP€€\€ô[ù
+⁄[\VÃóKùö[J
+J_Xà[\‹ù€›\òŸNàë[XZ[õŸHãàKàBàà◊N¬üBôù[ò›[€à€€X›õ€›⁄[ô”[ô\ àò[YNà›ö[ôÀàX\öŸ\éàôY—^àX^[ô\Œàù[Xô\ãäH¬à€€ú›[ô\»Hò[YKú‹]
+óàäN¬à€€ú›[ô^H[ô\Àôö[ô[ô^
 
-  function changeSheet(nextSheet: string) {
-    setSelectedSheet(nextSheet);
-    if (workbook) loadSheetPreview(workbook, nextSheet);
-  }
+[ôJHOàX\öŸ\ãù\›
+[ôJJN¬àYà
+[ô^
+Hô]\õààé¬àô]\õà[ô\¬àú€XŸJ[ô^
+»K[ô^
+»H
+»X^[ô\ BàõX\
 
-  async function submit() {
-    setSubmitting(true);
-    let completed = 0;
-    try {
-      const accessToken = await token();
-      const responses: MasterApplyResponse[] = [];
-      // Keep each request below the Azure gateway window. A whole workbook can
-      // still be applied, but one slow SQL row can no longer stop a 100-row chunk.
-      const batchSize = 25;
-      for (let start = 0; start < records.length; start += batchSize) {
-        const batch = records.slice(start, start + batchSize);
-        setSummary(
-          `Applying ${start + 1}-${start + batch.length} of ${records.length} records‚Ä¶`,
-        );
-        responses.push(await api.applyMasterData(batch, accessToken));
-        completed += batch.length;
-        setSummary(`${completed}/${records.length} records processed‚Ä¶`);
-      }
-      const applied = responses.reduce(
-        (total, response) => total + response.applied,
-        0,
-      );
-      const registered = responses.reduce(
-        (total, response) =>
-          total +
-          (response.registered ??
-            response.results.filter((result) => result.registered).length),
-        0,
-      );
-      const allResults = responses.flatMap((response) => response.results);
-      const failedResults = allResults.filter(
-        (result) => !result.applied && !result.registered,
-      );
-      const failures = failedResults
-        .slice(0, 20)
-        .map(
-          (result) =>
-            `${result.entityType}: ${result.error || "record failed"}`,
-        );
-      const attempted = records.length;
-      const linked = responses.reduce(
-        (total, response) => total + (response.linked || 0),
-        0,
-      );
-      const waiting = Math.max(0, registered - linked);
-      setSummary(
-        `${applied}/${attempted} records are live${linked ? `; ${linked} recovery row${linked === 1 ? "" : "s"} linked` : ""}${waiting ? `; ${waiting} accepted but NOT LIVE because the SQL schema is incomplete` : ""}${failedResults.length ? `; ${failedResults.length} failed: ${failures.slice(0, 12).join("; ")}` : ""}.`,
-      );
-      if (!failedResults.length && !waiting) setRecords([]);
-      onApplied?.();
-    } catch (exception) {
-      const message =
-        exception instanceof Error
-          ? exception.message
-          : "Master-data import failed.";
-      setSummary(
-        `${completed}/${records.length} records completed before the request stopped. ${message} You can safely retry; completed rows will be updated rather than duplicated.`,
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
+[ôJHOà[ôKùö[J
+JBàôö[\ä
+[ôJHOà[ôH	âàK◊ô[]ô\ûK⁄Kù\›
+[ôJJBàöõ⁄[äãäN¬üBôù[ò›[€à\úŸQ[XZ[]Jò[YOŒà›ö[ô H¬à€€ú›^ò[YHHò[YOÀúô\XŸJ ›ôô
+KŸ⁄KàäKùö[J
+N¬àYà
+]^ò[YJHô]\õààé¬à€€ú›⁄]YX\àH◊ÕKÀù\›
+^ò[YJBà»^ò[YBàà	›^ò[Y_H	€ô]»]J
+KôŸ]ù[YX\ä
+_X¬à€€ú›\úŸYHô]»]Jà⁄]YX\ãúô\XŸJà ÃKüJVÀãÀWJÃKüJJŒñÀãÀWJÃãJJOÀÀà
+À^K[€ùYX\äHOÇà	ﬁYX\à»
+›ö[ô YX\äKõ[ô›OOHà»å	ﬁYX\üXàYX\äHàô]»]J
+KôŸ]ù[YX\ä
+_KI‘›ö[ô [€ù
+KúY›\ù
+ãåä_KI‘›ö[ô ^JKúY›\ù
+ãåä_Xà
+Kà
+N¬àô]\õàù[Xô\ãö\”òSä\úŸYôŸ][YJ
+JBà»àÇàà\úŸYù“T”‘›ö[ô 
+Kú€XŸJL
+N¬üBô^‹ùù[ò›[€à‹ô\ú 
+H¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú›‹õ›‹ÀŸ]õ›‹◊HH\ŸT›]O[\‹ùõ›÷◊Oä◊JN¬à€€ú›⁄\‹›Y\ÀŸ]\‹›Y\◊HH\ŸT›]O›ö[ô÷◊Oä◊JN¬à€€ú›€Y\‹ÿYŸKŸ]Y\‹ÿYŸWHH\ŸT›]O›ö[ôœä
+N¬à€€ú›‹›XõZ][ôÀŸ]›XõZ][ô◊HH\ŸT›]Jò[ŸJN¬à€€ú›Ÿ[XZ[^Ÿ][XZ[^HH\ŸT›]JàäN¬àù[ò›[€à›€õÿY[\]J
+H¬à€€ú›€‹öÿõ€⁄»H÷ù][Àòõ€⁄◊€ô] 
+N¬à€€ú›€‹ö‹⁄Y]H÷ù][Àöú€€ó›◊‹⁄Y]
+¬à¬à”ù[Xô\éàî”LLHãà›\›€Y\ê€ŸNàê’T’”QTãLHãà€€X›[€ë]NàååçãLLLàãà[]ô\ûQ]NàååçãLLL»ãà[]ô\ûU⁄[ô›‘›\ù]ŒàååçãLLL’åå
+ÃNåãà[]ô\ûU⁄[ô›—[ô]ŒàååçãLLL’Låå
+ÃNåãà[]Œàéãà]ô\òYŸT[]ŸZY⁄ŸŒàçÕLãà\›[X]YŸZY⁄ŸŒàçåãàŸ[\ìò[YNàë^[\HŸ[\àãàX\öŸ]ò[YNàë^[\HX\öŸ]ãà›[ù[Xô\éàêLLàãàö]ô\í[ú›ùX›[€úŒàëÿ]HXÿŸ\‹»úõ€HNåÃãàX\[öŒàöŒãÀ€X\Àô€€Ÿ€Kò€€Kœ‹OMLÀçLãåççàãàKàJN¬à€‹ö‹⁄Y]»àX€€»óHHÀããô^X›Y€€[[úÀããõX\öŸ]€€[[ú◊KõX\
+à
+€€[[äHOà
+»ÿ⁄àX]õX^
+€€[[ãõ[ô›
+»ÀN
+HJKà
+N¬à÷ù][Àòõ€⁄◊ÿ\[ô‹⁄Y]
+€‹öÿõ€⁄À€‹ö‹⁄Y]ì‹ô\ú»äN¬à÷ù‹ö]Qö[J€‹öÿõ€⁄Àú€[‹ô\ãZ[\‹ù][\]KûﬁäN¬àBàù[ò›[€àXÿŸ\õ›‹ \úŸYà[\‹ùõ›÷◊JH¬à€€ú›€X[ôYH\úŸYàõX\
 
-  const title =
-    mode === "all" ? "Import master-data workbook" : `Import ${mode}`;
-  return (
-    <div className="panel import-panel master-import">
-      <h2>{title}</h2>
-      <p>
-        {mode === "all"
-          ? "Upload the Transport Operations master workbook. Its worksheets appear below like Excel so you can review and correct cells before writing the recognised rows to live Master Data."
-          : `Upload the master workbook. The familiar worksheet tabs remain visible, while this page only applies recognised ${mode} records.`}
-      </p>
-      <input
-        type="file"
-        accept=".xlsx,.xls,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-        onChange={(event) => void selectWorkbook(event.target.files?.[0])}
-      />
-      {sheetNames.length > 0 && (
-        <>
-          <div
-            className="excel-sheet-tabs"
-            role="tablist"
-            aria-label="Workbook sheets"
-          >
-            {sheetNames.map((sheet) => (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={selectedSheet === sheet}
-                className={selectedSheet === sheet ? "active" : ""}
-                key={sheet}
-                onClick={() => changeSheet(sheet)}
-              >
-                {sheet}
-              </button>
-            ))}
-          </div>
-          <div className="excel-grid-wrap">
-            <table className="excel-grid">
-              <thead>
-                <tr>
-                  <th className="excel-corner" />
-                  {(previewRows[0] || []).map((_, column) => (
-                    <th key={column}>{XLSX.utils.encode_col(column)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {previewRows.map((row, rowIndex) => (
-                  <tr key={rowIndex}>
-                    <th>{rowIndex + 1}</th>
-                    {row.map((cell, columnIndex) => (
-                      <td key={columnIndex}>
-                        <input
-                          aria-label={`${selectedSheet} ${XLSX.utils.encode_col(columnIndex)}${rowIndex + 1}`}
-                          value={cell}
-                          onChange={(event) =>
-                            editCell(rowIndex, columnIndex, event.target.value)
-                          }
-                          onBlur={(event) =>
-                            commitCell(
-                              rowIndex,
-                              columnIndex,
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {previewRows.length >= 300 && (
-            <p className="hint">
-              Showing the first 300 rows of this worksheet. All rows remain
-              included when Master Data is applied.
-            </p>
-          )}
-        </>
-      )}
-      <p className="hint">
-        Edit a cell and move out of it to re-check the workbook. Driver ordering
-        remains full-time, casual, LTD, then agency.
-      </p>
-      {summary && <p className="notice inline-notice">{summary}</p>}
-      {issues.length > 0 && (
-        <div className="import-issues">
-          <strong>Import notes</strong>
-          <ul>
-            {issues.slice(0, 12).map((issue) => (
-              <li key={issue}>{issue}</li>
-            ))}
-          </ul>
-          {issues.length > 12 && (
-            <small>{issues.length - 12} more notes hidden.</small>
-          )}
-        </div>
-      )}
-      {records.length > 0 && (
-        <div className="excel-apply-bar">
-          <span>
-            <strong>{records.length}</strong> recognised record
-            {records.length === 1 ? "" : "s"} across the workbook
-          </span>
-          <button
-            className="primary"
-            disabled={submitting}
-            onClick={() => void submit()}
-          >
-            {submitting
-              ? "Applying..."
-              : `Apply ${records.length} records to Master Data`}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
+õ›À[ô^
+HOÇà€X[ì‹ô\îõ› õ›À[ô^õ›Àö[\‹ù€›\òŸHï\ÿYY‹ô\àö[HäKà
+Bàôö[\ä
+õ› Nàõ›»\»[\‹ùõ›»Oàõ€€X[äõ› JN¬àYà
+X€X[ôYõ[ô›
+H¬àŸ]õ›‹ ◊JN¬àŸ]Y\‹ÿYŸJàìõ»\ÿXõH‹ô\ú»Ÿ\ôHõ›[ôà⁄X⁄»H⁄Y]\»H]H\»›\›€Y\ãX\öŸ]Ÿ[\à‹à[]ô\ûH[ôõ‹õX][€ãàãà
+N¬àô]\õé¬àBà€€ú›ò[Y][€í\‹›Y\»Hò[Y]R[\‹ùõ›‹ €X[ôY
+N¬àŸ]õ›‹ ò[Y][€í\‹›Y\Àõ[ô›»◊Hà€X[ôY
+N¬àŸ]\‹›Y\ ò[Y][€í\‹›Y\ N¬àŸ]Y\‹ÿYŸJàò[Y][€í\‹›Y\Àõ[ô›à»[ôYö[ôYàà	ÿ€X[ôYõ[ô›H‹ô\âÿ€X[ôYõ[ô›OOHH»àààú»üHôXYH»›XõZ]òà
+N¬àBà\ﬁ[ò»ù[ò›[€àŸ[X›ö[Jö[OŒàö[JH¬àYà
+Yö[JHô]\õé¬àŸ]Y\‹ÿYŸJ[ôYö[ôY
+N¬àŸ]\‹›Y\ ◊JN¬àûH¬à€€ú›^[ú⁄[€àHö[Kõò[YKú‹]
+ãàäKú‹
 
-function preferredSheet(workbook: XLSX.WorkBook, mode: MasterImportMode) {
-  if (mode === "all") return "";
-  const hints: Record<Exclude<MasterImportMode, "all">, string[]> = {
-    drivers: ["drivers", "driver", "rota", "employee"],
-    vehicles: ["vehiclesfuel", "vehicles", "cabphone", "fuel", "fleet"],
-    trailers: ["trailers", "trailer"],
-    sites: ["sites", "site", "crm", "contacts", "customers"],
-    markets: ["covent", "spit", "spitalfields", "western", "market"],
-    contacts: ["contacts", "crm", "customer"],
-    fuel: ["fuelprice", "fuelprices", "fueltrend"],
-  };
-  return (
-    workbook.SheetNames.find((sheet) =>
-      hints[mode].some((hint) => normaliseHeader(sheet).includes(hint)),
-    ) ||
-    workbook.SheetNames[0] ||
-    ""
-  );
-}
+OÀù”›Ÿ\êÿ\ŸJ
+N¬à]\úŸYà[\‹ùõ›÷◊HH◊N¬àYà
+^[ú⁄[€àOOHò‹›àäH\úŸYH\úŸP‹›ä]ÿZ]ö[Kù^
 
-function filterMasterRecords(
-  mapped: { records: StageBatchRequest[]; issues: string[] },
-  mode: MasterImportMode,
-) {
-  if (mode === "all") return mapped;
-  const allowed: Record<Exclude<MasterImportMode, "all">, string[]> = {
-    drivers: ["driver"],
-    vehicles: ["vehicle", "trailer"],
-    trailers: ["trailer"],
-    sites: ["site", "customer", "customercontact"],
-    markets: ["marketcontact"],
-    contacts: ["customer", "customercontact"],
-    fuel: ["fuelprice"],
-  };
-  const records = mapped.records.filter((record) =>
-    allowed[mode].includes(record.entityType),
-  );
-  const issues = mapped.issues.filter((issue) =>
-    mode === "drivers"
-      ? /driver/i.test(issue)
-      : mode === "vehicles"
-        ? /vehicle/i.test(issue)
-        : false,
-  );
-  return { records, issues };
-}
+JN¬à[ŸHYà
+»ûﬁãû»ãû€HóKö[ò€Y\ ^[ú⁄[€ààäJH¬à€€ú›€‹öÿõ€⁄»H÷úôXY
+]ÿZ]ö[Kò\úò^PùYôô\ä
+K¬à\Nàò\úò^HãàŸ[]\ŒàùYKàJN¬à\úŸYH\úŸS‹ô\ï€‹öÿõ€⁄ €‹öÿõ€⁄ N¬àYà
+\\úŸYõ[ô›
+H¬à€€ú›⁄Y]H€‹öÿõ€⁄Àî⁄Y]÷›€‹öÿõ€⁄Àî⁄Y]ò[Y\÷ÃWN¬à\úŸYH÷ù][¬àú⁄Y]›◊⁄ú€€èôX€‹ô›ö[ôÀ[ö€õ›€èèä⁄Y]»Yùò[àààJBàõX\
 
-function mapMasterWorkbook(workbook: XLSX.WorkBook): {
-  records: StageBatchRequest[];
-  issues: string[];
-} {
-  const issues: string[] = [];
-  const records: StageBatchRequest[] = [];
-  const add = (
-    entityType: string,
-    key: string,
-    payload: StageBatchRequest["payload"],
-  ) => {
-    const normalKey = key
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-");
-    if (!normalKey) return;
-    const idempotencyKey = `master:${entityType}:${normalKey}`;
-    const existingIndex = records.findIndex(
-      (record) => record.idempotencyKey === idempotencyKey,
-    );
-    const record = {
-      entityType,
-      idempotencyKey,
-      source: "SLH Transport Operations Master Data workbook",
-      payload,
-    };
-    if (existingIndex >= 0) records[existingIndex] = record;
-    else records.push(record);
-  };
-  const active = (row: SheetRow) => {
-    const value = text(
-      read(row, "Active") || read(row, "Status") || "Yes",
-    ).toLowerCase();
-    return ![
-      "no",
-      "n",
-      "false",
-      "inactive",
-      "terminated",
-      "left",
-      "leaver",
-      "deleted",
-    ].includes(value);
-  };
+õ› HOÇàÿöôX›ôúõ€Q[ùöY\ àÿöôX›ô[ùöY\ õ› KõX\
 
-  const driverRows = driverSheetRows(workbook);
-  const vehicleRows = vehicleSheetRows(workbook);
-  const trailerRows = sheetRows(
-    workbook,
-    ["Trailers", "Trailer Master"],
-    ["Trailer", "Type", "Standard Capacity"],
-  );
-  const siteRows = sheetRows(
-    workbook,
-    ["Sites", "Site Master", "Customers", "Collections", "Site Contacts"],
-    ["SiteID", "Site", "Collection Address", "Customer", "Name"],
-  );
-  const contactRows = sheetRows(
-    workbook,
-    ["Customer Contacts", "CRM", "Contacts", "Customers", "Site Contacts"],
-    ["Customer", "Contact Name", "Name", "Email", "E-mail"],
-  );
+⁄Ÿ^Kò[YWJHOà¬àŸ^Kùö[J
+Kà‹ô\êŸ[
+ò[YJKàJKà
+Kà
+N¬àBàBàXÿŸ\õ›‹ \úŸY
+N¬àHÿ]⁄¬àŸ]õ›‹ ◊JN¬àŸ]Y\‹ÿYŸJàïH€‹öÿõ€⁄»€›[õ›ôHôXYà\ŸHHö\ú›€‹ö‹⁄Y]⁄]HXY\àõ›Ààãà
+N¬àBàBàù[ò›[€à\úŸQ[XZ[
 
-  for (const row of driverRows) {
-    const displayName = driverDisplayName(row);
-    const employeeNumber =
-      firstText(row, [
-        "DriverID",
-        "Driver ID",
-        "Employee Number",
-        "Employee No",
-        "EmployeeNumber",
-        "Payroll Number",
-        "Payroll No",
-        "Sage Employee Number",
-        "Sage ID",
-        "Employee ID",
-        "Emp No",
-      ]) || driverKey(displayName);
-    if (!employeeNumber || !displayName || !active(row)) continue;
-    add("driver", employeeNumber, {
-      employeeNumber,
-      displayName,
-      tachoName: firstText(row, [
-        "Tacho Name",
-        "TachoName",
-        "Tachomaster Name",
-        "Tacho Master Name",
-        "Tacho",
-        "Card Name",
-      ]),
-      mobileNumber: normalisePhone(
-        firstText(row, [
-          "Phone Number",
-          "Mobile Number",
-          "Mobile",
-          "Driver Phone",
-          "Text Number",
-        ]),
-      ),
-      driverType:
-        firstText(row, ["Driver Type", "Employment Type", "Type"]) ||
-        "Full Time",
-      driverGroup: firstText(row, [
-        "Driver Group",
-        "Group",
-        "Agency",
-        "Planner Group",
-      ]),
-      skills: firstText(row, [
-        "Driver Skills",
-        "Skills",
-        "Licence",
-        "Licence Type",
-      ]),
-      coding: firstText(row, ["Coding", "Driver Coding"]),
-      agencyName: firstText(row, ["Agency Name", "Agency"]),
-      northEligible: yesNo(read(row, "North Eligible")),
-      preloadEligible: yesNo(read(row, "Preload Eligible")),
-      notes: firstText(row, ["Notes", "Comments"]),
-      tachoMasterDriverId: firstText(row, [
-        "Tachomaster Driver ID",
-        "TachoMaster Driver ID",
-      ]),
-      drivingLicenceNumber: firstText(row, [
-        "Driving Licence Number",
-        "Licence Number",
-      ]),
-      licenceExpiry: orderDate(read(row, "Licence Expiry")),
-      licenceStatus: firstText(row, ["Licence Status"]),
-      active: true,
-    });
-  }
-  for (const row of vehicleRows) {
-    const registration = firstText(row, [
-      "Registration",
-      "Reg",
-      "Reg No",
-      "Registration Number",
-      "Vehicle Registration",
-      "Vehicle Reg",
-      "Number Plate",
-      "Plate",
-    ])
-      .replace(/\s+/g, "")
-      .toUpperCase();
-    if (!registration || /^C\d{5,}$/i.test(registration) || !active(row)) continue;
-    const fuelPin = firstText(row, [
-      "Fuel PIN",
-      "Fuel Pin",
-      "Fuel Card PIN",
-      "PIN",
-    ]);
-    add("vehicle", registration, {
-      registration,
-      fleetNumber: firstText(row, ["Fleet Number", "Fleet No", "FleetNumber"]),
-      fleetioId: firstText(row, [
-        "Fleetio ID",
-        "FleetioId",
-        "Fleetio Vehicle ID",
-        "Fleetio VehicleId",
-      ]),
-      fleetioName: firstText(row, ["Fleetio Name", "FleetioName"]),
-      fleetioStatus: firstText(row, ["Fleetio Status", "FleetioStatus"]),
-      abbreviation:
-        firstText(row, ["Abbreviation", "Short Reg", "Reg Last 3"]) ||
-        registration.slice(-3),
-      transmission: firstText(row, ["Transmission", "Gearbox"]),
-      dvsCompliant: yesNo(read(row, "DVS") || read(row, "DVS Compliant")),
-      fuelProvider: bestFuelProvider(row),
-      cabMobile: normalisePhone(
-        firstText(row, [
-          "Cab Mobile",
-          "Cab Phone",
-          "Cab Phone Number",
-          "Cab Telephone",
-          "Mobile",
-          "Phone",
-        ]),
-      ),
-      fuelPin,
-      shellCard: firstText(row, ["Shell Card", "Shell"]),
-      bpRedCard: firstText(row, ["BP Red Card", "BP Red"]),
-      bpPlainCard: firstText(row, ["BP Plain Card", "BP Plain"]),
-      notes: firstText(row, ["Notes", "Comments"]),
-      fuelPinSecretName: fuelPin
-        ? `vehicle-${registration.toLowerCase()}-fuel-pin`
-        : undefined,
-      fuelCardLastFour: lastFour(
-        read(row, "BP Plain Card") ||
-          read(row, "BP Red Card") ||
-          read(row, "Shell Card"),
-      ),
-      active: true,
-    });
-  }
-  for (const row of trailerRows) {
-    const trailerNumber = text(read(row, "Trailer"));
-    if (!trailerNumber || !active(row)) continue;
-    add("trailer", trailerNumber, {
-      trailerNumber,
-      type: text(read(row, "Type")),
-      standardCapacity: numberValue(read(row, "Standard Capacity")),
-      euroCapacity: numberValue(read(row, "Euro Capacity")),
-      notes: firstText(row, ["Notes", "Comments"]),
-      active: true,
-    });
-  }
-  for (const row of siteRows) {
-    const externalCode = firstText(row, [
-      "SiteID",
-      "Site ID",
-      "Site",
-      "Site Name",
-      "Customer Code",
-      "Customer",
-      "Account Code",
-      "Code",
-    ]);
-    const name = firstText(row, [
-      "Site",
-      "Site Name",
-      "Customer Name",
-      "Name",
-      "Collection Site",
-    ]);
-    if (!externalCode || !name || !active(row)) continue;
-    add("customer", externalCode, { code: externalCode, name, active: true });
-    add("site", externalCode, {
-      externalCode,
-      name,
-      driverTextName: text(read(row, "Driver Text Name")) || name,
-      aliases: firstText(row, ["Aliases", "Alternative Names"]),
-      collectionAddress: text(read(row, "Collection Address")),
-      collectionInstructions: text(
-        read(row, "Collection Notes / Instructions"),
-      ),
-      mapLink: text(read(row, "Map Link")),
-      customField1: text(read(row, "Custom Field 1")),
-      customField2: text(read(row, "Custom Field 2")),
-      customField3: text(read(row, "Custom Field 3")),
-      active: true,
-    });
-  }
-  for (const row of contactRows) {
-    const customerCode = firstText(row, [
-      "Customer",
-      "Customer Code",
-      "SiteID",
-      "Site ID",
-      "Account Code",
-      "Code",
-    ]);
-    const customerName =
-      firstText(row, [
-        "Customer Name",
-        "Site Name",
-        "Customer",
-        "Site",
-        "Account Name",
-      ]) || customerCode;
-    const name =
-      firstText(row, ["Contact Name", "Contact", "Name", "Site Contact"]) ||
-      customerName;
-    const email = firstText(row, [
-      "Email",
-      "E-mail",
-      "Email Address",
-      "ETA Email",
-    ]);
-    if (!customerCode || !name || !active(row)) continue;
-    add("customer", customerCode, {
-      code: customerCode,
-      name: customerName,
-      active: true,
-    });
-    add("customercontact", `${customerCode}-${name}-${email}`, {
-      customerCode,
-      customerName,
-      name,
-      email,
-      mobileNumber: normalisePhone(
-        firstText(row, ["Phone", "Mobile", "Mobile Number", "Telephone"]),
-      ),
-      receivesEtaUpdates: Boolean(email),
-      active: true,
-    });
-  }
-  records.push(...marketContactRecords(workbook));
-  records.push(...fuelPriceRecords(workbook));
-  if (!driverRows.length)
-    issues.push(
-      "No driver rows recognised. Check the workbook has DriverID/Driver headings.",
-    );
-  if (!vehicleRows.length)
-    issues.push(
-      "No vehicle rows recognised. Check the workbook has Registration headings.",
-    );
-  return { records, issues };
-}
+H¬àŸ]Y\‹ÿYŸJ[ôYö[ôY
+N¬àŸ]\‹›Y\ ◊JN¬à€€ú›\úŸYH\úŸQ[XZ[‹ô\ú [XZ[^
+N¬àXÿŸ\õ›‹ \úŸY
+N¬àBà\ﬁ[ò»ù[ò›[€à›XõZ]
 
-function sheetRows(
-  workbook: XLSX.WorkBook,
-  names: string[],
-  requiredHeaders: string[],
-): SheetRow[] {
-  const candidateSheets = matchingSheets(workbook, names);
-  const wanted = requiredHeaders.map(normaliseHeader);
-  const minimumMatches = wanted.length > 1 ? 2 : 1;
-  const result: SheetRow[] = [];
-  for (const candidate of candidateSheets) {
-    const rows = XLSX.utils.sheet_to_json<
-      Array<string | number | boolean | Date | undefined>
-    >(workbook.Sheets[candidate], { header: 1, defval: "", blankrows: false });
-    const headerIndex = rows.findIndex((row) => {
-      const headers = row.map(normaliseHeader);
-      return (
-        wanted.filter((header) => headers.includes(header)).length >=
-        minimumMatches
-      );
-    });
-    if (headerIndex < 0) continue;
-    const headers = rows[headerIndex].map((value) => text(value));
-    result.push(
-      ...rows
-        .slice(headerIndex + 1)
-        .map(
-          (row) =>
-            Object.fromEntries(
-              headers.map((header, index) => [header, row[index]]),
-            ) as SheetRow,
-        )
-        .filter((row) => Object.values(row).some((value) => text(value))),
-    );
-  }
-  return result;
-}
-function vehicleSheetRows(workbook: XLSX.WorkBook): SheetRow[] {
-  const candidateSheets = matchingSheets(workbook, [
-    "Vehicles & Fuel",
-    "Vehicles",
-    "Fleet",
-    "Cab Phone Numbers",
-    "Fuel",
-    "Vehicle Master",
-  ]);
-  const result: SheetRow[] = [];
-  const registrationHeaders = new Set([
-    "registration",
-    "reg",
-    "regno",
-    "registrationnumber",
-    "vehicleregistration",
-    "vehiclereg",
-    "numberplate",
-    "plate",
-  ]);
-  const vehicleContextHeaders = new Set([
-    "vehicleid",
-    "fleetnumber",
-    "fleetno",
-    "abbreviation",
-    "transmission",
-    "dvs",
-    "dvscompliant",
-    "cabmobile",
-    "cabphone",
-    "cabphonenumber",
-    "fuelpin",
-    "fuelcardpin",
-    "shellcard",
-    "bpredcard",
-    "bpplaincard",
-    "fuelprovider",
-    "fleetioid",
-    "fleetiovehicleid",
-    "fleetioname",
-    "fleetiostatus",
-  ]);
-  for (const candidate of candidateSheets) {
-    const rows = XLSX.utils.sheet_to_json<
-      Array<string | number | boolean | Date | undefined>
-    >(workbook.Sheets[candidate], { header: 1, defval: "", blankrows: false });
-    const headerIndex = rows.findIndex((row) => {
-      const headers = row.map((value) => normaliseHeader(text(value)));
-      const hasRegistration = headers.some((header) =>
-        registrationHeaders.has(header),
-      );
-      const contextMatches = headers.filter((header) =>
-        vehicleContextHeaders.has(header),
-      ).length;
-      return (
-        hasRegistration && (contextMatches > 0 || candidateSheets.length === 1)
-      );
-    });
-    if (headerIndex < 0) continue;
-    const headers = rows[headerIndex].map((value) => text(value));
-    result.push(
-      ...rows
-        .slice(headerIndex + 1)
-        .map(
-          (row) =>
-            Object.fromEntries(
-              headers.map((header, index) => [header, row[index]]),
-            ) as SheetRow,
-        )
-        .filter(
-          (row) =>
-            Object.values(row).some((value) => text(value)) &&
-            firstText(row, [
-              "Registration",
-              "Reg",
-              "Reg No",
-              "Registration Number",
-              "Vehicle Registration",
-              "Vehicle Reg",
-              "Number Plate",
-              "Plate",
-            ]),
-        ),
-    );
-  }
-  return result;
-}
-function driverSheetRows(workbook: XLSX.WorkBook): SheetRow[] {
-  const candidateSheets = matchingSheets(workbook, [
-    "Drivers",
-    "Driver Master",
-    "Driver List",
-    "Rota",
-    "Driver Rota",
-    "Employees",
-    "Master Data",
-  ]);
-  const result: SheetRow[] = [];
-  for (const candidate of candidateSheets) {
-    const rows = XLSX.utils.sheet_to_json<
-      Array<string | number | boolean | Date | undefined>
-    >(workbook.Sheets[candidate], { header: 1, defval: "", blankrows: false });
-    const headerIndex = rows.findIndex((row) => driverHeaderScore(row) >= 2);
-    if (headerIndex < 0) continue;
-    const headers = rows[headerIndex].map((value) => text(value));
-    const mapped = rows
-      .slice(headerIndex + 1)
-      .map(
-        (row) =>
-          Object.fromEntries(
-            headers.map((header, index) => [header, row[index]]),
-          ) as SheetRow,
-      )
-      .filter((row) => Object.values(row).some((value) => text(value)));
-    const usable = mapped.filter((row) => driverDisplayName(row));
-    result.push(...usable);
-  }
-  return result;
-}
-function driverHeaderScore(
-  row: Array<string | number | boolean | Date | undefined>,
-) {
-  const headers = row.map((value) => normaliseHeader(text(value)));
-  const hasName = headers.some((header) =>
-    [
-      "driver",
-      "drivers",
-      "drivername",
-      "displayname",
-      "name",
-      "fullname",
-      "employeename",
-    ].includes(header),
-  );
-  const hasEmployee = headers.some((header) =>
-    [
-      "driverid",
-      "employeeid",
-      "employeenumber",
-      "employeeno",
-      "empno",
-      "payrollnumber",
-      "payrollno",
-      "sageid",
-      "sageemployeenumber",
-    ].includes(header),
-  );
-  const hasDriverContext = headers.some((header) =>
-    [
-      "tachoname",
-      "tachomastername",
-      "tacho",
-      "cardname",
-      "drivertype",
-      "employmenttype",
-      "drivergroup",
-      "mobile",
-      "mobilenumber",
-      "phonenumber",
-    ].includes(header),
-  );
-  return Number(hasName) + Number(hasEmployee) + Number(hasDriverContext);
-}
-function matchingSheets(workbook: XLSX.WorkBook, names: string[]) {
-  const normalisedNames = names.map(normaliseHeader);
-  const matches = workbook.SheetNames.filter((sheet) =>
-    normalisedNames.some(
-      (name) =>
-        normaliseHeader(sheet) === name ||
-        normaliseHeader(sheet).includes(name) ||
-        name.includes(normaliseHeader(sheet)),
-    ),
-  );
-  return matches.length ? matches : workbook.SheetNames;
-}
-function marketContactRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
-  const records: StageBatchRequest[] = [];
-  const seen = new Set<string>();
-  const addMarketContact = (
-    source: string,
-    market: string,
-    sellerValue: string,
-    salesmanValue?: string,
-    senderValue?: string,
-    palletsValue?: unknown,
-  ) => {
-    const parsed = parseSellerStand(sellerValue);
-    if (
-      !parsed.name ||
-      /^\d+$/.test(parsed.name) ||
-      ["total", "totals", "salesmen", "salesman", "seller", "sellers"].includes(
-        normaliseHeader(parsed.name),
-      )
-    )
-      return;
-    const sender = text(senderValue);
-    const salesman = text(salesmanValue) || parsed.name;
-    const key =
-      `master:marketcontact:${market}-${parsed.name}-${parsed.standOrLocation || ""}-${sender || salesman}`
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-");
-    if (seen.has(key)) return;
-    seen.add(key);
-    records.push({
-      entityType: "marketcontact",
-      idempotencyKey: key,
-      source,
-      payload: {
-        market,
-        name: parsed.name,
-        standOrLocation: parsed.standOrLocation,
-        salesman,
-        sender,
-        pallets: numberValue(palletsValue),
-        active: true,
-      },
-    });
-  };
-  for (const candidate of workbook.SheetNames) {
-    const market = marketFromSheetName(candidate);
-    if (!market) continue;
-    const rows = XLSX.utils.sheet_to_json<
-      Array<string | number | boolean | Date | undefined>
-    >(workbook.Sheets[candidate], { header: 1, defval: "", blankrows: false });
-    const headerIndex = rows.findIndex((row) => {
-      const headings = row.map((value) => normaliseHeader(text(value)));
-      return (
-        headings.some((heading) =>
-          [
-            "salesmen",
-            "salesman",
-            "salesperson",
-            "seller",
-            "sellername",
-            "sellers",
-            "grower",
-            "vendor",
-            "name",
-          ].includes(heading),
-        ) && headings.includes("sender")
-      );
-    });
-    if (headerIndex < 0) continue;
-    const headings = rows[headerIndex].map((value) =>
-      normaliseHeader(text(value)),
-    );
-    const sellerColumn = headings.findIndex((heading) =>
-      ["seller", "sellername", "sellers", "grower", "vendor", "name"].includes(
-        heading,
-      ),
-    );
-    const salesmanColumn = headings.findIndex((heading) =>
-      ["salesmen", "salesman", "salesperson"].includes(heading),
-    );
-    const stallColumn = headings.findIndex((heading) =>
-      [
-        "stall",
-        "stallnumber",
-        "stand",
-        "standnumber",
-        "standlocation",
-        "location",
-      ].includes(heading),
-    );
-    const palletsColumn = headings.findIndex((heading) =>
-      ["pallets", "pallet", "plt", "plts"].includes(heading),
-    );
-    const senderColumn = headings.findIndex((heading) => heading === "sender");
-    rows.slice(headerIndex + 1).forEach((row) => {
-      const sellerCell = text(
-        row[sellerColumn >= 0 ? sellerColumn : salesmanColumn],
-      );
-      const stall = stallColumn >= 0 ? text(row[stallColumn]) : "";
-      const sellerWithStall =
-        sellerCell && stall && !sellerCell.includes(stall)
-          ? `${sellerCell} (${stall})`
-          : sellerCell;
-      addMarketContact(
-        `SLH ${candidate} market tab`,
-        market,
-        sellerWithStall,
-        salesmanColumn >= 0 ? text(row[salesmanColumn]) : "",
-        senderColumn >= 0 ? text(row[senderColumn]) : "",
-        palletsColumn >= 0 ? row[palletsColumn] : undefined,
-      );
-    });
-  }
-  const candidateSheets = matchingSheets(workbook, [
-    "Market Contacts",
-    "Markets",
-    "Market Sellers",
-    "Market",
-  ]);
-  for (const candidate of candidateSheets) {
-    const rows = XLSX.utils.sheet_to_json<
-      Array<string | number | boolean | Date | undefined>
-    >(workbook.Sheets[candidate], { header: 1, defval: "", blankrows: false });
-    const headerIndex = rows.findIndex(
-      (row) =>
-        row
-          .map((value) => marketLabel(text(value)))
-          .some((label) => ["Western", "Spit", "Covent"].includes(label)) ||
-        row.map((value) => normaliseHeader(text(value))).includes("sender"),
-    );
-    if (headerIndex < 0) continue;
-    const headings = (rows[headerIndex] || []).map((value) => text(value));
-    const marketColumns = headings.flatMap((heading, index) => {
-      const label = marketLabel(heading);
-      return ["Western", "Spit", "Covent"].includes(label)
-        ? [{ market: label, valueColumn: index, salesmanColumn: index + 1 }]
-        : [];
-    });
-    const senderColumn = headings.findIndex(
-      (heading) => normaliseHeader(heading) === "sender",
-    );
-    rows.slice(headerIndex + 1).forEach((row) => {
-      for (const item of marketColumns) {
-        const sellerCell = text(row[item.valueColumn]);
-        const salesman = text(row[item.salesmanColumn]);
-        addMarketContact(
-          "SLH Transport Operations Master Data workbook",
-          item.market,
-          sellerCell,
-          salesman,
-        );
-      }
-      if (senderColumn >= 0) {
-        const sender = text(row[senderColumn]);
-        if (sender) {
-          const parsed = parseSellerStand(sender);
-          const key = `master:marketcontact:Sender-${parsed.name}`
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-");
-          if (!seen.has(key)) {
-            seen.add(key);
-            records.push({
-              entityType: "marketcontact",
-              idempotencyKey: key,
-              source: "SLH Transport Operations Master Data workbook",
-              payload: {
-                market: "Sender",
-                name: parsed.name,
-                standOrLocation: parsed.standOrLocation,
-                active: true,
-              },
-            });
-          }
-        }
-      }
-    });
-  }
-  return records;
-}
-function fuelPriceRecords(workbook: XLSX.WorkBook): StageBatchRequest[] {
-  const rows = sheetRows(
-    workbook,
-    [
-      "Fuel Price Updates",
-      "Fuel Price History",
-      "Fuel Trend Data",
-      "Fuel Prices",
-    ],
-    [
-      "Provider",
-      "PricePencePerLitre",
-      "WeekCommencing",
-      "Week Commencing",
-      "Price",
-    ],
-  );
-  const records: StageBatchRequest[] = [];
-  const seen = new Set<string>();
-  for (const row of rows) {
-    const provider = firstText(row, [
-      "Provider",
-      "Supplier",
-      "Fuel Provider",
-      "Card Provider",
-    ]);
-    const weekCommencing = dateText(
-      read(row, "WeekCommencing") ||
-        read(row, "Week Commencing") ||
-        read(row, "Date") ||
-        read(row, "Week"),
-    );
-    const pricePencePerLitre = numberValue(
-      read(row, "PricePencePerLitre") ||
-        read(row, "Price Pence Per Litre") ||
-        read(row, "Pence/Litre") ||
-        read(row, "PPL") ||
-        read(row, "Price"),
-    );
-    if (!provider || !weekCommencing || pricePencePerLitre === undefined)
-      continue;
-    const idempotencyKey = `master:fuelprice:${provider}-${weekCommencing}`
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-");
-    if (seen.has(idempotencyKey)) continue;
-    seen.add(idempotencyKey);
-    records.push({
-      entityType: "fuelprice",
-      idempotencyKey,
-      source: "SLH Transport Operations Master Data workbook",
-      payload: {
-        provider,
-        weekCommencing,
-        pricePencePerLitre,
-        isPricingMaximum: yesNo(
-          read(row, "IsPricingMaximum") ||
-            read(row, "Pricing Maximum") ||
-            read(row, "Max"),
-        ),
-        source: firstText(row, ["Source", "Sheet"]) || "Master workbook",
-        notes: firstText(row, ["Notes", "Comment"]),
-        active: true,
-      },
-    });
-  }
-  return records;
-}
-function parseSellerStand(value: string) {
-  const match = value.match(/^(.*)\((.*)\)$/);
-  return {
-    name: (match?.[1] || value).trim(),
-    standOrLocation: match?.[2]?.trim(),
-  };
-}
-function marketLabel(value: string) {
-  const normalised = normaliseHeader(value);
-  return normalised.includes("western")
-    ? "Western"
-    : normalised.includes("spit")
-      ? "Spit"
-      : normalised.includes("covent")
-        ? "Covent"
-        : normalised === "sender"
-          ? "Sender"
-          : value.trim();
-}
-function marketFromSheetName(value: string) {
-  const normalised = normaliseHeader(value);
-  if (normalised.includes("covent")) return "Covent";
-  if (normalised.includes("spit") || normalised.includes("spitalfields"))
-    return "Spit";
-  if (normalised.includes("western") || normalised.startsWith("west"))
-    return "Western";
-  if (normalised.includes("brighton")) return "Brighton";
-  return undefined;
-}
-function driverKey(value: string) {
-  return value
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-function scopedImportKey(
-  record: StageBatchRequest,
-  importRun: string,
-  index: number,
-) {
-  const entity = record.entityType
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .slice(0, 24);
-  const payloadKey = String(
-    record.payload.employeeNumber ||
-      record.payload.registration ||
-      record.payload.trailerNumber ||
-      record.payload.externalCode ||
-      record.payload.customerCode ||
-      record.payload.name ||
-      index,
-  )
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 96);
-  return `master:${entity}:${payloadKey || index}:run:${importRun}:${index}`;
-}
-function summariseBatch(records: StageBatchRequest[]) {
-  const counts = records.reduce<Record<string, number>>(
-    (total, record) => ({
-      ...total,
-      [record.entityType]: (total[record.entityType] || 0) + 1,
-    }),
-    {},
-  );
-  return Object.entries(counts)
-    .map(([type, count]) => `${count} ${type}`)
-    .join(", ");
-}
-function read(row: SheetRow, key: string) {
-  const exact = row[key];
-  if (exact !== undefined) return exact;
-  const wanted = normaliseHeader(key);
-  const match = Object.entries(row).find(
-    ([header]) => normaliseHeader(header) === wanted,
-  );
-  return match?.[1];
-}
-function firstText(row: SheetRow, keys: string[]) {
-  for (const key of keys) {
-    const value = text(read(row, key));
-    if (value) return value;
-  }
-  return "";
-}
-function driverDisplayName(row: SheetRow) {
-  const candidates = [
-    "Driver",
-    "Driver Name",
-    "Drivers",
-    "Display Name",
-    "Employee Name",
-    "Full Name",
-    "Name",
-  ]
-    .map((key) => firstText(row, [key]))
-    .filter(Boolean);
-  return candidates.find((value) => !looksLikeEmployeeNumber(value)) || "";
-}
-function looksLikeEmployeeNumber(value: string) {
-  const compact = value.replace(/\s+/g, "");
-  return (
-    /^\d+$/.test(compact) ||
-    /^e?mp?\d+$/i.test(compact) ||
-    /^[a-z]{0,4}\d{3,}$/i.test(compact)
-  );
-}
-function text(value: unknown) {
-  return String(value ?? "").trim();
-}
-function dateText(value: unknown) {
-  if (value instanceof Date && !Number.isNaN(value.getTime()))
-    return value.toISOString().slice(0, 10);
-  const raw = text(value);
-  if (!raw) return "";
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime())
-    ? raw
-    : parsed.toISOString().slice(0, 10);
-}
-function numberValue(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-function yesNo(value: unknown) {
-  const normalised = text(value).toLowerCase();
-  return normalised ? ["yes", "y", "true"].includes(normalised) : undefined;
-}
-function normalisePhone(value: unknown) {
-  return text(value).replace(/[^\d+]/g, "");
-}
-function lastFour(value: unknown) {
-  const digits = text(value).replace(/\D/g, "");
-  return digits ? digits.slice(-4) : undefined;
-}
-function bestFuelProvider(row: SheetRow) {
-  if (read(row, "Shell Card")) return "Shell";
-  if (read(row, "BP Red Card") || read(row, "BP Plain Card")) return "BP";
-  return undefined;
-}
-function CoreMasterDataForm() {
-  const token = useAccessToken();
-  const [entity, setEntity] = useState<MasterEntity>("customer");
-  const [first, setFirst] = useState("");
-  const [second, setSecond] = useState("");
-  const [optional, setOptional] = useState("");
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const labels: Record<MasterEntity, [string, string, string]> = {
-    customer: ["Customer code", "Customer name", "Account note"],
-    customercontact: ["Customer code", "Contact name", "ETA email address"],
-    vehicle: ["Registration", "Fleet number", "Abbreviation"],
-    driver: ["Employee number", "Driver name", "Mobile number"],
-    trailer: ["Trailer number", "Trailer type", "Standard capacity"],
-    marketcontact: ["Market", "Contact name", "Stand or location"],
-  };
-  const [firstLabel, secondLabel, optionalLabel] = labels[entity];
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      const payload: Record<string, string | boolean | number | undefined> =
-        entity === "customer"
-          ? { code: first, name: second, active: true }
-          : entity === "customercontact"
-            ? {
-                customerCode: first,
-                name: second,
-                email: optional,
-                receivesEtaUpdates: true,
-                active: true,
-              }
-            : entity === "vehicle"
-              ? {
-                  registration: first,
-                  fleetNumber: second,
-                  abbreviation: optional,
-                  active: true,
-                }
-              : entity === "driver"
-                ? {
-                    employeeNumber: first,
-                    displayName: second,
-                    mobileNumber: optional,
-                    active: true,
-                  }
-                : entity === "trailer"
-                  ? {
-                      trailerNumber: first,
-                      type: second,
-                      standardCapacity: optional ? Number(optional) : undefined,
-                      active: true,
-                    }
-                  : {
-                      market: first,
-                      name: second,
-                      standOrLocation: optional,
-                      active: true,
-                    };
-      await api.stageRecord(
-        entity,
-        payload,
-        `web-${entity}:${first.trim().toLowerCase().replaceAll(" ", "-")}:${second.trim().toLowerCase().replaceAll(" ", "-")}`,
-        await token(),
-      );
-      setMessage(
-        `${entity === "customercontact" ? "Customer ETA contact" : entity === "marketcontact" ? "Market contact" : entity[0].toUpperCase() + entity.slice(1)} sent to staging review.`,
-      );
-      setFirst("");
-      setSecond("");
-      setOptional("");
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Record could not be submitted.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <form
-      className="quick-order master-setup"
-      onSubmit={(event) => void submit(event)}
-    >
-      <div>
-        <p className="eyebrow">Core setup</p>
-        <h2>Add customer, contact, fleet or driver records</h2>
-      </div>
-      <div className="field-grid">
-        <label>
-          Record type
-          <select
-            value={entity}
-            onChange={(event) => {
-              setEntity(event.target.value as MasterEntity);
-              setFirst("");
-              setSecond("");
-              setOptional("");
-            }}
-          >
-            <option value="customer">Customer</option>
-            <option value="customercontact">Customer ETA contact</option>
-            <option value="vehicle">Vehicle</option>
-            <option value="driver">Driver</option>
-            <option value="trailer">Trailer</option>
-            <option value="marketcontact">Market contact</option>
-          </select>
-        </label>
-        <label>
-          {firstLabel}
-          <input
-            required
-            value={first}
-            onChange={(event) => setFirst(event.target.value)}
-          />
-        </label>
-        <label>
-          {secondLabel}
-          <input
-            required
-            value={second}
-            onChange={(event) => setSecond(event.target.value)}
-          />
-        </label>
-        <label>
-          {optionalLabel}
-          <input
-            type={
-              entity === "driver"
-                ? "tel"
-                : entity === "customercontact"
-                  ? "email"
-                  : "text"
-            }
-            value={optional}
-            onChange={(event) => setOptional(event.target.value)}
-          />
-        </label>
-      </div>
-      <button className="primary" disabled={saving}>
-        {saving ? "Saving‚Ä¶" : "Send for review"}
-      </button>
-      {message && <p className="hint">{message}</p>}
-    </form>
-  );
-}
-function SiteSetupForm() {
-  const token = useAccessToken();
-  const [form, setForm] = useState({
-    externalCode: "",
-    name: "",
-    collectionAddress: "",
-    collectionInstructions: "",
-    mapLink: "",
-    latitude: "",
-    longitude: "",
-  });
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const update = (name: keyof typeof form, value: string) =>
-    setForm((current) => ({ ...current, [name]: value }));
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      await api.stageRecord(
-        "site",
-        { ...form, latitude: form.latitude ? Number(form.latitude) : undefined, longitude: form.longitude ? Number(form.longitude) : undefined, active: true },
-        `web-site:${form.externalCode}`,
-        await token(),
-      );
-      setMessage("Site sent to staging review.");
-      setForm({
-        externalCode: "",
-        name: "",
-        collectionAddress: "",
-        collectionInstructions: "",
-        mapLink: "",
-        latitude: "",
-        longitude: "",
-      });
-    } catch (exception) {
-      setMessage(
-        exception instanceof Error
-          ? exception.message
-          : "Site could not be submitted.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <form
-      className="quick-order site-setup"
-      onSubmit={(event) => void submit(event)}
-    >
-      <p className="eyebrow">Site setup</p>
-      <h2>Add a collection or market location</h2>
-      <div className="field-grid">
-        <label>
-          Site code
-          <input
-            required
-            value={form.externalCode}
-            onChange={(event) => update("externalCode", event.target.value)}
-          />
-        </label>
-        <label>
-          Site name
-          <input
-            required
-            value={form.name}
-            onChange={(event) => update("name", event.target.value)}
-          />
-        </label>
-        <label className="wide">
-          Address
-          <input
-            value={form.collectionAddress}
-            onChange={(event) =>
-              update("collectionAddress", event.target.value)
-            }
-          />
-        </label>
-        <label className="wide">
-          Map link
-          <input
-            type="url"
-            value={form.mapLink}
-            onChange={(event) => update("mapLink", event.target.value)}
-          />
-        </label>
-        <label>
-          Latitude
-          <input type="number" step="0.000001" min="-90" max="90" value={form.latitude} onChange={(event) => update("latitude", event.target.value)} />
-        </label>
-        <label>
-          Longitude
-          <input type="number" step="0.000001" min="-180" max="180" value={form.longitude} onChange={(event) => update("longitude", event.target.value)} />
-        </label>
-        <label className="wide">
-          Driver instructions
-          <textarea
-            value={form.collectionInstructions}
-            onChange={(event) =>
-              update("collectionInstructions", event.target.value)
-            }
-            placeholder="Access, gate, stand or collection notes‚Ä¶"
-          />
-        </label>
-      </div>
-      <button className="primary" disabled={saving}>
-        {saving ? "Saving‚Ä¶" : "Send site for review"}
-      </button>
-      {message && <p className="hint">{message}</p>}
-    </form>
-  );
-}
-function DataList<T extends { id: string }>({
-  title,
-  data,
-  render,
-}: {
-  title: string;
-  data?: T[];
-  render: (item: T) => ReactNode;
-}) {
-  return (
-    <article className="data-list">
-      <h2>
-        {title}
-        <span>{data?.length || 0}</span>
-      </h2>
-      {data
-        ?.slice(0, 8)
-        .map((item) => <div key={item.id}>{render(item)}</div>) || (
-        <p>No active records.</p>
-      )}
-    </article>
-  );
-}
+H¬àŸ]›XõZ][ô ùYJN¬àŸ]Y\‹ÿYŸJ[ôYö[ôY
+N¬àûH¬à€€ú›XÿŸ\‹’⁄Ÿ[àH]ÿZ]⁄Ÿ[ä
+N¬à€€ú›ô\›[»H]ÿZ]õ€Z\ŸKò[
+àõ›‹ÀõX\
 
-export function OperationalPlaceholder({ title }: { title: string }) {
-  return (
-    <section className="placeholder">
-      <p className="eyebrow">Operational workspace</p>
-      <h1>{title}</h1>
-      <div className="panel">
-        <h2>Ready for the next backend increment</h2>
-        <p>
-          This production shell preserves the planning workflow and navigation,
-          but the current API has no {title.toLowerCase()} endpoints. It will
-          become live once the matching versioned endpoint is introduced in the
-          backend.
-        </p>
-      </div>
-    </section>
-  );
-}
+õ›À[ô^
+HOÇà\Kú›YŸS‹ô\äàõ›ÀàŸXãZ[\‹ùâ‹õ›Àú”ù[Xô\àúõ›»üNâ‹õ›Àò›\›€Y\ê€ŸHù[ö€õ›€àüNâ‹õ›Àò€€X›[€ë]H[ô^XàXÿŸ\‹’⁄Ÿ[ãà
+Kà
+Kà
+N¬àŸ]Y\‹ÿYŸJà	‹ô\›[Àõ[ô›H‹ô\â‹ô\›[Àõ[ô›OOHH»àààú»üH›XõZ]Y»›Y⁄[ô»õ‹àô]öY]Àòà
+N¬àŸ]õ›‹ ◊JN¬àŸ][XZ[^
+àäN¬àHÿ]⁄
+^Ÿ\[€äH¬àŸ]Y\‹ÿYŸJà^Ÿ\[€à[ú›[òŸ[Ÿà\úõ‹à»^Ÿ\[€ãõY\‹ÿYŸHàì‹ô\à[\‹ùòZ[Yàãà
+N¬àHö[ò[H¬àŸ]›XõZ][ô ò[ŸJN¬àBàBàô]\õà
+àŸX›[€èÇà€\‹”ò[YOHô^YXúõ›»èì‹ô\à[ùZŸO‹ÇàOìô]»‹ô\è⁄OÇà]ZX⁄”‹ô\ëõ‹õHœÇà]à€\‹”ò[YOHú[ô[[\‹ù\[ô[èÇàèí[\‹ù^Ÿ[‹à‘’è⁄èÇàÇà\ÿY›\›€Y\à€‹öÿõ€⁄‹ÀX\öŸ]Xú»‹à‘’àò]⁄\ÀàH‹ù[õ›¬àôX€Ÿ€ö\Ÿ\»€€[[€àÀ›\›€Y\ã\›X\öŸ]Ÿ[\ãŸ[ô\ã›[à[][ô]HXY[ô‹»ôYõ‹ôH›Y⁄[ô»‹ô\úÀÇà‹Çàù]€à\OHòù]€àà€ê€X⁄œ^Ÿ›€õÿY[\]_OÇà›€õÿY^Ÿ[[\]Bàÿù]€èÇà[ú]à\OHôö[HÇàXÿŸ\HãûﬁûÀû€Kò‹›ã^ÿ‹›ã\Xÿ][€ã›õôõ‹[û[õ‹õX]À[ŸôöXŸYÿ›[Y[ùú‹ôXY⁄Y][ú⁄Y]\Xÿ][€ã›õôõ\ÀY^Ÿ[Çà€ê⁄[ôŸO^ ]ô[ù
+HOàõ⁄YŸ[X›ö[J]ô[ùù\ôŸ]ôö[\œÀñÃJ_BàœÇà€\‹”ò[YOHö[ùèÇàô\›€€[[ú»\ôH€ŸOûŸ^X›Y€€[[úÀöõ⁄[äãä_Oÿ€ŸOãù]àò\ôõ€›À–TÀ€X\öŸ]\›[H⁄Y]»\ôHXÿŸ\YYà^H[ò€YH[õ›Y⁄à]KX\öŸ]ÿ›\›€Y\à[ô]X[ù]H]Z[Çà‹Çà⁄\‹›Y\Àõ[ô›à	âà
+à]à€\‹”ò[YOHö[\‹ùZ\‹›Y\»èÇà›õ€ôœê€‹úôX›Hõ€›⁄[ô»ôYõ‹ôH[\‹ù‹›õ€ôœÇà[Çà⁄\‹›Y\ÀõX\
 
-export function Admin() {
-  const token = useAccessToken();
-  const sage = useApi(
-    useCallback(async () => api.sageHrStatus(await token()), [token]),
-  );
-  const fleetioStatus = useApi(
-    useCallback(async () => api.fleetioStatus(await token()), [token]),
-  );
-  const integrations = useApi(
-    useCallback(async () => api.integrationStatus(await token()), [token]),
-  );
-  const [syncing, setSyncing] = useState(false);
-  const [fleetioSyncing, setFleetioSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string>();
-  async function syncSage() {
-    setSyncing(true);
-    setSyncMessage(undefined);
-    try {
-      const result = await api.syncSageHrDrivers(await token());
-      setSyncMessage(
-        result.message ||
-          `Sage HR sync complete: ${result.created} drivers added, ${result.updated} updated and ${result.skipped} skipped.`,
-      );
-      await sage.refresh();
-      await integrations.refresh();
-    } catch (exception) {
-      setSyncMessage(
-        exception instanceof Error ? exception.message : "Sage HR sync failed.",
-      );
-    } finally {
-      setSyncing(false);
-    }
-  }
-  async function syncFleetio() {
-    setFleetioSyncing(true);
-    setSyncMessage(undefined);
-    try {
-      const result = await api.syncFleetioVehicles(await token());
-      setSyncMessage(
-        result.message ||
-          `Fleetio sync complete: ${result.updated} vehicles updated, ${result.missingInFleetio} missing in Fleetio.`,
-      );
-      await fleetioStatus.refresh();
-      await integrations.refresh();
-    } catch (exception) {
-      setSyncMessage(
-        exception instanceof Error ? exception.message : "Fleetio sync failed.",
-      );
-    } finally {
-      setFleetioSyncing(false);
-    }
-  }
-  const refreshAdmin = () => {
-    void sage.refresh();
-    void fleetioStatus.refresh();
-    void integrations.refresh();
-  };
-  const health = integrations.data;
-  const settings = [
-    {
-      label: "Microsoft sign-in",
-      detail: import.meta.env.VITE_ENTRA_CLIENT_ID
-        ? "Configured for this portal build"
-        : "Needs client application ID",
-      status: Boolean(import.meta.env.VITE_ENTRA_CLIENT_ID),
-    },
-    {
-      label: "API connection",
-      detail:
-        import.meta.env.VITE_API_BASE_URL || "Uses the portal API default",
-      status: true,
-    },
-    {
-      label: "Azure Maps",
-      detail: health?.azureMaps.configured
-        ? "Routing and live ETA service configured"
-        : "Azure Maps backend needs configuration",
-      status: Boolean(health?.azureMaps.configured),
-    },
-    {
-      label: "RoadTech Falcon",
-      detail: health?.roadTech.connected
-        ? `Live telemetry received ${formatDate(health.roadTech.latestEventUtc)}`
-        : health?.roadTech.configured
-          ? "Configured; waiting for a recent telemetry event"
-          : "RoadTech runtime settings incomplete",
-      status: Boolean(health?.roadTech.connected),
-    },
-    {
-      label: "Sage HR",
-      detail: sage.loading
-        ? "Checking Sage HR‚Ä¶"
-        : sage.data?.message || sage.error || "Sage HR status unavailable",
-      status: Boolean(sage.data?.connected),
-    },
-    {
-      label: "Email intake",
-      detail: health?.emailIntake.configured
-        ? `Mailbox intake received ${formatDate(health.emailIntake.lastReceivedUtc)}`
-        : "Batch API is ready; Power Automate mailbox has not posted yet",
-      status: Boolean(health?.emailIntake.configured),
-    },
-    {
-      label: "Driver SMS",
-      detail: health?.textBee?.configured
-        ? `TextBee ${health.textBee.dutyPhoneLabel || "duty phone"} configured`
-        : health?.azureSms.configured
-          ? "Azure SMS dispatch configured"
-          : "MightyText copy is ready; TextBee duty phone needs setup",
-      status: Boolean(
-        health?.textBee?.configured || health?.azureSms.configured,
-      ),
-    },
-    {
-      label: "Fleetio",
-      detail:
-        fleetioStatus.data?.message ||
-        (health?.fleetio?.configured
-          ? "Fleetio service and VOR integration configured"
-          : "Fleetio API settings needed for service, inspections and VOR sync"),
-      status: Boolean(
-        fleetioStatus.data?.connected || health?.fleetio?.configured,
-      ),
-    },
-  ];
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Platform control</p>
-          <h1>Admin & integrations</h1>
-        </div>
-        <button onClick={refreshAdmin}>Refresh integrations</button>
-      </div>
-      <p className="intro">
-        Live status comes from the protected API and never exposes credentials.
-      </p>
-      <div className="admin-grid">
-        {settings.map((setting) => (
-          <article className="admin-card" key={setting.label}>
-            <span
-              className={
-                setting.status
-                  ? "integration-state ready"
-                  : "integration-state pending"
-              }
-            >
-              {setting.status ? "Ready" : "Setup needed"}
-            </span>
-            <h2>{setting.label}</h2>
-            <p>{setting.detail}</p>
-            {setting.label === "Sage HR" && (
-              <>
-                <small>
-                  {sage.data?.employeeCount || 0} employees ¬∑{" "}
-                  {sage.data?.driverCandidateCount || 0} driver candidates
-                </small>
-                {Boolean(sage.data?.missingSettings?.length) && (
-                  <ul className="missing-settings">
-                    {sage.data?.missingSettings?.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                )}
-                <button
-                  className="primary"
-                  disabled={!sage.data?.connected || syncing}
-                  onClick={() => void syncSage()}
-                >
-                  {syncing ? "Syncing‚Ä¶" : "Sync drivers from Sage"}
-                </button>
-              </>
-            )}
-            {setting.label === "Fleetio" && (
-              <>
-                <small>
-                  {fleetioStatus.data?.sampleVehicleCount || 0} sample vehicles
-                  checked
-                </small>
-                {Boolean(fleetioStatus.data?.missingSettings?.length) && (
-                  <ul className="missing-settings">
-                    {fleetioStatus.data?.missingSettings?.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                )}
-                <button
-                  className="primary"
-                  disabled={!fleetioStatus.data?.connected || fleetioSyncing}
-                  onClick={() => void syncFleetio()}
-                >
-                  {fleetioSyncing ? "Syncing‚Ä¶" : "Sync vehicles from Fleetio"}
-                </button>
-              </>
-            )}
-          </article>
-        ))}
-      </div>
-      {syncMessage && <p className="notice">{syncMessage}</p>}
-      <div className="panel admin-next">
-        <h2>Automation intake endpoint</h2>
-        <p>
-          <code>{health?.batchIntake.endpoint || "/api/v1/staging/batch"}</code>{" "}
-          accepts up to 500 idempotent records per email or workbook and keeps
-          every order behind staging approval.
-        </p>
-      </div>
-    </section>
-  );
-}
+\‹›YJHOà
+àHŸ^O^⁄\‹›Y_Oû⁄\‹›Y_O€OÇà
+J_Bà›[ÇàŸ]èÇà
+_Bà‹õ›‹Àõ[ô›à	âà
+àÇàÇà›õ€ôœû‹õ›‹Àõ[ô›O‹›õ€ôœà⁄X⁄ŸYõ›‹»ôXYH»›XõZ]Çà‹Çàù]€Çà€\‹”ò[YOHúö[X\ûHÇà€ê€X⁄œ^ 
+HOàõ⁄Y›XõZ]
 
-export function OperationsControl() {
-  const token = useAccessToken();
-  const [date, setDate] = useState(localDate());
-  const [tab, setTab] = useState<"confidence" | "exceptions" | "reconciliation" | "mappings">("confidence");
-  const [mappingProvider, setMappingProvider] = useState("");
-  const [mappingExternalKey, setMappingExternalKey] = useState("");
-  const [mappingLabel, setMappingLabel] = useState("");
-  const [mappingEntityType, setMappingEntityType] = useState("Driver");
-  const [mappingEntityId, setMappingEntityId] = useState("");
-  const [mappingNotes, setMappingNotes] = useState("");
-  const [mappingError, setMappingError] = useState<string>();
-  const [mappingSaved, setMappingSaved] = useState(false);
+_Bà\ÿXõY^‹›XõZ][ôﬂBàÇà‹›XõZ][ô¬à»î›XõZ][ô¯†)àÇàà›XõZ]	‹õ›‹Àõ[ô›H‹ô\â‹õ›‹Àõ[ô›OOHH»àààú»üHõ‹àô]öY]ÿBàÿù]€èÇàœÇà
+_Bà€Y\‹ÿYŸH	âà€\‹”ò[YOHõõ›XŸH[õ[ôK[õ›XŸHèû€Y\‹ÿYŸ_O‹üBàŸ]èÇà]à€\‹”ò[YOHú[ô[[\‹ù\[ô[èÇàèë[XZ[õŸH[ùZŸO⁄èÇàÇà\›HHõŸHŸàHX\öŸ]€‹ô\à[XZ[\ôKà]ôX€Ÿ€ö\Ÿ\»T¬à€›ô[ù\›[H[ô\À[]€›[ùÀŸZY⁄»[ô[]ô\ûHYô\‹Ÿ\Àà[à›YŸ\»XX⁄›‹õ‹àô]öY]ÀÇà‹Çà^\ôXBà€\‹”ò[YOHô[XZ[Z[\‹ùXõﬁÇàò[YO^Ÿ[XZ[^Bà€ê⁄[ôŸO^ ]ô[ù
+HOàŸ][XZ[^
+]ô[ùù\ôŸ]ùò[YJ_BàXŸZ€\èHî\›HH›\›€Y\à[XZ[õŸH\ôx†)àÇàœÇàù]€à\OHòù]€àà€ê€X⁄œ^‹\úŸQ[XZ[H\ÿXõY^»Y[XZ[^ùö[J
+_OÇà\úŸH[XZ[õŸBàÿù]€èÇà€\‹”ò[YOHö[ùèÇàà[]ô\ûHõ›\»›^H]X⁄Y[à›]€⁄Œ»H‹ù[›YŸ\»Bà‹ô\à]Húõ€HH[XZ[^à›Ÿ\à]]€X]Hÿ[à‹›Hÿ[YBàõ‹õX[\ŸYõ›‹»]\ãÇà‹Çà[ö»œHã‹›Y⁄[ô»èì‹[à›Y⁄[ô»ô]öY]»8°§è”[öœÇàŸ]èÇà‹ŸX›[€èÇà
+N¬üBôù[ò›[€à]ZX⁄”‹ô\ëõ‹õJ
+H¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú››\›€Y\ú»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
 
-  const confidence = useApi(
-    useCallback(async () => api.operationsConfidence(await token()), [token]),
-  );
-  const exceptions = useApi(
-    useCallback(async () => api.operationsExceptions(date, await token()), [date, token]),
-  );
-  const reconciliation = useApi(
-    useCallback(async () => api.operationsReconciliation(date, await token()), [date, token]),
-  );
-  const mappings = useApi(
-    useCallback(async () => api.integrationMappings(undefined, await token()), [token]),
-  );
-  const driversList = useApi(
-    useCallback(async () => api.drivers(await token()), [token]),
-  );
-  const vehiclesList = useApi(
-    useCallback(async () => api.vehicles(await token()), [token]),
-  );
+HOà\Kò›\›€Y\ú ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›⁄]\»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
 
-  async function saveMapping() {
-    setMappingError(undefined);
-    setMappingSaved(false);
-    if (!mappingProvider || !mappingExternalKey || !mappingEntityId) {
-      setMappingError("Provider, External Key, and TMS Entity ID are required.");
-      return;
-    }
-    try {
-      await api.createMapping(
-        {
-          provider: mappingProvider,
-          externalKey: mappingExternalKey,
-          externalLabel: mappingLabel || undefined,
-          tmsEntityType: mappingEntityType,
-          tmsEntityId: mappingEntityId,
-          notes: mappingNotes || undefined,
-        },
-        await token(),
-      );
-      setMappingSaved(true);
-      setMappingExternalKey("");
-      setMappingLabel("");
-      setMappingNotes("");
-      await mappings.refresh();
-    } catch (exception) {
-      setMappingError(
-        exception instanceof Error ? exception.message : "Failed to save mapping.",
-      );
-    }
-  }
+HOà\Kú⁄]\ ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›X\öŸ]€€ùX›»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
 
-  async function removeMapping(id: string) {
-    try {
-      await api.deleteMapping(id, await token());
-      await mappings.refresh();
-    } catch (exception) {
-      setMappingError(
-        exception instanceof Error ? exception.message : "Failed to delete mapping.",
-      );
-    }
-  }
+HOà\KõX\öŸ]€€ùX› ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú››\›€Y\ê€€ùX›»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
 
-  const refreshAll = () => {
-    void confidence.refresh();
-    void exceptions.refresh();
-    void reconciliation.refresh();
-    void mappings.refresh();
-  };
+HOà\Kò›\›€Y\ê€€ùX› ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›€‹ô\í⁄[ôŸ]‹ô\í⁄[ôHH\ŸT›]OõX\öŸ]àò›\›€Y\àèäõX\öŸ]äN¬à€€ú›Ÿõ‹õKŸ]õ‹õWHH\ŸT›]J¬à”ù[Xô\éààãà›\›€Y\ê€ŸNààãà€€X›[€ë]Nàÿÿ[]J
+Kà[]ô\ûQ]Nààãà[]ô\ûU⁄[ô›‘›\ù]Œààãà[]ô\ûU⁄[ô›—[ô]Œààãà[]Œààãà]ô\òYŸT[]ŸZY⁄ŸŒààãà\›[X]YŸZY⁄ŸŒààãàŸ[\ìò[YNààãàX\öŸ]ò[YNààãà›[ù[Xô\éààãàŸ[ô\ìò[YNààãàö]ô\í[ú›ùX›[€úŒààãàX\[öŒààãàJN¬à€€ú›€Y\‹ÿYŸKŸ]Y\‹ÿYŸWHH\ŸT›]O›ö[ôœä
+N¬à€€ú›‹ÿ]ö[ôÀŸ]ÿ]ö[ô◊HH\ŸT›]Jò[ŸJN¬à€€ú›X\öŸ]»H\ŸSY[[ 
 
-  const conf = confidence.data;
-  const exc = exceptions.data;
-  const rec = reconciliation.data;
-  const map = mappings.data;
+HOà¬à€€ú›[\‹ùYH¬àããõô]»Ÿ]
+à
+X\öŸ]€€ùX›Àô]H◊JBàôö[\ä
+€€ùX›
+HOà€€ùX›òX›]ôH	âà€€ùX›õX\öŸ]OOHîŸ[ô\àäBàõX\
 
-  return (
-    <section>
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Operational readiness</p>
-          <h1>Operations control</h1>
-        </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ padding: ".4rem .6rem", border: "1px solid #c8d5da", borderRadius: "7px" }} />
-          <button onClick={refreshAll}>Refresh all</button>
-        </div>
-      </div>
-      <div className="metrics">
-        <Metric
-          label="Integrations configured"
-          value={
-            conf
-              ? String(
-                  [conf.sageHr.configured, conf.tachoMaster.configured, conf.dotTracking.configured, conf.fleetio.configured].filter(Boolean).length,
-                )
-              : "‚Äî"
-          }
-          detail="Sage, TachoMaster, DOT, Fleetio"
-        />
-        <Metric
-          label="Open exceptions"
-          value={exc ? String(exc.summary.total) : "‚Äî"}
-          detail={exc ? `${exc.summary.high} high, ${exc.summary.medium} medium` : "Loading‚Ä¶"}
-        />
-        <Metric
-          label="Unallocated loads"
-          value={rec ? String(rec.loads.unallocated) : "‚Äî"}
-          detail={rec ? `${rec.loads.total} total loads today` : "Loading‚Ä¶"}
-        />
-        <Metric
-          label="Vehicles no signal"
-          value={rec ? String(rec.fleet.vehiclesNoSignal) : "‚Äî"}
-          detail={rec ? `${rec.fleet.vehiclesSeenToday} seen today` : "Loading‚Ä¶"}
-        />
-      </div>
+€€ùX›
+HOà€€ùX›õX\öŸ]
+Bàôö[\äõ€€X[äKà
+KàN¬àô]\õà¬àããõX\öŸ]‹ô\ãôö[\ä
+X\öŸ]
+HOà[\‹ùYö[ò€Y\ X\öŸ]
+JKàããö[\‹ùYôö[\ä
+X\öŸ]
+HOà[X\öŸ]‹ô\ãö[ò€Y\ X\öŸ]
+JKú€‹ù
 
-      <div className="tab-bar">
-        {(["confidence", "exceptions", "reconciliation", "mappings"] as const).map((t) => (
-          <button
-            key={t}
-            className={tab === t ? "tab active" : "tab"}
-            onClick={() => setTab(t)}
-          >
-            {t === "confidence" ? "Integration confidence" : t === "exceptions" ? "Exceptions" : t === "reconciliation" ? "Daily reconciliation" : "Manual mappings"}
-          </button>
-        ))}
-      </div>
+KàN¬àK€X\öŸ]€€ùX›Àô]WJN¬à€€ú›Ÿ[\ú»H\ŸSY[[ à
 
-      {tab === "confidence" && (
-        <State loading={confidence.loading} error={confidence.error} empty={!conf}>
-          {conf && (
-            <div className="admin-grid">
-              <article className="admin-card">
-                <span className={conf.sageHr.configured ? "integration-state ready" : "integration-state pending"}>
-                  {conf.sageHr.configured ? "Ready" : "Setup needed"}
-                </span>
-                <h2>Sage HR</h2>
-                <p>{conf.sageHr.activeDrivers} active drivers</p>
-                <small>{conf.sageHr.driversWithoutTachoName} without tacho name</small>
-                {conf.sageHr.lastSyncUtc && (
-                  <small>Last sync: {formatDate(conf.sageHr.lastSyncUtc)}</small>
-                )}
-              </article>
-              <article className="admin-card">
-                <span className={conf.tachoMaster.configured ? "integration-state ready" : "integration-state pending"}>
-                  {conf.tachoMaster.configured ? "Ready" : "Setup needed"}
-                </span>
-                <h2>TachoMaster</h2>
-                <p>{conf.tachoMaster.driversWithTachoSync} drivers with tacho sync</p>
-                <small>{conf.tachoMaster.driversWithoutTachoName} unmatched</small>
-                {conf.tachoMaster.lastSyncUtc && (
-                  <small>Last sync: {formatDate(conf.tachoMaster.lastSyncUtc)}</small>
-                )}
-              </article>
-              <article className="admin-card">
-                <span className={conf.dotTracking.configured ? "integration-state ready" : "integration-state pending"}>
-                  {conf.dotTracking.configured ? "Ready" : "Setup needed"}
-                </span>
-                <h2>DOT Tracking</h2>
-                <p>{conf.dotTracking.liveVehicleCount} live vehicles</p>
-                <small>{conf.dotTracking.staleVehicleCount} stale (30+ min)</small>
-                {conf.dotTracking.latestEventUtc && (
-                  <small>Latest: {formatDate(conf.dotTracking.latestEventUtc)}</small>
-                )}
-                {conf.dotTracking.trackingAgeMinutes != null && (
-                  <small>Age: {conf.dotTracking.trackingAgeMinutes} min</small>
-                )}
-              </article>
-              <article className="admin-card">
-                <span className={conf.fleetio.configured ? "integration-state ready" : "integration-state pending"}>
-                  {conf.fleetio.configured ? "Ready" : "Setup needed"}
-                </span>
-                <h2>Fleetio</h2>
-                <p>{conf.fleetio.matchedVehicles} matched vehicles</p>
-                <small>{conf.fleetio.unmatchedVehicles} unmatched</small>
-              </article>
-            </div>
-          )}
-        </State>
-      )}
+HOÇà
+X\öŸ]€€ùX›Àô]H◊JBàôö[\äà
+€€ùX›
+HOÇà€€ùX›òX›]ôH	âÇà
+Yõ‹õKõX\öŸ]ò[YH€€ùX›õX\öŸ]OOHõ‹õKõX\öŸ]ò[YJKà
+Bàú€‹ù
 
-      {tab === "exceptions" && (
-        <State loading={exceptions.loading} error={exceptions.error} empty={!exc?.exceptions.length}>
-          {exc && (
-            <div className="exception-list">
-              {exc.exceptions.map((item, index) => (
-                <article key={index}>
-                  <strong className={item.severity === "High" ? "error" : item.severity === "Medium" ? "warn" : ""}>
-                    {item.type.replace(/([A-Z])/g, " $1").trim()}
-                  </strong>
-                  <span>{item.reference} ¬∑ {item.severity}</span>
-                  <small>{item.description}</small>
-                </article>
-              ))}
-            </div>
-          )}
-        </State>
-      )}
+YùöY⁄
+HOàYùõò[YKõÿÿ[P€€\\ôJöY⁄õò[YJJKà€X\öŸ]€€ùX›Àô]Kõ‹õKõX\öŸ]ò[YWKà
+N¬à€€ú›Ÿ[ô\ú»H\ŸSY[[ 
 
-      {tab === "reconciliation" && (
-        <State loading={reconciliation.loading} error={reconciliation.error} empty={!rec}>
-          {rec && (
-            <div>
-              <table className="data-table">
-                <thead>
-                  <tr><th>Category</th><th>Metric</th><th>Value</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>Orders</td><td>Total</td><td>{rec.orders.total}</td></tr>
-                  <tr><td>Orders</td><td>Ready to plan</td><td>{rec.orders.readyToPlan}</td></tr>
-                  <tr><td>Orders</td><td>Planned</td><td>{rec.orders.planned}</td></tr>
-                  <tr><td>Orders</td><td>In transit</td><td>{rec.orders.inTransit}</td></tr>
-                  <tr><td>Orders</td><td>Delivered</td><td>{rec.orders.delivered}</td></tr>
-                  <tr><td>Loads</td><td>Total</td><td>{rec.loads.total}</td></tr>
-                  <tr><td>Loads</td><td>Planned</td><td>{rec.loads.planned}</td></tr>
-                  <tr><td>Loads</td><td>Dispatched</td><td>{rec.loads.dispatched}</td></tr>
-                  <tr><td>Loads</td><td>Completed</td><td>{rec.loads.completed}</td></tr>
-                  <tr><td>Loads</td><td>Unallocated</td><td>{rec.loads.unallocated}</td></tr>
-                  <tr><td>Fleet</td><td>Active drivers</td><td>{rec.fleet.activeDrivers}</td></tr>
-                  <tr><td>Fleet</td><td>Assigned drivers</td><td>{rec.fleet.assignedDrivers}</td></tr>
-                  <tr><td>Fleet</td><td>Unassigned drivers</td><td>{rec.fleet.unassignedDrivers}</td></tr>
-                  <tr><td>Fleet</td><td>Active vehicles</td><td>{rec.fleet.activeVehicles}</td></tr>
-                  <tr><td>Fleet</td><td>Vehicles seen today</td><td>{rec.fleet.vehiclesSeenToday}</td></tr>
-                  <tr><td>Fleet</td><td>Vehicles no signal</td><td>{rec.fleet.vehiclesNoSignal}</td></tr>
-                  <tr><td>Staging</td><td>Pending review</td><td>{rec.staging.pendingReview}</td></tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-        </State>
-      )}
+HOà¬à€€ú›‹[€ú»H¬àããäX\öŸ]€€ùX›Àô]H◊JBàôö[\ä
+€€ùX›
+HOà€€ùX›òX›]ôH	âà€€ùX›õX\öŸ]OOHîŸ[ô\àäBàõX\
 
-      {tab === "mappings" && (
-        <div>
-          <div className="panel">
-            <h2>Add integration mapping</h2>
-            <p className="intro">
-              Manually link an external provider key to a TMS driver or vehicle.
-              This overrides fuzzy matching for the linked entity.
-            </p>
-            <div className="form-grid">
-              <label>Provider
-                <select value={mappingProvider} onChange={(e) => setMappingProvider(e.target.value)}>
-                  <option value="">Select‚Ä¶</option>
-                  <option value="SageHR">Sage HR</option>
-                  <option value="TachoMaster">TachoMaster</option>
-                  <option value="DotTracking">DOT Tracking</option>
-                  <option value="Fleetio">Fleetio</option>
-                </select>
-              </label>
-              <label>External key
-                <input value={mappingExternalKey} onChange={(e) => setMappingExternalKey(e.target.value)} placeholder="e.g. EMP001 or REG61ABC" />
-              </label>
-              <label>External label
-                <input value={mappingLabel} onChange={(e) => setMappingLabel(e.target.value)} placeholder="e.g. John Smith" />
-              </label>
-              <label>TMS entity type
-                <select value={mappingEntityType} onChange={(e) => setMappingEntityType(e.target.value)}>
-                  <option value="Driver">Driver</option>
-                  <option value="Vehicle">Vehicle</option>
-                </select>
-              </label>
-              <label>TMS {mappingEntityType === "Driver" ? "driver" : "vehicle"}
-                <select value={mappingEntityId} onChange={(e) => setMappingEntityId(e.target.value)}>
-                  <option value="">Select {mappingEntityType === "Driver" ? "driver" : "vehicle"}‚Ä¶</option>
-                  {mappingEntityType === "Driver" && driversList.data?.filter(d => d.active).map((d) => (
-                    <option key={d.id} value={d.id}>{d.displayName} ({d.employeeNumber}){d.tachoName ? ` ‚Äî Tacho: ${d.tachoName}` : ""}</option>
-                  ))}
-                  {mappingEntityType === "Vehicle" && vehiclesList.data?.filter(v => v.active).map((v) => (
-                    <option key={v.id} value={v.id}>{v.registration}{v.fleetNumber ? ` (${v.fleetNumber})` : ""}</option>
-                  ))}
-                </select>
-              </label>
-              <label>Notes
-                <input value={mappingNotes} onChange={(e) => setMappingNotes(e.target.value)} placeholder="Optional" />
-              </label>
-            </div>
-            {mappingError && <p className="state error">{mappingError}</p>}
-            {mappingSaved && <p className="notice">Mapping saved.</p>}
-            <button className="primary" onClick={() => void saveMapping()}>Save mapping</button>
-          </div>
+€€ùX›
+HOà
+¬àYà€€ùX›öYàò[YNà€€ùX›õò[YKà›[ô‹ìÿÿ][€éà€€ùX›ú›[ô‹ìÿÿ][€ãàJJKàããäX\öŸ]€€ùX›Àô]H◊JBàôö[\ä
+€€ùX›
+HOà€€ùX›òX›]ôH	âà€€ùX›úŸ[ô\äBàõX\
 
-          <State loading={mappings.loading} error={mappings.error} empty={!map?.length}>
-            {map && map.length > 0 && (
-              <table className="data-table">
-                <thead>
-                  <tr><th>Provider</th><th>External key</th><th>Label</th><th>Type</th><th>TMS entity</th><th>Updated</th><th>By</th><th></th></tr>
-                </thead>
-                <tbody>
-                  {map.filter(m => m.active).map((m) => (
-                    <tr key={m.id}>
-                      <td>{m.provider}</td>
-                      <td>{m.externalKey}</td>
-                      <td>{m.externalLabel || "‚Äî"}</td>
-                      <td>{m.tmsEntityType}</td>
-                      <td>{m.tmsEntityType === "Driver"
-                        ? (driversList.data?.find(d => d.id === m.tmsEntityId)?.displayName ?? <code>{m.tmsEntityId.slice(0, 8)}</code>)
-                        : (vehiclesList.data?.find(v => v.id === m.tmsEntityId)?.registration ?? <code>{m.tmsEntityId.slice(0, 8)}</code>)}
-                      </td>
-                      <td>{formatDate(m.updatedAtUtc)}</td>
-                      <td>{m.updatedBy || "‚Äî"}</td>
-                      <td><button onClick={() => void removeMapping(m.id)}>Remove</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </State>
-        </div>
-      )}
-    </section>
-  );
-}
+€€ùX›
+HOà
+¬àYàŸ[ô\éâÿ€€ùX›úŸ[ô\üXàò[YNà€€ùX›úŸ[ô\ààãà›[ô‹ìÿÿ][€éà€€ùX›õX\öŸ]àJJKàKôö[\ä
+‹[€äHOà‹[€ãõò[YJN¬àô]\õà‹[€ú¬àôö[\äà
+‹[€ã[ô^[
+HOÇà[ôö[ô[ô^
+à
+›\äHOà›\ãõò[YKù”›Ÿ\êÿ\ŸJ
+HOOH‹[€ãõò[YKù”›Ÿ\êÿ\ŸJ
+Kà
+HOOH[ô^à
+Bàú€‹ù
 
-export function DriverMobile() {
-  const token = useAccessToken();
-  const { accounts } = useMsal();
-  const account = accounts[0];
-  const today = localDate();
-  const [submitting, setSubmitting] = useState<string | null>(null);
-  const [statusMsg, setStatusMsg] = useState<string>();
+YùöY⁄
+HOàYùõò[YKõÿÿ[P€€\\ôJöY⁄õò[YJJN¬àK€X\öŸ]€€ùX›Àô]WJN¬à€€ú››\›€Y\ì‹[€ú»H\ŸSY[[ à
 
-  const assignments = useApi(
-    useCallback(
-      async () => api.driverAssignments(today, today, await token()),
-      [today, token],
-    ),
-  );
+HOÇà¬àããä›\›€Y\úÀô]H◊JBàôö[\ä
+›\›€Y\äHOà›\›€Y\ãòX›]ôJBàõX\
 
-  const myName = (account?.name ?? "").toLowerCase().trim();
-  const myAssignments = myName.length > 0
-    ? (assignments.data || []).filter(
-        (a) => a.driver?.displayName?.toLowerCase() === myName,
-      )
-    : [];
+›\›€Y\äHOà
+¬à€ŸNà›\›€Y\ãò€ŸKàXô[à	ÿ›\›€Y\ãò€Ÿ_H0≠»	ÿ›\›€Y\ãõò[Y_XàJJKàããä›\›€Y\ê€€ùX›Àô]H◊JBàôö[\ä
+€€ùX›
+HOà€€ùX›òX›]ôJBàõX\
 
-  const statusButtons: Array<{ status: string; label: string }> = [
-    { status: "Accepted", label: "Accepted" },
-    { status: "ArrivedCollection", label: "Arrived at collection" },
-    { status: "Loaded", label: "Loaded" },
-    { status: "ArrivedDelivery", label: "Arrived at delivery" },
-    { status: "Delivered", label: "Delivered" },
-    { status: "IssueReported", label: "Report issue" },
-  ];
+€€ùX›
+HOà
+¬à€ŸNà€€ùX›ò›\›€Y\ê€ŸKàXô[à	ÿ€€ùX›ò›\›€Y\ê€Ÿ_H0≠»	ÿ€€ùX›õò[Y_XàJJKàBàôö[\äà
+][K[ô^[
+HOÇà[ôö[ô[ô^
 
-  async function submitStatus(loadId: string, status: string) {
-    setSubmitting(status);
-    setStatusMsg(undefined);
-    try {
-      await api.captureDriverStatus(loadId, { status, notes: undefined }, await token());
-      setStatusMsg(`${status} recorded`);
-    } catch (e) {
-      setStatusMsg(e instanceof Error ? e.message : "Failed to update status");
-    } finally {
-      setSubmitting(null);
-      setTimeout(() => setStatusMsg(undefined), 4000);
-    }
-  }
+›\äHOà›\ãò€ŸHOOH][Kò€ŸJHOOH[ô^à
+Bàú€‹ù
 
-  return (
-    <section className="driver-mobile">
-      <div className="mobile-header">
-        <p className="eyebrow">Driver</p>
-        <h1>{account?.name ?? "Driver"}</h1>
-        <small>{today}</small>
-      </div>
+YùöY⁄
+HOàYùõXô[õÿÿ[P€€\\ôJöY⁄õXô[
+JKàÿ›\›€Y\úÀô]K›\›€Y\ê€€ùX›Àô]WKà
+N¬à€€ú›\]HH
+ò[YNàŸ^[Ÿà\[Ÿàõ‹õKò[YNà›ö[ô HOÇàŸ]õ‹õJ
+›\úô[ù
+HOà
+»ããò›\úô[ù€ò[YWNàò[YHJJN¬àù[ò›[€à⁄€‹ŸP›\›€Y\ä›\›€Y\ê€ŸNà›ö[ô H¬à€€ú›⁄]HH
+⁄]\Àô]H◊JKôö[ô
+à
+][JHOÇà][Kô^\õò[€ŸHOOH›\›€Y\ê€ŸH][Kõò[YHOOH›\›€Y\ê€ŸKà
+N¬àŸ]õ‹õJ
+›\úô[ù
+HOà
+¬àããò›\úô[ùà›\›€Y\ê€ŸKàX\öŸ]ò[YNààãàŸ[\ìò[YNààãà›[ù[Xô\éààãàŸ[ô\ìò[YNààãàX\[öŒà⁄]OÀõX\[ö»›\úô[ùõX\[öÀàö]ô\í[ú›ùX›[€úŒÇà⁄]OÀò€€X›[€í[ú›ùX›[€ú»›\úô[ùôö]ô\í[ú›ùX›[€úÀàJJN¬àBàù[ò›[€à⁄€‹ŸSX\öŸ]
+X\öŸ]ò[YNà›ö[ô H¬àŸ]õ‹õJ
+›\úô[ù
+HOà
+¬àããò›\úô[ùàX\öŸ]ò[YKà›\›€Y\ê€ŸNàX\öŸ]ò[YH›\úô[ùò›\›€Y\ê€ŸKàŸ[\ìò[YNààãà›[ù[Xô\éààãàJJN¬àBàù[ò›[€à⁄€‹ŸTŸ[\äò[YNà›ö[ô H¬à€€ú›Ÿ[\àHŸ[\úÀôö[ô
 
-      <State loading={assignments.loading} error={assignments.error} empty={!myAssignments.length}>
-        {myAssignments.length > 0 && (
-          <div className="mobile-loads">
-            {myAssignments.map((assignment) => (
-              <article key={assignment.loadId} className="mobile-load-card">
-                <div className="load-card-header">
-                  <strong>{assignment.loadReference}</strong>
-                  <span className={`status ${assignment.status.toLowerCase()}`}>{assignment.status}</span>
-                </div>
-                {assignment.vehicle && (
-                  <p className="load-vehicle">{assignment.vehicle.registration}{assignment.vehicle.fleetNumber ? ` ¬∑ ${assignment.vehicle.fleetNumber}` : ""}</p>
-                )}
-                {assignment.finalStop && (
-                  <p className="load-destination">{assignment.finalStop}</p>
-                )}
-                <div className="status-buttons">
-                  {statusButtons.map((btn) => (
-                    <button
-                      key={btn.status}
-                      className={`status-btn ${btn.status === "IssueReported" ? "warn" : ""}`}
-                      disabled={submitting !== null}
-                      onClick={() => void submitStatus(assignment.loadId, btn.status)}
-                    >
-                      <span className="btn-label">{btn.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </State>
+€€ùX›
+HOà€€ùX›õò[YHOOHò[YJN¬àŸ]õ‹õJ
+›\úô[ù
+HOà
+¬àããò›\úô[ùàŸ[\ìò[YNàò[YKà›[ù[Xô\éàŸ[\èÀú›[ô‹ìÿÿ][€à›\úô[ùú›[ù[Xô\ãàŸ[ô\ìò[YNàŸ[\èÀúŸ[ô\à›\úô[ùúŸ[ô\ìò[YKà›\›€Y\ê€ŸNà›\úô[ùõX\öŸ]ò[YH›\úô[ùò›\›€Y\ê€ŸHìPTí—UãàJJN¬àBà\ﬁ[ò»ù[ò›[€à›XõZ]
+]ô[ùàõ‹õQ]ô[ù
+H¬à]ô[ùúô]ô[ùYò][
 
-      {statusMsg && <div className="status-toast">{statusMsg}</div>}
-    </section>
-  );
-}
+N¬àŸ]ÿ]ö[ô ùYJN¬àûH¬à€€ú›ÿ[›[]YŸZY⁄Bàõ‹õKô\›[X]YŸZY⁄Ÿ»à
+ù[Xô\äõ‹õKú[] Hà	âàù[Xô\äõ‹õKò]ô\òYŸT[]ŸZY⁄Ÿ Hàà»›ö[ô àX]úõ›[ô
+àù[Xô\äõ‹õKú[] H
+àù[Xô\äõ‹õKò]ô\òYŸT[]ŸZY⁄Ÿ Kà
+Kà
+BàààäN¬à€€ú›^[ÿYH¬àããôõ‹õKà›\›€Y\ê€ŸNàõ‹õKò›\›€Y\ê€ŸHõ‹õKõX\öŸ]ò[YHìPTí—Uãà\›[X]YŸZY⁄ŸŒàÿ[›[]YŸZY⁄àö]ô\í[ú›ùX›[€úŒà¬àÿ[›[]YŸZY⁄»ŸZY⁄à	ÿÿ[›[]YŸZY⁄HŸÿààãàõ‹õKúŸ[ô\ìò[YH»Ÿ[ô\éà	Ÿõ‹õKúŸ[ô\ìò[Y_Xààãàõ‹õKôö]ô\í[ú›ùX›[€úÀàBàôö[\äõ€€X[äBàöõ⁄[äà0≠»äKà[]ô\ûU⁄[ô›‘›\ù]Œàõ‹õKô[]ô\ûU⁄[ô›‘›\ù]¬à»ô]»]Jõ‹õKô[]ô\ûU⁄[ô›‘›\ù] Kù“T”‘›ö[ô 
+Bàààãà[]ô\ûU⁄[ô›—[ô]Œàõ‹õKô[]ô\ûU⁄[ô›—[ô]¬à»ô]»]Jõ‹õKô[]ô\ûU⁄[ô›—[ô] Kù“T”‘›ö[ô 
+BàààãàN¬à]ÿZ]\Kú›YŸS‹ô\äà^[ÿYàŸXã[X[ùX[âŸõ‹õKú”ù[Xô\üNâŸõ‹õKò€€X›[€ë]_Xà]ÿZ]⁄Ÿ[ä
+Kà
+N¬àŸ]Y\‹ÿYŸJì‹ô\àŸ[ù»›Y⁄[ô»ô]öY]ÀàäN¬àŸ]õ‹õJ
+›\úô[ù
+HOà
+¬àããò›\úô[ùà”ù[Xô\éààãà›\›€Y\ê€ŸNààãà[]ô\ûQ]Nààãà[]ô\ûU⁄[ô›‘›\ù]Œààãà[]ô\ûU⁄[ô›—[ô]Œààãà[]Œààãà]ô\òYŸT[]ŸZY⁄ŸŒààãà\›[X]YŸZY⁄ŸŒààãàŸ[\ìò[YNààãàX\öŸ]ò[YNààãà›[ù[Xô\éààãàŸ[ô\ìò[YNààãàö]ô\í[ú›ùX›[€úŒààãàX\[öŒààãàJJN¬àHÿ]⁄
+^Ÿ\[€äH¬àŸ]Y\‹ÿYŸJà^Ÿ\[€à[ú›[òŸ[Ÿà\úõ‹Çà»^Ÿ\[€ãõY\‹ÿYŸBààì‹ô\à€›[õ›ôH›XõZ]Yàãà
+N¬àHö[ò[H¬àŸ]ÿ]ö[ô ò[ŸJN¬àBàBàô]\õà
+àõ‹õH€\‹”ò[YOHú]ZX⁄À[‹ô\àà€î›XõZ]^ ]ô[ù
+HOàõ⁄Y›XõZ]
+]ô[ù
+_OÇà]èÇà€\‹”ò[YOHô^YXúõ›»èî]ZX⁄»[ùûO‹Çàèî[àHX\öŸ]‹à›\›€Y\à‹ô\è⁄èÇà€\‹”ò[YOHö[ùèÇàX\›\à]Hõ›»ö]ô\»Hõ‹›€úÀ€»X\öŸ]‹ô\ú»ÿ\úûHŸ[\ãàÿ[\€X[ãŸ[ô\ã›[[ôX\]Z[»[ù»ö]ô\àY\‹ÿYŸ\ÀÇà‹ÇàŸ]èÇà]à€\‹”ò[YOHôöY[Y‹öYèÇàXô[Çà‹ô\à\BàŸ[X›àò[YO^€‹ô\í⁄[ôBà€ê⁄[ôŸO^ ]ô[ù
+HOà¬à€€ú›ò[YHH]ô[ùù\ôŸ]ùò[YH\»õX\öŸ]àò›\›€Y\àé¬àŸ]‹ô\í⁄[ô
+ò[YJN¬àŸ]õ‹õJ
+›\úô[ù
+HOà
+¬àããò›\úô[ùà›\›€Y\ê€ŸNààãàX\öŸ]ò[YNààãàŸ[\ìò[YNààãà›[ù[Xô\éààãàŸ[ô\ìò[YNààãàJJN¬à_BàÇà‹[€àò[YOHõX\öŸ]èìX\öŸ]‹ô\è€‹[€èÇà‹[€àò[YOHò›\›€Y\àèê›\›€Y\à»⁄]H‹ô\è€‹[€èÇà‹Ÿ[X›Çà€Xô[ÇàXô[Çà‹ô\à»¬à[ú]àô\]Z\ôYàò[YO^Ÿõ‹õKú”ù[Xô\üBà€ê⁄[ôŸO^ ]ô[ù
+HOà\]Jú”ù[Xô\àã]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[Çà€‹ô\í⁄[ôOOHõX\öŸ]à»
+àÇàXô[ÇàX\öŸ]àŸ[X›àô\]Z\ôYàò[YO^Ÿõ‹õKõX\öŸ]ò[Y_Bà€ê⁄[ôŸO^ ]ô[ù
+HOà⁄€‹ŸSX\öŸ]
+]ô[ùù\ôŸ]ùò[YJ_BàÇà‹[€àò[YOHàèîŸ[X›X\öŸ]8†)è€‹[€èÇà€X\öŸ]ÀõX\
+
+X\öŸ]
+HOà
+à‹[€àŸ^O^€X\öŸ]Hò[YO^€X\öŸ]OÇà€X\öŸ]Bà€‹[€èÇà
+J_Bà‹Ÿ[X›Çà€Xô[ÇàXô[ÇàŸ[\ÇàŸ[X›àô\]Z\ôYàò[YO^Ÿõ‹õKúŸ[\ìò[Y_Bà€ê⁄[ôŸO^ ]ô[ù
+HOà⁄€‹ŸTŸ[\ä]ô[ùù\ôŸ]ùò[YJ_Bà\ÿXõY^»Yõ‹õKõX\öŸ]ò[YH	âàX\öŸ]Àõ[ô›àBàÇà‹[€àò[YOHàèîŸ[X›Ÿ[\∏†)è€‹[€èÇà‹Ÿ[\úÀõX\
+
+Ÿ[\äHOà
+à‹[€àŸ^O^‹Ÿ[\ãöYHò[YO^‹Ÿ[\ãõò[Y_OÇà‹Ÿ[\ãõò[Y_Bà‹Ÿ[\ãúÿ[\€X[à»0≠»ÿ[\€X[éà	‹Ÿ[\ãúÿ[\€X[üXààüBà‹Ÿ[\ãú›[ô‹ìÿÿ][€Çà»0≠»	‹Ÿ[\ãú›[ô‹ìÿÿ][€üXàààüBà‹Ÿ[\ãúŸ[ô\à»0≠»Ÿ[ô\éà	‹Ÿ[\ãúŸ[ô\üXààüBà€‹[€èÇà
+J_Bà‹Ÿ[X›Çà€Xô[ÇàXô[ÇàŸ[ô\ÇàŸ[X›àò[YO^Ÿõ‹õKúŸ[ô\ìò[Y_Bà€ê⁄[ôŸO^ ]ô[ù
+HOà\]JúŸ[ô\ìò[YHã]ô[ùù\ôŸ]ùò[YJ_BàÇà‹[€àò[YOHàèîŸ[X›Ÿ[ô\∏†)è€‹[€èÇà‹Ÿ[ô\úÀõX\
+
+Ÿ[ô\äHOà
+à‹[€àŸ^O^‹Ÿ[ô\ãöYHò[YO^‹Ÿ[ô\ãõò[Y_OÇà‹Ÿ[ô\ãõò[Y_Bà‹Ÿ[ô\ãú›[ô‹ìÿÿ][€Çà»0≠»	‹Ÿ[ô\ãú›[ô‹ìÿÿ][€üXàààüBà€‹[€èÇà
+J_Bà‹Ÿ[X›Çà€Xô[ÇàXô[Çà›[ù[Xô\Çà[ú]àò[YO^Ÿõ‹õKú›[ù[Xô\üBà€ê⁄[ôŸO^ ]ô[ù
+HOà\]Jú›[ù[Xô\àã]ô[ùù\ôŸ]ùò[YJ_BàXŸZ€\èHê]]»úõ€HŸ[\àÇàœÇà€Xô[ÇàœÇà
+Hà
+àÇàXô[Çà›\›€Y\ÇàŸ[X›àô\]Z\ôYàò[YO^Ÿõ‹õKò›\›€Y\ê€Ÿ_Bà€ê⁄[ôŸO^ ]ô[ù
+HOà⁄€‹ŸP›\›€Y\ä]ô[ùù\ôŸ]ùò[YJ_BàÇà‹[€àò[YOHàèîŸ[X››\›€Y\∏†)è€‹[€èÇàÿ›\›€Y\ì‹[€úÀõX\
+
+›\›€Y\äHOà
+à‹[€àŸ^O^ÿ›\›€Y\ãò€Ÿ_Hò[YO^ÿ›\›€Y\ãò€Ÿ_OÇàÿ›\›€Y\ãõXô[Bà€‹[€èÇà
+J_Bà‹Ÿ[X›Çà€Xô[ÇàXô[Çà⁄]BàŸ[X›àò[YO^Ÿõ‹õKõX\[öﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOà¬à€€ú›⁄]HH⁄]\Àô]OÀôö[ô
+à
+][JHOà][KöYOOH]ô[ùù\ôŸ]ùò[YKà
+N¬àYà
+⁄]JBàŸ]õ‹õJ
+›\úô[ù
+HOà
+¬àããò›\úô[ùà›\›€Y\ê€ŸNà›\úô[ùò›\›€Y\ê€ŸH⁄]Kô^\õò[€ŸKàX\[öŒà⁄]KõX\[ö»àãàö]ô\í[ú›ùX›[€úŒÇà⁄]Kò€€X›[€í[ú›ùX›[€ú»à›\úô[ùôö]ô\í[ú›ùX›[€úÀàJJN¬à_BàÇà‹[€àò[YOHàèì‹[€ò[⁄]K€X\8†)è€‹[€èÇà ⁄]\Àô]H◊JBàôö[\ä
+⁄]JHOà⁄]KòX›]ôJBàõX\
+
+⁄]JHOà
+à‹[€àŸ^O^‹⁄]KöYHò[YO^‹⁄]KöYOÇà‹⁄]Kõò[Y_Bà€‹[€èÇà
+J_Bà‹Ÿ[X›Çà€Xô[ÇàœÇà
+_BàXô[Çà€€X›[€à]Bà[ú]àô\]Z\ôYà\OHô]HÇàò[YO^Ÿõ‹õKò€€X›[€ë]_Bà€ê⁄[ôŸO^ ]ô[ù
+HOà\]Jò€€X›[€ë]Hã]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[ÇàXô[Çà[]ô\ûH]Bà[ú]à\OHô]HÇàò[YO^Ÿõ‹õKô[]ô\ûQ]_Bà€ê⁄[ôŸO^ ]ô[ù
+HOà\]Jô[]ô\ûQ]Hã]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[ÇàXô[Çà[]ô\ûH⁄[ô›»›\ùà[ú]à\OHô]][YK[ÿÿ[Çàò[YO^Ÿõ‹õKô[]ô\ûU⁄[ô›‘›\ù]ﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOÇà\]Jô[]ô\ûU⁄[ô›‘›\ù]»ã]ô[ùù\ôŸ]ùò[YJBàBàœÇà€Xô[ÇàXô[Çà[]ô\ûH⁄[ô›»[ôà[ú]à\OHô]][YK[ÿÿ[Çàò[YO^Ÿõ‹õKô[]ô\ûU⁄[ô›—[ô]ﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOÇà\]Jô[]ô\ûU⁄[ô›—[ô]»ã]ô[ùù\ôŸ]ùò[YJBàBàœÇà€Xô[ÇàXô[Çà[]¬à[ú]à[ú][ŸOHõù[Y\öX»Çàò[YO^Ÿõ‹õKú[]ﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOà\]Jú[]»ã]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[ÇàXô[Çà]ô»ŸZY⁄Ÿ¬à[ú]à[ú][ŸOHôX⁄[X[Çàò[YO^Ÿõ‹õKò]ô\òYŸT[]ŸZY⁄ŸﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOÇà\]Jò]ô\òYŸT[]ŸZY⁄Ÿ»ã]ô[ùù\ôŸ]ùò[YJBàBàœÇà€Xô[ÇàXô[Çà\›[X]YŸZY⁄Ÿ¬à[ú]à[ú][ŸOHôX⁄[X[Çàò[YO^Ÿõ‹õKô\›[X]YŸZY⁄ŸﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOÇà\]Jô\›[X]YŸZY⁄Ÿ»ã]ô[ùù\ôŸ]ùò[YJBàBàXŸZ€\èHê]]»Yàõ[ö»ÇàœÇà€Xô[ÇàXô[€\‹”ò[YOHù⁄YHèÇàX\[ö¬à[ú]à\OHù\õÇàò[YO^Ÿõ‹õKõX\[öﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOà\]JõX\[ö»ã]ô[ùù\ôŸ]ùò[YJ_BàXŸZ€\èHöŒãÀ€X\Àô€€Ÿ€Kò€€KÀããàÇàœÇà€Xô[ÇàXô[€\‹”ò[YOHù⁄YHèÇàö]ô\à[ú›ùX›[€ú¬à^\ôXBàò[YO^Ÿõ‹õKôö]ô\í[ú›ùX›[€úﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOÇà\]Jôö]ô\í[ú›ùX›[€ú»ã]ô[ùù\ôŸ]ùò[YJBàBàXŸZ€\èHê€€X›[€à⁄[ùXÿŸ\‹»õ›\À€€Ÿ»[ô[ô¯†)àÇàœÇà€Xô[ÇàŸ]èÇà X\öŸ]€€ùX›Àô\úõ‹à›\›€Y\úÀô\úõ‹à⁄]\Àô\úõ‹äH	âà
+à€\‹”ò[YOHõõ›XŸH[õ[ôK[õ›XŸHèÇà€€YHõ‹›€à]H€›[õ›ÿYY]àX[ùX[öY[»›[ÿ]ôH[ù¬à›Y⁄[ô»€òŸHTHXÿŸ\‹»\»]òZ[XõKÇà‹Çà
+_Bàö]ô\ìY\‹ÿYŸTô]öY]»õ‹õO^Ÿõ‹õ_HœÇàù]€à€\‹”ò[YOHúö[X\ûHà\ÿXõY^‹ÿ]ö[ôﬂOÇà‹ÿ]ö[ô»»îÿ]ö[ô¯†)àààîŸ[ôõ‹àô]öY]»üBàÿù]€èÇà€Y\‹ÿYŸH	âà€\‹”ò[YOHö[ùèû€Y\‹ÿYŸ_O‹üBàŸõ‹õOÇà
+N¬üBôù[ò›[€àö]ô\ìY\‹ÿYŸTô]öY] »õ‹õHNà»õ‹õNàôX€‹ô›ö[ôÀ›ö[ôœàJH¬à€€ú›[ô\»H¬à”ù[à	Ÿõ‹õKú”ù[Xô\à∏†%üXàõ‹õKõX\öŸ]ò[YBà»	Ÿõ‹õKõX\öŸ]ò[Y_IŸõ‹õKú›[ù[Xô\à»0≠»›[	Ÿõ‹õKú›[ù[Xô\üXààüXààõ‹õKò›\›€Y\ê€ŸHê›\›€Y\à»€€ôö\õHãàõ‹õKúŸ[\ìò[YH»Ÿ[\éà	Ÿõ‹õKúŸ[\ìò[Y_Xààãàõ‹õKúŸ[ô\ìò[YH»Ÿ[ô\éà	Ÿõ‹õKúŸ[ô\ìò[Y_Xààãàõ‹õKò€€X›[€ë]H»€€X›[€éà	Ÿõ‹õKò€€X›[€ë]_Xààãàõ‹õKô\›[X]YŸZY⁄Ÿ»à
+ù[Xô\äõ‹õKú[] Hà	âàù[Xô\äõ‹õKò]ô\òYŸT[]ŸZY⁄Ÿ Hà
+Bà»ŸZY⁄à	Ÿõ‹õKô\›[X]YŸZY⁄Ÿ»X]úõ›[ô
+ù[Xô\äõ‹õKú[] H
+àù[Xô\äõ‹õKò]ô\òYŸT[]ŸZY⁄Ÿ J_HŸÿàààãàõ‹õKôö]ô\í[ú›ùX›[€ú»»õ›\Œà	Ÿõ‹õKôö]ô\í[ú›ùX›[€úﬂXààãàõ‹õKõX\[ö»»X\à	Ÿõ‹õKõX\[öﬂXààãàKôö[\äõ€€X[äN¬àô]\õà
+à\⁄YH€\‹”ò[YOHôö]ô\ã[Y\‹ÿYŸHèÇà€\‹”ò[YOHô^YXúõ›»èëö]ô\àY\‹ÿYŸHô]öY]œ‹Çà›õ€ôœî[õô\àô]öY]»ô\]Z\ôYôYõ‹ôHŸ[ô‹›õ€ôœÇàôOû€[ô\Àöõ⁄[äóàä_O‹ôOÇàÿ\⁄YOÇà
+N¬üBÇù\H[õö[ô”‹ô\àH¬àYà›ö[ôŒ¬à”ù[Xô\éà›ö[ôŒ¬à›\›€Y\ê€ŸNà›ö[ôŒ¬à€€X›[€ë]Nà›ö[ôŒ¬à[]ô\ûQ]Nà›ö[ôŒ¬à[]ô\ûU⁄[ô›‘›\ù]œŒà›ö[ôŒ¬à[]ô\ûU⁄[ô›—[ô]œŒà›ö[ôŒ¬à[]Œà›ö[ôŒ¬à›]\Œà›ö[ôŒ¬àX\öŸ]ò[YOŒà›ö[ôŒ¬àŸ[\ìò[YOŒà›ö[ôŒ¬à›[ù[Xô\èŒà›ö[ôŒ¬àö]ô\í[ú›ùX›[€úœŒà›ö[ôŒ¬àX\[öœŒà›ö[ôŒ¬üN¬ôù[ò›[€à[õö[ô”‹ô\ú ][\œŒàò[ú‹‹ù‹ô\ñ◊JNà[õö[ô”‹ô\ñ◊H¬àô]\õà
+][\»◊JBàôö[\ä
+][JHOà][Kú›]\»OOHêÿ[òŸ[YäBàõX\
+
+][JHOà
+¬àYà][KöYà”ù[Xô\éà][KúôYô\ô[òŸKà›\›€Y\ê€ŸNà][Kò›\›€Y\ê€ŸKà€€X›[€ë]Nà][Kò€€X›[€ë]Kà[]ô\ûQ]Nà][Kô[]ô\ûQ]H∏†%ãà[]ô\ûU⁄[ô›‘›\ù]Œà][Kô[]ô\ûU⁄[ô›‘›\ù]Àà[]ô\ûU⁄[ô›—[ô]Œà][Kô[]ô\ûU⁄[ô›—[ô]Àà[]Œà][Kú[]œÀù‘›ö[ô 
+H∏†%ãà›]\Œà][Kú›]\ÀàX\öŸ]ò[YNà][KõX\öŸ]ò[YKàŸ[\ìò[YNà][KúŸ[\ìò[YKà›[ù[Xô\éà][Kú›[ù[Xô\ãàö]ô\í[ú›ùX›[€úŒà][Kôö]ô\í[ú›ùX›[€úÀàX\[öŒà][KõX\[öÀàJJBàú€‹ù
+
+YùöY⁄
+HOÇàYùò€€X›[€ë]Kõÿÿ[P€€\\ôJöY⁄ò€€X›[€ë]JKà
+N¬üBÇôù[ò›[€àù[[õö[ô–õÿ\ô
+
+H¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú›Ÿ]KŸ]]WHH\ŸT›]Jÿÿ[]J
+JN¬à€€ú›‹ô\ú–\HH\ŸP\Jà\ŸPÿ[òX⁄ à\ﬁ[ò»
+
+HOà\Kõ‹ô\ú ]K]K]ÿZ]⁄Ÿ[ä
+JKàŸ]K⁄Ÿ[óKà
+Kà
+N¬à€€ú›ÿY»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\KõÿY ]K]ÿZ]⁄Ÿ[ä
+JKŸ]K⁄Ÿ[óJKà
+N¬à€€ú›ô]\õú»H\ŸP\Jà\ŸPÿ[òX⁄ à\ﬁ[ò»
+
+HOà\Kúô]\õìÿY›YŸŸ\›[€ú ]K]ÿZ]⁄Ÿ[ä
+JKàŸ]K⁄Ÿ[óKà
+Kà
+N¬à€€ú›ôZX€\»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\KùôZX€\ ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›ö]ô\ú»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\Kôö]ô\ú ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›òZ[\ú»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\KùòZ[\ú ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›‹Ÿ[X›YŸ]Ÿ[X›YHH\ŸT›]O›ö[ô÷◊Oä◊JN¬à€€ú›‹ÿ]ö[ôÀŸ]ÿ]ö[ô◊HH\ŸT›]Jò[ŸJN¬à€€ú›€Y\‹ÿYŸKŸ]Y\‹ÿYŸWHH\ŸT›]O›ö[ôœä
+N¬à€€ú›Ÿ^HH[õö[ô”‹ô\ú ‹ô\ú–\Kô]JN¬à€€ú›[õôYHÿYÀô]H◊N¬à€€ú›[ò€€\]SÿY»H[õôYôö[\äà
+ÿY
+HOà[ÿYôö]ô\íY[ÿYùôZX€RYà
+Kõ[ô›¬à€€ú›Ÿ[X›Y‹ô\ú»HŸ^Kôö[\ä
+‹ô\äHOàŸ[X›Yö[ò€Y\ ‹ô\ãöY
+JN¬à€€ú›ŸŸ€HH
+Yà›ö[ô HOÇàŸ]Ÿ[X›Y
+
+›\úô[ù
+HOÇà›\úô[ùö[ò€Y\ Y
+Bà»›\úô[ùôö[\ä
+ò[YJHOàò[YHOOHY
+BààÀããò›\úô[ùYKà
+N¬à€€ú›ôYúô\⁄[H
+
+HOà¬àõ⁄Y‹ô\ú–\KúôYúô\⁄
+
+N¬àõ⁄YÿYÀúôYúô\⁄
+
+N¬àõ⁄Yô]\õúÀúôYúô\⁄
+
+N¬àõ⁄YôZX€\ÀúôYúô\⁄
+
+N¬àõ⁄Yö]ô\úÀúôYúô\⁄
+
+N¬àõ⁄YòZ[\úÀúôYúô\⁄
+
+N¬àN¬à\ﬁ[ò»ù[ò›[€àùZ[ÿY
+
+H¬à€€ú›⁄‹Ÿ[àHŸ^Kôö[\ä
+‹ô\äHOàŸ[X›Yö[ò€Y\ ‹ô\ãöY
+JN¬àYà
+X⁄‹Ÿ[ãõ[ô›
+Hô]\õé¬àŸ]ÿ]ö[ô ùYJN¬àŸ]Y\‹ÿYŸJ[ôYö[ôY
+N¬àûH¬à]ÿZ]\Kò‹ôX]SÿY
+à¬àôYô\ô[òŸNà–QIŸ]Kúô\XŸP[
+ãHãàä_KI‘›ö[ô [õôYõ[ô›
+»JKúY›\ù
+ãåä_Xà[õö[ô—]Nà]Kà[]‹XŸ\’\ŸYà⁄‹Ÿ[ãúôYXŸJà
+›[‹ô\äHOà›[
+»
+ù[Xô\ä‹ô\ãú[] H
+Kàà
+Kàÿ\X⁄]U\Nàî›[ô\ô[]»ãà›‹Œà⁄‹Ÿ[ãõX\
+
+‹ô\äHOà
+¬à‹ô\íYà‹ô\ãöYàò[YNà	€‹ô\ãú”ù[Xô\üH0≠»	€‹ô\ãò›\›€Y\ê€Ÿ_XàJJKàKà]ÿZ]⁄Ÿ[ä
+Kà
+N¬àŸ]Ÿ[X›Y
+◊JN¬à]ÿZ]ÿYÀúôYúô\⁄
+
+N¬à]ÿZ]ô]\õúÀúôYúô\⁄
+
+N¬àŸ]Y\‹ÿYŸJàìÿYÿ]ôYà[ÿÿ]HHõY]YYô\‹Ÿ\»[ôÿ[›[]Hõ›]K—UKàX\öŸ]]Z[»\ôHô]Z[ôYõ‹à\‹]⁄àãà
+N¬àHÿ]⁄
+^Ÿ\[€äH¬àŸ]Y\‹ÿYŸJà^Ÿ\[€à[ú›[òŸ[Ÿà\úõ‹Çà»^Ÿ\[€ãõY\‹ÿYŸBààê€›[õ›ÿ]ôHHÿYàãà
+N¬àHö[ò[H¬àŸ]ÿ]ö[ô ò[ŸJN¬àBàBàô]\õà
+àŸX›[€èÇà]à€\‹”ò[YOHù]K\õ›»èÇà]èÇà€\‹”ò[YOHô^YXúõ›»èî[à[ô€€ùõ€‹ÇàOî[õö[ô»õÿ\ô⁄OÇà€\‹”ò[YOHö[ùõ»èÇàùZ[H^Húõ€H\õ›ôY€‹öÀ[à[ÿÿ]H[ôõ›]HXX⁄ÿYà⁄]›]‹⁄[ô»Hõÿ\ôYà€ôHŸ\ùöXŸH\»€›ÀÇà‹ÇàŸ]èÇàù]€à€ê€X⁄œ^‹ôYúô\⁄[OîôYúô\⁄õÿ\ôÿù]€èÇàŸ]èÇà]à€\‹”ò[YOHú[õô\ãZX[èÇà\ùX€OÇà‹[èîôXYH»[è‹‹[èÇà›õ€ôœû›Ÿ^Kõ[ô›O‹›õ€ôœÇà€X[ê\õ›ôY‹ô\úœ‹€X[Çàÿ\ùX€OÇà\ùX€OÇà‹[èî[õôYÿYœ‹‹[èÇà›õ€ôœû‹[õôYõ[ô›O‹›õ€ôœÇà€X[îÿ]ôYõ‹à\»^O‹€X[Çàÿ\ùX€OÇà\ùX€H€\‹”ò[YO^⁄[ò€€\]SÿY»»ò][ù[€ààààüOÇà‹[èìôYY[ÿÿ][€è‹‹[èÇà›õ€ôœû⁄[ò€€\]SÿYﬂO‹›õ€ôœÇà€X[ëö]ô\à‹àôZX€HZ\‹⁄[ôœ‹€X[Çàÿ\ùX€OÇàŸ]èÇà]à€\‹”ò[YOHú[õô\ã]€€ò\àèÇàXô[Çà[à]^»àüBà[ú]à\OHô]HÇàò[YO^Ÿ]_Bà€ê⁄[ôŸO^ ]ô[ù
+HOà¬àŸ]]J]ô[ùù\ôŸ]ùò[YJN¬àŸ]Ÿ[X›Y
+◊JN¬à_BàœÇà€Xô[Çà‹[èÇà›Ÿ^Kõ[ô›H\õ›ôY‹ô\û›Ÿ^Kõ[ô›OOHH»àààú»üH]ÿZ][ô¬àÿY[ÿÿ][€Çà‹‹[èÇàù]€Çà€\‹”ò[YOHúö[X\ûHÇà\ÿXõY^»\Ÿ[X›Yõ[ô›ÿ]ö[ôﬂBà€ê€X⁄œ^ 
+HOàõ⁄YùZ[ÿY
+
+_BàÇà‹ÿ]ö[ô»»îÿ]ö[ô¯†)àààùZ[ÿY
+	‹Ÿ[X›Yõ[ô›JXBàÿù]€èÇàŸ]èÇà[õô\ìXZ[õﬁ[\‹ùà[õö[ô—]O^Ÿ]_Bà€í[\‹ùY^ÿ\ﬁ[ò»
+
+HOà¬à]ÿZ]‹ô\ú–\KúôYúô\⁄
+
+N¬à]ÿZ]ÿYÀúôYúô\⁄
+
+N¬à_BàœÇàö]ô\îô]\õî›YŸŸ\›[€ú¬à]O^‹ô]\õúÀô]_BàÿY[ôœ^‹ô]\õúÀõÿY[ôﬂBà\úõ‹è^‹ô]\õúÀô\úõ‹üBàœÇà[õö[ô‘›YŸŸ\›[€ú¬à‹ô\úœ^›Ÿ^_BàŸ[X›Y^‹Ÿ[X›YBà€îŸ[X›^‹Ÿ]Ÿ[X›YBàœÇàŸ[X›YÿYô]öY]»‹ô\úœ^‹Ÿ[X›Y‹ô\úﬂHœÇà€Y\‹ÿYŸH	âà€\‹”ò[YOHõõ›XŸH[õ[ôK[õ›XŸHèû€Y\‹ÿYŸ_O‹üBàô\€›\òŸP[ÿÿ][€êõÿ\ôÿYœ^‹[õôYHôZX€\œ^›ôZX€\Àô]H◊_Hö]ô\úœ^Ÿö]ô\úÀô]H◊_H€îÿ]ôY^€ÿYÀúôYúô\⁄HœÇà]à€\‹”ò[YOHú[õô\ã]€‹ö‹‹XŸHèÇà\ùX€H€\‹”ò[YOHõ[ôH[ò[ÿÿ]YèÇàèÇàôXYH»[à‹[èû›Ÿ^Kõ[ô›O‹‹[èÇà⁄èÇà€‹ô\ú–\KõÿY[ô»	âà[‹ô\ú–\Kô]H»
+à€\‹”ò[YOHõ[ôK\›]HèìÿY[ô»\õ›ôY‹ô\ú¯†)è‹Çà
+Hà‹ô\ú–\Kô\úõ‹à»
+à]à€\‹”ò[YOHõ[ôK\›]H\úõ‹àèÇàû€‹ô\ú–\Kô\úõ‹üO‹Çà€‹ô\ú–\Kô\úõ‹ãö[ò€Y\ ìZX‹õ‹€Ÿù⁄Y€ãZ[àäH	âà
+àôX€€õôX›ZX‹õ‹€ŸùœÇà
+_Bàù]€à€ê€X⁄œ^ 
+HOàõ⁄Y‹ô\ú–\KúôYúô\⁄
+
+_OÇàô]ûH‹ô\ú¬àÿù]€èÇàŸ]èÇà
+HàŸ^Kõ[ô›»
+àŸ^KõX\
+
+‹ô\äHOà
+à‹ô\êÿ\ôàŸ^O^€‹ô\ãöYBà‹ô\è^€‹ô\üBàŸ[X›Y^‹Ÿ[X›Yö[ò€Y\ ‹ô\ãöY
+_Bà€ïŸŸ€O^ 
+HOàŸŸ€J‹ô\ãöY
+_BàœÇà
+JBà
+Hà
+à€\‹”ò[YOHö[ùèÇàõ»\õ›ôY‹ô\ú»\ôHôXYHõ‹à\»]Kàô]öY]»ô]»‹ô\ú»[Çà›Y⁄[ôÀÇà‹Çà
+_Bàÿ\ùX€OÇà\ùX€H€\‹”ò[YOHõ[ôH[õô\ã[[ô\»èÇàèÇà[õôYÿY»‹[èû‹[õôYõ[ô›O‹‹[èÇà⁄èÇà€ÿYÀõÿY[ô»	âà[ÿYÀô]H»
+à€\‹”ò[YOHõ[ôK\›]HèìÿY[ô»[õôYÿY¯†)è‹Çà
+HàÿYÀô\úõ‹à»
+à]à€\‹”ò[YOHõ[ôK\›]H\úõ‹àèÇàû€ÿYÀô\úõ‹üO‹Çà€ÿYÀô\úõ‹ãö[ò€Y\ ìZX‹õ‹€Ÿù⁄Y€ãZ[àäH	âà
+àôX€€õôX›ZX‹õ‹€ŸùœÇà
+_Bàù]€à€ê€X⁄œ^ 
+HOàõ⁄YÿYÀúôYúô\⁄
+
+_Oîô]ûHÿYœÿù]€èÇàŸ]èÇà
+Hà[õôYõ[ô›»
+à[õôYõX\
+
+ÿY
+HOà
+àÿYÿ\ôŸ^O^€ÿYöYHÿY^€ÿYHôZX€\œ^›ôZX€\Àô]H◊_Hö]ô\úœ^Ÿö]ô\úÀô]H◊_HòZ[\úœ^›òZ[\úÀô]H◊_H€îÿ]ôY^€ÿYÀúôYúô\⁄HœÇà
+JBà
+Hà
+à€\‹”ò[YOHö[ùèÇà‹ôX]HHÿYúõ€H\õ›ôY‹ô\ú»»[ÿÿ]H]\ôKÇà‹Çà
+_Bàÿ\ùX€OÇà‹\ò][€ò[X\ÿYœ^‹[õôYH[[Y]ûO^›[ôYö[ôYHœÇàŸ]èÇà‹ŸX›[€èÇà
+N¬üBÇô^‹ùù[ò›[€à[ÿÿ][€êõÿ\ô
+
+H¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú›Ÿ]KŸ]]WHH\ŸT›]Jÿÿ[]J
+JN¬à€€ú›ÿY»H\ŸP\J\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\KõÿY ]K]ÿZ]⁄Ÿ[ä
+JKŸ]K⁄Ÿ[óJJN¬à€€ú›ôZX€\»H\ŸP\J\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\KùôZX€\ ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJJN¬à€€ú›ö]ô\ú»H\ŸP\J\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\Kôö]ô\ú ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJJN¬à€€ú›òZ[\ú»H\ŸP\J\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\KùòZ[\ú ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJJN¬à€€ú›[õôYHÿYÀô]H◊N¬à€€ú›ôYúô\⁄H
+
+HOà»õ⁄YÿYÀúôYúô\⁄
+
+N»õ⁄YôZX€\ÀúôYúô\⁄
+
+N»õ⁄Yö]πÛ^u∂âûÀk∫wµÁY€õ‹›X‹œÀú⁄]\◊Kà»ìX\öŸ]€€ùX›»ãXY€õ‹›X‹œÀõX\öŸ]€€ùX›◊KàH\»€€ú›¬àô]\õà
+à]à€\‹”ò[YOHõX\›\ãX€›[ù»èÇàÿÿ\ôÀõX\
+
+€Xô[ò[YWJHOà
+à\ùX€HŸ^O^€Xô[H€\‹”ò[YO^›ò[YOÀõ⁄»OOHò[ŸH»ô\úõ‹ààààüOÇà‹[èû€Xô[O‹‹[èÇà›õ€ôœû›ò[YOÀõ⁄»OOHò[ŸH»àHàà
+ò[YOÀò€›[ùœ»∏†%ä_O‹›õ€ôœÇà›ò[YOÀô\úõ‹à	âà€X[û›ò[YKô\úõ‹üO‹€X[üBàÿ\ùX€OÇà
+J_BàŸ]èÇà
+N¬üBÇù\HX\›\ë[ù]HBàò›\›€Y\àÇàò›\›€Y\ò€€ùX›ÇàùôZX€HÇàôö]ô\àÇàùòZ[\àÇàõX\öŸ]€€ùX›é¬ù\HX\›\í[\‹ù[ŸHBàò[Çàôö]ô\ú»ÇàùôZX€\»ÇàùòZ[\ú»Çàú⁄]\»ÇàõX\öŸ]»Çàò€€ùX›»ÇàôùY[é¬ôù[ò›[€àX\›\ï€‹öÿõ€⁄“[\‹ù
+¬à[ŸHHò[ãà€ê\YYüNà¬à[ŸOŒàX\›\í[\‹ù[ŸN¬à€ê\YYŒà
+
+HOàõ⁄Y¬üJH¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú››€‹öÿõ€⁄ÀŸ]€‹öÿõ€⁄◊HH\ŸT›]O÷ï€‹ö–õ€⁄œä
+N¬à€€ú›‹⁄Y]ò[Y\ÀŸ]⁄Y]ò[Y\◊HH\ŸT›]O›ö[ô÷◊Oä◊JN¬à€€ú›‹Ÿ[X›Y⁄Y]Ÿ]Ÿ[X›Y⁄Y]HH\ŸT›]JàäN¬à€€ú›‹ô]öY]‘õ›‹ÀŸ]ô]öY]‘õ›‹◊HH\ŸT›]O›ö[ô÷◊V◊Oä◊JN¬à€€ú›‹ôX€‹ôÀŸ]ôX€‹ô◊HH\ŸT›]O›YŸPò]⁄ô\]Y\›◊Oä◊JN¬à€€ú›‹›[[X\ûKŸ]›[[X\ûWHH\ŸT›]O›ö[ôœä
+N¬à€€ú›⁄\‹›Y\ÀŸ]\‹›Y\◊HH\ŸT›]O›ö[ô÷◊Oä◊JN¬à€€ú›‹›XõZ][ôÀŸ]›XõZ][ô◊HH\ŸT›]Jò[ŸJN¬Çàù[ò›[€àô\\ôJô^€‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄Àô^⁄Y]à›ö[ô H¬à€€ú›X\YHö[\ìX\›\îôX€‹ô X\X\›\ï€‹öÿõ€⁄ ô^€‹öÿõ€⁄ K[ŸJN¬à€€ú›[\‹ùù[àH]Kõõ› 
+Kù‘›ö[ô ÕäN¬àŸ]ôX€‹ô àX\YúôX€‹ôÀõX\
+
+ôX€‹ô[ô^
+HOà
+¬àããúôX€‹ôàY[\›[òﬁRŸ^Nàÿ€‹Y[\‹ùŸ^JôX€‹ô[\‹ùù[ã[ô^
+KàJJKà
+N¬àŸ]\‹›Y\ X\Yö\‹›Y\ N¬à€€ú›ÿ€‹HH[ŸHOOHò[à»õX\›\ãY]Hàà[ŸN¬àŸ]›[[X\ûJà	€X\YúôX€‹ôÀõ[ô›H	‹ÿ€‹_HôX€‹ô	€X\YúôX€‹ôÀõ[ô›OOHH»àààú»üHõ›[ôX‹õ‹‹»H€‹öÿõ€⁄Œà	‹›[[X\ö\ŸPò]⁄
+X\YúôX€‹ô Hõõ›[ô»ôX€Ÿ€ö\ŸYüKàô]öY]»[ôY]Hò[Z[X\àXú»ô[›»ôYõ‹ôH\Z[ôÀòà
+N¬àÿY⁄Y]ô]öY] ô^€‹öÿõ€⁄Àô^⁄Y]
+N¬àBÇàù[ò›[€àÿY⁄Y]ô]öY] ô^€‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄Àô^⁄Y]à›ö[ô H¬à€€ú›⁄Y]Hô^€‹öÿõ€⁄Àî⁄Y]÷€ô^⁄Y]N¬àYà
+\⁄Y]
+H¬àŸ]ô]öY]‘õ›‹ ◊JN¬àô]\õé¬àBà€€ú›õ›‹»H÷ù][Àú⁄Y]›◊⁄ú€€è\úò^O[ö€õ›€èèä⁄Y]¬àXY\éàKàYùò[ààãàõ[ö‹õ›‹ŒàùYKàò]Œàò[ŸKàJN¬à€€ú›⁄YHX]õZ[äLX]õX^
+Kããúõ›‹ÀõX\
+
+õ› HOàõ›Àõ[ô›
+JJN¬àŸ]ô]öY]‘õ›‹ àõ›‹¬àú€XŸJÃ
+BàõX\
+
+õ› HOÇà\úò^Kôúõ€J»[ô›à⁄YK
+À€€[[äHOà^
+õ›÷ÿ€€[[óJJKà
+Kà
+N¬àBÇàù[ò›[€àY]Ÿ[
+õ›“[ô^àù[Xô\ã€€[[í[ô^àù[Xô\ãò[YNà›ö[ô H¬àŸ]ô]öY]‘õ›‹ 
+›\úô[ù
+HOÇà›\úô[ùõX\
+
+õ›À[ô^
+HOÇà[ô^OOHõ›“[ô^à»õ›ÀõX\
+
+Ÿ[€€[[äHOà
+€€[[àOOH€€[[í[ô^»ò[YHàŸ[
+JBààõ›Àà
+Kà
+N¬àBÇàù[ò›[€à€€[Z]Ÿ[
+õ›“[ô^àù[Xô\ã€€[[í[ô^àù[Xô\ãò[YNà›ö[ô H¬àYà
+]€‹öÿõ€⁄»\Ÿ[X›Y⁄Y]
+Hô]\õé¬à€€ú›⁄Y]H€‹öÿõ€⁄Àî⁄Y]÷‹Ÿ[X›Y⁄Y]N¬à€€ú›Yô\‹»H÷ù][Àô[ò€ŸWÿŸ[
+»éàõ›“[ô^Œà€€[[í[ô^JN¬àYà
+ò[YHOOHàäH[]H⁄Y]ÿYô\‹◊N¬à[ŸBà⁄Y]ÿYô\‹◊HH¬àããä⁄Y]ÿYô\‹◊HﬂJKààú»ãàéàò[YKàŒàò[YKàN¬à€€ú›ò[ôŸHH⁄Y]»à\ôYàóBà»÷ù][ÀôX€ŸW‹ò[ôŸJ⁄Y]»à\ôYàóJBàà»Œà»éàŒàKNà»éàõ›“[ô^Œà€€[[í[ô^HN¬àò[ôŸKôKúàHX]õX^
+ò[ôŸKôKúãõ›“[ô^
+N¬àò[ôŸKôKò»HX]õX^
+ò[ôŸKôKòÀ€€[[í[ô^
+N¬à⁄Y]»à\ôYàóHH÷ù][Àô[ò€ŸW‹ò[ôŸJò[ôŸJN¬à€€ú›ô^€‹öÿõ€⁄»H¬àããù€‹öÿõ€⁄Àà⁄Y]Œà»ããù€‹öÿõ€⁄Àî⁄Y]À‹Ÿ[X›Y⁄Y]Nà⁄Y]KàN¬àŸ]€‹öÿõ€⁄ ô^€‹öÿõ€⁄ N¬àô\\ôJô^€‹öÿõ€⁄ÀŸ[X›Y⁄Y]
+N¬àBÇà\ﬁ[ò»ù[ò›[€àŸ[X›€‹öÿõ€⁄ ö[OŒàö[JH¬àYà
+Yö[JHô]\õé¬àŸ]›[[X\ûJ[ôYö[ôY
+N¬àŸ]\‹›Y\ ◊JN¬àŸ]ôX€‹ô ◊JN¬àŸ]ô]öY]‘õ›‹ ◊JN¬àûH¬à€€ú›ô^€‹öÿõ€⁄»H÷úôXY
+]ÿZ]ö[Kò\úò^PùYôô\ä
+K¬à\Nàò\úò^HãàŸ[]\ŒàùYKàJN¬à€€ú›ô^⁄Y]BàôYô\úôY⁄Y]
+ô^€‹öÿõ€⁄À[ŸJHô^€‹öÿõ€⁄Àî⁄Y]ò[Y\÷ÃHàé¬àŸ]€‹öÿõ€⁄ ô^€‹öÿõ€⁄ N¬àŸ]⁄Y]ò[Y\ ô^€‹öÿõ€⁄Àî⁄Y]ò[Y\ N¬àŸ]Ÿ[X›Y⁄Y]
+ô^⁄Y]
+N¬àô\\ôJô^€‹öÿõ€⁄Àô^⁄Y]
+N¬àHÿ]⁄¬àŸ]›[[X\ûJïHX\›\ãY]H€‹öÿõ€⁄»€›[õ›ôHôXYàäN¬àBàBÇàù[ò›[€à⁄[ôŸT⁄Y]
+ô^⁄Y]à›ö[ô H¬àŸ]Ÿ[X›Y⁄Y]
+ô^⁄Y]
+N¬àYà
+€‹öÿõ€⁄ HÿY⁄Y]ô]öY] €‹öÿõ€⁄Àô^⁄Y]
+N¬àBÇà\ﬁ[ò»ù[ò›[€à›XõZ]
+
+H¬àŸ]›XõZ][ô ùYJN¬à]€€\]YH¬àûH¬à€€ú›XÿŸ\‹’⁄Ÿ[àH]ÿZ]⁄Ÿ[ä
+N¬à€€ú›ô\‹€úŸ\ŒàX\›\ê\Tô\‹€úŸV◊HH◊N¬àÀ»ŸY\XX⁄ô\]Y\›ô[›»H^ù\ôHÿ]]ÿ^H⁄[ô›ÀàH⁄€H€‹öÿõ€⁄»ÿ[ÇàÀ»›[ôH\YYù]€ôH€›»‘Sõ›»ÿ[àõ»€ôŸ\à›‹HL\õ›»⁄[öÀÇà€€ú›ò]⁄⁄^ôHHçN¬àõ‹à
+]›\ùH»›\ùôX€‹ôÀõ[ô›»›\ù
+œHò]⁄⁄^ôJH¬à€€ú›ò]⁄HôX€‹ôÀú€XŸJ›\ù›\ù
+»ò]⁄⁄^ôJN¬àŸ]›[[X\ûJà\Z[ô»	‹›\ù
+»_KI‹›\ù
+»ò]⁄õ[ô›HŸà	‹ôX€‹ôÀõ[ô›HôX€‹ô¯†)òà
+N¬àô\‹€úŸ\Àú\⁄
+]ÿZ]\Kò\SX\›\ë]Jò]⁄XÿŸ\‹’⁄Ÿ[äJN¬à€€\]Y
+œHò]⁄õ[ô›¬àŸ]›[[X\ûJ	ÿ€€\]YK…‹ôX€‹ôÀõ[ô›HôX€‹ô»õÿŸ\‹ŸY8†)ò
+N¬àBà€€ú›\YYHô\‹€úŸ\ÀúôYXŸJà
+›[ô\‹€úŸJHOà›[
+»ô\‹€úŸKò\YYàà
+N¬à€€ú›ôY⁄\›\ôYHô\‹€úŸ\ÀúôYXŸJà
+›[ô\‹€úŸJHOÇà›[
+¬à
+ô\‹€úŸKúôY⁄\›\ôYœ¬àô\‹€úŸKúô\›[Àôö[\ä
+ô\›[
+HOàô\›[úôY⁄\›\ôY
+Kõ[ô›
+Kàà
+N¬à€€ú›[ô\›[»Hô\‹€úŸ\Àôõ]X\
+
+ô\‹€úŸJHOàô\‹€úŸKúô\›[ N¬à€€ú›òZ[Yô\›[»H[ô\›[Àôö[\äà
+ô\›[
+HOà\ô\›[ò\YY	âà\ô\›[úôY⁄\›\ôYà
+N¬à€€ú›òZ[\ô\»HòZ[Yô\›[¬àú€XŸJå
+BàõX\
+à
+ô\›[
+HOÇà	‹ô\›[ô[ù]U\_Nà	‹ô\›[ô\úõ‹àúôX€‹ôòZ[YüXà
+N¬à€€ú›][\YHôX€‹ôÀõ[ô›¬à€€ú›[öŸYHô\‹€úŸ\ÀúôYXŸJà
+›[ô\‹€úŸJHOà›[
+»
+ô\‹€úŸKõ[öŸY
+Kàà
+N¬à€€ú›ÿZ][ô»HX]õX^
+ôY⁄\›\ôYH[öŸY
+N¬àŸ]›[[X\ûJà	ÿ\YYK…ÿ][\YHôX€‹ô»\ôH]ôI€[öŸY»»	€[öŸYHôX€›ô\ûHõ›…€[öŸYOOHH»àààú»üH[öŸYààüI›ÿZ][ô»»»	›ÿZ][ôﬂHXÿŸ\Yù]ì’UëHôXÿ]\ŸHH‘Sÿ⁄[XH\»[ò€€\]XààüIŸòZ[Yô\›[Àõ[ô›»»	ŸòZ[Yô\›[Àõ[ô›HòZ[Yà	ŸòZ[\ô\Àú€XŸJLäKöõ⁄[äé»ä_XààüKòà
+N¬àYà
+YòZ[Yô\›[Àõ[ô›	âà]ÿZ][ô HŸ]ôX€‹ô ◊JN¬à€ê\YYÀä
+N¬àHÿ]⁄
+^Ÿ\[€äH¬à€€ú›Y\‹ÿYŸHBà^Ÿ\[€à[ú›[òŸ[Ÿà\úõ‹Çà»^Ÿ\[€ãõY\‹ÿYŸBààìX\›\ãY]H[\‹ùòZ[Yàé¬àŸ]›[[X\ûJà	ÿ€€\]YK…‹ôX€‹ôÀõ[ô›HôX€‹ô»€€\]YôYõ‹ôHHô\]Y\››‹Yà	€Y\‹ÿYŸ_H[›Hÿ[àÿYô[Hô]ûN»€€\]Yõ›‹»⁄[ôH\]Yò]\à[à\Xÿ]Yòà
+N¬àHö[ò[H¬àŸ]›XõZ][ô ò[ŸJN¬àBàBÇà€€ú›]HBà[ŸHOOHò[à»í[\‹ùX\›\ãY]H€‹öÿõ€⁄»àà[\‹ù	€[Ÿ_X¬àô]\õà
+à]à€\‹”ò[YOHú[ô[[\‹ù\[ô[X\›\ãZ[\‹ùèÇàèû›]_O⁄èÇàÇà€[ŸHOOHò[Çà»ï\ÿYHò[ú‹‹ù‹\ò][€ú»X\›\à€‹öÿõ€⁄Àà]»€‹ö‹⁄Y]»\X\àô[›»ZŸH^Ÿ[€»[›Hÿ[àô]öY]»[ô€‹úôX›Ÿ[»ôYõ‹ôH‹ö][ô»HôX€Ÿ€ö\ŸYõ›‹»»]ôHX\›\à]KàÇàà\ÿYHX\›\à€‹öÿõ€⁄ÀàHò[Z[X\à€‹ö‹⁄Y]Xú»ô[XZ[àö\⁄XõK⁄[H\»YŸH€õH\Y\»ôX€Ÿ€ö\ŸY	€[Ÿ_HôX€‹ôÀòBà‹Çà[ú]à\OHôö[HÇàXÿŸ\HãûﬁûÀû€K\Xÿ][€ã›õôõ‹[û[õ‹õX]À[ŸôöXŸYÿ›[Y[ùú‹ôXY⁄Y][ú⁄Y]\Xÿ][€ã›õôõ\ÀY^Ÿ[Çà€ê⁄[ôŸO^ ]ô[ù
+HOàõ⁄YŸ[X›€‹öÿõ€⁄ ]ô[ùù\ôŸ]ôö[\œÀñÃJ_BàœÇà‹⁄Y]ò[Y\Àõ[ô›à	âà
+àÇà]Çà€\‹”ò[YOHô^Ÿ[\⁄Y]]Xú»Çàõ€OHùXõ\›Çà\öXK[Xô[Hï€‹öÿõ€⁄»⁄Y]»ÇàÇà‹⁄Y]ò[Y\ÀõX\
+
+⁄Y]
+HOà
+àù]€Çà\OHòù]€àÇàõ€OHùXàÇà\öXK\Ÿ[X›Y^‹Ÿ[X›Y⁄Y]OOH⁄Y]Bà€\‹”ò[YO^‹Ÿ[X›Y⁄Y]OOH⁄Y]»òX›]ôHàààüBàŸ^O^‹⁄Y]Bà€ê€X⁄œ^ 
+HOà⁄[ôŸT⁄Y]
+⁄Y]
+_BàÇà‹⁄Y]Bàÿù]€èÇà
+J_BàŸ]èÇà]à€\‹”ò[YOHô^Ÿ[Y‹öY]‹ò\èÇàXõH€\‹”ò[YOHô^Ÿ[Y‹öYèÇàXYÇàèÇà€\‹”ò[YOHô^Ÿ[X€‹õô\ààœÇà ô]öY]‘õ›‹÷ÃH◊JKõX\
+
+À€€[[äHOà
+àŸ^O^ÿ€€[[üOû÷÷ù][Àô[ò€ŸWÿ€€
+€€[[ä_O›Çà
+J_Bà›èÇà›XYÇàõŸOÇà‹ô]öY]‘õ›‹ÀõX\
+
+õ›Àõ›“[ô^
+HOà
+ààŸ^O^‹õ›“[ô^OÇàû‹õ›“[ô^
+»_O›Çà‹õ›ÀõX\
+
+Ÿ[€€[[í[ô^
+HOà
+àŸ^O^ÿ€€[[í[ô^OÇà[ú]à\öXK[Xô[^ÿ	‹Ÿ[X›Y⁄Y]H	÷÷ù][Àô[ò€ŸWÿ€€
+€€[[í[ô^
+_I‹õ›“[ô^
+»_XBàò[YO^ÿŸ[Bà€ê⁄[ôŸO^ ]ô[ù
+HOÇàY]Ÿ[
+õ›“[ô^€€[[í[ô^]ô[ùù\ôŸ]ùò[YJBàBà€êõ\è^ ]ô[ù
+HOÇà€€[Z]Ÿ[
+àõ›“[ô^à€€[[í[ô^à]ô[ùù\ôŸ]ùò[YKà
+BàBàœÇà›Çà
+J_Bà›èÇà
+J_Bà›õŸOÇà›XõOÇàŸ]èÇà‹ô]öY]‘õ›‹Àõ[ô›èHÃ	âà
+à€\‹”ò[YOHö[ùèÇà⁄›⁄[ô»Hö\ú›Ãõ›‹»Ÿà\»€‹ö‹⁄Y]à[õ›‹»ô[XZ[Çà[ò€YY⁄[àX\›\à]H\»\YYÇà‹Çà
+_BàœÇà
+_Bà€\‹”ò[YOHö[ùèÇàY]HŸ[[ô[›ôH›]Ÿà]»ôKX⁄X⁄»H€‹öÿõ€⁄Ààö]ô\à‹ô\ö[ô¬àô[XZ[ú»ù[][YKÿ\›X[[àYŸ[òﬁKÇà‹Çà‹›[[X\ûH	âà€\‹”ò[YOHõõ›XŸH[õ[ôK[õ›XŸHèû‹›[[X\û_O‹üBà⁄\‹›Y\Àõ[ô›à	âà
+à]à€\‹”ò[YOHö[\‹ùZ\‹›Y\»èÇà›õ€ôœí[\‹ùõ›\œ‹›õ€ôœÇà[Çà⁄\‹›Y\Àú€XŸJLäKõX\
+
+\‹›YJHOà
+àHŸ^O^⁄\‹›Y_Oû⁄\‹›Y_O€OÇà
+J_Bà›[Çà⁄\‹›Y\Àõ[ô›àLà	âà
+à€X[û⁄\‹›Y\Àõ[ô›HLüH[‹ôHõ›\»Y[ãè‹€X[Çà
+_BàŸ]èÇà
+_Bà‹ôX€‹ôÀõ[ô›à	âà
+à]à€\‹”ò[YOHô^Ÿ[X\KXò\àèÇà‹[èÇà›õ€ôœû‹ôX€‹ôÀõ[ô›O‹›õ€ôœàôX€Ÿ€ö\ŸYôX€‹ôà‹ôX€‹ôÀõ[ô›OOHH»àààú»üHX‹õ‹‹»H€‹öÿõ€⁄¬à‹‹[èÇàù]€Çà€\‹”ò[YOHúö[X\ûHÇà\ÿXõY^‹›XõZ][ôﬂBà€ê€X⁄œ^ 
+HOàõ⁄Y›XõZ]
+
+_BàÇà‹›XõZ][ô¬à»ê\Z[ôÀããàÇàà\H	‹ôX€‹ôÀõ[ô›HôX€‹ô»»X\›\à]XBàÿù]€èÇàŸ]èÇà
+_BàŸ]èÇà
+N¬üBÇôù[ò›[€àôYô\úôY⁄Y]
+€‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄À[ŸNàX\›\í[\‹ù[ŸJH¬àYà
+[ŸHOOHò[äHô]\õààé¬à€€ú›[ùŒàôX€‹ô^€YOX\›\í[\‹ù[ŸKò[èã›ö[ô÷◊OàH¬àö]ô\úŒà»ôö]ô\ú»ãôö]ô\àãúõ›Hãô[\ﬁYYHóKàôZX€\Œà»ùôZX€\ŸùY[ãùôZX€\»ãòÿXú€ôHãôùY[ãôõY]óKàòZ[\úŒà»ùòZ[\ú»ãùòZ[\àóKà⁄]\Œà»ú⁄]\»ãú⁄]Hãò‹õHãò€€ùX›»ãò›\›€Y\ú»óKàX\öŸ]Œà»ò€›ô[ùãú‹]ãú‹][öY[»ãùŸ\›\õàãõX\öŸ]óKà€€ùX›Œà»ò€€ùX›»ãò‹õHãò›\›€Y\àóKàùY[à»ôùY[öXŸHãôùY[öXŸ\»ãôùY[ô[ôóKàN¬àô]\õà
+à€‹öÿõ€⁄Àî⁄Y]ò[Y\Àôö[ô
+
+⁄Y]
+HOÇà[ù÷€[ŸWKú€€YJ
+[ù
+HOàõ‹õX[\ŸRXY\ä⁄Y]
+Kö[ò€Y\ [ù
+JKà
+Hà€‹öÿõ€⁄Àî⁄Y]ò[Y\÷ÃHààÇà
+N¬üBÇôù[ò›[€àö[\ìX\›\îôX€‹ô àX\Yà»ôX€‹ôŒà›YŸPò]⁄ô\]Y\›◊N»\‹›Y\Œà›ö[ô÷◊HKà[ŸNàX\›\í[\‹ù[ŸKäH¬àYà
+[ŸHOOHò[äHô]\õàX\Y¬à€€ú›[›ŸYàôX€‹ô^€YOX\›\í[\‹ù[ŸKò[èã›ö[ô÷◊OàH¬àö]ô\úŒà»ôö]ô\àóKàôZX€\Œà»ùôZX€HãùòZ[\àóKàòZ[\úŒà»ùòZ[\àóKà⁄]\Œà»ú⁄]Hãò›\›€Y\àãò›\›€Y\ò€€ùX›óKàX\öŸ]Œà»õX\öŸ]€€ùX›óKà€€ùX›Œà»ò›\›€Y\àãò›\›€Y\ò€€ùX›óKàùY[à»ôùY[öXŸHóKàN¬à€€ú›ôX€‹ô»HX\YúôX€‹ôÀôö[\ä
+ôX€‹ô
+HOÇà[›ŸY€[ŸWKö[ò€Y\ ôX€‹ôô[ù]U\JKà
+N¬à€€ú›\‹›Y\»HX\Yö\‹›Y\Àôö[\ä
+\‹›YJHOÇà[ŸHOOHôö]ô\ú»Çà»Ÿö]ô\ã⁄Kù\›
+\‹›YJBàà[ŸHOOHùôZX€\»Çà»›ôZX€K⁄Kù\›
+\‹›YJBààò[ŸKà
+N¬àô]\õà»ôX€‹ôÀ\‹›Y\»N¬üBÇôù[ò›[€àX\X\›\ï€‹öÿõ€⁄ €‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄ Nà¬àôX€‹ôŒà›YŸPò]⁄ô\]Y\›◊N¬à\‹›Y\Œà›ö[ô÷◊N¬üH¬à€€ú›\‹›Y\Œà›ö[ô÷◊HH◊N¬à€€ú›ôX€‹ôŒà›YŸPò]⁄ô\]Y\›◊HH◊N¬à€€ú›YH
+à[ù]U\Nà›ö[ôÀàŸ^Nà›ö[ôÀà^[ÿYà›YŸPò]⁄ô\]Y\›»ú^[ÿYóKà
+HOà¬à€€ú›õ‹õX[Ÿ^HHŸ^Bàùö[J
+Bàù”›Ÿ\êÿ\ŸJ
+Bàúô\XŸJ÷◊òK^åNWJÀŸÀãHäN¬àYà
+[õ‹õX[Ÿ^JHô]\õé¬à€€ú›Y[\›[òﬁRŸ^HHX\›\éâŸ[ù]U\_Nâ€õ‹õX[Ÿ^_X¬à€€ú›^\›[ô“[ô^HôX€‹ôÀôö[ô[ô^
+à
+ôX€‹ô
+HOàôX€‹ôöY[\›[òﬁRŸ^HOOHY[\›[òﬁRŸ^Kà
+N¬à€€ú›ôX€‹ôH¬à[ù]U\KàY[\›[òﬁRŸ^Kà€›\òŸNàî”ò[ú‹‹ù‹\ò][€ú»X\›\à]H€‹öÿõ€⁄»ãà^[ÿYàN¬àYà
+^\›[ô“[ô^èH
+HôX€‹ô÷Ÿ^\›[ô“[ô^HHôX€‹ô¬à[ŸHôX€‹ôÀú\⁄
+ôX€‹ô
+N¬àN¬à€€ú›X›]ôHH
+õ›Œà⁄Y]õ› HOà¬à€€ú›ò[YHH^
+àôXY
+õ›ÀêX›]ôHäHôXY
+õ›Àî›]\»äHñY\»ãà
+Kù”›Ÿ\êÿ\ŸJ
+N¬àô]\õàV¬àõõ»ãàõàãàôò[ŸHãàö[òX›]ôHãàù\õZ[ò]YãàõYùãàõX]ô\àãàô[]YãàKö[ò€Y\ ò[YJN¬àN¬Çà€€ú›ö]ô\îõ›‹»Hö]ô\î⁄Y]õ›‹ €‹öÿõ€⁄ N¬à€€ú›ôZX€Tõ›‹»HôZX€T⁄Y]õ›‹ €‹öÿõ€⁄ N¬à€€ú›òZ[\îõ›‹»H⁄Y]õ›‹ à€‹öÿõ€⁄Àà»ïòZ[\ú»ãïòZ[\àX\›\àóKà»ïòZ[\àãï\Hãî›[ô\ôÿ\X⁄]HóKà
+N¬à€€ú›⁄]Tõ›‹»H⁄Y]õ›‹ à€‹öÿõ€⁄Àà»î⁄]\»ãî⁄]HX\›\àãê›\›€Y\ú»ãê€€X›[€ú»ãî⁄]H€€ùX›»óKà»î⁄]RQãî⁄]Hãê€€X›[€àYô\‹»ãê›\›€Y\àãìò[YHóKà
+N¬à€€ú›€€ùX›õ›‹»H⁄Y]õ›‹ à€‹öÿõ€⁄Àà»ê›\›€Y\à€€ùX›»ãê‘ìHãê€€ùX›»ãê›\›€Y\ú»ãî⁄]H€€ùX›»óKà»ê›\›€Y\àãê€€ùX›ò[YHãìò[YHãë[XZ[ãëK[XZ[óKà
+N¬Çàõ‹à
+€€ú›õ›»Ÿàö]ô\îõ›‹ H¬à€€ú›\‹^Sò[YHHö]ô\ë\‹^Sò[YJõ› N¬à€€ú›[\ﬁYYSù[Xô\àBàö\ú›^
+õ›À¬àëö]ô\íQãàëö]ô\àQãàë[\ﬁYYHù[Xô\àãàë[\ﬁYYHõ»ãàë[\ﬁYYSù[Xô\àãàî^\õ€ù[Xô\àãàî^\õ€õ»ãàîÿYŸH[\ﬁYYHù[Xô\àãàîÿYŸHQãàë[\ﬁYYHQãàë[\õ»ãàJHö]ô\íŸ^J\‹^Sò[YJN¬àYà
+Y[\ﬁYYSù[Xô\àY\‹^Sò[YHXX›]ôJõ› JH€€ù[ùYN¬àY
+ôö]ô\àã[\ﬁYYSù[Xô\ã¬à[\ﬁYYSù[Xô\ãà\‹^Sò[YKàX⁄”ò[YNàö\ú›^
+õ›À¬àïX⁄»ò[YHãàïX⁄”ò[YHãàïX⁄€X\›\àò[YHãàïX⁄»X\›\àò[YHãàïX⁄»ãàêÿ\ôò[YHãàJKà[ÿö[Sù[Xô\éàõ‹õX[\ŸT€ôJàö\ú›^
+õ›À¬àî€ôHù[Xô\àãàì[ÿö[Hù[Xô\àãàì[ÿö[Hãàëö]ô\à€ôHãàï^ù[Xô\àãàJKà
+Kàö]ô\ï\NÇàö\ú›^
+õ›À»ëö]ô\à\Hãë[\ﬁ[Y[ù\Hãï\HóJHàëù[[YHãàö]ô\ë‹õ›\àö\ú›^
+õ›À¬àëö]ô\à‹õ›\ãàë‹õ›\ãàêYŸ[òﬁHãàî[õô\à‹õ›\ãàJKà⁄⁄[Œàö\ú›^
+õ›À¬àëö]ô\à⁄⁄[»ãàî⁄⁄[»ãàìXŸ[òŸHãàìXŸ[òŸH\HãàJKà€Ÿ[ôŒàö\ú›^
+õ›À»ê€Ÿ[ô»ãëö]ô\à€Ÿ[ô»óJKàYŸ[òﬁSò[YNàö\ú›^
+õ›À»êYŸ[òﬁHò[YHãêYŸ[òﬁHóJKàõ‹ù[Y⁄XõNàY\”õ ôXY
+õ›Àìõ‹ù[Y⁄XõHäJKàô[ÿY[Y⁄XõNàY\”õ ôXY
+õ›Àîô[ÿY[Y⁄XõHäJKàõ›\Œàö\ú›^
+õ›À»ìõ›\»ãê€€[Y[ù»óJKàX⁄”X\›\ëö]ô\íYàö\ú›^
+õ›À¬àïX⁄€X\›\àö]ô\àQãàïX⁄”X\›\àö]ô\àQãàJKàö]ö[ô”XŸ[òŸSù[Xô\éàö\ú›^
+õ›À¬àëö]ö[ô»XŸ[òŸHù[Xô\àãàìXŸ[òŸHù[Xô\àãàJKàXŸ[òŸQ^\ûNà‹ô\ë]JôXY
+õ›ÀìXŸ[òŸH^\ûHäJKàXŸ[òŸT›]\Œàö\ú›^
+õ›À»ìXŸ[òŸH›]\»óJKàX›]ôNàùYKàJN¬àBàõ‹à
+€€ú›õ›»ŸàôZX€Tõ›‹ H¬à€€ú›ôY⁄\›ò][€àHö\ú›^
+õ›À¬àîôY⁄\›ò][€àãàîôY»ãàîôY»õ»ãàîôY⁄\›ò][€àù[Xô\àãàïôZX€HôY⁄\›ò][€àãàïôZX€HôY»ãàìù[Xô\à]Hãàî]HãàJBàúô\XŸJ◊ ÀŸÀàäBàù’\\êÿ\ŸJ
+N¬àYà
+\ôY⁄\›ò][€à◊ê◊ÕKI⁄Kù\›
+ôY⁄\›ò][€äHXX›]ôJõ› JH€€ù[ùYN¬à€€ú›ùY[[àHö\ú›^
+õ›À¬àëùY[SàãàëùY[[àãàëùY[ÿ\ôSàãàîSàãàJN¬àY
+ùôZX€HãôY⁄\›ò][€ã¬àôY⁄\›ò][€ãàõY]ù[Xô\éàö\ú›^
+õ›À»ëõY]ù[Xô\àãëõY]õ»ãëõY]ù[Xô\àóJKàõY][“Yàö\ú›^
+õ›À¬àëõY][»QãàëõY][“YãàëõY][»ôZX€HQãàëõY][»ôZX€RYãàJKàõY][”ò[YNàö\ú›^
+õ›À»ëõY][»ò[YHãëõY][”ò[YHóJKàõY][‘›]\Œàö\ú›^
+õ›À»ëõY][»›]\»ãëõY][‘›]\»óJKàXòúô]öX][€éÇàö\ú›^
+õ›À»êXòúô]öX][€àãî⁄‹ùôY»ãîôY»\›»óJHàôY⁄\›ò][€ãú€XŸJL Kàò[ú€Z\‹⁄[€éàö\ú›^
+õ›À»ïò[ú€Z\‹⁄[€àãëŸX\òõﬁóJKàú–€€\X[ùàY\”õ ôXY
+õ›Àëî»äHôXY
+õ›Àëî»€€\X[ùäJKàùY[õ›öY\éàô\›ùY[õ›öY\äõ› KàÿXì[ÿö[Nàõ‹õX[\ŸT€ôJàö\ú›^
+õ›À¬àêÿXà[ÿö[HãàêÿXà€ôHãàêÿXà€ôHù[Xô\àãàêÿXà[\€ôHãàì[ÿö[Hãàî€ôHãàJKà
+KàùY[[ãà⁄[ÿ\ôàö\ú›^
+õ›À»î⁄[ÿ\ôãî⁄[óJKàúôYÿ\ôàö\ú›^
+õ›À»êîôYÿ\ôãêîôYóJKàúZ[êÿ\ôàö\ú›^
+õ›À»êîZ[àÿ\ôãêîZ[àóJKàõ›\Œàö\ú›^
+õ›À»ìõ›\»ãê€€[Y[ù»óJKàùY[[îŸX‹ô]ò[YNàùY[[Çà»ôZX€KI‹ôY⁄\›ò][€ãù”›Ÿ\êÿ\ŸJ
+_KYùY[\[òàà[ôYö[ôYàùY[ÿ\ô\›õ›\éà\›õ›\äàôXY
+õ›ÀêîZ[àÿ\ôäHàôXY
+õ›ÀêîôYÿ\ôäHàôXY
+õ›Àî⁄[ÿ\ôäKà
+KàX›]ôNàùYKàJN¬àBàõ‹à
+€€ú›õ›»ŸàòZ[\îõ›‹ H¬à€€ú›òZ[\ìù[Xô\àH^
+ôXY
+õ›ÀïòZ[\àäJN¬àYà
+]òZ[\ìù[Xô\àXX›]ôJõ› JH€€ù[ùYN¬àY
+ùòZ[\àãòZ[\ìù[Xô\ã¬àòZ[\ìù[Xô\ãà\Nà^
+ôXY
+õ›Àï\HäJKà›[ô\ôÿ\X⁄]Nàù[Xô\ïò[YJôXY
+õ›Àî›[ô\ôÿ\X⁄]HäJKà]\õ–ÿ\X⁄]Nàù[Xô\ïò[YJôXY
+õ›Àë]\õ»ÿ\X⁄]HäJKàõ›\Œàö\ú›^
+õ›À»ìõ›\»ãê€€[Y[ù»óJKàX›]ôNàùYKàJN¬àBàõ‹à
+€€ú›õ›»Ÿà⁄]Tõ›‹ H¬à€€ú›^\õò[€ŸHHö\ú›^
+õ›À¬àî⁄]RQãàî⁄]HQãàî⁄]Hãàî⁄]Hò[YHãàê›\›€Y\à€ŸHãàê›\›€Y\àãàêXÿ€›[ù€ŸHãàê€ŸHãàJN¬à€€ú›ò[YHHö\ú›^
+õ›À¬àî⁄]Hãàî⁄]Hò[YHãàê›\›€Y\àò[YHãàìò[YHãàê€€X›[€à⁄]HãàJN¬àYà
+Y^\õò[€ŸH[ò[YHXX›]ôJõ› JH€€ù[ùYN¬àY
+ò›\›€Y\àã^\õò[€ŸK»€ŸNà^\õò[€ŸKò[YKX›]ôNàùYHJN¬àY
+ú⁄]Hã^\õò[€ŸK¬à^\õò[€ŸKàò[YKàö]ô\ï^ò[YNà^
+ôXY
+õ›Àëö]ô\à^ò[YHäJHò[YKà[X\Ÿ\Œàö\ú›^
+õ›À»ê[X\Ÿ\»ãê[\õò]]ôHò[Y\»óJKà€€X›[€êYô\‹Œà^
+ôXY
+õ›Àê€€X›[€àYô\‹»äJKà€€X›[€í[ú›ùX›[€úŒà^
+àôXY
+õ›Àê€€X›[€àõ›\»»[ú›ùX›[€ú»äKà
+KàX\[öŒà^
+ôXY
+õ›ÀìX\[ö»äJKà›\›€QöY[Nà^
+ôXY
+õ›Àê›\›€HöY[HäJKà›\›€QöY[éà^
+ôXY
+õ›Àê›\›€HöY[àäJKà›\›€QöY[Œà^
+ôXY
+õ›Àê›\›€HöY[»äJKàX›]ôNàùYKàJN¬àBàõ‹à
+€€ú›õ›»Ÿà€€ùX›õ›‹ H¬à€€ú››\›€Y\ê€ŸHHö\ú›^
+õ›À¬àê›\›€Y\àãàê›\›€Y\à€ŸHãàî⁄]RQãàî⁄]HQãàêXÿ€›[ù€ŸHãàê€ŸHãàJN¬à€€ú››\›€Y\ìò[YHBàö\ú›^
+õ›À¬àê›\›€Y\àò[YHãàî⁄]Hò[YHãàê›\›€Y\àãàî⁄]HãàêXÿ€›[ùò[YHãàJH›\›€Y\ê€ŸN¬à€€ú›ò[YHBàö\ú›^
+õ›À»ê€€ùX›ò[YHãê€€ùX›ãìò[YHãî⁄]H€€ùX›óJHà›\›€Y\ìò[YN¬à€€ú›[XZ[Hö\ú›^
+õ›À¬àë[XZ[ãàëK[XZ[ãàë[XZ[Yô\‹»ãàëUH[XZ[ãàJN¬àYà
+X›\›€Y\ê€ŸH[ò[YHXX›]ôJõ› JH€€ù[ùYN¬àY
+ò›\›€Y\àã›\›€Y\ê€ŸK¬à€ŸNà›\›€Y\ê€ŸKàò[YNà›\›€Y\ìò[YKàX›]ôNàùYKàJN¬àY
+ò›\›€Y\ò€€ùX›ã	ÿ›\›€Y\ê€Ÿ_KI€ò[Y_KIŸ[XZ[X¬à›\›€Y\ê€ŸKà›\›€Y\ìò[YKàò[YKà[XZ[à[ÿö[Sù[Xô\éàõ‹õX[\ŸT€ôJàö\ú›^
+õ›À»î€ôHãì[ÿö[Hãì[ÿö[Hù[Xô\àãï[\€ôHóJKà
+KàôXŸZ]ô\—]U\]\Œàõ€€X[ä[XZ[
+KàX›]ôNàùYKàJN¬àBàôX€‹ôÀú\⁄
+ããõX\öŸ]€€ùX›ôX€‹ô €‹öÿõ€⁄ JN¬àôX€‹ôÀú\⁄
+ããôùY[öXŸTôX€‹ô €‹öÿõ€⁄ JN¬àYà
+Yö]ô\îõ›‹Àõ[ô›
+Bà\‹›Y\Àú\⁄
+àìõ»ö]ô\àõ›‹»ôX€Ÿ€ö\ŸYà⁄X⁄»H€‹öÿõ€⁄»\»ö]ô\íQ—ö]ô\àXY[ô‹Ààãà
+N¬àYà
+]ôZX€Tõ›‹Àõ[ô›
+Bà\‹›Y\Àú\⁄
+àìõ»ôZX€Hõ›‹»ôX€Ÿ€ö\ŸYà⁄X⁄»H€‹öÿõ€⁄»\»ôY⁄\›ò][€àXY[ô‹Ààãà
+N¬àô]\õà»ôX€‹ôÀ\‹›Y\»N¬üBÇôù[ò›[€à⁄Y]õ›‹ à€‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄Ààò[Y\Œà›ö[ô÷◊Kàô\]Z\ôYXY\úŒà›ö[ô÷◊KäNà⁄Y]õ›÷◊H¬à€€ú›ÿ[ôY]T⁄Y]»HX]⁄[ô‘⁄Y] €‹öÿõ€⁄Àò[Y\ N¬à€€ú›ÿ[ùYHô\]Z\ôYXY\úÀõX\
+õ‹õX[\ŸRXY\äN¬à€€ú›Z[ö[][SX]⁄\»Hÿ[ùYõ[ô›àH»ààN¬à€€ú›ô\›[à⁄Y]õ›÷◊HH◊N¬àõ‹à
+€€ú›ÿ[ôY]HŸàÿ[ôY]T⁄Y] H¬à€€ú›õ›‹»H÷ù][Àú⁄Y]›◊⁄ú€€èà\úò^O›ö[ô»ù[Xô\àõ€€X[à]H[ôYö[ôYÇàä€‹öÿõ€⁄Àî⁄Y]÷ÿÿ[ôY]WK»XY\éàKYùò[ààãõ[ö‹õ›‹Œàò[ŸHJN¬à€€ú›XY\í[ô^Hõ›‹Àôö[ô[ô^
+
+õ› HOà¬à€€ú›XY\ú»Hõ›ÀõX\
+õ‹õX[\ŸRXY\äN¬àô]\õà
+àÿ[ùYôö[\ä
+XY\äHOàXY\úÀö[ò€Y\ XY\äJKõ[ô›èBàZ[ö[][SX]⁄\¬à
+N¬àJN¬àYà
+XY\í[ô^
+H€€ù[ùYN¬à€€ú›XY\ú»Hõ›‹÷⁄XY\í[ô^KõX\
+
+ò[YJHOà^
+ò[YJJN¬àô\›[ú\⁄
+àããúõ›‹¬àú€XŸJXY\í[ô^
+»JBàõX\
+à
+õ› HOÇàÿöôX›ôúõ€Q[ùöY\ àXY\úÀõX\
+
+XY\ã[ô^
+HOà⁄XY\ãõ›÷⁄[ô^WJKà
+H\»⁄Y]õ›Àà
+Bàôö[\ä
+õ› HOàÿöôX›ùò[Y\ õ› Kú€€YJ
+ò[YJHOà^
+ò[YJJJKà
+N¬àBàô]\õàô\›[¬üBôù[ò›[€àôZX€T⁄Y]õ›‹ €‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄ Nà⁄Y]õ›÷◊H¬à€€ú›ÿ[ôY]T⁄Y]»HX]⁄[ô‘⁄Y] €‹öÿõ€⁄À¬àïôZX€\»	àùY[ãàïôZX€\»ãàëõY]ãàêÿXà€ôHù[Xô\ú»ãàëùY[ãàïôZX€HX\›\àãàJN¬à€€ú›ô\›[à⁄Y]õ›÷◊HH◊N¬à€€ú›ôY⁄\›ò][€íXY\ú»Hô]»Ÿ]
+¬àúôY⁄\›ò][€àãàúôY»ãàúôY€õ»ãàúôY⁄\›ò][€õù[Xô\àãàùôZX€\ôY⁄\›ò][€àãàùôZX€\ôY»ãàõù[Xô\ú]Hãàú]HãàJN¬à€€ú›ôZX€P€€ù^XY\ú»Hô]»Ÿ]
+¬àùôZX€ZYãàôõY]ù[Xô\àãàôõY]õ»ãàòXòúô]öX][€àãàùò[ú€Z\‹⁄[€àãàôú»ãàôúÿ€€\X[ùãàòÿXõ[ÿö[HãàòÿXú€ôHãàòÿXú€ô[ù[Xô\àãàôùY[[àãàôùY[ÿ\ô[àãàú⁄[ÿ\ôãàòúôYÿ\ôãàòúZ[òÿ\ôãàôùY[õ›öY\àãàôõY][⁄YãàôõY][›ôZX€ZYãàôõY][€ò[YHãàôõY][‹›]\»ãàJN¬àõ‹à
+€€ú›ÿ[ôY]HŸàÿ[ôY]T⁄Y] H¬à€€ú›õ›‹»H÷ù][Àú⁄Y]›◊⁄ú€€èà\úò^O›ö[ô»ù[Xô\àõ€€X[à]H[ôYö[ôYÇàä€‹öÿõ€⁄Àî⁄Y]÷ÿÿ[ôY]WK»XY\éàKYùò[ààãõ[ö‹õ›‹Œàò[ŸHJN¬à€€ú›XY\í[ô^Hõ›‹Àôö[ô[ô^
+
+õ› HOà¬à€€ú›XY\ú»Hõ›ÀõX\
+
+ò[YJHOàõ‹õX[\ŸRXY\ä^
+ò[YJJJN¬à€€ú›\‘ôY⁄\›ò][€àHXY\úÀú€€YJ
+XY\äHOÇàôY⁄\›ò][€íXY\úÀö\ XY\äKà
+N¬à€€ú›€€ù^X]⁄\»HXY\úÀôö[\ä
+XY\äHOÇàôZX€P€€ù^XY\úÀö\ XY\äKà
+Kõ[ô›¬àô]\õà
+à\‘ôY⁄\›ò][€à	âà
+€€ù^X]⁄\»àÿ[ôY]T⁄Y]Àõ[ô›OOHJBà
+N¬àJN¬àYà
+XY\í[ô^
+H€€ù[ùYN¬à€€ú›XY\ú»Hõ›‹÷⁄XY\í[ô^KõX\
+
+ò[YJHOà^
+ò[YJJN¬àô\›[ú\⁄
+àããúõ›‹¬àú€XŸJXY\í[ô^
+»JBàõX\
+à
+õ› HOÇàÿöôX›ôúõ€Q[ùöY\ àXY\úÀõX\
+
+XY\ã[ô^
+HOà⁄XY\ãõ›÷⁄[ô^WJKà
+H\»⁄Y]õ›Àà
+Bàôö[\äà
+õ› HOÇàÿöôX›ùò[Y\ õ› Kú€€YJ
+ò[YJHOà^
+ò[YJJH	âÇàö\ú›^
+õ›À¬àîôY⁄\›ò][€àãàîôY»ãàîôY»õ»ãàîôY⁄\›ò][€àù[Xô\àãàïôZX€HôY⁄\›ò][€àãàïôZX€HôY»ãàìù[Xô\à]Hãàî]HãàJKà
+Kà
+N¬àBàô]\õàô\›[¬üBôù[ò›[€àö]ô\î⁄Y]õ›‹ €‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄ Nà⁄Y]õ›÷◊H¬à€€ú›ÿ[ôY]T⁄Y]»HX]⁄[ô‘⁄Y] €‹öÿõ€⁄À¬àëö]ô\ú»ãàëö]ô\àX\›\àãàëö]ô\à\›ãàîõ›Hãàëö]ô\àõ›Hãàë[\ﬁYY\»ãàìX\›\à]HãàJN¬à€€ú›ô\›[à⁄Y]õ›÷◊HH◊N¬àõ‹à
+€€ú›ÿ[ôY]HŸàÿ[ôY]T⁄Y] H¬à€€ú›õ›‹»H÷ù][Àú⁄Y]›◊⁄ú€€èà\úò^O›ö[ô»ù[Xô\àõ€€X[à]H[ôYö[ôYÇàä€‹öÿõ€⁄Àî⁄Y]÷ÿÿ[ôY]WK»XY\éàKYùò[ààãõ[ö‹õ›‹Œàò[ŸHJN¬à€€ú›XY\í[ô^Hõ›‹Àôö[ô[ô^
+
+õ› HOàö]ô\íXY\îÿ€‹ôJõ› HèHäN¬àYà
+XY\í[ô^
+H€€ù[ùYN¬à€€ú›XY\ú»Hõ›‹÷⁄XY\í[ô^KõX\
+
+ò[YJHOà^
+ò[YJJN¬à€€ú›X\YHõ›‹¬àú€XŸJXY\í[ô^
+»JBàõX\
+à
+õ› HOÇàÿöôX›ôúõ€Q[ùöY\ àXY\úÀõX\
+
+XY\ã[ô^
+HOà⁄XY\ãõ›÷⁄[ô^WJKà
+H\»⁄Y]õ›Àà
+Bàôö[\ä
+õ› HOàÿöôX›ùò[Y\ õ› Kú€€YJ
+ò[YJHOà^
+ò[YJJJN¬à€€ú›\ÿXõHHX\Yôö[\ä
+õ› HOàö]ô\ë\‹^Sò[YJõ› JN¬àô\›[ú\⁄
+ããù\ÿXõJN¬àBàô]\õàô\›[¬üBôù[ò›[€àö]ô\íXY\îÿ€‹ôJàõ›Œà\úò^O›ö[ô»ù[Xô\àõ€€X[à]H[ôYö[ôYãäH¬à€€ú›XY\ú»Hõ›ÀõX\
+
+ò[YJHOàõ‹õX[\ŸRXY\ä^
+ò[YJJJN¬à€€ú›\”ò[YHHXY\úÀú€€YJ
+XY\äHOÇà¬àôö]ô\àãàôö]ô\ú»ãàôö]ô\õò[YHãàô\‹^[ò[YHãàõò[YHãàôù[ò[YHãàô[\ﬁYY[ò[YHãàKö[ò€Y\ XY\äKà
+N¬à€€ú›\—[\ﬁYYHHXY\úÀú€€YJ
+XY\äHOÇà¬àôö]ô\öYãàô[\ﬁYYZYãàô[\ﬁYY[ù[Xô\àãàô[\ﬁYY[õ»ãàô[\õ»ãàú^\õ€ù[Xô\àãàú^\õ€õ»ãàúÿYŸZYãàúÿYŸY[\ﬁYY[ù[Xô\àãàKö[ò€Y\ XY\äKà
+N¬à€€ú›\—ö]ô\ê€€ù^HXY\úÀú€€YJ
+XY\äHOÇà¬àùX⁄€ò[YHãàùX⁄€X\›\õò[YHãàùX⁄»ãàòÿ\ôò[YHãàôö]ô\ù\Hãàô[\ﬁ[Y[ù\Hãàôö]ô\ô‹õ›\ãàõ[ÿö[Hãàõ[ÿö[[ù[Xô\àãàú€ô[ù[Xô\àãàKö[ò€Y\ XY\äKà
+N¬àô]\õàù[Xô\ä\”ò[YJH
+»ù[Xô\ä\—[\ﬁYYJH
+»ù[Xô\ä\—ö]ô\ê€€ù^
+N¬üBôù[ò›[€àX]⁄[ô‘⁄Y] €‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄Àò[Y\Œà›ö[ô÷◊JH¬à€€ú›õ‹õX[\ŸYò[Y\»Hò[Y\ÀõX\
+õ‹õX[\ŸRXY\äN¬à€€ú›X]⁄\»H€‹öÿõ€⁄Àî⁄Y]ò[Y\Àôö[\ä
+⁄Y]
+HOÇàõ‹õX[\ŸYò[Y\Àú€€YJà
+ò[YJHOÇàõ‹õX[\ŸRXY\ä⁄Y]
+HOOHò[YHàõ‹õX[\ŸRXY\ä⁄Y]
+Kö[ò€Y\ ò[YJHàò[YKö[ò€Y\ õ‹õX[\ŸRXY\ä⁄Y]
+JKà
+Kà
+N¬àô]\õàX]⁄\Àõ[ô›»X]⁄\»à€‹öÿõ€⁄Àî⁄Y]ò[Y\Œ¬üBôù[ò›[€àX\öŸ]€€ùX›ôX€‹ô €‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄ Nà›YŸPò]⁄ô\]Y\›◊H¬à€€ú›ôX€‹ôŒà›YŸPò]⁄ô\]Y\›◊HH◊N¬à€€ú›ŸY[àHô]»Ÿ]›ö[ôœä
+N¬à€€ú›YX\öŸ]€€ùX›H
+à€›\òŸNà›ö[ôÀàX\öŸ]à›ö[ôÀàŸ[\ïò[YNà›ö[ôÀàÿ[\€X[ïò[YOŒà›ö[ôÀàŸ[ô\ïò[YOŒà›ö[ôÀà[]’ò[YOŒà[ö€õ›€ãà
+HOà¬à€€ú›\úŸYH\úŸTŸ[\î›[ô
+Ÿ[\ïò[YJN¬àYà
+à\\úŸYõò[YHà◊ó
+…Àù\›
+\úŸYõò[YJHà»ù›[ãù›[»ãúÿ[\€Y[àãúÿ[\€X[àãúŸ[\àãúŸ[\ú»óKö[ò€Y\ àõ‹õX[\ŸRXY\ä\úŸYõò[YJKà
+Bà
+Bàô]\õé¬à€€ú›Ÿ[ô\àH^
+Ÿ[ô\ïò[YJN¬à€€ú›ÿ[\€X[àH^
+ÿ[\€X[ïò[YJH\úŸYõò[YN¬à€€ú›Ÿ^HBàX\›\éõX\öŸ]€€ùX›â€X\öŸ]KI‹\úŸYõò[Y_KI‹\úŸYú›[ô‹ìÿÿ][€ààüKI‹Ÿ[ô\àÿ[\€X[üXàù”›Ÿ\êÿ\ŸJ
+Bàúô\XŸJ÷◊òK^åNWJÀŸÀãHäN¬àYà
+ŸY[ãö\ Ÿ^JJHô]\õé¬àŸY[ãòY
+Ÿ^JN¬àôX€‹ôÀú\⁄
+¬à[ù]U\NàõX\öŸ]€€ùX›ãàY[\›[òﬁRŸ^NàŸ^Kà€›\òŸKà^[ÿYà¬àX\öŸ]àò[YNà\úŸYõò[YKà›[ô‹ìÿÿ][€éà\úŸYú›[ô‹ìÿÿ][€ãàÿ[\€X[ãàŸ[ô\ãà[]Œàù[Xô\ïò[YJ[]’ò[YJKàX›]ôNàùYKàKàJN¬àN¬àõ‹à
+€€ú›ÿ[ôY]HŸà€‹öÿõ€⁄Àî⁄Y]ò[Y\ H¬à€€ú›X\öŸ]HX\öŸ]úõ€T⁄Y]ò[YJÿ[ôY]JN¬àYà
+[X\öŸ]
+H€€ù[ùYN¬à€€ú›õ›‹»H÷ù][Àú⁄Y]›◊⁄ú€€èà\úò^O›ö[ô»ù[Xô\àõ€€X[à]H[ôYö[ôYÇàä€‹öÿõ€⁄Àî⁄Y]÷ÿÿ[ôY]WK»XY\éàKYùò[ààãõ[ö‹õ›‹Œàò[ŸHJN¬à€€ú›XY\í[ô^Hõ›‹Àôö[ô[ô^
+
+õ› HOà¬à€€ú›XY[ô‹»Hõ›ÀõX\
+
+ò[YJHOàõ‹õX[\ŸRXY\ä^
+ò[YJJJN¬àô]\õà
+àXY[ô‹Àú€€YJ
+XY[ô HOÇà¬àúÿ[\€Y[àãàúÿ[\€X[àãàúÿ[\‹\ú€€àãàúŸ[\àãàúŸ[\õò[YHãàúŸ[\ú»ãàô‹õ›Ÿ\àãàùô[ô‹àãàõò[YHãàKö[ò€Y\ XY[ô Kà
+H	âàXY[ô‹Àö[ò€Y\ úŸ[ô\àäBà
+N¬àJN¬àYà
+XY\í[ô^
+H€€ù[ùYN¬à€€ú›XY[ô‹»Hõ›‹÷⁄XY\í[ô^KõX\
+
+ò[YJHOÇàõ‹õX[\ŸRXY\ä^
+ò[YJJKà
+N¬à€€ú›Ÿ[\ê€€[[àHXY[ô‹Àôö[ô[ô^
+
+XY[ô HOÇà»úŸ[\àãúŸ[\õò[YHãúŸ[\ú»ãô‹õ›Ÿ\àãùô[ô‹àãõò[YHóKö[ò€Y\ àXY[ôÀà
+Kà
+N¬à€€ú›ÿ[\€X[ê€€[[àHXY[ô‹Àôö[ô[ô^
+
+XY[ô HOÇà»úÿ[\€Y[àãúÿ[\€X[àãúÿ[\‹\ú€€àóKö[ò€Y\ XY[ô Kà
+N¬à€€ú››[€€[[àHXY[ô‹Àôö[ô[ô^
+
+XY[ô HOÇà¬àú›[ãàú›[ù[Xô\àãàú›[ôãàú›[ôù[Xô\àãàú›[ôÿÿ][€àãàõÿÿ][€àãàKö[ò€Y\ XY[ô Kà
+N¬à€€ú›[]–€€[[àHXY[ô‹Àôö[ô[ô^
+
+XY[ô HOÇà»ú[]»ãú[]ãúãú»óKö[ò€Y\ XY[ô Kà
+N¬à€€ú›Ÿ[ô\ê€€[[àHXY[ô‹Àôö[ô[ô^
+
+XY[ô HOàXY[ô»OOHúŸ[ô\àäN¬àõ›‹Àú€XŸJXY\í[ô^
+»JKôõ‹ëXX⁄
+
+õ› HOà¬à€€ú›Ÿ[\êŸ[H^
+àõ›÷‹Ÿ[\ê€€[[àèH»Ÿ[\ê€€[[ààÿ[\€X[ê€€[[óKà
+N¬à€€ú››[H›[€€[[àèH»^
+õ›÷‹›[€€[[óJHààé¬à€€ú›Ÿ[\ï⁄]›[BàŸ[\êŸ[	âà›[	âà\Ÿ[\êŸ[ö[ò€Y\ ›[
+Bà»	‹Ÿ[\êŸ[H
+	‹›[JXààŸ[\êŸ[¬àYX\öŸ]€€ùX›
+à”	ÿÿ[ôY]_HX\öŸ]XòàX\öŸ]àŸ[\ï⁄]›[àÿ[\€X[ê€€[[àèH»^
+õ›÷‹ÿ[\€X[ê€€[[óJHààãàŸ[ô\ê€€[[àèH»^
+õ›÷‹Ÿ[ô\ê€€[[óJHààãà[]–€€[[àèH»õ›÷‹[]–€€[[óHà[ôYö[ôYà
+N¬àJN¬àBà€€ú›ÿ[ôY]T⁄Y]»HX]⁄[ô‘⁄Y] €‹öÿõ€⁄À¬àìX\öŸ]€€ùX›»ãàìX\öŸ]»ãàìX\öŸ]Ÿ[\ú»ãàìX\öŸ]ãàJN¬àõ‹à
+€€ú›ÿ[ôY]HŸàÿ[ôY]T⁄Y] H¬à€€ú›õ›‹»H÷ù][Àú⁄Y]›◊⁄ú€€èà\úò^O›ö[ô»ù[Xô\àõ€€X[à]H[ôYö[ôYÇàä€‹öÿõ€⁄Àî⁄Y]÷ÿÿ[ôY]WK»XY\éàKYùò[ààãõ[ö‹õ›‹Œàò[ŸHJN¬à€€ú›XY\í[ô^Hõ›‹Àôö[ô[ô^
+à
+õ› HOÇàõ›¬àõX\
+
+ò[YJHOàX\öŸ]Xô[
+^
+ò[YJJJBàú€€YJ
+Xô[
+HOà»ïŸ\›\õàãî‹]ãê€›ô[ùóKö[ò€Y\ Xô[
+JHàõ›ÀõX\
+
+ò[YJHOàõ‹õX[\ŸRXY\ä^
+ò[YJJJKö[ò€Y\ úŸ[ô\àäKà
+N¬àYà
+XY\í[ô^
+H€€ù[ùYN¬à€€ú›XY[ô‹»H
+õ›‹÷⁄XY\í[ô^H◊JKõX\
+
+ò[YJHOà^
+ò[YJJN¬à€€ú›X\öŸ]€€[[ú»HXY[ô‹Àôõ]X\
+
+XY[ôÀ[ô^
+HOà¬à€€ú›Xô[HX\öŸ]Xô[
+XY[ô N¬àô]\õà»ïŸ\›\õàãî‹]ãê€›ô[ùóKö[ò€Y\ Xô[
+Bà»ﬁ»X\öŸ]àXô[ò[YP€€[[éà[ô^ÿ[\€X[ê€€[[éà[ô^
+»HWBàà◊N¬àJN¬à€€ú›Ÿ[ô\ê€€[[àHXY[ô‹Àôö[ô[ô^
+à
+XY[ô HOàõ‹õX[\ŸRXY\äXY[ô HOOHúŸ[ô\àãà
+N¬àõ›‹Àú€XŸJXY\í[ô^
+»JKôõ‹ëXX⁄
+
+õ› HOà¬àõ‹à
+€€ú›][HŸàX\öŸ]€€[[ú H¬à€€ú›Ÿ[\êŸ[H^
+õ›÷⁄][Kùò[YP€€[[óJN¬à€€ú›ÿ[\€X[àH^
+õ›÷⁄][Kúÿ[\€X[ê€€[[óJN¬àYX\öŸ]€€ùX›
+àî”ò[ú‹‹ù‹\ò][€ú»X\›\à]H€‹öÿõ€⁄»ãà][KõX\öŸ]àŸ[\êŸ[àÿ[\€X[ãà
+N¬àBàYà
+Ÿ[ô\ê€€[[àèH
+H¬à€€ú›Ÿ[ô\àH^
+õ›÷‹Ÿ[ô\ê€€[[óJN¬àYà
+Ÿ[ô\äH¬à€€ú›\úŸYH\úŸTŸ[\î›[ô
+Ÿ[ô\äN¬à€€ú›Ÿ^HHX\›\éõX\öŸ]€€ùX›îŸ[ô\ãI‹\úŸYõò[Y_Xàù”›Ÿ\êÿ\ŸJ
+Bàúô\XŸJ÷◊òK^åNWJÀŸÀãHäN¬àYà
+\ŸY[ãö\ Ÿ^JJH¬àŸY[ãòY
+Ÿ^JN¬àôX€‹ôÀú\⁄
+¬à[ù]U\NàõX\öŸ]€€ùX›ãàY[\›[òﬁRŸ^NàŸ^Kà€›\òŸNàî”ò[ú‹‹ù‹\ò][€ú»X\›\à]H€‹öÿõ€⁄»ãà^[ÿYà¬àX\öŸ]àîŸ[ô\àãàò[YNà\úŸYõò[YKà›[ô‹ìÿÿ][€éà\úŸYú›[ô‹ìÿÿ][€ãàX›]ôNàùYKàKàJN¬àBàBàBàJN¬àBàô]\õàôX€‹ôŒ¬üBôù[ò›[€àùY[öXŸTôX€‹ô €‹öÿõ€⁄Œà÷ï€‹ö–õ€⁄ Nà›YŸPò]⁄ô\]Y\›◊H¬à€€ú›õ›‹»H⁄Y]õ›‹ à€‹öÿõ€⁄Àà¬àëùY[öXŸH\]\»ãàëùY[öXŸH\›‹ûHãàëùY[ô[ô]HãàëùY[öXŸ\»ãàKà¬àîõ›öY\àãàîöXŸT[òŸT\ì]ôHãàïŸYZ–€€[Y[ò⁄[ô»ãàïŸYZ»€€[Y[ò⁄[ô»ãàîöXŸHãàKà
+N¬à€€ú›ôX€‹ôŒà›YŸPò]⁄ô\]Y\›◊HH◊N¬à€€ú›ŸY[àHô]»Ÿ]›ö[ôœä
+N¬àõ‹à
+€€ú›õ›»Ÿàõ›‹ H¬à€€ú›õ›öY\àHö\ú›^
+õ›À¬àîõ›öY\àãàî›\Y\àãàëùY[õ›öY\àãàêÿ\ôõ›öY\àãàJN¬à€€ú›ŸYZ–€€[Y[ò⁄[ô»H]U^
+àôXY
+õ›ÀïŸYZ–€€[Y[ò⁄[ô»äHàôXY
+õ›ÀïŸYZ»€€[Y[ò⁄[ô»äHàôXY
+õ›Àë]HäHàôXY
+õ›ÀïŸYZ»äKà
+N¬à€€ú›öXŸT[òŸT\ì]ôHHù[Xô\ïò[YJàôXY
+õ›ÀîöXŸT[òŸT\ì]ôHäHàôXY
+õ›ÀîöXŸH[òŸH\à]ôHäHàôXY
+õ›Àî[òŸK”]ôHäHàôXY
+õ›ÀîäHàôXY
+õ›ÀîöXŸHäKà
+N¬àYà
+\õ›öY\à]ŸYZ–€€[Y[ò⁄[ô»öXŸT[òŸT\ì]ôHOOH[ôYö[ôY
+Bà€€ù[ùYN¬à€€ú›Y[\›[òﬁRŸ^HHX\›\éôùY[öXŸNâ‹õ›öY\üKI›ŸYZ–€€[Y[ò⁄[ôﬂXàù”›Ÿ\êÿ\ŸJ
+Bàúô\XŸJ÷◊òK^åNWJÀŸÀãHäN¬àYà
+ŸY[ãö\ Y[\›[òﬁRŸ^JJH€€ù[ùYN¬àŸY[ãòY
+Y[\›[òﬁRŸ^JN¬àôX€‹ôÀú\⁄
+¬à[ù]U\NàôùY[öXŸHãàY[\›[òﬁRŸ^Kà€›\òŸNàî”ò[ú‹‹ù‹\ò][€ú»X\›\à]H€‹öÿõ€⁄»ãà^[ÿYà¬àõ›öY\ãàŸYZ–€€[Y[ò⁄[ôÀàöXŸT[òŸT\ì]ôKà\‘öX⁄[ô”X^[][NàY\”õ àôXY
+õ›Àí\‘öX⁄[ô”X^[][HäHàôXY
+õ›ÀîöX⁄[ô»X^[][HäHàôXY
+õ›ÀìX^äKà
+Kà€›\òŸNàö\ú›^
+õ›À»î€›\òŸHãî⁄Y]óJHìX\›\à€‹öÿõ€⁄»ãàõ›\Œàö\ú›^
+õ›À»ìõ›\»ãê€€[Y[ùóJKàX›]ôNàùYKàKàJN¬àBàô]\õàôX€‹ôŒ¬üBôù[ò›[€à\úŸTŸ[\î›[ô
+ò[YNà›ö[ô H¬à€€ú›X]⁄Hò[YKõX]⁄
+◊äääW
+
+ääW
+I N¬àô]\õà¬àò[YNà
+X]⁄ÀñÃWHò[YJKùö[J
+Kà›[ô‹ìÿÿ][€éàX]⁄ÀñÃóOÀùö[J
+KàN¬üBôù[ò›[€àX\öŸ]Xô[
+ò[YNà›ö[ô H¬à€€ú›õ‹õX[\ŸYHõ‹õX[\ŸRXY\äò[YJN¬àô]\õàõ‹õX[\ŸYö[ò€Y\ ùŸ\›\õàäBà»ïŸ\›\õàÇààõ‹õX[\ŸYö[ò€Y\ ú‹]äBà»î‹]Çààõ‹õX[\ŸYö[ò€Y\ ò€›ô[ùäBà»ê€›ô[ùÇààõ‹õX[\ŸYOOHúŸ[ô\àÇà»îŸ[ô\àÇààò[YKùö[J
+N¬üBôù[ò›[€àX\öŸ]úõ€T⁄Y]ò[YJò[YNà›ö[ô H¬à€€ú›õ‹õX[\ŸYHõ‹õX[\ŸRXY\äò[YJN¬àYà
+õ‹õX[\ŸYö[ò€Y\ ò€›ô[ùäJHô]\õàê€›ô[ùé¬àYà
+õ‹õX[\ŸYö[ò€Y\ ú‹]äHõ‹õX[\ŸYö[ò€Y\ ú‹][öY[»äJBàô]\õàî‹]é¬àYà
+õ‹õX[\ŸYö[ò€Y\ ùŸ\›\õàäHõ‹õX[\ŸYú›\ù’⁄]
+ùŸ\›äJBàô]\õàïŸ\›\õàé¬àYà
+õ‹õX[\ŸYö[ò€Y\ òúöY⁄€àäJHô]\õàêúöY⁄€àé¬àô]\õà[ôYö[ôY¬üBôù[ò›[€àö]ô\íŸ^Jò[YNà›ö[ô H¬àô]\õàò[YBàùö[J
+Bàù’\\êÿ\ŸJ
+Bàúô\XŸJ÷◊êKVåNWJÀŸÀãHäBàúô\XŸJ◊ã_IŸÀàäN¬üBôù[ò›[€àÿ€‹Y[\‹ùŸ^JàôX€‹ôà›YŸPò]⁄ô\]Y\›à[\‹ùù[éà›ö[ôÀà[ô^àù[Xô\ãäH¬à€€ú›[ù]HHôX€‹ôô[ù]U\Bàù”›Ÿ\êÿ\ŸJ
+Bàúô\XŸJ÷◊òK^åNWJÀŸÀãHäBàú€XŸJç
+N¬à€€ú›^[ÿYŸ^HH›ö[ô àôX€‹ôú^[ÿYô[\ﬁYYSù[Xô\ààôX€‹ôú^[ÿYúôY⁄\›ò][€ààôX€‹ôú^[ÿYùòZ[\ìù[Xô\ààôX€‹ôú^[ÿYô^\õò[€ŸHàôX€‹ôú^[ÿYò›\›€Y\ê€ŸHàôX€‹ôú^[ÿYõò[YHà[ô^à
+Bàù”›Ÿ\êÿ\ŸJ
+Bàúô\XŸJ÷◊òK^åNWJÀŸÀãHäBàúô\XŸJ◊ã_IŸÀàäBàú€XŸJMäN¬àô]\õàX\›\éâŸ[ù]_Nâ‹^[ÿYŸ^H[ô^Núù[éâ⁄[\‹ùù[üNâ⁄[ô^X¬üBôù[ò›[€à›[[X\ö\ŸPò]⁄
+ôX€‹ôŒà›YŸPò]⁄ô\]Y\›◊JH¬à€€ú›€›[ù»HôX€‹ôÀúôYXŸOôX€‹ô›ö[ôÀù[Xô\èèäà
+›[ôX€‹ô
+HOà
+¬àããù›[à‹ôX€‹ôô[ù]U\WNà
+›[‹ôX€‹ôô[ù]U\WH
+H
+»KàJKàﬂKà
+N¬àô]\õàÿöôX›ô[ùöY\ €›[ù BàõX\
+
+›\K€›[ùJHOà	ÿ€›[ùH	›\_X
+Bàöõ⁄[äãäN¬üBôù[ò›[€àôXY
+õ›Œà⁄Y]õ›ÀŸ^Nà›ö[ô H¬à€€ú›^X›Hõ›÷⁄Ÿ^WN¬àYà
+^X›OOH[ôYö[ôY
+Hô]\õà^X›¬à€€ú›ÿ[ùYHõ‹õX[\ŸRXY\äŸ^JN¬à€€ú›X]⁄HÿöôX›ô[ùöY\ õ› Kôö[ô
+à
+⁄XY\óJHOàõ‹õX[\ŸRXY\äXY\äHOOHÿ[ùYà
+N¬àô]\õàX]⁄ÀñÃWN¬üBôù[ò›[€àö\ú›^
+õ›Œà⁄Y]õ›ÀŸ^\Œà›ö[ô÷◊JH¬àõ‹à
+€€ú›Ÿ^HŸàŸ^\ H¬à€€ú›ò[YHH^
+ôXY
+õ›ÀŸ^JJN¬àYà
+ò[YJHô]\õàò[YN¬àBàô]\õààé¬üBôù[ò›[€àö]ô\ë\‹^Sò[YJõ›Œà⁄Y]õ› H¬à€€ú›ÿ[ôY]\»H¬àëö]ô\àãàëö]ô\àò[YHãàëö]ô\ú»ãàë\‹^Hò[YHãàë[\ﬁYYHò[YHãàëù[ò[YHãàìò[YHãàBàõX\
+
+Ÿ^JHOàö\ú›^
+õ›À⁄Ÿ^WJJBàôö[\äõ€€X[äN¬àô]\õàÿ[ôY]\Àôö[ô
+
+ò[YJHOà[€⁄‹”ZŸQ[\ﬁYYSù[Xô\äò[YJJHàé¬üBôù[ò›[€à€⁄‹”ZŸQ[\ﬁYYSù[Xô\äò[YNà›ö[ô H¬à€€ú›€€\X›Hò[YKúô\XŸJ◊ ÀŸÀàäN¬àô]\õà
+à◊ó
+…Àù\›
+€€\X›
+Hà◊ôO€\◊
+…⁄Kù\›
+€€\X›
+Hà◊ñÿK^ó^ÃWÃÀI⁄Kù\›
+€€\X›
+Bà
+N¬üBôù[ò›[€à^
+ò[YNà[ö€õ›€äH¬àô]\õà›ö[ô ò[YHœ»àäKùö[J
+N¬üBôù[ò›[€à]U^
+ò[YNà[ö€õ›€äH¬àYà
+ò[YH[ú›[òŸ[Ÿà]H	âàSù[Xô\ãö\”òSäò[YKôŸ][YJ
+JJBàô]\õàò[YKù“T”‘›ö[ô 
+Kú€XŸJL
+N¬à€€ú›ò]»H^
+ò[YJN¬àYà
+\ò] Hô]\õààé¬à€€ú›\úŸYHô]»]Jò] N¬àô]\õàù[Xô\ãö\”òSä\úŸYôŸ][YJ
+JBà»ò]¬àà\úŸYù“T”‘›ö[ô 
+Kú€XŸJL
+N¬üBôù[ò›[€àù[Xô\ïò[YJò[YNà[ö€õ›€äH¬à€€ú›\úŸYHù[Xô\äò[YJN¬àô]\õàù[Xô\ãö\—ö[ö]J\úŸY
+H»\úŸYà[ôYö[ôY¬üBôù[ò›[€àY\”õ ò[YNà[ö€õ›€äH¬à€€ú›õ‹õX[\ŸYH^
+ò[YJKù”›Ÿ\êÿ\ŸJ
+N¬àô]\õàõ‹õX[\ŸY»»ûY\»ãûHãùùYHóKö[ò€Y\ õ‹õX[\ŸY
+Hà[ôYö[ôY¬üBôù[ò›[€àõ‹õX[\ŸT€ôJò[YNà[ö€õ›€äH¬àô]\õà^
+ò[YJKúô\XŸJ÷◊ó
+◊KŸÀàäN¬üBôù[ò›[€à\›õ›\äò[YNà[ö€õ›€äH¬à€€ú›Y⁄]»H^
+ò[YJKúô\XŸJ◊ŸÀàäN¬àô]\õàY⁄]»»Y⁄]Àú€XŸJM
+Hà[ôYö[ôY¬üBôù[ò›[€àô\›ùY[õ›öY\äõ›Œà⁄Y]õ› H¬àYà
+ôXY
+õ›Àî⁄[ÿ\ôäJHô]\õàî⁄[é¬àYà
+ôXY
+õ›ÀêîôYÿ\ôäHôXY
+õ›ÀêîZ[àÿ\ôäJHô]\õàêîé¬àô]\õà[ôYö[ôY¬üBôù[ò›[€à€‹ôSX\›\ë]Qõ‹õJ
+H¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú›Ÿ[ù]KŸ][ù]WHH\ŸT›]OX\›\ë[ù]Oäò›\›€Y\àäN¬à€€ú›Ÿö\ú›Ÿ]ö\ú›HH\ŸT›]JàäN¬à€€ú›‹ŸX€€ôŸ]ŸX€€ôHH\ŸT›]JàäN¬à€€ú›€‹[€ò[Ÿ]‹[€ò[HH\ŸT›]JàäN¬à€€ú›€Y\‹ÿYŸKŸ]Y\‹ÿYŸWHH\ŸT›]O›ö[ôœä
+N¬à€€ú›‹ÿ]ö[ôÀŸ]ÿ]ö[ô◊HH\ŸT›]Jò[ŸJN¬à€€ú›Xô[ŒàôX€‹ôX\›\ë[ù]K‹›ö[ôÀ›ö[ôÀ›ö[ô◊OàH¬à›\›€Y\éà»ê›\›€Y\à€ŸHãê›\›€Y\àò[YHãêXÿ€›[ùõ›HóKà›\›€Y\ò€€ùX›à»ê›\›€Y\à€ŸHãê€€ùX›ò[YHãëUH[XZ[Yô\‹»óKàôZX€Nà»îôY⁄\›ò][€àãëõY]ù[Xô\àãêXòúô]öX][€àóKàö]ô\éà»ë[\ﬁYYHù[Xô\àãëö]ô\àò[YHãì[ÿö[Hù[Xô\àóKàòZ[\éà»ïòZ[\àù[Xô\àãïòZ[\à\Hãî›[ô\ôÿ\X⁄]HóKàX\öŸ]€€ùX›à»ìX\öŸ]ãê€€ùX›ò[YHãî›[ô‹àÿÿ][€àóKàN¬à€€ú›Ÿö\ú›Xô[ŸX€€ôXô[‹[€ò[Xô[HHXô[÷Ÿ[ù]WN¬à\ﬁ[ò»ù[ò›[€à›XõZ]
+]ô[ùàõ‹õQ]ô[ù
+H¬à]ô[ùúô]ô[ùYò][
+
+N¬àŸ]ÿ]ö[ô ùYJN¬àûH¬à€€ú›^[ÿYàôX€‹ô›ö[ôÀ›ö[ô»õ€€X[àù[Xô\à[ôYö[ôYàBà[ù]HOOHò›\›€Y\àÇà»»€ŸNàö\ú›ò[YNàŸX€€ôX›]ôNàùYHBàà[ù]HOOHò›\›€Y\ò€€ùX›Çà»¬à›\›€Y\ê€ŸNàö\ú›àò[YNàŸX€€ôà[XZ[à‹[€ò[àôXŸZ]ô\—]U\]\ŒàùYKàX›]ôNàùYKàBàà[ù]HOOHùôZX€HÇà»¬àôY⁄\›ò][€éàö\ú›àõY]ù[Xô\éàŸX€€ôàXòúô]öX][€éà‹[€ò[àX›]ôNàùYKàBàà[ù]HOOHôö]ô\àÇà»¬à[\ﬁYYSù[Xô\éàö\ú›à\‹^Sò[YNàŸX€€ôà[ÿö[Sù[Xô\éà‹[€ò[àX›]ôNàùYKàBàà[ù]HOOHùòZ[\àÇà»¬àòZ[\ìù[Xô\éàö\ú›à\NàŸX€€ôà›[ô\ôÿ\X⁄]Nà‹[€ò[»ù[Xô\ä‹[€ò[
+Hà[ôYö[ôYàX›]ôNàùYKàBàà¬àX\öŸ]àö\ú›àò[YNàŸX€€ôà›[ô‹ìÿÿ][€éà‹[€ò[àX›]ôNàùYKàN¬à]ÿZ]\Kú›YŸTôX€‹ô
+à[ù]Kà^[ÿYàŸXãIŸ[ù]_NâŸö\ú›ùö[J
+Kù”›Ÿ\êÿ\ŸJ
+Kúô\XŸP[
+àããHä_Nâ‹ŸX€€ôùö[J
+Kù”›Ÿ\êÿ\ŸJ
+Kúô\XŸP[
+àããHä_Xà]ÿZ]⁄Ÿ[ä
+Kà
+N¬àŸ]Y\‹ÿYŸJà	Ÿ[ù]HOOHò›\›€Y\ò€€ùX›à»ê›\›€Y\àUH€€ùX›àà[ù]HOOHõX\öŸ]€€ùX›à»ìX\öŸ]€€ùX›àà[ù]VÃKù’\\êÿ\ŸJ
+H
+»[ù]Kú€XŸJJ_HŸ[ù»›Y⁄[ô»ô]öY]Àòà
+N¬àŸ]ö\ú›
+àäN¬àŸ]ŸX€€ô
+àäN¬àŸ]‹[€ò[
+àäN¬àHÿ]⁄
+^Ÿ\[€äH¬àŸ]Y\‹ÿYŸJà^Ÿ\[€à[ú›[òŸ[Ÿà\úõ‹Çà»^Ÿ\[€ãõY\‹ÿYŸBààîôX€‹ô€›[õ›ôH›XõZ]Yàãà
+N¬àHö[ò[H¬àŸ]ÿ]ö[ô ò[ŸJN¬àBàBàô]\õà
+àõ‹õBà€\‹”ò[YOHú]ZX⁄À[‹ô\àX\›\ã\Ÿ]\Çà€î›XõZ]^ ]ô[ù
+HOàõ⁄Y›XõZ]
+]ô[ù
+_BàÇà]èÇà€\‹”ò[YOHô^YXúõ›»èê€‹ôHŸ]\‹ÇàèêY›\›€Y\ã€€ùX›õY]‹àö]ô\àôX€‹ôœ⁄èÇàŸ]èÇà]à€\‹”ò[YOHôöY[Y‹öYèÇàXô[ÇàôX€‹ô\BàŸ[X›àò[YO^Ÿ[ù]_Bà€ê⁄[ôŸO^ ]ô[ù
+HOà¬àŸ][ù]J]ô[ùù\ôŸ]ùò[YH\»X\›\ë[ù]JN¬àŸ]ö\ú›
+àäN¬àŸ]ŸX€€ô
+àäN¬àŸ]‹[€ò[
+àäN¬à_BàÇà‹[€àò[YOHò›\›€Y\àèê›\›€Y\è€‹[€èÇà‹[€àò[YOHò›\›€Y\ò€€ùX›èê›\›€Y\àUH€€ùX›€‹[€èÇà‹[€àò[YOHùôZX€HèïôZX€O€‹[€èÇà‹[€àò[YOHôö]ô\àèëö]ô\è€‹[€èÇà‹[€àò[YOHùòZ[\àèïòZ[\è€‹[€èÇà‹[€àò[YOHõX\öŸ]€€ùX›èìX\öŸ]€€ùX›€‹[€èÇà‹Ÿ[X›Çà€Xô[ÇàXô[ÇàŸö\ú›Xô[Bà[ú]àô\]Z\ôYàò[YO^Ÿö\ú›Bà€ê⁄[ôŸO^ ]ô[ù
+HOàŸ]ö\ú›
+]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[ÇàXô[Çà‹ŸX€€ôXô[Bà[ú]àô\]Z\ôYàò[YO^‹ŸX€€ôBà€ê⁄[ôŸO^ ]ô[ù
+HOàŸ]ŸX€€ô
+]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[ÇàXô[Çà€‹[€ò[Xô[Bà[ú]à\O^¬à[ù]HOOHôö]ô\àÇà»ù[Çàà[ù]HOOHò›\›€Y\ò€€ùX›Çà»ô[XZ[Çààù^ÇàBàò[YO^€‹[€ò[Bà€ê⁄[ôŸO^ ]ô[ù
+HOàŸ]‹[€ò[
+]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[ÇàŸ]èÇàù]€à€\‹”ò[YOHúö[X\ûHà\ÿXõY^‹ÿ]ö[ôﬂOÇà‹ÿ]ö[ô»»îÿ]ö[ô¯†)àààîŸ[ôõ‹àô]öY]»üBàÿù]€èÇà€Y\‹ÿYŸH	âà€\‹”ò[YOHö[ùèû€Y\‹ÿYŸ_O‹üBàŸõ‹õOÇà
+N¬üBôù[ò›[€à⁄]TŸ]\õ‹õJ
+H¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú›Ÿõ‹õKŸ]õ‹õWHH\ŸT›]J¬à^\õò[€ŸNààãàò[YNààãà€€X›[€êYô\‹Œààãà€€X›[€í[ú›ùX›[€úŒààãàX\[öŒààãà]]YNààãà€ô⁄]YNààãàJN¬à€€ú›€Y\‹ÿYŸKŸ]Y\‹ÿYŸWHH\ŸT›]O›ö[ôœä
+N¬à€€ú›‹ÿ]ö[ôÀŸ]ÿ]ö[ô◊HH\ŸT›]Jò[ŸJN¬à€€ú›\]HH
+ò[YNàŸ^[Ÿà\[Ÿàõ‹õKò[YNà›ö[ô HOÇàŸ]õ‹õJ
+›\úô[ù
+HOà
+»ããò›\úô[ù€ò[YWNàò[YHJJN¬à\ﬁ[ò»ù[ò›[€à›XõZ]
+]ô[ùàõ‹õQ]ô[ù
+H¬à]ô[ùúô]ô[ùYò][
+
+N¬àŸ]ÿ]ö[ô ùYJN¬àûH¬à]ÿZ]\Kú›YŸTôX€‹ô
+àú⁄]Hãà»ããôõ‹õK]]YNàõ‹õKõ]]YH»ù[Xô\äõ‹õKõ]]YJHà[ôYö[ôY€ô⁄]YNàõ‹õKõ€ô⁄]YH»ù[Xô\äõ‹õKõ€ô⁄]YJHà[ôYö[ôYX›]ôNàùYHKàŸXã\⁄]NâŸõ‹õKô^\õò[€Ÿ_Xà]ÿZ]⁄Ÿ[ä
+Kà
+N¬àŸ]Y\‹ÿYŸJî⁄]HŸ[ù»›Y⁄[ô»ô]öY]ÀàäN¬àŸ]õ‹õJ¬à^\õò[€ŸNààãàò[YNààãà€€X›[€êYô\‹Œààãà€€X›[€í[ú›ùX›[€úŒààãàX\[öŒààãà]]YNààãà€ô⁄]YNààãàJN¬àHÿ]⁄
+^Ÿ\[€äH¬àŸ]Y\‹ÿYŸJà^Ÿ\[€à[ú›[òŸ[Ÿà\úõ‹Çà»^Ÿ\[€ãõY\‹ÿYŸBààî⁄]H€›[õ›ôH›XõZ]Yàãà
+N¬àHö[ò[H¬àŸ]ÿ]ö[ô ò[ŸJN¬àBàBàô]\õà
+àõ‹õBà€\‹”ò[YOHú]ZX⁄À[‹ô\à⁄]K\Ÿ]\Çà€î›XõZ]^ ]ô[ù
+HOàõ⁄Y›XõZ]
+]ô[ù
+_BàÇà€\‹”ò[YOHô^YXúõ›»èî⁄]HŸ]\‹ÇàèêYH€€X›[€à‹àX\öŸ]ÿÿ][€è⁄èÇà]à€\‹”ò[YOHôöY[Y‹öYèÇàXô[Çà⁄]H€ŸBà[ú]àô\]Z\ôYàò[YO^Ÿõ‹õKô^\õò[€Ÿ_Bà€ê⁄[ôŸO^ ]ô[ù
+HOà\]Jô^\õò[€ŸHã]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[ÇàXô[Çà⁄]Hò[YBà[ú]àô\]Z\ôYàò[YO^Ÿõ‹õKõò[Y_Bà€ê⁄[ôŸO^ ]ô[ù
+HOà\]Jõò[YHã]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[ÇàXô[€\‹”ò[YOHù⁄YHèÇàYô\‹¬à[ú]àò[YO^Ÿõ‹õKò€€X›[€êYô\‹ﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOÇà\]Jò€€X›[€êYô\‹»ã]ô[ùù\ôŸ]ùò[YJBàBàœÇà€Xô[ÇàXô[€\‹”ò[YOHù⁄YHèÇàX\[ö¬à[ú]à\OHù\õÇàò[YO^Ÿõ‹õKõX\[öﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOà\]JõX\[ö»ã]ô[ùù\ôŸ]ùò[YJ_BàœÇà€Xô[ÇàXô[Çà]]YBà[ú]\OHõù[Xô\àà›\HååHàZ[èHãNLàX^HéLàò[YO^Ÿõ‹õKõ]]Y_H€ê⁄[ôŸO^ ]ô[ù
+HOà\]Jõ]]YHã]ô[ùù\ôŸ]ùò[YJ_HœÇà€Xô[ÇàXô[Çà€ô⁄]YBà[ú]\OHõù[Xô\àà›\HååHàZ[èHãLNàX^HåNàò[YO^Ÿõ‹õKõ€ô⁄]Y_H€ê⁄[ôŸO^ ]ô[ù
+HOà\]Jõ€ô⁄]YHã]ô[ùù\ôŸ]ùò[YJ_HœÇà€Xô[ÇàXô[€\‹”ò[YOHù⁄YHèÇàö]ô\à[ú›ùX›[€ú¬à^\ôXBàò[YO^Ÿõ‹õKò€€X›[€í[ú›ùX›[€úﬂBà€ê⁄[ôŸO^ ]ô[ù
+HOÇà\]Jò€€X›[€í[ú›ùX›[€ú»ã]ô[ùù\ôŸ]ùò[YJBàBàXŸZ€\èHêXÿŸ\‹Àÿ]K›[ô‹à€€X›[€àõ›\¯†)àÇàœÇà€Xô[ÇàŸ]èÇàù]€à€\‹”ò[YOHúö[X\ûHà\ÿXõY^‹ÿ]ö[ôﬂOÇà‹ÿ]ö[ô»»îÿ]ö[ô¯†)àààîŸ[ô⁄]Hõ‹àô]öY]»üBàÿù]€èÇà€Y\‹ÿYŸH	âà€\‹”ò[YOHö[ùèû€Y\‹ÿYŸ_O‹üBàŸõ‹õOÇà
+N¬üBôù[ò›[€à]S\›^[ô»»Yà›ö[ô»Oä¬à]Kà]Kàô[ô\ãüNà¬à]Nà›ö[ôŒ¬à]OŒà◊N¬àô[ô\éà
+][Nà
+HOàôXX›õŸN¬üJH¬àô]\õà
+à\ùX€H€\‹”ò[YOHô]K[\›èÇàèÇà›]_Bà‹[èûŸ]OÀõ[ô›O‹‹[èÇà⁄èÇàŸ]BàÀú€XŸJ
+BàõX\
+
+][JHOà]àŸ^O^⁄][KöYOû‹ô[ô\ä][J_OŸ]èäH
+àìõ»X›]ôHôX€‹ôÀè‹Çà
+_Bàÿ\ùX€OÇà
+N¬üBÇô^‹ùù[ò›[€à‹\ò][€ò[XŸZ€\ä»]HNà»]Nà›ö[ô»JH¬àô]\õà
+àŸX›[€à€\‹”ò[YOHúXŸZ€\àèÇà€\‹”ò[YOHô^YXúõ›»èì‹\ò][€ò[€‹ö‹‹XŸO‹ÇàOû›]_O⁄OÇà]à€\‹”ò[YOHú[ô[èÇàèîôXYHõ‹àHô^òX⁄Ÿ[ô[ò‹ô[Y[ù⁄èÇàÇà\»õŸX›[€à⁄[ô\Ÿ\ùô\»H[õö[ô»€‹öŸõ›»[ôò]öYÿ][€ãàù]H›\úô[ùTH\»õ»›]Kù”›Ÿ\êÿ\ŸJ
+_H[ô⁄[ùÀà]⁄[àôX€€YH]ôH€òŸHHX]⁄[ô»ô\ú⁄[€ôY[ô⁄[ù\»[ùõŸXŸY[àBàòX⁄Ÿ[ôÇà‹ÇàŸ]èÇà‹ŸX›[€èÇà
+N¬üBÇô^‹ùù[ò›[€àYZ[ä
+H¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú›ÿYŸHH\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\KúÿYŸRî›]\ ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›õY][‘›]\»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\KôõY][‘›]\ ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›[ùY‹ò][€ú»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\Kö[ùY‹ò][€î›]\ ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›‹ﬁ[ò⁄[ôÀŸ]ﬁ[ò⁄[ô◊HH\ŸT›]Jò[ŸJN¬à€€ú›ŸõY][‘ﬁ[ò⁄[ôÀŸ]õY][‘ﬁ[ò⁄[ô◊HH\ŸT›]Jò[ŸJN¬à€€ú›‹ﬁ[ò”Y\‹ÿYŸKŸ]ﬁ[ò”Y\‹ÿYŸWHH\ŸT›]O›ö[ôœä
+N¬à\ﬁ[ò»ù[ò›[€àﬁ[ò‘ÿYŸJ
+H¬àŸ]ﬁ[ò⁄[ô ùYJN¬àŸ]ﬁ[ò”Y\‹ÿYŸJ[ôYö[ôY
+N¬àûH¬à€€ú›ô\›[H]ÿZ]\Kúﬁ[ò‘ÿYŸRëö]ô\ú ]ÿZ]⁄Ÿ[ä
+JN¬àŸ]ﬁ[ò”Y\‹ÿYŸJàô\›[õY\‹ÿYŸHàÿYŸHàﬁ[ò»€€\]Nà	‹ô\›[ò‹ôX]YHö]ô\ú»YY	‹ô\›[ù\]YH\]Y[ô	‹ô\›[ú⁄⁄\YH⁄⁄\Yòà
+N¬à]ÿZ]ÿYŸKúôYúô\⁄
+
+N¬à]ÿZ][ùY‹ò][€úÀúôYúô\⁄
+
+N¬àHÿ]⁄
+^Ÿ\[€äH¬àŸ]ﬁ[ò”Y\‹ÿYŸJà^Ÿ\[€à[ú›[òŸ[Ÿà\úõ‹à»^Ÿ\[€ãõY\‹ÿYŸHàîÿYŸHàﬁ[ò»òZ[Yàãà
+N¬àHö[ò[H¬àŸ]ﬁ[ò⁄[ô ò[ŸJN¬àBàBà\ﬁ[ò»ù[ò›[€àﬁ[ò—õY][ 
+H¬àŸ]õY][‘ﬁ[ò⁄[ô ùYJN¬àŸ]ﬁ[ò”Y\‹ÿYŸJ[ôYö[ôY
+N¬àûH¬à€€ú›ô\›[H]ÿZ]\Kúﬁ[ò—õY][’ôZX€\ ]ÿZ]⁄Ÿ[ä
+JN¬àŸ]ﬁ[ò”Y\‹ÿYŸJàô\›[õY\‹ÿYŸHàõY][»ﬁ[ò»€€\]Nà	‹ô\›[ù\]YHôZX€\»\]Y	‹ô\›[õZ\‹⁄[ô“[ëõY][ﬂHZ\‹⁄[ô»[àõY][Àòà
+N¬à]ÿZ]õY][‘›]\ÀúôYúô\⁄
+
+N¬à]ÿZ][ùY‹ò][€úÀúôYúô\⁄
+
+N¬àHÿ]⁄
+^Ÿ\[€äH¬àŸ]ﬁ[ò”Y\‹ÿYŸJà^Ÿ\[€à[ú›[òŸ[Ÿà\úõ‹à»^Ÿ\[€ãõY\‹ÿYŸHàëõY][»ﬁ[ò»òZ[Yàãà
+N¬àHö[ò[H¬àŸ]õY][‘ﬁ[ò⁄[ô ò[ŸJN¬àBàBà€€ú›ôYúô\⁄YZ[àH
+
+HOà¬àõ⁄YÿYŸKúôYúô\⁄
+
+N¬àõ⁄YõY][‘›]\ÀúôYúô\⁄
+
+N¬àõ⁄Y[ùY‹ò][€úÀúôYúô\⁄
+
+N¬àN¬à€€ú›X[H[ùY‹ò][€úÀô]N¬à€€ú›Ÿ][ô‹»H¬à¬àXô[àìZX‹õ‹€Ÿù⁄Y€ãZ[àãà]Z[à[\‹ùõY]Kô[ùãïíUW—SïêW–”QSï“Qà»ê€€ôöY›\ôYõ‹à\»‹ù[ùZ[ÇààìôYY»€Y[ù\Xÿ][€àQãà›]\Œàõ€€X[ä[\‹ùõY]Kô[ùãïíUW—SïêW–”QSï“Q
+KàKà¬àXô[àêTH€€õôX›[€àãà]Z[Çà[\‹ùõY]Kô[ùãïíUW–TW–êT—W’Tìï\Ÿ\»H‹ù[THYò][ãà›]\ŒàùYKàKà¬àXô[àê^ù\ôHX\»ãà]Z[àX[Àò^ù\ôSX\Àò€€ôöY›\ôYà»îõ›][ô»[ô]ôHUHŸ\ùöXŸH€€ôöY›\ôYÇààê^ù\ôHX\»òX⁄Ÿ[ôôYY»€€ôöY›\ò][€àãà›]\Œàõ€€X[äX[Àò^ù\ôSX\Àò€€ôöY›\ôY
+KàKà¬àXô[àîõÿYX⁄ò[€€àãà]Z[àX[ÀúõÿYX⁄ò€€õôX›Yà»]ôH[[Y]ûHôXŸZ]ôY	Ÿõ‹õX]]JX[úõÿYX⁄õ]\›]ô[ù] _XààX[ÀúõÿYX⁄ò€€ôöY›\ôYà»ê€€ôöY›\ôY»ÿZ][ô»õ‹àHôXŸ[ù[[Y]ûH]ô[ùÇààîõÿYX⁄ù[ù[YHŸ][ô‹»[ò€€\]Hãà›]\Œàõ€€X[äX[ÀúõÿYX⁄ò€€õôX›Y
+KàKà¬àXô[àîÿYŸHàãà]Z[àÿYŸKõÿY[ô¬à»ê⁄X⁄⁄[ô»ÿYŸH∏†)àÇààÿYŸKô]OÀõY\‹ÿYŸHÿYŸKô\úõ‹àîÿYŸHà›]\»[ò]òZ[XõHãà›]\Œàõ€€X[äÿYŸKô]OÀò€€õôX›Y
+KàKà¬àXô[àë[XZ[[ùZŸHãà]Z[àX[Àô[XZ[[ùZŸKò€€ôöY›\ôYà»XZ[õﬁ[ùZŸHôXŸZ]ôY	Ÿõ‹õX]]JX[ô[XZ[[ùZŸKõ\›ôXŸZ]ôY] _Xààêò]⁄TH\»ôXYN»›Ÿ\à]]€X]HXZ[õﬁ\»õ›‹›YY]ãà›]\Œàõ€€X[äX[Àô[XZ[[ùZŸKò€€ôöY›\ôY
+KàKà¬àXô[àëö]ô\à”T»ãà]Z[àX[Àù^ôYOÀò€€ôöY›\ôYà»^ôYH	⁄X[ù^ôYKô]T€ôSXô[ô]H€ôHüH€€ôöY›\ôYààX[Àò^ù\ôT€\Àò€€ôöY›\ôYà»ê^ù\ôH”T»\‹]⁄€€ôöY›\ôYÇààìZY⁄U^€‹H\»ôXYN»^ôYH]H€ôHôYY»Ÿ]\ãà›]\Œàõ€€X[äàX[Àù^ôYOÀò€€ôöY›\ôYX[Àò^ù\ôT€\Àò€€ôöY›\ôYà
+KàKà¬àXô[àëõY][»ãà]Z[ÇàõY][‘›]\Àô]OÀõY\‹ÿYŸHà
+X[ÀôõY][œÀò€€ôöY›\ôYà»ëõY][»Ÿ\ùöXŸH[ôì‘à[ùY‹ò][€à€€ôöY›\ôYÇààëõY][»THŸ][ô‹»ôYYYõ‹àŸ\ùöXŸK[ú‹X›[€ú»[ôì‘àﬁ[ò»äKà›]\Œàõ€€X[äàõY][‘›]\Àô]OÀò€€õôX›YX[ÀôõY][œÀò€€ôöY›\ôYà
+KàKàN¬àô]\õà
+àŸX›[€èÇà]à€\‹”ò[YOHù]K\õ›»èÇà]èÇà€\‹”ò[YOHô^YXúõ›»èî]õ‹õH€€ùõ€‹ÇàOêYZ[à	à[ùY‹ò][€úœ⁄OÇàŸ]èÇàù]€à€ê€X⁄œ^‹ôYúô\⁄YZ[üOîôYúô\⁄[ùY‹ò][€úœÿù]€èÇàŸ]èÇà€\‹”ò[YOHö[ùõ»èÇà]ôH›]\»€€Y\»úõ€HHõ›X›YTH[ôô]ô\à^‹Ÿ\»‹ôY[ùX[ÀÇà‹Çà]à€\‹”ò[YOHòYZ[ãY‹öYèÇà‹Ÿ][ô‹ÀõX\
+
+Ÿ][ô HOà
+à\ùX€H€\‹”ò[YOHòYZ[ãXÿ\ôàŸ^O^‹Ÿ][ôÀõXô[OÇà‹[Çà€\‹”ò[YO^¬àŸ][ôÀú›]\¬à»ö[ùY‹ò][€ã\›]HôXYHÇààö[ùY‹ò][€ã\›]H[ô[ô»ÇàBàÇà‹Ÿ][ôÀú›]\»»îôXYHààîŸ]\ôYYYüBà‹‹[èÇàèû‹Ÿ][ôÀõXô[O⁄èÇàû‹Ÿ][ôÀô]Z[O‹Çà‹Ÿ][ôÀõXô[OOHîÿYŸHàà	âà
+àÇà€X[Çà‹ÿYŸKô]OÀô[\ﬁYYP€›[ùH[\ﬁYY\»0≠ﬁ»àüBà‹ÿYŸKô]OÀôö]ô\êÿ[ôY]P€›[ùHö]ô\àÿ[ôY]\¬à‹€X[Çà–õ€€X[äÿYŸKô]OÀõZ\‹⁄[ô‘Ÿ][ô‹œÀõ[ô›
+H	âà
+à[€\‹”ò[YOHõZ\‹⁄[ôÀ\Ÿ][ô‹»èÇà‹ÿYŸKô]OÀõZ\‹⁄[ô‘Ÿ][ô‹œÀõX\
+
+][JHOà
+àHŸ^O^⁄][_Oû⁄][_O€OÇà
+J_Bà›[Çà
+_Bàù]€Çà€\‹”ò[YOHúö[X\ûHÇà\ÿXõY^»\ÿYŸKô]OÀò€€õôX›Yﬁ[ò⁄[ôﬂBà€ê€X⁄œ^ 
+HOàõ⁄Yﬁ[ò‘ÿYŸJ
+_BàÇà‹ﬁ[ò⁄[ô»»îﬁ[ò⁄[ô¯†)àààîﬁ[ò»ö]ô\ú»úõ€HÿYŸHüBàÿù]€èÇàœÇà
+_Bà‹Ÿ][ôÀõXô[OOHëõY][»à	âà
+àÇà€X[ÇàŸõY][‘›]\Àô]OÀúÿ[\UôZX€P€›[ùHÿ[\HôZX€\¬à⁄X⁄ŸYà‹€X[Çà–õ€€X[äõY][‘›]\Àô]OÀõZ\‹⁄[ô‘Ÿ][ô‹œÀõ[ô›
+H	âà
+à[€\‹”ò[YOHõZ\‹⁄[ôÀ\Ÿ][ô‹»èÇàŸõY][‘›]\Àô]OÀõZ\‹⁄[ô‘Ÿ][ô‹œÀõX\
+
+][JHOà
+àHŸ^O^⁄][_Oû⁄][_O€OÇà
+J_Bà›[Çà
+_Bàù]€Çà€\‹”ò[YOHúö[X\ûHÇà\ÿXõY^»YõY][‘›]\Àô]OÀò€€õôX›YõY][‘ﬁ[ò⁄[ôﬂBà€ê€X⁄œ^ 
+HOàõ⁄Yﬁ[ò—õY][ 
+_BàÇàŸõY][‘ﬁ[ò⁄[ô»»îﬁ[ò⁄[ô¯†)àààîﬁ[ò»ôZX€\»úõ€HõY][»üBàÿù]€èÇàœÇà
+_Bàÿ\ùX€OÇà
+J_BàŸ]èÇà‹ﬁ[ò”Y\‹ÿYŸH	âà€\‹”ò[YOHõõ›XŸHèû‹ﬁ[ò”Y\‹ÿYŸ_O‹üBà]à€\‹”ò[YOHú[ô[YZ[ã[ô^èÇàèê]]€X][€à[ùZŸH[ô⁄[ù⁄èÇàÇà€ŸOû⁄X[Àòò]⁄[ùZŸKô[ô⁄[ùãÿ\K›åK‹›Y⁄[ôÀÿò]⁄üOÿ€ŸOû»àüBàXÿŸ\»\»LY[\›[ùôX€‹ô»\à[XZ[‹à€‹öÿõ€⁄»[ôŸY\¬à]ô\ûH‹ô\àôZ[ô›Y⁄[ô»\õ›ò[Çà‹ÇàŸ]èÇà‹ŸX›[€èÇà
+N¬üBÇô^‹ùù[ò›[€à‹\ò][€ú–€€ùõ€
+
+H¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú›Ÿ]KŸ]]WHH\ŸT›]Jÿÿ[]J
+JN¬à€€ú››XãŸ]XóHH\ŸT›]Oò€€ôöY[òŸHàô^Ÿ\[€ú»àúôX€€ò⁄[X][€ààõX\[ô‹»èäò€€ôöY[òŸHäN¬à€€ú›€X\[ô‘õ›öY\ãŸ]X\[ô‘õ›öY\óHH\ŸT›]JàäN¬à€€ú›€X\[ô—^\õò[Ÿ^KŸ]X\[ô—^\õò[Ÿ^WHH\ŸT›]JàäN¬à€€ú›€X\[ô”Xô[Ÿ]X\[ô”Xô[HH\ŸT›]JàäN¬à€€ú›€X\[ô—[ù]U\KŸ]X\[ô—[ù]U\WHH\ŸT›]Jëö]ô\àäN¬à€€ú›€X\[ô—[ù]RYŸ]X\[ô—[ù]RYHH\ŸT›]JàäN¬à€€ú›€X\[ô”õ›\ÀŸ]X\[ô”õ›\◊HH\ŸT›]JàäN¬à€€ú›€X\[ô—\úõ‹ãŸ]X\[ô—\úõ‹óHH\ŸT›]O›ö[ôœä
+N¬à€€ú›€X\[ô‘ÿ]ôYŸ]X\[ô‘ÿ]ôYHH\ŸT›]Jò[ŸJN¬Çà€€ú›€€ôöY[òŸHH\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\Kõ‹\ò][€ú–€€ôöY[òŸJ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›^Ÿ\[€ú»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\Kõ‹\ò][€ú—^Ÿ\[€ú ]K]ÿZ]⁄Ÿ[ä
+JKŸ]K⁄Ÿ[óJKà
+N¬à€€ú›ôX€€ò⁄[X][€àH\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\Kõ‹\ò][€ú‘ôX€€ò⁄[X][€ä]K]ÿZ]⁄Ÿ[ä
+JKŸ]K⁄Ÿ[óJKà
+N¬à€€ú›X\[ô‹»H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\Kö[ùY‹ò][€ìX\[ô‹ [ôYö[ôY]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›ö]ô\ú”\›H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\Kôö]ô\ú ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬à€€ú›ôZX€\”\›H\ŸP\Jà\ŸPÿ[òX⁄ \ﬁ[ò»
+
+HOà\KùôZX€\ ]ÿZ]⁄Ÿ[ä
+JK›⁄Ÿ[óJKà
+N¬Çà\ﬁ[ò»ù[ò›[€àÿ]ôSX\[ô 
+H¬àŸ]X\[ô—\úõ‹ä[ôYö[ôY
+N¬àŸ]X\[ô‘ÿ]ôY
+ò[ŸJN¬àYà
+[X\[ô‘õ›öY\à[X\[ô—^\õò[Ÿ^H[X\[ô—[ù]RY
+H¬àŸ]X\[ô—\úõ‹äîõ›öY\ã^\õò[Ÿ^K[ôT»[ù]HQ\ôHô\]Z\ôYàäN¬àô]\õé¬àBàûH¬à]ÿZ]\Kò‹ôX]SX\[ô à¬àõ›öY\éàX\[ô‘õ›öY\ãà^\õò[Ÿ^NàX\[ô—^\õò[Ÿ^Kà^\õò[Xô[àX\[ô”Xô[[ôYö[ôYà\—[ù]U\NàX\[ô—[ù]U\Kà\—[ù]RYàX\[ô—[ù]RYàõ›\ŒàX\[ô”õ›\»[ôYö[ôYàKà]ÿZ]⁄Ÿ[ä
+Kà
+N¬àŸ]X\[ô‘ÿ]ôY
+ùYJN¬àŸ]X\[ô—^\õò[Ÿ^JàäN¬àŸ]X\[ô”Xô[
+àäN¬àŸ]X\[ô”õ›\ àäN¬à]ÿZ]X\[ô‹ÀúôYúô\⁄
+
+N¬àHÿ]⁄
+^Ÿ\[€äH¬àŸ]X\[ô—\úõ‹äà^Ÿ\[€à[ú›[òŸ[Ÿà\úõ‹à»^Ÿ\[€ãõY\‹ÿYŸHàëòZ[Y»ÿ]ôHX\[ôÀàãà
+N¬àBàBÇà\ﬁ[ò»ù[ò›[€àô[[›ôSX\[ô Yà›ö[ô H¬àûH¬à]ÿZ]\Kô[]SX\[ô Y]ÿZ]⁄Ÿ[ä
+JN¬à]ÿZ]X\[ô‹ÀúôYúô\⁄
+
+N¬àHÿ]⁄
+^Ÿ\[€äH¬àŸ]X\[ô—\úõ‹äà^Ÿ\[€à[ú›[òŸ[Ÿà\úõ‹à»^Ÿ\[€ãõY\‹ÿYŸHàëòZ[Y»[]HX\[ôÀàãà
+N¬àBàBÇà€€ú›ôYúô\⁄[H
+
+HOà¬àõ⁄Y€€ôöY[òŸKúôYúô\⁄
+
+N¬àõ⁄Y^Ÿ\[€úÀúôYúô\⁄
+
+N¬àõ⁄YôX€€ò⁄[X][€ãúôYúô\⁄
+
+N¬àõ⁄YX\[ô‹ÀúôYúô\⁄
+
+N¬àN¬Çà€€ú›€€ôàH€€ôöY[òŸKô]N¬à€€ú›^»H^Ÿ\[€úÀô]N¬à€€ú›ôX»HôX€€ò⁄[X][€ãô]N¬à€€ú›X\HX\[ô‹Àô]N¬Çàô]\õà
+àŸX›[€èÇà]à€\‹”ò[YOHù]K\õ›»èÇà]èÇà€\‹”ò[YOHô^YXúõ›»èì‹\ò][€ò[ôXY[ô\‹œ‹ÇàOì‹\ò][€ú»€€ùõ€⁄OÇàŸ]èÇà]à›[O^ﬁ»\‹^Nàôõ^ãÿ\àéã[Y€í][\ŒàòŸ[ù\àà_OÇà[ú]\OHô]Hàò[YO^Ÿ]_H€ê⁄[ôŸO^ JHOàŸ]]JKù\ôŸ]ùò[YJ_H›[O^ﬁ»Y[ôŒàãçô[Hçúô[Hãõ‹ô\éàå\€€YÿŒYHãõ‹ô\îòY]\Œàç‹à_HœÇàù]€à€ê€X⁄œ^‹ôYúô\⁄[OîôYúô\⁄[ÿù]€èÇàŸ]èÇàŸ]èÇà]à€\‹”ò[YOHõY]öX‹»èÇàY]öX¬àXô[Hí[ùY‹ò][€ú»€€ôöY›\ôYÇàò[YO^¬à€€ôÇà»›ö[ô àÿ€€ôãúÿYŸRãò€€ôöY›\ôY€€ôãùX⁄”X\›\ãò€€ôöY›\ôY€€ôãô›òX⁄⁄[ôÀò€€ôöY›\ôY€€ôãôõY][Àò€€ôöY›\ôYKôö[\äõ€€X[äKõ[ô›à
+Bàà∏†%ÇàBà]Z[HîÿYŸKX⁄”X\›\ã’õY][»ÇàœÇàY]öX¬àXô[Hì‹[à^Ÿ\[€ú»Çàò[YO^Ÿ^»»›ö[ô ^Àú›[[X\ûKù›[
+Hà∏†%üBà]Z[^Ÿ^»»	Ÿ^Àú›[[X\ûKöY⁄HY⁄	Ÿ^Àú›[[X\ûKõYY][_HYY][XàìÿY[ô¯†)àüBàœÇàY]öX¬àXô[Hï[ò[ÿÿ]YÿY»Çàò[YO^‹ôX»»›ö[ô ôXÀõÿYÀù[ò[ÿÿ]Y
+Hà∏†%üBà]Z[^‹ôX»»	‹ôXÀõÿYÀù›[H›[ÿY»Ÿ^XàìÿY[ô¯†)àüBàœÇàY]öX¬àXô[HïôZX€\»õ»⁄Y€ò[Çàò[YO^‹ôX»»›ö[ô ôXÀôõY]ùôZX€\”õ‘⁄Y€ò[
+Hà∏†%üBà]Z[^‹ôX»»	‹ôXÀôõY]ùôZX€\‘ŸY[ïŸ^_HŸY[àŸ^XàìÿY[ô¯†)àüBàœÇàŸ]èÇÇà]à€\‹”ò[YOHùXãXò\àèÇà »ò€€ôöY[òŸHãô^Ÿ\[€ú»ãúôX€€ò⁄[X][€àãõX\[ô‹»óH\»€€ú›
+KõX\
+
+
+HOà
+àù]€ÇàŸ^O^›Bà€\‹”ò[YO^›XàOOH»ùXàX›]ôHààùXàüBà€ê€X⁄œ^ 
+HOàŸ]Xä
+_BàÇà›OOHò€€ôöY[òŸHà»í[ùY‹ò][€à€€ôöY[òŸHààOOHô^Ÿ\[€ú»à»ë^Ÿ\[€ú»ààOOHúôX€€ò⁄[X][€àà»ëZ[HôX€€ò⁄[X][€àààìX[ùX[X\[ô‹»üBàÿù]€èÇà
+J_BàŸ]èÇÇà›XàOOHò€€ôöY[òŸHà	âà
+à›]HÿY[ôœ^ÿ€€ôöY[òŸKõÿY[ôﬂH\úõ‹è^ÿ€€ôöY[òŸKô\úõ‹üH[\O^»X€€ôüOÇàÿ€€ôà	âà
+à]à€\‹”ò[YOHòYZ[ãY‹öYèÇà\ùX€H€\‹”ò[YOHòYZ[ãXÿ\ôèÇà‹[à€\‹”ò[YO^ÿ€€ôãúÿYŸRãò€€ôöY›\ôY»ö[ùY‹ò][€ã\›]HôXYHààö[ùY‹ò][€ã\›]H[ô[ô»üOÇàÿ€€ôãúÿYŸRãò€€ôöY›\ôY»îôXYHààîŸ]\ôYYYüBà‹‹[èÇàèîÿYŸHè⁄èÇàûÿ€€ôãúÿYŸRãòX›]ôQö]ô\úﬂHX›]ôHö]ô\úœ‹Çà€X[ûÿ€€ôãúÿYŸRãôö]ô\ú’⁄]›]X⁄”ò[Y_H⁄]›]X⁄»ò[YO‹€X[Çàÿ€€ôãúÿYŸRãõ\›ﬁ[ò’]»	âà
+à€X[ì\›ﬁ[òŒàŸõ‹õX]]J€€ôãúÿYŸRãõ\›ﬁ[ò’] _O‹€X[Çà
+_Bàÿ\ùX€OÇà\ùX€H€\‹”ò[YOHòYZ[ãXÿ\ôèÇà‹[à€\‹”ò[YO^ÿ€€ôãùX⁄”X\›\ãò€€ôöY›\ôY»ö[ùY‹ò][€ã\›]HôXYHààö[ùY‹ò][€ã\›]H[ô[ô»üOÇàÿ€€ôãùX⁄”X\›\ãò€€ôöY›\ôY»îôXYHààîŸ]\ôYYYüBà‹‹[èÇàèïX⁄”X\›\è⁄èÇàûÿ€€ôãùX⁄”X\›\ãôö]ô\ú’⁄]X⁄‘ﬁ[òﬂHö]ô\ú»⁄]X⁄»ﬁ[òœ‹Çà€X[ûÿ€€ôãùX⁄”X\›\ãôö]ô\ú’⁄]›]X⁄”ò[Y_H[õX]⁄Y‹€X[Çàÿ€€ôãùX⁄”X\›\ãõ\›ﬁ[ò’]»	âà
+à€X[ì\›ﬁ[òŒàŸõ‹õX]]J€€ôãùX⁄”X\›\ãõ\›ﬁ[ò’] _O‹€X[Çà
+_Bàÿ\ùX€OÇà\ùX€H€\‹”ò[YOHòYZ[ãXÿ\ôèÇà‹[à€\‹”ò[YO^ÿ€€ôãô›òX⁄⁄[ôÀò€€ôöY›\ôY»ö[ùY‹ò][€ã\›]HôXYHààö[ùY‹ò][€ã\›]H[ô[ô»üOÇàÿ€€ôãô›òX⁄⁄[ôÀò€€ôöY›\ôY»îôXYHààîŸ]\ôYYYüBà‹‹[èÇàèë’òX⁄⁄[ôœ⁄èÇàûÿ€€ôãô›òX⁄⁄[ôÀõ]ôUôZX€P€›[ùH]ôHôZX€\œ‹Çà€X[ûÿ€€ôãô›òX⁄⁄[ôÀú›[UôZX€P€›[ùH›[H
+Ã
+»Z[äO‹€X[Çàÿ€€ôãô›òX⁄⁄[ôÀõ]\›]ô[ù]»	âà
+à€X[ì]\›àŸõ‹õX]]J€€ôãô›òX⁄⁄[ôÀõ]\›]ô[ù] _O‹€X[Çà
+_Bàÿ€€ôãô›òX⁄⁄[ôÀùòX⁄⁄[ô–YŸSZ[ù]\»OHù[	âà
+à€X[êYŸNàÿ€€ôãô›òX⁄⁄[ôÀùòX⁄⁄[ô–YŸSZ[ù]\ﬂHZ[è‹€X[Çà
+_Bàÿ\ùX€OÇà\ùX€H€\‹”ò[YOHòYZ[ãXÿ\ôèÇà‹[à€\‹”ò[YO^ÿ€€ôãôõY][Àò€€ôöY›\ôY»ö[ùY‹ò][€ã\›]HôXYHààö[ùY‹ò][€ã\›]H[ô[ô»üOÇàÿ€€ôãôõY][Àò€€ôöY›\ôY»îôXYHààîŸ]\ôYYYüBà‹‹[èÇàèëõY][œ⁄èÇàûÿ€€ôãôõY][ÀõX]⁄YôZX€\ﬂHX]⁄YôZX€\œ‹Çà€X[ûÿ€€ôãôõY][Àù[õX]⁄YôZX€\ﬂH[õX]⁄Y‹€X[Çàÿ\ùX€OÇàŸ]èÇà
+_Bà‘›]OÇà
+_BÇà›XàOOHô^Ÿ\[€ú»à	âà
+à›]HÿY[ôœ^Ÿ^Ÿ\[€úÀõÿY[ôﬂH\úõ‹è^Ÿ^Ÿ\[€úÀô\úõ‹üH[\O^»Y^œÀô^Ÿ\[€úÀõ[ô›OÇàŸ^»	âà
+à]à€\‹”ò[YOHô^Ÿ\[€ã[\›èÇàŸ^Àô^Ÿ\[€úÀõX\
+
+][K[ô^
+HOà
+à\ùX€HŸ^O^⁄[ô^OÇà›õ€ô»€\‹”ò[YO^⁄][KúŸ]ô\ö]HOOHíY⁄à»ô\úõ‹ààà][KúŸ]ô\ö]HOOHìYY][Hà»ùÿ\õààààüOÇà⁄][Kù\Kúô\XŸJ –KVóJKŸÀà	HäKùö[J
+_Bà‹›õ€ôœÇà‹[èû⁄][KúôYô\ô[òŸ_H0≠»⁄][KúŸ]ô\ö]_O‹‹[èÇà€X[û⁄][Kô\ÿ‹ö\[€üO‹€X[Çàÿ\ùX€OÇà
+J_BàŸ]èÇà
+_Bà‘›]OÇà
+_BÇà›XàOOHúôX€€ò⁄[X][€àà	âà
+à›]HÿY[ôœ^‹ôX€€ò⁄[X][€ãõÿY[ôﬂH\úõ‹è^‹ôX€€ò⁄[X][€ãô\úõ‹üH[\O^»\ôXﬂOÇà‹ôX»	âà
+à]èÇàXõH€\‹”ò[YOHô]K]XõHèÇàXYÇàèèêÿ]Y€‹ûO›èìY]öXœ›èïò[YO›è›èÇà›XYÇàõŸOÇàèèì‹ô\úœ›èï›[›èû‹ôXÀõ‹ô\úÀù›[O›è›èÇàèèì‹ô\úœ›èîôXYH»[è›èû‹ôXÀõ‹ô\úÀúôXYU‘[üO›è›èÇàèèì‹ô\úœ›èî[õôY›èû‹ôXÀõ‹ô\úÀú[õôYO›è›èÇàèèì‹ô\úœ›èí[àò[ú⁄]›èû‹ôXÀõ‹ô\úÀö[ïò[ú⁄]O›è›èÇàèèì‹ô\úœ›èë[]ô\ôY›èû‹ôXÀõ‹ô\úÀô[]ô\ôYO›è›èÇàèèìÿYœ›èï›[›èû‹ôXÀõÿYÀù›[O›è›èÇàèèìÿYœ›èî[õôY›èû‹ôXÀõÿYÀú[õôYO›è›èÇàèèìÿYœ›èë\‹]⁄Y›èû‹ôXÀõÿYÀô\‹]⁄YO›è›èÇàèèìÿYœ›èê€€\]Y›èû‹ôXÀõÿYÀò€€\]YO›è›èÇàèèìÿYœ›èï[ò[ÿÿ]Y›èû‹ôXÀõÿYÀù[ò[ÿÿ]YO›è›èÇàèèëõY]›èêX›]ôHö]ô\úœ›èû‹ôXÀôõY]òX›]ôQö]ô\úﬂO›è›èÇàèèëõY]›èê\‹⁄Y€ôYö]ô\úœ›èû‹ôXÀôõY]ò\‹⁄Y€ôYö]ô\úﬂO›è›èÇàèèëõY]›èï[ò\‹⁄Y€ôYö]ô\úœ›èû‹ôXÀôõY]ù[ò\‹⁄Y€ôYö]ô\úﬂO›è›èÇàèèëõY]›èêX›]ôHôZX€\œ›èû‹ôXÀôõY]òX›]ôUôZX€\ﬂO›è›èÇàèèëõY]›èïôZX€\»ŸY[àŸ^O›èû‹ôXÀôõY]ùôZX€\‘ŸY[ïŸ^_O›è›èÇàèèëõY]›èïôZX€\»õ»⁄Y€ò[›èû‹ôXÀôõY]ùôZX€\”õ‘⁄Y€ò[O›è›èÇàèèî›Y⁄[ôœ›èî[ô[ô»ô]öY]œ›èû‹ôXÀú›Y⁄[ôÀú[ô[ô‘ô]öY]ﬂO›è›èÇà›õŸOÇà›XõOÇàŸ]èÇà
+_Bà‘›]OÇà
+_BÇà›XàOOHõX\[ô‹»à	âà
+à]èÇà]à€\‹”ò[YOHú[ô[èÇàèêY[ùY‹ò][€àX\[ôœ⁄èÇà€\‹”ò[YOHö[ùõ»èÇàX[ùX[H[ö»[à^\õò[õ›öY\àŸ^H»HT»ö]ô\à‹àôZX€KÇà\»›ô\úöY\»ù^ûûHX]⁄[ô»õ‹àH[öŸY[ù]KÇà‹Çà]à€\‹”ò[YOHôõ‹õKY‹öYèÇàXô[îõ›öY\ÇàŸ[X›ò[YO^€X\[ô‘õ›öY\üH€ê⁄[ôŸO^ JHOàŸ]X\[ô‘õ›öY\äKù\ôŸ]ùò[YJ_OÇà‹[€àò[YOHàèîŸ[X›8†)è€‹[€èÇà‹[€àò[YOHîÿYŸRàèîÿYŸHè€‹[€èÇà‹[€àò[YOHïX⁄”X\›\àèïX⁄”X\›\è€‹[€èÇà‹[€àò[YOHë›òX⁄⁄[ô»èë’òX⁄⁄[ôœ€‹[€èÇà‹[€àò[YOHëõY][»èëõY][œ€‹[€èÇà‹Ÿ[X›Çà€Xô[ÇàXô[ë^\õò[Ÿ^Bà[ú]ò[YO^€X\[ô—^\õò[Ÿ^_H€ê⁄[ôŸO^ JHOàŸ]X\[ô—^\õò[Ÿ^JKù\ôŸ]ùò[YJ_HXŸZ€\èHôKôÀàSTH‹àëQÕåPPê»àœÇà€Xô[ÇàXô[ë^\õò[Xô[à[ú]ò[YO^€X\[ô”Xô[H€ê⁄[ôŸO^ JHOàŸ]X\[ô”Xô[
+Kù\ôŸ]ùò[YJ_HXŸZ€\èHôKôÀàõ⁄à€Z]àœÇà€Xô[ÇàXô[ïT»[ù]H\BàŸ[X›ò[YO^€X\[ô—[ù]U\_H€ê⁄[ôŸO^ JHOàŸ]X\[ô—[ù]U\JKù\ôŸ]ùò[YJ_OÇà‹[€àò[YOHëö]ô\àèëö]ô\è€‹[€èÇà‹[€àò[YOHïôZX€HèïôZX€O€‹[€èÇà‹Ÿ[X›Çà€Xô[ÇàXô[ïT»€X\[ô—[ù]U\HOOHëö]ô\àà»ôö]ô\àààùôZX€HüBàŸ[X›ò[YO^€X\[ô—[ù]RYH€ê⁄[ôŸO^ JHOàŸ]X\[ô—[ù]RY
+Kù\ôŸ]ùò[YJ_OÇà‹[€àò[YOHàèîŸ[X›€X\[ô—[ù]U\HOOHëö]ô\àà»ôö]ô\àààùôZX€Hüx†)è€‹[€èÇà€X\[ô—[ù]U\HOOHëö]ô\àà	âàö]ô\ú”\›ô]OÀôö[\äOàòX›]ôJKõX\
+
+
+HOà
+à‹[€àŸ^O^ŸöYHò[YO^ŸöYOûŸô\‹^Sò[Y_H
+Ÿô[\ﬁYYSù[Xô\üJ^ŸùX⁄”ò[YH»8†%X⁄Œà	ŸùX⁄”ò[Y_XààüO€‹[€èÇà
+J_Bà€X\[ô—[ù]U\HOOHïôZX€Hà	âàôZX€\”\›ô]OÀôö[\äàOàãòX›]ôJKõX\
+
+äHOà
+à‹[€àŸ^O^›ãöYHò[YO^›ãöYOû›ãúôY⁄\›ò][€ü^›ãôõY]ù[Xô\à»
+	›ãôõY]ù[Xô\üJXààüO€‹[€èÇà
+J_Bà‹Ÿ[X›Çà€Xô[ÇàXô[ìõ›\¬à[ú]ò[YO^€X\[ô”õ›\ﬂH€ê⁄[ôŸO^ JHOàŸ]X\[ô”õ›\ Kù\ôŸ]ùò[YJ_HXŸZ€\èHì‹[€ò[àœÇà€Xô[ÇàŸ]èÇà€X\[ô—\úõ‹à	âà€\‹”ò[YOHú›]H\úõ‹àèû€X\[ô—\úõ‹üO‹üBà€X\[ô‘ÿ]ôY	âà€\‹”ò[YOHõõ›XŸHèìX\[ô»ÿ]ôYè‹üBàù]€à€\‹”ò[YOHúö[X\ûHà€ê€X⁄œ^ 
+HOàõ⁄Yÿ]ôSX\[ô 
+_Oîÿ]ôHX\[ôœÿù]€èÇàŸ]èÇÇà›]HÿY[ôœ^€X\[ô‹ÀõÿY[ôﬂH\úõ‹è^€X\[ô‹Àô\úõ‹üH[\O^»[X\Àõ[ô›OÇà€X\	âàX\õ[ô›à	âà
+àXõH€\‹”ò[YOHô]K]XõHèÇàXYÇàèèîõ›öY\è›èë^\õò[Ÿ^O›èìXô[›èï\O›èïT»[ù]O›èï\]Y›èêûO›èè›è›èÇà›XYÇàõŸOÇà€X\ôö[\äHOàKòX›]ôJKõX\
+
+JHOà
+ààŸ^O^€KöYOÇàû€Kúõ›öY\üO›Çàû€Kô^\õò[Ÿ^_O›Çàû€Kô^\õò[Xô[∏†%üO›Çàû€Kù\—[ù]U\_O›Çàû€Kù\—[ù]U\HOOHëö]ô\àÇà»
+ö]ô\ú”\›ô]OÀôö[ô
+OàöYOOHKù\—[ù]RY
+OÀô\‹^Sò[YHœ»€ŸOû€Kù\—[ù]RYú€XŸJ
+_Oÿ€ŸOäBàà
+ôZX€\”\›ô]OÀôö[ô
+àOàãöYOOHKù\—[ù]RY
+OÀúôY⁄\›ò][€àœ»€ŸOû€Kù\—[ù]RYú€XŸJ
+_Oÿ€ŸOä_Bà›ÇàûŸõ‹õX]]JKù\]Y]] _O›Çàû€Kù\]YûH∏†%üO›Çàèù]€à€ê€X⁄œ^ 
+HOàõ⁄Yô[[›ôSX\[ô KöY
+_Oîô[[›ôOÿù]€èè›Çà›èÇà
+J_Bà›õŸOÇà›XõOÇà
+_Bà‘›]OÇàŸ]èÇà
+_Bà‹ŸX›[€èÇà
+N¬üBÇô^‹ùù[ò›[€àö]ô\ì[ÿö[J
+H¬à€€ú›⁄Ÿ[àH\ŸPXÿŸ\‹’⁄Ÿ[ä
+N¬à€€ú›»Xÿ€›[ù»HH\ŸS\ÿ[
+
+N¬à€€ú›Xÿ€›[ùHXÿ€›[ù÷ÃN¬à€€ú›Ÿ^HHÿÿ[]J
+N¬à€€ú›‹›XõZ][ôÀŸ]›XõZ][ô◊HH\ŸT›]O›ö[ô»ù[äù[
+N¬à€€ú›‹›]\”\ŸÀŸ]›]\”\Ÿ◊HH\ŸT›]O›ö[ôœä
+N¬Çà€€ú›\‹⁄Y€õY[ù»H\ŸP\Jà\ŸPÿ[òX⁄ à\ﬁ[ò»
+
+HOà\Kôö]ô\ê\‹⁄Y€õY[ù Ÿ^KŸ^K]ÿZ]⁄Ÿ[ä
+JKà›Ÿ^K⁄Ÿ[óKà
+Kà
+N¬Çà€€ú›^Sò[YHH
+Xÿ€›[ùÀõò[YHœ»àäKù”›Ÿ\êÿ\ŸJ
+Kùö[J
+N¬à€€ú›^P\‹⁄Y€õY[ù»H^Sò[YKõ[ô›àà»
+\‹⁄Y€õY[ùÀô]H◊JKôö[\äà
+JHOàKôö]ô\èÀô\‹^Sò[YOÀù”›Ÿ\êÿ\ŸJ
+HOOH^Sò[YKà
+Bàà◊N¬Çà€€ú››]\–ù]€úŒà\úò^O»›]\Œà›ö[ôŒ»Xô[à›ö[ô»OàH¬à»›]\ŒàêXÿŸ\YãXô[àêXÿŸ\YàKà»›]\Œàê\úö]ôY€€X›[€àãXô[àê\úö]ôY]€€X›[€ààKà»›]\ŒàìÿYYãXô[àìÿYYàKà»›]\Œàê\úö]ôY[]ô\ûHãXô[àê\úö]ôY][]ô\ûHàKà»›]\Œàë[]ô\ôYãXô[àë[]ô\ôYàKà»›]\Œàí\‹›YTô\‹ùYãXô[àîô\‹ù\‹›YHàKàN¬Çà\ﬁ[ò»ù[ò›[€à›XõZ]›]\ ÿYYà›ö[ôÀ›]\Œà›ö[ô H¬àŸ]›XõZ][ô ›]\ N¬àŸ]›]\”\Ÿ [ôYö[ôY
+N¬àûH¬à]ÿZ]\Kòÿ\\ôQö]ô\î›]\ ÿYY»›]\Àõ›\Œà[ôYö[ôYK]ÿZ]⁄Ÿ[ä
+JN¬àŸ]›]\”\Ÿ 	‹›]\ﬂHôX€‹ôY
+N¬àHÿ]⁄
+JH¬àŸ]›]\”\Ÿ H[ú›[òŸ[Ÿà\úõ‹à»KõY\‹ÿYŸHàëòZ[Y»\]H›]\»äN¬àHö[ò[H¬àŸ]›XõZ][ô ù[
+N¬àŸ][Y[›]
+
+
+HOàŸ]›]\”\Ÿ [ôYö[ôY
+K
+N¬àBàBÇàô]\õà
+àŸX›[€à€\‹”ò[YOHôö]ô\ã[[ÿö[HèÇà]à€\‹”ò[YOHõ[ÿö[KZXY\àèÇà€\‹”ò[YOHô^YXúõ›»èëö]ô\è‹ÇàOûÿXÿ€›[ùÀõò[YHœ»ëö]ô\àüO⁄OÇà€X[û›Ÿ^_O‹€X[ÇàŸ]èÇÇà›]HÿY[ôœ^ÿ\‹⁄Y€õY[ùÀõÿY[ôﬂH\úõ‹è^ÿ\‹⁄Y€õY[ùÀô\úõ‹üH[\O^»[^P\‹⁄Y€õY[ùÀõ[ô›OÇà€^P\‹⁄Y€õY[ùÀõ[ô›à	âà
+à]à€\‹”ò[YOHõ[ÿö[K[ÿY»èÇà€^P\‹⁄Y€õY[ùÀõX\
+
+\‹⁄Y€õY[ù
+HOà
+à\ùX€HŸ^O^ÿ\‹⁄Y€õY[ùõÿYYH€\‹”ò[YOHõ[ÿö[K[ÿYXÿ\ôèÇà]à€\‹”ò[YOHõÿYXÿ\ôZXY\àèÇà›õ€ôœûÿ\‹⁄Y€õY[ùõÿYôYô\ô[òŸ_O‹›õ€ôœÇà‹[à€\‹”ò[YO^ÿ›]\»	ÿ\‹⁄Y€õY[ùú›]\Àù”›Ÿ\êÿ\ŸJ
+_XOûÿ\‹⁄Y€õY[ùú›]\ﬂO‹‹[èÇàŸ]èÇàÿ\‹⁄Y€õY[ùùôZX€H	âà
+à€\‹”ò[YOHõÿY]ôZX€Hèûÿ\‹⁄Y€õY[ùùôZX€KúôY⁄\›ò][€ü^ÿ\‹⁄Y€õY[ùùôZX€KôõY]ù[Xô\à»0≠»	ÿ\‹⁄Y€õY[ùùôZX€KôõY]ù[Xô\üXààüO‹Çà
+_Bàÿ\‹⁄Y€õY[ùôö[ò[›‹	âà
+à€\‹”ò[YOHõÿYY\›[ò][€àèûÿ\‹⁄Y€õY[ùôö[ò[›‹O‹Çà
+_Bà]à€\‹”ò[YOHú›]\ÀXù]€ú»èÇà‹›]\–ù]€úÀõX\
+
+ùäHOà
+àù]€ÇàŸ^O^ÿùãú›]\ﬂBà€\‹”ò[YO^ÿ›]\ÀXùà	ÿùãú›]\»OOHí\‹›YTô\‹ùYà»ùÿ\õààààüXBà\ÿXõY^‹›XõZ][ô»OOHù[Bà€ê€X⁄œ^ 
+HOàõ⁄Y›XõZ]›]\ \‹⁄Y€õY[ùõÿYYùãú›]\ _BàÇà‹[à€\‹”ò[YOHòùã[Xô[èûÿùãõXô[O‹‹[èÇàÿù]€èÇà
+J_BàŸ]èÇàÿ\ùX€OÇà
+J_BàŸ]èÇà
+_Bà‘›]OÇÇà‹›]\”\Ÿ»	âà]à€\‹”ò[YOHú›]\À]ÿ\›èû‹›]\”\ŸﬂOŸ]èüBà‹ŸX›[€èÇà
+N¬üB
