@@ -100,9 +100,9 @@ function validPallets(value: string) {
   return Number.isInteger(pallets) && pallets >= 0 ? pallets : undefined;
 }
 
-export function RunPlannerLive() {
+export function RunPlannerLive({ planningDate }: { planningDate?: string } = {}) {
   const token = useAccessToken();
-  const [date, setDate] = useState(localDate());
+  const [date, setDate] = useState(planningDate || localDate());
   const [control, setControl] = useState<PlanningControlData>();
   const [loads, setLoads] = useState<Load[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
@@ -469,6 +469,10 @@ export function RunPlannerLive() {
     setRuns([shell]);
     setActiveKey(shell.key);
   }
+
+  useEffect(() => {
+    if (planningDate && planningDate !== date) resetForDate(planningDate);
+  }, [date, planningDate]);
 
   return <section className="simple-planner">
     <div className="simple-planner-toolbar">
