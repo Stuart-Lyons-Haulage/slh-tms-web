@@ -163,11 +163,12 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
   const [used, setUsed] = useState(load.palletSpacesUsed?.toString() || "0");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string>();
-  const [routeOpen, setRouteOpen] = useState(false);
   const [routeSummary, setRouteSummary] = useState<string>();
   const [stops, setStops] = useState<EditableStop[]>(() => editableStops(load, sites));
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewText, setPreviewText] = useState("");
+  const [freeTextOpen, setFreeTextOpen] = useState(false);
+  const [freeText, setFreeText] = useState("");
 
   useEffect(() => {
     setVehicleId(load.vehicleId || "");
@@ -307,53 +308,6 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     return [...updated];
   }
 
-  async function locateStops() {
-    setSaving(true); setMessage(undefined); setRouteSummary(undefined);
-    try { await resolveLocations(await token()); }
-    catch (error) { setMessage(error instanceof Error ? error.message : "The route locations could not be resolved."); }
-    finally { setSaving(false); }
-  }
-
-  async function saveRoute() {
-    setSaving(true); setMessage(undefined);
-    try {
-      await api.updateLoadStops(load.id, stopPayload(stops), await token());
-      await onSaved(); signalPlanningChange(); setMessage("Postcodes and planned ETAs saved.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "The route could not be saved."); }
-    finally { setSaving(false); }
-  }
-
-  async function calculateRoute() {
-    setSaving(true); setMessage(undefined); setRouteSummary(undefined);
-    try {
-      const access = await token();
-      let routeStops = stops;
-      if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2) routeStops = await resolveLocations(access);
-      if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2)
-        throw new Error("At least two stops need a valid postcode or Site Master location before an ETA can be calculated.");
-
-      await api.updateLoadStops(load.id, stopPayload(routeStops), access);
-      const result = await api.route(load.id, access) as {
-        routes?: Array<{ summary?: { lengthInMeters?: number; travelTimeInSeconds?: number } }>;
-        approximate?: boolean;
-      };
-      const summary = result.routes?.[0]?.summary;
-      if (!summary) throw new Error("The route service did not return a route.");
-      const minutes = Math.max(1, Math.round((summary.travelTimeInSeconds || 0) / 60));
-      const miles = ((summary.lengthInMeters || 0) / 1609.344).toFixed(1);
-      const firstPlanned = routeStops.find(stop => stop.plannedArrivalUtc)?.plannedArrivalUtc;
-      const firstTime = firstPlanned ? new Date(firstPlanned).getTime() : Number.NaN;
-      const baseTime = Number.isFinite(firstTime) && firstTime > Date.now() ? firstTime : Date.now();
-      const finalEta = new Date(baseTime + minutes * 60_000).toISOString();
-      const withEta = routeStops.map((stop, index) => index === routeStops.length - 1 ? { ...stop, plannedArrivalUtc: finalEta } : stop);
-      await api.updateLoadStops(load.id, stopPayload(withEta), access);
-      setStops(withEta); await onSaved(); signalPlanningChange();
-      setMessage("Route and ETA calculated successfully.");
-      setRouteSummary(`${miles} miles · estimated drive time ${Math.floor(minutes / 60)}h ${minutes % 60}m · final-stop ETA saved${result.approximate ? " using the resilient road estimate" : ""}.`);
-    } catch (error) { setRouteSummary(error instanceof Error ? error.message : "Route calculation failed."); }
-    finally { setSaving(false); }
-  }
-
   async function dispatchRun() {
     if (!driverId || !vehicleId) {
       setMessage("Allocate both a driver and vehicle before dispatch.");
@@ -395,10 +349,22 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       const finalEta = new Date(baseTime + minutes * 60_000).toISOString();
       const withEta = routeStops.map((stop, index) => index === routeStops.length - 1 ? { ...stop, plannedArrivalUtc: finalEta } : stop);
       await api.updateLoadStops(load.id, stopPayload(withEta), access);
-      await api.updateLoadStatus(load.id, "Dispatched", access);
+      const driverText = buildDriverText(load, await api.dispatch(load.id, access));
+      const response = await fetch(`/tms-api/api/v1/loads/${encodeURIComponent(load.id)}/driver-message/sms`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json", ...(access ? { Authorization: `Bearer ${access}` } : {}) },
+        body: JSON.stringify({ message: driverText }),
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        let detail = body;
+        try { detail = (JSON.parse(body) as { message?: string }).message || body; } catch { /* keep response body */ }
+        throw new Error(detail || `Driver text failed (${response.status}).`);
+      }
+      const receipt = await response.json() as { provider?: string; mobileSuffix?: string; status?: string };
 
       setStops(withEta); await onSaved(); signalPlanningChange();
-      setMessage(`Run dispatched. Route is good to go${result.approximate ? " using the resilient road estimate" : ""}.${updatedSites.length ? ` Saved postcode to Site Master for ${updatedSites.join(", ")}.` : ""}`);
+      setMessage(`Dispatched and driver text sent${receipt.mobileSuffix ? ` to mobile ending ${receipt.mobileSuffix}` : ""}. ETA calculated${result.approximate ? " using the resilient road estimate" : ""}.${updatedSites.length ? ` Saved postcode to Site Master for ${updatedSites.join(", ")}.` : ""}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The run could not be dispatched.");
     } finally { setSaving(false); }
@@ -420,8 +386,8 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     await navigator.clipboard.writeText(text); setMessage("Driver text copied.");
   }
 
-  async function sendDriverText() {
-    const text = previewText || await prepareDriverText(false);
+  async function sendDriverText(messageOverride?: string) {
+    const text = messageOverride ?? (previewText || (await prepareDriverText(false)));
     if (!text) return;
     setSaving(true); setMessage(undefined);
     try {
@@ -438,23 +404,10 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
         throw new Error(detail || `SMS failed (${response.status}).`);
       }
       const receipt = await response.json() as { provider?: string; mobileSuffix?: string };
-      await onSaved(); setPreviewOpen(false);
+      await onSaved(); setPreviewOpen(false); setFreeTextOpen(false);
       setMessage(`${receipt.provider || "SMS provider"} accepted the driver text${receipt.mobileSuffix ? ` for the mobile ending ${receipt.mobileSuffix}` : ""}.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "The driver SMS could not be sent."); }
     finally { setSaving(false); }
-  }
-
-  function updateStop(index: number, field: "address" | "plannedArrivalUtc", value: string) {
-    setStops(current => current.map((stop, stopIndex) => {
-      if (stopIndex !== index) return stop;
-      return field === "address" ? { ...stop, address: value, latitude: "", longitude: "" } : { ...stop, plannedArrivalUtc: value };
-    }));
-  }
-
-  function updatePostcode(index: number, value: string) {
-    setStops(current => current.map((stop, stopIndex) => stopIndex === index
-      ? { ...stop, postcode: value.toUpperCase(), latitude: "", longitude: "" }
-      : stop));
   }
 
   return (
@@ -476,28 +429,12 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       </div>
 
       <div className="run-card-actions">
-        <button type="button" onClick={() => setRouteOpen(value => !value)}>{routeOpen ? "Hide route & ETA" : "Route & ETA"}</button>
         <button className="primary" type="button" onClick={() => void dispatchRun()} disabled={saving || !driverId || !vehicleId}>{saving ? "Dispatching…" : "Dispatch"}</button>
-        <button type="button" onClick={() => void prepareDriverText(true)} disabled={saving}>Preview text</button>
-        <button type="button" onClick={() => void copyDriverText()} disabled={saving}>Copy text</button>
-        <button type="button" onClick={() => void sendDriverText()} disabled={saving || !driverId || !vehicleId}>Send driver SMS</button>
+        <button type="button" onClick={() => void prepareDriverText(true)} disabled={saving}>Preview driver text</button>
+        <button type="button" onClick={() => { setFreeText(""); setFreeTextOpen(true); }} disabled={saving || !driverId || !vehicleId}>Free type text</button>
       </div>
 
-      {routeOpen && <div className="run-route-editor">
-        <p className="hint">Postcode is taken from Site Master where available. Map coordinates are resolved automatically in the background and are no longer entered manually.</p>
-        {stops.map((stop, index) => <div className="run-route-stop" key={stop.id || index}>
-          <strong>{index + 1}. {stop.name}</strong>
-          <input placeholder="Address" value={stop.address || ""} onChange={event => updateStop(index, "address", event.target.value)} />
-          <input placeholder="Postcode" autoCapitalize="characters" value={stop.postcode} onChange={event => updatePostcode(index, event.target.value)} />
-          <input type="datetime-local" value={stop.plannedArrivalUtc ? new Date(stop.plannedArrivalUtc).toISOString().slice(0, 16) : ""} onChange={event => updateStop(index, "plannedArrivalUtc", event.target.value)} />
-        </div>)}
-        <div className="run-route-actions">
-          <button type="button" onClick={() => void locateStops()} disabled={saving}>Resolve postcodes</button>
-          <button type="button" onClick={() => void saveRoute()} disabled={saving}>Save route & ETA</button>
-          <button className="primary" type="button" onClick={() => void calculateRoute()} disabled={saving}>Calculate route & ETA</button>
-        </div>
-        {routeSummary && <p className="run-route-summary">{routeSummary}</p>}
-      </div>}
+      {routeSummary && <p className="run-route-summary">{routeSummary}</p>}
 
       {selectedTrailer ? <p className="hint">Trailer matrix: {selectedTrailer.trailerNumber} · Standard {selectedTrailer.standardCapacity ?? "not set"} · Euro {selectedTrailer.euroCapacity ?? "not set"}.</p> : <p className="hint">Select the trailer to apply its capacity matrix.</p>}
       {selectedDriver && <p className="hint">Driver text recipient: {selectedDriver.displayName} · {selectedDriver.mobileNumber || "mobile number needs approval in Master Data"}</p>}
@@ -507,7 +444,14 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
         <div className="run-text-modal" role="dialog" aria-modal="true" aria-label={`Driver text preview for ${runLabel}`} onClick={event => event.stopPropagation()}>
           <div className="title-row"><div><p className="eyebrow">Driver text preview</p><h2>{runLabel}</h2></div><button type="button" onClick={() => setPreviewOpen(false)}>Close</button></div>
           <textarea readOnly value={previewText} />
-          <div className="run-text-modal-actions"><button type="button" onClick={() => void copyDriverText()}>Copy text</button><button className="primary" type="button" onClick={() => void sendDriverText()} disabled={saving || !driverId || !vehicleId}>Send driver SMS</button></div>
+          <div className="run-text-modal-actions"><button type="button" onClick={() => void copyDriverText()}>Copy text</button><button className="primary" type="button" onClick={() => void sendDriverText()} disabled={saving || !driverId || !vehicleId}>Send this text</button></div>
+        </div>
+      </div>}
+      {freeTextOpen && <div className="run-text-modal-backdrop" onClick={() => setFreeTextOpen(false)}>
+        <div className="run-text-modal" role="dialog" aria-modal="true" aria-label={`Free type driver text for ${runLabel}`} onClick={event => event.stopPropagation()}>
+          <div className="title-row"><div><p className="eyebrow">Free type text</p><h2>{runLabel}</h2></div><button type="button" onClick={() => setFreeTextOpen(false)}>Close</button></div>
+          <textarea value={freeText} onChange={event => setFreeText(event.target.value)} placeholder="Type the message to send to this driver..." />
+          <div className="run-text-modal-actions"><button type="button" onClick={() => setFreeTextOpen(false)}>Cancel</button><button className="primary" type="button" onClick={() => void sendDriverText(freeText)} disabled={saving || !driverId || !vehicleId || !freeText.trim()}>Send free text</button></div>
         </div>
       </div>}
     </article>
