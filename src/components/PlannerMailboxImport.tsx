@@ -165,6 +165,16 @@ function isAmendmentQueueItem(item: MailboxQueueItem) {
   );
 }
 
+function ignoredEmailNeedsReview(reason?: string) {
+  const text = (reason || "").toLowerCase();
+  return /manual review|requires|could not be parsed|no transport order|workbook content was not supplied|no .* rows/.test(text);
+}
+
+function canContinueAfterApprovalError(error: unknown) {
+  const text = error instanceof Error ? error.message : String(error || "");
+  return /409|already|Only PendingReview|preorder_not_ready|awaiting customer instruction|cannot be accepted/i.test(text);
+}
+
 export function PlannerMailboxImport({
   planningDate,
   onImported,
@@ -217,14 +227,15 @@ export function PlannerMailboxImport({
           }
           const mailboxEmail = await readMailboxMessage(item, graphAccessToken);
           const preview = await api.previewMailboxEmail(mailboxEmail, apiToken);
-          if (
-            preview.ignored ||
-            !preview.orders.length ||
-            !preview.orders.some(
-              (order) =>
-                String(order.payload.collectionDate || "") === planningDate,
-            )
-          ) {
+          if (preview.ignored) {
+            if (ignoredEmailNeedsReview(preview.ignoredReason)) needsReview.push(item);
+            continue;
+          }
+          if (!preview.orders.length) {
+            needsReview.push(item);
+            continue;
+          }
+          if (!preview.orders.some((order) => String(order.payload.collectionDate || "") === planningDate)) {
             needsReview.push(item);
             continue;
           }
@@ -239,12 +250,12 @@ export function PlannerMailboxImport({
               );
               imported++;
             } catch (exception) {
-              existing++;
               const detail =
                 exception instanceof Error
                   ? exception.message
                   : "Already reviewed or not ready.";
-              if (!/Only PendingReview|preorder_not_ready/i.test(detail))
+              if (canContinueAfterApprovalError(exception)) existing++;
+              else
                 warnings.push(`${item.subject}: ${detail}`);
             }
           }
