@@ -99,6 +99,14 @@ main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700
 .planner-workspace { grid-template-columns: minmax(270px, .9fr) minmax(330px, 1.1fr) minmax(290px, .9fr); }
 .lane, .map-panel { border-radius: 12px; box-shadow: 0 2px 8px #082e470d; }
 .planner-toolbar { background: white; border: 1px solid #dce7ea; border-radius: 10px; padding: 12px 14px; margin: -4px 0 18px; }
+.planner-import-panel { display: block; margin: -6px 0 18px; }
+.compact-title-row { align-items: center; }
+.compact-title-row h2 { margin: 4px 0 6px; color: #073a5a; }
+.amendment-list { margin-top: 14px; display: grid; gap: 8px; }
+.amendment-list h3 { margin: 0; font-size: .88rem; color: #17344a; }
+.amendment-list article { display: grid; gap: 3px; padding: 10px 12px; border-left: 4px solid #dc8d1f; border-radius: 7px; background: #fff8e9; }
+.amendment-list strong { color: #17344a; overflow-wrap: anywhere; }
+.amendment-list small { color: #637985; }
 .quick-order { background: white; border: 1px solid #dce7ea; border-radius: 12px; padding: 22px; margin-bottom: 18px; box-shadow: 0 2px 8px #082e470d; }
 .quick-order h2 { margin: 5px 0 18px; font-size: 1.25rem; }
 .export-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }

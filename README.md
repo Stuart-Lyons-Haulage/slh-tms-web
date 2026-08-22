@@ -32,6 +32,10 @@ The API requires a bearer token issued by the configured tenant for the `Tms.Acc
 | `VITE_ENTRA_CLIENT_ID` | Portal SPA application (client) ID. |
 | `VITE_ENTRA_API_SCOPE` | Normally `api://<API-CLIENT-ID>/Tms.Access`. |
 | `VITE_AZURE_MAPS_CLIENT_ID` | Azure Maps account client ID / unique ID for map rendering. |
+| `VITE_GRAPH_SITES_SCOPE` | Delegated Graph scope for the mailbox intake SharePoint List, normally `Sites.ReadWrite.All`. |
+| `VITE_GRAPH_MAIL_SCOPE` | Delegated Graph scope for reading the shared mailbox source message, normally `Mail.Read.Shared`. |
+| `VITE_MAILBOX_INTAKE_LIST_ID` | SharePoint List ID for the TMS mailbox queue. Defaults to the live SLH intake list. |
+| `VITE_MAILBOX_INTAKE_ADDRESS` | Shared mailbox to read source messages from. Defaults to `info@lyonshaulage.com`. |
 
 All `VITE_` values are public build-time configuration. Never put client secrets, connection strings or RoadTech credentials in this repository.
 

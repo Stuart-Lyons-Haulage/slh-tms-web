@@ -239,6 +239,54 @@ export type StageBatchResponse = {
   created: number;
   records: StageImportResponse[];
 };
+export type MailboxAttachment = {
+  name?: string;
+  contentType?: string;
+  contentBase64?: string;
+  isInline?: boolean;
+};
+export type MailboxEmailIntakeRequest = {
+  messageId: string;
+  internetMessageId?: string;
+  mailbox?: string;
+  senderAddress?: string;
+  senderName?: string;
+  subject?: string;
+  receivedAtUtc?: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  webLink?: string;
+  attachments?: MailboxAttachment[];
+};
+export type MailboxEmailPreviewResponse = {
+  ignored: boolean;
+  ignoredReason?: string;
+  warnings: string[];
+  orderCount: number;
+  orders: Array<{
+    sourceKey: string;
+    naturalKey: string;
+    payload: Record<string, string | boolean | number | undefined>;
+    warnings: string[];
+  }>;
+};
+export type MailboxEmailIntakeResponse = {
+  ignored: boolean;
+  reason?: string;
+  staged: number;
+  existing: number;
+  superseded: number;
+  warnings: string[];
+  records?: Array<{
+    stagingId: string;
+    status: string;
+    existing: boolean;
+    plannerReady?: boolean;
+    intakeStatus?: string;
+    warnings?: string[];
+    reviewUrl?: string;
+  }>;
+};
 export type MasterApplyResponse = {
   received: number;
   applied: number;
@@ -836,6 +884,21 @@ export const api = {
       `/api/v1/orders?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`,
       token,
     ),
+  previewMailboxEmail: (payload: MailboxEmailIntakeRequest, token?: string) =>
+    request<MailboxEmailPreviewResponse>("/api/v1/order-intake/email/preview", token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  intakeMailboxEmail: (payload: MailboxEmailIntakeRequest, token?: string) =>
+    request<MailboxEmailIntakeResponse>("/api/v1/order-intake/email", token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  approveStaging: (id: string, note: string, token?: string) =>
+    request<StagedImport>(`/api/v1/staging/${id}/approve`, token, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
   stageOrder: (
     payload: Record<string, string>,
     idempotencyKey: string,
