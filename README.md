@@ -13,6 +13,8 @@ The production portal runs in Azure Container Apps and publishes automatically w
 5. The dispatcher copies a driver brief containing seller, market, stall, map link and driver notes. Connect an approved SMS provider before sending messages directly from the portal.
 6. Operations use live and historic RoadTech tracking, exceptions, reporting and CSV exports to control the day.
 
+The Drivers register supports a global search plus independent filters on every data column. Column filters combine, so operations can narrow the register by Tacho identity, compliance, eligibility, licence, activity or contact fields without exporting it first.
+
 `docs/POWER_AUTOMATE_EMAIL_INTAKE.md` defines the safe Power Automate email-to-staging handoff. Email automation must never bypass Staging approval.
 
 ## Local development
@@ -20,6 +22,14 @@ The production portal runs in Azure Container Apps and publishes automatically w
 1. Copy `.env.example` to `.env.local` and enter the API and Entra values.
 2. In Entra, configure a single-tenant SPA registration with `http://localhost:5173` as a redirect URI and delegated access to `api://<API-CLIENT-ID>/Tms.Access`.
 3. Install dependencies with `npm install`, then run `npm run dev`.
+
+Before opening a pull request, run:
+
+```bash
+pnpm test
+pnpm lint
+pnpm build
+```
 
 The API requires a bearer token issued by the configured tenant for the `Tms.Access` delegated scope. Configure API CORS for the local and production portal origins; do not weaken API authentication.
 
