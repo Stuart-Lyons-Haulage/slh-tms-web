@@ -21,6 +21,15 @@ const localDate = () => {
 
 type CapacityType = "Standard pallets" | "Euro pallets" | "Trays" | "Trolleys" | "Mixed load";
 type EditableStop = Omit<Load["stops"][number], "latitude" | "longitude"> & { latitude: string; longitude: string; postcode: string };
+type DispatchReadiness = {
+  canDispatch: boolean;
+  status: string;
+  explanation: string;
+  routeDrivingMinutes: number;
+  breakMinutesIncluded: number;
+  tachoDriverName?: string;
+  driveAvailableTodayMinutes?: number;
+};
 
 const normalise = (value?: string) => (value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const spaceLabel = (type?: string) => (type || "").toLowerCase() === "euro pallets" ? "Euro spaces" : "floor spaces";
@@ -82,6 +91,20 @@ function formatPostcode(value?: string) {
   const compact = value.toUpperCase().replace(/\s+/g, "").trim();
   const match = compact.match(/^([A-Z]{1,2}\d[A-Z\d]?)(\d[A-Z]{2})$/);
   return match ? `${match[1]} ${match[2]}` : value.toUpperCase().trim();
+}
+
+async function checkDispatchReadiness(loadId: string, routeDrivingMinutes: number, access?: string) {
+  const response = await fetch(`/tms-api/api/v1/loads/${encodeURIComponent(loadId)}/dispatch-readiness`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", ...(access ? { Authorization: `Bearer ${access}` } : {}) },
+    body: JSON.stringify({ routeDrivingMinutes }),
+  });
+  const body = await response.text();
+  let parsed: Partial<DispatchReadiness> & { message?: string } = {};
+  try { parsed = body ? JSON.parse(body) : {}; } catch { parsed = { message: body }; }
+  if (!response.ok) throw new Error(parsed.message || parsed.explanation || `TachoMaster dispatch check failed (${response.status}).`);
+  if (!parsed.canDispatch) throw new Error(parsed.explanation || "TachoMaster has not confirmed this run is achievable.");
+  return parsed as DispatchReadiness;
 }
 
 function addressWithPostcode(address: string | undefined, postcode: string) {
@@ -343,17 +366,19 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       if (!summary) throw new Error("The route service did not return a route, so this run was not dispatched.");
 
       const minutes = Math.max(1, Math.round((summary.travelTimeInSeconds || 0) / 60));
+      const readiness = await checkDispatchReadiness(load.id, minutes, access);
+      const dispatchMinutes = minutes + Math.max(0, readiness.breakMinutesIncluded || 0);
       const firstPlanned = routeStops.find(stop => stop.plannedArrivalUtc)?.plannedArrivalUtc;
       const firstTime = firstPlanned ? new Date(firstPlanned).getTime() : Number.NaN;
       const baseTime = Number.isFinite(firstTime) && firstTime > Date.now() ? firstTime : Date.now();
-      const finalEta = new Date(baseTime + minutes * 60_000).toISOString();
+      const finalEta = new Date(baseTime + dispatchMinutes * 60_000).toISOString();
       const withEta = routeStops.map((stop, index) => index === routeStops.length - 1 ? { ...stop, plannedArrivalUtc: finalEta } : stop);
       await api.updateLoadStops(load.id, stopPayload(withEta), access);
       const driverText = buildDriverText(load, await api.dispatch(load.id, access));
       const response = await fetch(`/tms-api/api/v1/loads/${encodeURIComponent(load.id)}/driver-message/sms`, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json", ...(access ? { Authorization: `Bearer ${access}` } : {}) },
-        body: JSON.stringify({ message: driverText }),
+        body: JSON.stringify({ message: driverText, dispatch: true, routeDrivingMinutes: minutes }),
       });
       if (!response.ok) {
         const body = await response.text();
@@ -364,7 +389,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       const receipt = await response.json() as { provider?: string; mobileSuffix?: string; status?: string };
 
       setStops(withEta); await onSaved(); signalPlanningChange();
-      setMessage(`Dispatched and driver text sent${receipt.mobileSuffix ? ` to mobile ending ${receipt.mobileSuffix}` : ""}. ETA calculated${result.approximate ? " using the resilient road estimate" : ""}.${updatedSites.length ? ` Saved postcode to Site Master for ${updatedSites.join(", ")}.` : ""}`);
+      setMessage(`Dispatched and driver text sent${receipt.mobileSuffix ? ` to mobile ending ${receipt.mobileSuffix}` : ""}. ${readiness.explanation} ETA calculated${result.approximate ? " using the resilient road estimate" : ""}.${updatedSites.length ? ` Saved postcode to Site Master for ${updatedSites.join(", ")}.` : ""}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The run could not be dispatched.");
     } finally { setSaving(false); }
@@ -444,7 +469,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
         <div className="run-text-modal" role="dialog" aria-modal="true" aria-label={`Driver text preview for ${runLabel}`} onClick={event => event.stopPropagation()}>
           <div className="title-row"><div><p className="eyebrow">Driver text preview</p><h2>{runLabel}</h2></div><button type="button" onClick={() => setPreviewOpen(false)}>Close</button></div>
           <textarea readOnly value={previewText} />
-          <div className="run-text-modal-actions"><button type="button" onClick={() => void copyDriverText()}>Copy text</button><button className="primary" type="button" onClick={() => void sendDriverText()} disabled={saving || !driverId || !vehicleId}>Send this text</button></div>
+          <div className="run-text-modal-actions"><button type="button" onClick={() => void copyDriverText()}>Copy text</button><button className="primary" type="button" onClick={() => setPreviewOpen(false)}>Close preview</button></div>
         </div>
       </div>}
       {freeTextOpen && <div className="run-text-modal-backdrop" onClick={() => setFreeTextOpen(false)}>
