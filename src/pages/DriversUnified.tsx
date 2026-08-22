@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { api, request, type Driver } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
+import { driverColumnKeys, emptyDriverColumnFilters, filterDrivers, type DriverColumnKey } from "./driverColumnFilters";
 
 function value(input: unknown) {
   return input == null || input === "" ? "—" : String(input);
@@ -118,6 +119,7 @@ export function DriversUnified() {
   const token = useAccessToken();
   const drivers = useApi(useCallback(async () => api.drivers(await token()), [token]));
   const [filter, setFilter] = useState("");
+  const [columnFilters, setColumnFilters] = useState(emptyDriverColumnFilters);
   const [editingId, setEditingId] = useState<string>();
   const [draft, setDraft] = useState<Driver>();
   const [saving, setSaving] = useState(false);
@@ -128,12 +130,12 @@ export function DriversUnified() {
   const [message, setMessage] = useState<string>();
 
   const visible = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    return (drivers.data || []).filter((driver) =>
-      !q || [driver.employeeNumber, driver.displayName, driver.mobileNumber, driver.driverType, driver.driverGroup, driver.tachoName, driver.tachoCardNumber, driver.drivingLicenceNumber]
-        .some((item) => String(item || "").toLowerCase().includes(q)),
-    );
-  }, [drivers.data, filter]);
+    return filterDrivers(drivers.data || [], filter, columnFilters);
+  }, [columnFilters, drivers.data, filter]);
+
+  function setColumnFilter(key: DriverColumnKey, next: string) {
+    setColumnFilters((current) => ({ ...current, [key]: next }));
+  }
 
   function startEdit(driver: Driver) {
     setEditingId(driver.id);
@@ -227,6 +229,19 @@ export function DriversUnified() {
                 <th>North</th><th>Preload</th><th>Tacho name</th><th>Tacho card</th><th>Tacho member</th>
                 <th>Drive left today</th><th>Drive left week</th><th>Work left week</th><th>Last Tacho sync</th>
                 <th>Licence no.</th><th>Licence expiry</th><th>Licence status</th><th>Notes</th><th>Active</th><th>Actions</th>
+              </tr>
+              <tr className="driver-column-filters">
+                {driverColumnKeys.map((key) => (
+                  <th key={key}>
+                    <input
+                      aria-label={`Filter ${key}`}
+                      value={columnFilters[key]}
+                      onChange={(event) => setColumnFilter(key, event.target.value)}
+                      placeholder="Filter…"
+                    />
+                  </th>
+                ))}
+                <th><button type="button" onClick={() => setColumnFilters(emptyDriverColumnFilters())}>Clear</button></th>
               </tr>
             </thead>
             <tbody>
