@@ -38,6 +38,22 @@ type RunProgressResponse = {
   warning?: string;
   records: RunProgressRecord[];
 };
+type RouteProgressRun = {
+  loadId: string;
+  reference: string;
+  totalStops: number;
+  completedStops: number;
+  phase: string;
+  truckPositionPercent: number;
+  focusStop?: string;
+  nextStopId?: string;
+  stops: Array<RunProgressStop & { state: string }>;
+};
+type RouteProgressResponse = {
+  latestTrackingUtc?: string;
+  geofenceLinkedRuns?: number;
+  runs: RouteProgressRun[];
+};
 
 type BoardRow = {
   id: string;
@@ -179,6 +195,40 @@ function tachoText(eta?: DeliveryEta) {
   return "tacho unavailable";
 }
 
+function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: RouteProgressRun[]) {
+  const routeByLoad = new Map(routeRuns.map((run) => [run.loadId, run]));
+  const merged = progress.map((record) => {
+    const route = routeByLoad.get(record.loadId);
+    if (!route) return record;
+    routeByLoad.delete(record.loadId);
+    const nextStop = route.stops.find((stop) => stop.id === route.nextStopId)
+      || route.stops.find((stop) => stop.state === "heading" || stop.state === "upcoming")
+      || record.nextStop;
+    return {
+      ...record,
+      totalStops: route.totalStops,
+      completedStops: route.completedStops,
+      progressPercent: Math.max(record.progressPercent || 0, route.truckPositionPercent || 0),
+      runState: route.phase === "Complete" ? "Completed" : record.runState,
+      nextStop,
+    };
+  });
+  for (const route of routeByLoad.values()) {
+    merged.push({
+      loadId: route.loadId,
+      loadReference: route.reference,
+      loadStatus: route.phase,
+      runState: route.phase === "Complete" ? "Completed" : route.phase,
+      totalStops: route.totalStops,
+      completedStops: route.completedStops,
+      progressPercent: route.truckPositionPercent,
+      nextStop: route.stops.find((stop) => stop.id === route.nextStopId)
+        || route.stops.find((stop) => stop.state === "heading" || stop.state === "upcoming"),
+    });
+  }
+  return merged;
+}
+
 export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
   const token = useAccessToken();
   const today = todayIsoDate();
@@ -215,25 +265,30 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
 
   const refreshLiveData = useCallback(async () => {
     const access = tvAccessKey ? undefined : await token();
-    const tvInit = tvAccessKey ? { headers: { "X-TMS-TV-Key": tvAccessKey } } : undefined;
-    const [etaResult, progressResult] = await Promise.allSettled([
+    const tvInit = tvAccessKey ? { headers: { "X-TMS-TV-Key": tvAccessKey, "X-TV-Display-Key": tvAccessKey } } : undefined;
+    const [etaResult, progressResult, routeResult] = await Promise.allSettled([
       request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
       request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+      request<RouteProgressResponse>(`/api/v1/tv-display/route-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
     ]);
     const etas = etaResult.status === "fulfilled" ? etaResult.value : undefined;
     const progress = progressResult.status === "fulfilled" ? progressResult.value : undefined;
+    const route = routeResult.status === "fulfilled" ? routeResult.value : undefined;
     setLiveData((previous) => ({
       etas: etas?.records ?? previous?.etas ?? [],
-      progress: progress?.records ?? previous?.progress ?? [],
+      progress: route
+        ? mergeRouteProgress(progress?.records ?? previous?.progress ?? [], route.runs)
+        : progress?.records ?? previous?.progress ?? [],
       warning: [
         progress?.warning,
         etas ? undefined : "Live ETA refresh is catching up; retaining the last confirmed ETA snapshot.",
         progress ? undefined : "Geofence refresh is catching up; retaining the last confirmed progression snapshot.",
+        route ? undefined : "Live route position is catching up; retaining the last confirmed journey position.",
       ].filter(Boolean).join(" "),
       geofenceAvailable: progress ? progress.geofenceAvailable !== false : previous?.geofenceAvailable ?? true,
       geofenceCount: progress?.geofenceCount ?? previous?.geofenceCount ?? 0,
-      geofenceLinkedRuns: progress?.geofenceLinkedRuns ?? previous?.geofenceLinkedRuns ?? 0,
-      latestTrackingUtc: progress?.latestTrackingUtc ?? previous?.latestTrackingUtc,
+      geofenceLinkedRuns: Math.max(route?.geofenceLinkedRuns ?? 0, progress?.geofenceLinkedRuns ?? 0, previous?.geofenceLinkedRuns ?? 0),
+      latestTrackingUtc: route?.latestTrackingUtc ?? progress?.latestTrackingUtc ?? previous?.latestTrackingUtc,
       calculatedAtUtc: etas?.calculatedAtUtc ?? previous?.calculatedAtUtc,
     }));
   }, [today, token, tvAccessKey]);
@@ -365,7 +420,8 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
         const buffer = minutesToWindow(row.nextEta);
         const completedStops = row.progress?.completedStops ?? 0;
         const totalStops = row.progress?.totalStops || row.etas.length || row.load?.stops?.length || 0;
-        const progressPercent = totalStops > 0 ? Math.min(100, Math.round((completedStops / totalStops) * 100)) : Math.round(row.progress?.progressPercent ?? 0);
+        const completedPercent = totalStops > 0 ? Math.round((completedStops / totalStops) * 100) : 0;
+        const progressPercent = Math.min(100, Math.max(completedPercent, Math.round(row.progress?.progressPercent ?? 0)));
         const progressLabel = row.progress?.currentVisit
           ? `${row.progress.currentVisit.geofenceName || "On site"} · ${row.progress.currentVisit.dwellMinutes ?? 0}m`
           : `${completedStops} of ${totalStops || "?"} stops`;
@@ -374,7 +430,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
           <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.progress?.nextStop?.name || row.nextEta?.stopName || "Next stop TBC"}</small></span>
           <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
           <span><strong>{row.driver}</strong><small>{tachoText(row.nextEta)}</small></span>
-          <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${progressPercent}%` }} /></div><small>{progressPercent}% complete</small></span>
+          <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${progressPercent}%` }} /></div><small>{progressPercent}% through route</small></span>
           <span className="time-cell eta"><strong>{formatTime(row.nextEta?.etaUtc)}</strong><small>{formatAge(row.nextEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}</small></span>
           <span className="status-cell"><strong>{row.statusLabel}</strong><small>{buffer == null ? row.statusDetail : `${buffer >= 0 ? "+" : ""}${buffer}m · ${row.statusDetail}`}</small></span>
         </article>;
