@@ -15,7 +15,8 @@ type NightOutRow = {
   tachoRestMinutes: number;
   trackerEvidenceUtc?: string;
   trackerAwayFromBase?: boolean;
-  distanceFromBaseKm?: number;
+  baseReturnAtUtc?: string;
+  baseGeofenceName?: string;
   status: string;
   sageExpenseStatus: string;
 };
@@ -49,7 +50,6 @@ type DriverHoursReport = {
     weekEnds: string;
     operatingDayRule: string;
     nightOutRule: string;
-    baseRadiusKm: number;
     fleetCheckRule: string;
   };
   sourceStatus: {
@@ -117,12 +117,12 @@ function WeeklyEvidence() {
       {view === "non-employed" && <button onClick={()=>void exportAgencyHours()}>Export invoice-check CSV</button>}
     </div>
 
-    {report.loading && <div className="state">Reconciling TachoMaster, DOT/Falcon, TMS planning and Site Master…</div>}
+    {report.loading && <div className="state">Reconciling TachoMaster, DOT/Falcon, TMS planning and Base geofence evidence…</div>}
     {report.error && <p className="notice">{report.error}</p>}
 
     {report.data && <>
       <div className="metrics">
-        <article className="metric"><span>Confirmed nights out</span><strong>{confirmedNights}</strong><small>Planner + Tacho rest + tracker away from base</small></article>
+        <article className="metric"><span>Confirmed nights out</span><strong>{confirmedNights}</strong><small>Planner + Tacho rest + no Base return</small></article>
         <article className="metric"><span>Detected nights</span><strong>{detectedNights}</strong><small>Tacho + tracker confirm it but planner tick is missing</small></article>
         <article className="metric"><span>Non-employed day rows</span><strong>{report.data.nonEmployedHours.length}</strong><small>Agency, subcontract and other non-employed drivers</small></article>
         <article className="metric"><span>Invoice evidence confirmed</span><strong>{invoiceConfirmed}</strong><small>Tacho duty backed by tracker movement</small></article>
@@ -137,14 +137,19 @@ function WeeklyEvidence() {
 
       {view === "nights" ? <div className="panel" style={{ overflowX:"auto" }}>
         <table>
-          <thead><tr><th>Date</th><th>Driver</th><th>Runs</th><th>Planner</th><th>Tacho rest</th><th>Tracker</th><th>Status</th><th>Sage expense</th></tr></thead>
+          <thead><tr><th>Date</th><th>Driver</th><th>Runs</th><th>Planner</th><th>Tacho rest</th><th>Tracker / Base</th><th>Status</th><th>Sage expense</th></tr></thead>
           <tbody>{report.data.nightOuts.map(row => <tr key={`${row.date}-${row.driverId}`}>
             <td><strong>{fmtDate(row.date)}</strong></td>
             <td><strong>{row.driverName}</strong><br/><small>{row.employmentType}</small></td>
             <td>{row.runs.join(", ") || "—"}</td>
             <td>{row.plannerTicked ? "✓ Night out ticked" : "⚠ Not ticked"}</td>
             <td>{row.tachoRestEvidence ? `✓ ${mins(row.tachoRestMinutes)} rest / overnight duty` : "Not confirmed"}</td>
-            <td>{row.trackerAwayFromBase === true ? `✓ Away from base${row.distanceFromBaseKm != null ? ` · ${row.distanceFromBaseKm.toFixed(1)} km` : ""}` : row.trackerAwayFromBase === false ? "At / near base" : "Base comparison unavailable"}<br/><small>{fmtTime(row.trackerEvidenceUtc)}</small></td>
+            <td>{row.trackerAwayFromBase === true
+              ? `✓ No return to ${row.baseGeofenceName || "Base"}`
+              : row.trackerAwayFromBase === false
+                ? `Returned to ${row.baseGeofenceName || "Base"}${row.baseReturnAtUtc ? ` at ${fmtTime(row.baseReturnAtUtc)}` : ""}`
+                : "Base/geofence confirmation unavailable"}
+              <br/><small>Tracker evidence {fmtTime(row.trackerEvidenceUtc)}</small></td>
             <td><strong>{row.status}</strong></td>
             <td>{row.sageExpenseStatus}</td>
           </tr>)}</tbody>
@@ -173,7 +178,7 @@ function WeeklyEvidence() {
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:10 }}>
           <div><strong>TachoMaster</strong><br/><small>{report.data.sourceStatus.tachoMaster}</small></div>
           <div><strong>DOT / Falcon</strong><br/><small>{report.data.sourceStatus.tracker}</small></div>
-          <div><strong>Base / Site Master</strong><br/><small>{report.data.sourceStatus.baseSite}</small></div>
+          <div><strong>Base geofence</strong><br/><small>{report.data.sourceStatus.baseSite}</small></div>
           <div><strong>Sage HR expenses</strong><br/><small>{report.data.sourceStatus.sageHrExpenses}</small></div>
         </div>
       </div>
