@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { PlannerMailboxImport } from "../components/PlannerMailboxImport";
+import { OptimiserProposalReview } from "../components/OptimiserProposalReview";
 import { signalPlanningChange } from "../lib/planningEvents";
 import { RunPlannerLive } from "./RunPlannerLive";
 import { SubcontractorQuickAdd } from "./SubcontractorQuickAdd";
@@ -39,6 +40,7 @@ export function PlannerEnhanced() {
         signalPlanningChange();
       }}
     />
+    <OptimiserProposalReview planningDate={date} onApplied={() => signalPlanningChange()} />
     <RunPlannerLive planningDate={date} />
     <div className="mobile-planner-handoff">
       <strong>Allocation and dispatch are on Runs.</strong>
