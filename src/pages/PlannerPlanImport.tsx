@@ -25,6 +25,8 @@ type ImportRun = { runRef?: string; plannerRun?: string; runType?: string; plann
 type PlannerPlanPayload = { schema?: string; planningDate?: string; runs?: ImportRun[]; exceptions?: Array<{ severity?: string; runRef?: string; code?: string; detail?: string }> };
 type ImportRunResult = { runRef: string; tmsReference: string; outcome: string; capacityStatus: string; utilisationPercent: number; detail?: string };
 type ImportSummary = { planningDate: string; received: number; created: number; updated: number; unchanged: number; held: number; warnings: string[]; unresolvedDrivers: string[]; unresolvedVehicles: string[]; unresolvedTrailers: string[]; runs: ImportRunResult[] };
+type ResourceReconciliation = { changed?: number; unresolvedDrivers?: string[]; unresolvedVehicles?: string[]; unresolvedTrailers?: string[] };
+type SiteReconciliation = { changedStops?: number; unresolved?: string[]; ambiguous?: string[] };
 
 function safeRuns(payload?: PlannerPlanPayload) { return Array.isArray(payload?.runs) ? payload!.runs! : []; }
 function clean(value?: string) { return String(value || "").trim(); }
@@ -62,6 +64,7 @@ export function PlannerPlanImport() {
   const [resetDate, setResetDate] = useState(todayIsoDate());
   const [resetMessage, setResetMessage] = useState<string>();
   const [summary, setSummary] = useState<ImportSummary>();
+  const [reconcileMessage, setReconcileMessage] = useState<string>();
 
   const preview = useMemo(() => {
     const runs = safeRuns(payload);
@@ -75,7 +78,7 @@ export function PlannerPlanImport() {
   }, [payload]);
 
   async function chooseFile(event: ChangeEvent<HTMLInputElement>) {
-    setError(undefined); setSummary(undefined); setPayload(undefined);
+    setError(undefined); setSummary(undefined); setReconcileMessage(undefined); setPayload(undefined);
     const file = event.target.files?.[0]; if (!file) return; setFileName(file.name);
     try {
       const parsed = JSON.parse(await file.text()) as PlannerPlanPayload;
@@ -95,7 +98,7 @@ export function PlannerPlanImport() {
     const date = resetDate.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { setResetMessage("Enter a reset date in YYYY-MM-DD format."); return; }
     if (!window.confirm(`Reset planning day ${formatDate(date)}?\n\nThis clears imported runs/orders/staged planning rows for that date only. Master data, drivers, vehicles, trailers, Sage, DOT, Tachomaster and Fleetio are not cleared.`)) return;
-    setResetBusy(true); setResetMessage(undefined); setError(undefined); setSummary(undefined);
+    setResetBusy(true); setResetMessage(undefined); setError(undefined); setSummary(undefined); setReconcileMessage(undefined);
     try {
       const accessToken = await token();
       const response = await fetch(`/tms-api/api/v1/planning-day/${date}?confirm=RESET-${date}`, {
@@ -112,16 +115,44 @@ export function PlannerPlanImport() {
   async function importPlan() {
     if (!payload || busy) return;
     if (!window.confirm(`Import planner plan for ${formatDate(payload.planningDate)}?\n\n${preview.included} runs will be submitted. ${preview.held} held/excluded runs will remain excluded.`)) return;
-    setBusy(true); setError(undefined); setSummary(undefined);
+    setBusy(true); setError(undefined); setSummary(undefined); setReconcileMessage(undefined);
     try {
       const accessToken = await token();
+      const authHeaders = { Accept: "application/json", ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) };
       const response = await fetch("/tms-api/api/v1/planning/import-plan", {
         method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json", ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+        headers: { ...authHeaders, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       if (!response.ok) throw new Error(await readError(response));
-      setSummary(await response.json() as ImportSummary);
+      const importSummary = await response.json() as ImportSummary;
+      setSummary(importSummary);
+
+      try {
+        const [resourcesResponse, sitesResponse] = await Promise.all([
+          fetch(`/tms-api/api/v1/planning/reconcile-resources/${payload.planningDate}`, { method: "POST", headers: authHeaders }),
+          fetch(`/tms-api/api/v1/planning/reconcile-sites/${payload.planningDate}`, { method: "POST", headers: authHeaders }),
+        ]);
+        if (!resourcesResponse.ok) throw new Error(`Resource reconciliation: ${await readError(resourcesResponse)}`);
+        if (!sitesResponse.ok) throw new Error(`Site reconciliation: ${await readError(sitesResponse)}`);
+        const resources = await resourcesResponse.json() as ResourceReconciliation;
+        const sites = await sitesResponse.json() as SiteReconciliation;
+        const unresolvedResources = [
+          ...(resources.unresolvedDrivers || []).map((value) => `driver ${value}`),
+          ...(resources.unresolvedVehicles || []).map((value) => `vehicle ${value}`),
+          ...(resources.unresolvedTrailers || []).map((value) => `trailer ${value}`),
+        ];
+        const unresolvedSites = [...(sites.unresolved || []), ...(sites.ambiguous || []).map((value) => `${value} (ambiguous)` )];
+        const details = [
+          `${resources.changed || 0} run resource assignment(s) backfilled from Master Data`,
+          `${sites.changedStops || 0} stop address/postcode/location record(s) enriched from Site Master`,
+          unresolvedResources.length ? `unresolved resources: ${unresolvedResources.join(", ")}` : "",
+          unresolvedSites.length ? `unresolved sites: ${unresolvedSites.join(", ")}` : "",
+        ].filter(Boolean);
+        setReconcileMessage(`Master Data reconciliation complete. ${details.join(" · ")}.`);
+      } catch (reconcileError) {
+        setReconcileMessage(`Import succeeded, but automatic Master Data reconciliation needs attention: ${reconcileError instanceof Error ? reconcileError.message : String(reconcileError)}`);
+      }
     } catch (exception) { setError(exception instanceof Error ? exception.message : "The planner plan could not be imported."); }
     finally { setBusy(false); }
   }
@@ -142,6 +173,6 @@ export function PlannerPlanImport() {
       <div style={{ overflowX: "auto" }}><table><thead><tr><th>Run</th><th>Type</th><th>Driver</th><th>Vehicle</th><th>Trailer</th><th>Source lines</th><th>First collect window</th><th>Deliver by</th><th>Manual actuals/ETAs</th><th>Capacity</th><th>Import</th><th>Reconciliation</th></tr></thead><tbody>{safeRuns(payload).map((run, index) => <tr key={`${run.runRef}-${index}`}><td><strong>{displayPlannerRunChoice(run.plannerRun, run.runType, run.runRef, firstCollectTime(run))}</strong></td><td>{run.runType || "—"}</td><td>{run.driver || "Unallocated"}</td><td>{run.vehicle || "—"}</td><td>{run.trailer || "—"}</td><td>{run.stops?.length || 0}</td><td>{firstCollect(run)}</td><td>{finalDeadline(run)}</td><td>{manualActualCount(run)}</td><td>{run.capacityStatus || "—"}{typeof run.mixedUtilisationPercent === "number" ? ` · ${run.mixedUtilisationPercent.toFixed(1)}%` : ""}</td><td>{run.includeInImport === false ? "Held" : "Yes"}</td><td>{run.reconciliationStatus || "—"}</td></tr>)}</tbody></table></div>
       <button className="primary" disabled={busy || resetBusy || preview.included === 0} onClick={() => void importPlan()}>{busy ? "Importing…" : `Confirm import of ${preview.included} runs`}</button></>}
       {error && <div className="notice inline-notice"><strong>Import failed</strong><div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{error}</div></div>}
-      {summary && <div style={{ display: "grid", gap: 12 }}><h2>Import complete · {formatDate(summary.planningDate)}</h2><div>{summary.created} created · {summary.updated} updated · {summary.unchanged} unchanged · {summary.held} held</div>{summary.unresolvedDrivers.length > 0 && <div>Drivers: {summary.unresolvedDrivers.join(", ")}</div>}{summary.unresolvedVehicles.length > 0 && <div>Vehicles: {summary.unresolvedVehicles.join(", ")}</div>}{summary.unresolvedTrailers.length > 0 && <div>Trailers: {summary.unresolvedTrailers.join(", ")}</div>}{summary.warnings.length > 0 && <ul>{summary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}</div>}
+      {summary && <div style={{ display: "grid", gap: 12 }}><h2>Import complete · {formatDate(summary.planningDate)}</h2><div>{summary.created} created · {summary.updated} updated · {summary.unchanged} unchanged · {summary.held} held</div>{summary.unresolvedDrivers.length > 0 && <div>Drivers: {summary.unresolvedDrivers.join(", ")}</div>}{summary.unresolvedVehicles.length > 0 && <div>Vehicles: {summary.unresolvedVehicles.join(", ")}</div>}{summary.unresolvedTrailers.length > 0 && <div>Trailers: {summary.unresolvedTrailers.join(", ")}</div>}{summary.warnings.length > 0 && <ul>{summary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}{reconcileMessage && <div className="notice inline-notice" style={{ whiteSpace: "pre-wrap" }}><strong>Master Data reconciliation</strong><div style={{ marginTop: 6 }}>{reconcileMessage}</div></div>}</div>}
     </div></section>;
 }
