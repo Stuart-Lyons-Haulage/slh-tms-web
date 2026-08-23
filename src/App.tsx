@@ -30,7 +30,7 @@ import { ManagementStabilityBanner } from './components/ManagementStabilityBanne
 import { MobileDock } from './components/MobileDock';
 
 const dailyNavigation = [
-  ['/dashboard', 'Dashboard'], ['/operations-wallboard', 'Operations wallboard'], ['/', 'Planner'], ['/pallet-control', 'Pallet control'], ['/planner-import', 'Import planner plan'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'],
+  ['/dashboard', 'Dashboard'], ['/operations-wallboard', 'Operations wallboard'], ['/staging', 'Review orders'], ['/', 'Planner'], ['/pallet-control', 'Pallet control'], ['/planner-import', 'Import planner plan'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'],
 ];
 const masterNavigation = [['/master-data', 'Master data']];
 const insightNavigation = [
