@@ -4,124 +4,190 @@ import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 import { DailyCompliance } from "./DailyCompliance";
 
-type Day = {
-  date: string; worked: boolean; sageMatched: boolean; nightOut: boolean; status: string; discrepancies: string[];
-  tms: { runCount: number; runs: string[]; plannedStartUtc?: string; plannedEndUtc?: string; plannedMinutes?: number };
-  tacho: { matched: boolean; dutyStartUtc?: string; dutyEndUtc?: string; totalMinutes?: number; vehicles: string[]; driveMinutes: number; restMinutes: number };
-  dot: { movementEvents: number; firstMovementUtc?: string; lastMovementUtc?: string; movementSpanMinutes?: number; vehicles: string[] };
+type NightOutRow = {
+  date: string;
+  driverId: string;
+  driverName: string;
+  employmentType: string;
+  runs: string[];
+  plannerTicked: boolean;
+  tachoRestEvidence: boolean;
+  tachoRestMinutes: number;
+  trackerEvidenceUtc?: string;
+  trackerAwayFromBase?: boolean;
+  distanceFromBaseKm?: number;
+  status: string;
+  sageExpenseStatus: string;
 };
-type DriverWeek = {
-  driverId: string; driverName: string; employeeNumber: string; tachoName?: string; sageMatched: boolean; sageEmployeeId?: number;
-  daysWorked: number; nightsOut: number; plannedMinutes: number; tachoMinutes: number; discrepancyCount: number; weeklyStatus: string; days: Day[];
+
+type NonEmployedRow = {
+  date: string;
+  driverId: string;
+  driverName: string;
+  employeeNumber: string;
+  employmentType: string;
+  agencyName?: string;
+  tachoDutyStartUtc?: string;
+  tachoDutyEndUtc?: string;
+  tachoDutySpanMinutes?: number;
+  tachoActivityMinutes?: number;
+  trackerFirstMovementUtc?: string;
+  trackerLastMovementUtc?: string;
+  trackerMovementSpanMinutes?: number;
+  trackerVehicles: string[];
+  runs: string[];
+  varianceMinutes?: number;
+  evidenceStatus: string;
 };
-type Report = {
-  weekStart: string; weekEnd: string; generatedAtUtc: string;
-  sourceStatus: { tms: string; dot: string; tachoMaster: string; sageHr: string };
-  summary: { liveDrivers: number; totalDaysWorked: number; totalNightsOut: number; driversWithDiscrepancies: number; discrepancyCount: number };
-  drivers: DriverWeek[];
+
+type DriverHoursReport = {
+  weekStart: string;
+  weekEnd: string;
+  generatedAtUtc: string;
+  policy: {
+    weekStarts: string;
+    weekEnds: string;
+    operatingDayRule: string;
+    nightOutRule: string;
+    baseRadiusKm: number;
+    fleetCheckRule: string;
+  };
+  sourceStatus: {
+    tachoMaster: string;
+    tracker: string;
+    baseSite: string;
+    sageHrExpenses: string;
+  };
+  nightOuts: NightOutRow[];
+  nonEmployedHours: NonEmployedRow[];
 };
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-const monday = () => { const d = new Date(); const day = (d.getDay()+6)%7; d.setDate(d.getDate()-day); return iso(d); };
+const wednesday = () => {
+  const d = new Date();
+  const delta = (d.getDay() - 3 + 7) % 7;
+  d.setDate(d.getDate() - delta);
+  return iso(d);
+};
 const fmtDate = (value: string) => new Intl.DateTimeFormat("en-GB", { day:"2-digit", month:"2-digit", year:"numeric" }).format(new Date(`${value}T12:00:00`));
 const fmtTime = (value?: string) => value ? new Intl.DateTimeFormat("en-GB", { hour:"2-digit", minute:"2-digit", hour12:false }).format(new Date(value)) : "—";
-const mins = (value?: number) => value == null ? "—" : `${Math.floor(value/60)}h ${String(value%60).padStart(2,"0")}m`;
-const statusMark = (value: string) => value === "Confirmed" ? "✓" : value === "Review" ? "⚠" : value === "Check" ? "△" : "—";
+const mins = (value?: number) => value == null ? "—" : `${Math.floor(value/60)}h ${String(Math.abs(value)%60).padStart(2,"0")}m`;
 
-function WeeklyNightOutReport() {
+function WeeklyEvidence() {
   const token = useAccessToken();
-  const [weekStart,setWeekStart] = useState(monday());
-  const [filter,setFilter] = useState<"all"|"review"|"nights">("all");
-  const [openDriver,setOpenDriver] = useState<string>();
-  const report = useApi(useCallback(async () => request<Report>(`/api/v1/driver-timesheets/weekly-resilient?weekStart=${weekStart}`, await token(), undefined, 60000), [weekStart,token]));
+  const [date, setDate] = useState(wednesday());
+  const [view, setView] = useState<"nights" | "non-employed">("nights");
+  const report = useApi(useCallback(async () => request<DriverHoursReport>(`/api/v1/driver-hours-compliance/weekly?date=${date}`, await token(), undefined, 90000), [date, token]));
 
-  const drivers = useMemo(() => (report.data?.drivers || []).filter(driver =>
-    filter === "review" ? driver.discrepancyCount > 0 : filter === "nights" ? driver.nightsOut > 0 : true
-  ), [filter, report.data]);
+  const confirmedNights = useMemo(() => (report.data?.nightOuts || []).filter(row => row.status === "Confirmed").length, [report.data]);
+  const detectedNights = useMemo(() => (report.data?.nightOuts || []).filter(row => row.status.startsWith("Detected")).length, [report.data]);
+  const invoiceConfirmed = useMemo(() => (report.data?.nonEmployedHours || []).filter(row => row.evidenceStatus === "Confirmed by Tacho + tracker").length, [report.data]);
+
+  async function exportAgencyHours() {
+    const accessToken = await token();
+    const response = await fetch(`/tms-api/api/v1/driver-hours-compliance/non-employed.csv?date=${encodeURIComponent(date)}`, {
+      headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+    });
+    if (!response.ok) throw new Error(`Agency-hours export failed (${response.status}).`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `non-employed-driver-hours-${report.data?.weekStart || date}-to-${report.data?.weekEnd || date}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
 
   return <section>
     <div className="title-row">
       <div>
-        <p className="eyebrow">Payroll & driver-hours control</p>
-        <h1>Weekly driver timesheets & night outs</h1>
-        <p className="intro">One weekly view reconciling the TMS plan, TachoMaster duties, DOT vehicle movement and the active Sage HR roster. It confirms days worked and nights out, then highlights anything that does not agree before payroll is processed.</p>
+        <p className="eyebrow">Driver hours / Compliance</p>
+        <h1>Driver hours, night outs & agency invoice control</h1>
+        <p className="intro">The operating week is Wednesday to Tuesday. PM work remains on the day the vehicle starts, even when the run and delivery continue after midnight.</p>
       </div>
     </div>
 
     <div className="panel" style={{ display:"flex", gap:12, alignItems:"end", flexWrap:"wrap" }}>
-      <label>Week commencing<input type="date" value={weekStart} onChange={e=>setWeekStart(e.target.value)}/></label>
-      <label>Show<select value={filter} onChange={e=>setFilter(e.target.value as typeof filter)}><option value="all">All live drivers</option><option value="review">Discrepancies only</option><option value="nights">Night outs only</option></select></label>
-      {report.data && <small>{fmtDate(report.data.weekStart)} to {fmtDate(report.data.weekEnd)} · data maintained automatically</small>}
+      <label>Operating week<input type="date" value={date} onChange={event=>setDate(event.target.value)} /></label>
+      {report.data && <strong>{fmtDate(report.data.weekStart)} → {fmtDate(report.data.weekEnd)}</strong>}
+      <button className={view === "nights" ? "primary" : undefined} onClick={()=>setView("nights")}>Night outs</button>
+      <button className={view === "non-employed" ? "primary" : undefined} onClick={()=>setView("non-employed")}>Non-employed hours</button>
+      {view === "non-employed" && <button onClick={()=>void exportAgencyHours()}>Export invoice-check CSV</button>}
     </div>
 
+    {report.loading && <div className="state">Reconciling TachoMaster, DOT/Falcon, TMS planning and Site Master…</div>}
     {report.error && <p className="notice">{report.error}</p>}
-    {report.loading && <div className="state">Reconciling TMS, TachoMaster, DOT and Sage HR…</div>}
 
     {report.data && <>
       <div className="metrics">
-        <article className="metric"><span>Live drivers worked</span><strong>{report.data.summary.liveDrivers}</strong><small>Evidence from one or more operational sources</small></article>
-        <article className="metric"><span>Days worked</span><strong>{report.data.summary.totalDaysWorked}</strong><small>Weekly total across live drivers</small></article>
-        <article className="metric"><span>Nights out</span><strong>{report.data.summary.totalNightsOut}</strong><small>Planner-confirmed nights</small></article>
-        <article className="metric"><span>Drivers to review</span><strong>{report.data.summary.driversWithDiscrepancies}</strong><small>{report.data.summary.discrepancyCount} discrepancy flag{report.data.summary.discrepancyCount===1?"":"s"}</small></article>
+        <article className="metric"><span>Confirmed nights out</span><strong>{confirmedNights}</strong><small>Planner + Tacho rest + tracker away from base</small></article>
+        <article className="metric"><span>Detected nights</span><strong>{detectedNights}</strong><small>Tacho + tracker confirm it but planner tick is missing</small></article>
+        <article className="metric"><span>Non-employed day rows</span><strong>{report.data.nonEmployedHours.length}</strong><small>Agency, subcontract and other non-employed drivers</small></article>
+        <article className="metric"><span>Invoice evidence confirmed</span><strong>{invoiceConfirmed}</strong><small>Tacho duty backed by tracker movement</small></article>
       </div>
+
+      <div className="panel">
+        <strong>Operating rules</strong>
+        <p>{report.data.policy.nightOutRule}</p>
+        <p>{report.data.policy.fleetCheckRule}</p>
+        <small>{report.data.sourceStatus.baseSite} · Sage: {report.data.sourceStatus.sageHrExpenses}</small>
+      </div>
+
+      {view === "nights" ? <div className="panel" style={{ overflowX:"auto" }}>
+        <table>
+          <thead><tr><th>Date</th><th>Driver</th><th>Runs</th><th>Planner</th><th>Tacho rest</th><th>Tracker</th><th>Status</th><th>Sage expense</th></tr></thead>
+          <tbody>{report.data.nightOuts.map(row => <tr key={`${row.date}-${row.driverId}`}>
+            <td><strong>{fmtDate(row.date)}</strong></td>
+            <td><strong>{row.driverName}</strong><br/><small>{row.employmentType}</small></td>
+            <td>{row.runs.join(", ") || "—"}</td>
+            <td>{row.plannerTicked ? "✓ Night out ticked" : "⚠ Not ticked"}</td>
+            <td>{row.tachoRestEvidence ? `✓ ${mins(row.tachoRestMinutes)} rest / overnight duty` : "Not confirmed"}</td>
+            <td>{row.trackerAwayFromBase === true ? `✓ Away from base${row.distanceFromBaseKm != null ? ` · ${row.distanceFromBaseKm.toFixed(1)} km` : ""}` : row.trackerAwayFromBase === false ? "At / near base" : "Base comparison unavailable"}<br/><small>{fmtTime(row.trackerEvidenceUtc)}</small></td>
+            <td><strong>{row.status}</strong></td>
+            <td>{row.sageExpenseStatus}</td>
+          </tr>)}</tbody>
+        </table>
+        {!report.data.nightOuts.length && <p>No night-out evidence was found for this operating week.</p>}
+      </div> : <div className="panel" style={{ overflowX:"auto" }}>
+        <table>
+          <thead><tr><th>Date</th><th>Driver</th><th>Type / agency</th><th>Runs</th><th>Tacho duty</th><th>Tacho activity</th><th>Tracker span</th><th>Variance</th><th>Invoice evidence</th></tr></thead>
+          <tbody>{report.data.nonEmployedHours.map(row => <tr key={`${row.date}-${row.driverId}`}>
+            <td><strong>{fmtDate(row.date)}</strong></td>
+            <td><strong>{row.driverName}</strong><br/><small>{row.employeeNumber}</small></td>
+            <td>{row.employmentType}{row.agencyName ? <><br/><small>{row.agencyName}</small></> : null}</td>
+            <td>{row.runs.join(", ") || "—"}</td>
+            <td>{row.tachoDutyStartUtc ? `${fmtTime(row.tachoDutyStartUtc)} → ${fmtTime(row.tachoDutyEndUtc)} · ${mins(row.tachoDutySpanMinutes)}` : "—"}</td>
+            <td>{mins(row.tachoActivityMinutes)}</td>
+            <td>{row.trackerFirstMovementUtc ? `${fmtTime(row.trackerFirstMovementUtc)} → ${fmtTime(row.trackerLastMovementUtc)} · ${mins(row.trackerMovementSpanMinutes)}` : "—"}</td>
+            <td>{row.varianceMinutes == null ? "—" : `${row.varianceMinutes > 0 ? "+" : ""}${row.varianceMinutes} min`}</td>
+            <td><strong>{row.evidenceStatus}</strong></td>
+          </tr>)}</tbody>
+        </table>
+        {!report.data.nonEmployedHours.length && <p>No non-employed driver hours were found for this operating week.</p>}
+      </div>}
 
       <div className="panel">
         <h2>Source confidence</h2>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:10 }}>
-          <div><strong>TMS</strong><br/><small>{report.data.sourceStatus.tms}</small></div>
           <div><strong>TachoMaster</strong><br/><small>{report.data.sourceStatus.tachoMaster}</small></div>
-          <div><strong>DOT / Falcon</strong><br/><small>{report.data.sourceStatus.dot}</small></div>
-          <div><strong>Sage HR</strong><br/><small>{report.data.sourceStatus.sageHr}</small></div>
+          <div><strong>DOT / Falcon</strong><br/><small>{report.data.sourceStatus.tracker}</small></div>
+          <div><strong>Base / Site Master</strong><br/><small>{report.data.sourceStatus.baseSite}</small></div>
+          <div><strong>Sage HR expenses</strong><br/><small>{report.data.sourceStatus.sageHrExpenses}</small></div>
         </div>
-      </div>
-
-      <div className="panel" style={{ overflowX:"auto" }}>
-        <table>
-          <thead><tr><th>Driver</th><th>Sage</th><th>Days worked</th><th>Nights out</th><th>TMS planned</th><th>Tacho recorded</th><th>Discrepancies</th><th>Status</th><th></th></tr></thead>
-          <tbody>{drivers.map(driver => <>
-            <tr key={driver.driverId}>
-              <td><strong>{driver.driverName}</strong><br/><small>{driver.employeeNumber}{driver.tachoName ? ` · Tacho: ${driver.tachoName}` : ""}</small></td>
-              <td>{driver.sageMatched ? "✓ Matched" : "⚠ Not matched"}</td>
-              <td><strong>{driver.daysWorked}</strong></td>
-              <td><strong>{driver.nightsOut}</strong></td>
-              <td>{mins(driver.plannedMinutes)}</td>
-              <td>{mins(driver.tachoMinutes)}</td>
-              <td>{driver.discrepancyCount}</td>
-              <td><strong>{statusMark(driver.weeklyStatus)} {driver.weeklyStatus}</strong></td>
-              <td><button onClick={()=>setOpenDriver(openDriver===driver.driverId ? undefined : driver.driverId)}>{openDriver===driver.driverId ? "Hide" : "View week"}</button></td>
-            </tr>
-            {openDriver===driver.driverId && <tr key={`${driver.driverId}-detail`}><td colSpan={9} style={{ padding:0 }}>
-              <div style={{ padding:14, background:"#f7fafb", overflowX:"auto" }}>
-                <table>
-                  <thead><tr><th>Date</th><th>Worked</th><th>TMS runs</th><th>TMS span</th><th>Tacho duty</th><th>DOT movement</th><th>Night out</th><th>Checks</th></tr></thead>
-                  <tbody>{driver.days.map(day => <tr key={day.date}>
-                    <td><strong>{fmtDate(day.date)}</strong></td>
-                    <td>{day.worked ? "Yes" : "No"}</td>
-                    <td>{day.tms.runs.length ? day.tms.runs.join(", ") : "—"}</td>
-                    <td>{day.tms.runCount ? `${fmtTime(day.tms.plannedStartUtc)} to ${fmtTime(day.tms.plannedEndUtc)} · ${mins(day.tms.plannedMinutes)}` : "—"}</td>
-                    <td>{day.tacho.matched ? `${fmtTime(day.tacho.dutyStartUtc)} to ${fmtTime(day.tacho.dutyEndUtc)} · ${mins(day.tacho.totalMinutes)}` : "—"}</td>
-                    <td>{day.dot.movementEvents ? `${fmtTime(day.dot.firstMovementUtc)} to ${fmtTime(day.dot.lastMovementUtc)} · ${day.dot.movementEvents} events` : "—"}</td>
-                    <td>{day.nightOut ? <strong>Yes</strong> : "No"}</td>
-                    <td>{day.discrepancies.length ? <div>{day.discrepancies.map((item,i)=><div key={i} style={{ marginBottom:4 }}>⚠ {item}</div>)}</div> : <span>✓ Confirmed</span>}</td>
-                  </tr>)}</tbody>
-                </table>
-              </div>
-            </td></tr>}
-          </>)}</tbody>
-        </table>
-        {!report.loading && drivers.length===0 && <p>No drivers match this view for the selected week.</p>}
       </div>
     </>}
   </section>;
 }
 
 export function NightOutReport() {
-  const [view, setView] = useState<"compliance" | "timesheets">("compliance");
+  const [view, setView] = useState<"daily" | "weekly">("daily");
   return <>
-    <div className="panel" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-      <button className={view === "compliance" ? "primary" : undefined} onClick={() => setView("compliance")}>Daily compliance</button>
-      <button className={view === "timesheets" ? "primary" : undefined} onClick={() => setView("timesheets")}>Timesheets & night outs</button>
+    <div className="panel" style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
+      <button className={view === "daily" ? "primary" : undefined} onClick={()=>setView("daily")}>Daily fleet compliance</button>
+      <button className={view === "weekly" ? "primary" : undefined} onClick={()=>setView("weekly")}>Driver hours / Night outs</button>
     </div>
-    {view === "compliance" ? <DailyCompliance /> : <WeeklyNightOutReport />}
+    {view === "daily" ? <DailyCompliance /> : <WeeklyEvidence />}
   </>;
 }
