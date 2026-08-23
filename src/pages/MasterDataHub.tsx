@@ -8,16 +8,17 @@ import { MasterDataOperational, type MasterDataTab } from './MasterDataOperation
 import { GeofenceOperational } from './GeofenceOperational';
 import { MasterDataAddPanel, type AddableMasterSection } from './MasterDataAddPanel';
 import { MasterDataUploadSmall } from './MasterDataUploadSmall';
+import { DriverDocumentsIndex } from '../components/DriverDocumentsIndex';
 
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
 
 const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
-  { key: 'drivers', label: 'Drivers', detail: 'Full driver register including employee number, skills, code, Tacho details, driving licence and live hours' },
+  { key: 'drivers', label: 'Drivers', detail: 'Full driver register including employee number, skills, code, Tacho details, driving licence, live hours and controlled documents' },
   { key: 'vehicles', label: 'Vehicles', detail: 'One canonical vehicle master: TMS planning identity plus joined Fleetio status, specification, maintenance, defects and work orders' },
   { key: 'trailers', label: 'Trailers', detail: 'One canonical trailer master: SLH trailer identity and capacity plus joined Fleetio C-number, specification, maintenance, defects and work orders' },
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Vehicle fuel cards, PINs and fuel register' },
-  { key: 'customers', label: 'Customers', detail: 'Customer names and master codes' },
-  { key: 'sites', label: 'Sites', detail: 'One complete site register containing collection/delivery address and postcode, driver instructions, default temperature and planning region' },
+  { key: 'customers', label: 'Customers', detail: 'Customer names, master codes and supporting document library' },
+  { key: 'sites', label: 'Sites', detail: 'One complete site register containing collection/delivery address and postcode, driver notes, default temperature, planning region and documents' },
   { key: 'geofences', label: 'Geofences', detail: 'RoadTech hit integrity, site links, dwell thresholds and entry/exit confirmation used by Live Runs' },
   { key: 'markets', label: 'Markets', detail: 'Market master records and contacts' },
   { key: 'fuel-prices', label: 'Fuel prices', detail: 'Fuel pricing reference data' },
@@ -55,7 +56,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
     <MasterDataAddPanel section={section as AddableMasterSection} onAdded={() => setRefreshKey(value => value + 1)} />
 
     <div key={`${section}-${refreshKey}`}>
-      {section === 'drivers' && <DriversUnified />}
+      {section === 'drivers' && <><DriversUnified /><DriverDocumentsIndex /></>}
       {section === 'vehicles' && <FleetMasterUnified kind="vehicles" />}
       {section === 'trailers' && <FleetMasterUnified kind="trailers" />}
       {(section === 'customers' || section === 'sites') &&
