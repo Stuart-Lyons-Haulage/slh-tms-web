@@ -24,7 +24,7 @@ function explicitPeriod(value?: string) {
 }
 
 function periodFromLocalHour(hour: number) {
-  return hour >= 15 || hour < 3 ? "PM" : "AM";
+  return hour >= 12 ? "PM" : "AM";
 }
 
 function periodFromLocalTime(value?: string) {
@@ -55,23 +55,17 @@ function stripInternalReference(reference: string) {
   return match ? match[1] : reference.trim();
 }
 
-function legacyOperationalRunNumber(source: string, period?: string) {
+function legacyOperationalRunNumber(source: string) {
   const match = source.trim().match(LEGACY_LOAD_RUN);
   if (!match) return undefined;
   const legacyNumber = Number(match[1]);
-  if (!Number.isInteger(legacyNumber) || legacyNumber <= 0) return undefined;
-
-  // Legacy planner/import references restart at L001 for each shift. Operationally
-  // SLH wants the morning sequence to display from Run 1 and the post-15:00
-  // sequence to start at Run 50. Keep already-numbered 50+ references unchanged.
-  if (period === "PM" && legacyNumber < 50) return legacyNumber + 49;
-  return legacyNumber;
+  return Number.isInteger(legacyNumber) && legacyNumber > 0 ? legacyNumber : undefined;
 }
 
 function formatChoice(source: string, period?: string) {
   const clean = source.trim();
   const resolvedPeriod = explicitPeriod(clean) || period;
-  const legacyNumber = legacyOperationalRunNumber(clean, resolvedPeriod);
+  const legacyNumber = legacyOperationalRunNumber(clean);
   if (legacyNumber != null) {
     return `Run ${legacyNumber}${resolvedPeriod ? ` ${resolvedPeriod}` : ""}`;
   }
