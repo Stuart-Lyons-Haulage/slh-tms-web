@@ -34,7 +34,7 @@ const dailyNavigation = [
 ];
 const masterNavigation = [['/master-data', 'Master data']];
 const insightNavigation = [
-  ['/management', 'Management'], ['/night-outs', 'Night outs'], ['/plan-stability', 'Plan stability'], ['/control-centre', 'Control centre'], ['/reporting', 'Reporting'], ['/exports', 'Exports'],
+  ['/management', 'Management'], ['/night-outs', 'Driver hours / Compliance'], ['/plan-stability', 'Plan stability'], ['/control-centre', 'Control centre'], ['/reporting', 'Reporting'], ['/exports', 'Exports'],
 ];
 
 type NavItem = string[];
