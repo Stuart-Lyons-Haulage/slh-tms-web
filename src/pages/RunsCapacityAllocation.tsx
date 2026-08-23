@@ -21,6 +21,11 @@ const localDate = () => {
 
 type CapacityType = "Standard pallets" | "Euro pallets" | "Trays" | "Trolleys" | "Mixed load";
 type EditableStop = Omit<Load["stops"][number], "latitude" | "longitude"> & { latitude: string; longitude: string; postcode: string };
+type StructuralDispatchReadiness = {
+  classification: "Recommended" | "Unverified" | "Blocked";
+  requiresAcknowledgement: boolean;
+  checks: Array<{ code: string; passed: boolean; severity: string; message: string }>;
+};
 type DispatchReadiness = {
   canDispatch: boolean;
   status: string;
@@ -29,6 +34,8 @@ type DispatchReadiness = {
   breakMinutesIncluded: number;
   tachoDriverName?: string;
   driveAvailableTodayMinutes?: number;
+  structuralReadiness?: StructuralDispatchReadiness;
+  acknowledgedUnverified?: boolean;
 };
 
 const normalise = (value?: string) => (value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -93,18 +100,27 @@ function formatPostcode(value?: string) {
   return match ? `${match[1]} ${match[2]}` : value.toUpperCase().trim();
 }
 
-async function checkDispatchReadiness(loadId: string, routeDrivingMinutes: number, access?: string) {
+async function checkDispatchReadiness(loadId: string, routeDrivingMinutes: number, access?: string, acknowledgeUnverified = false): Promise<DispatchReadiness> {
   const response = await fetch(`/tms-api/api/v1/loads/${encodeURIComponent(loadId)}/dispatch-readiness`, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json", ...(access ? { Authorization: `Bearer ${access}` } : {}) },
-    body: JSON.stringify({ routeDrivingMinutes }),
+    body: JSON.stringify({ routeDrivingMinutes, acknowledgeUnverified }),
   });
   const body = await response.text();
   let parsed: Partial<DispatchReadiness> & { message?: string } = {};
   try { parsed = body ? JSON.parse(body) : {}; } catch { parsed = { message: body }; }
   if (!response.ok) throw new Error(parsed.message || parsed.explanation || `TachoMaster dispatch check failed (${response.status}).`);
-  if (!parsed.canDispatch) throw new Error(parsed.explanation || "TachoMaster has not confirmed this run is achievable.");
-  return parsed as DispatchReadiness;
+  if (parsed.canDispatch) return { ...(parsed as DispatchReadiness), acknowledgedUnverified: acknowledgeUnverified };
+
+  const structural = parsed.structuralReadiness;
+  if (!acknowledgeUnverified && structural?.classification === "Unverified" && structural.requiresAcknowledgement) {
+    const warnings = structural.checks.filter(item => !item.passed).map(item => `• ${item.message}`).join("\n");
+    const confirmed = window.confirm(`Pre-dispatch evidence needs planner acknowledgement before live TachoMaster can approve this run.\n\n${warnings}\n\nAcknowledge these warnings and continue to the live TachoMaster check?`);
+    if (!confirmed) throw new Error("Dispatch cancelled. The unverified pre-dispatch evidence was not acknowledged.");
+    return checkDispatchReadiness(loadId, routeDrivingMinutes, access, true);
+  }
+
+  throw new Error(parsed.explanation || "TachoMaster has not confirmed this run is achievable.");
 }
 
 function addressWithPostcode(address: string | undefined, postcode: string) {
@@ -378,7 +394,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       const response = await fetch(`/tms-api/api/v1/loads/${encodeURIComponent(load.id)}/driver-message/sms`, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json", ...(access ? { Authorization: `Bearer ${access}` } : {}) },
-        body: JSON.stringify({ message: driverText, dispatch: true, routeDrivingMinutes: minutes }),
+        body: JSON.stringify({ message: driverText, dispatch: true, routeDrivingMinutes: minutes, acknowledgeUnverified: readiness.acknowledgedUnverified === true }),
       });
       if (!response.ok) {
         const body = await response.text();
@@ -389,7 +405,8 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       const receipt = await response.json() as { provider?: string; mobileSuffix?: string; status?: string };
 
       setStops(withEta); await onSaved(); signalPlanningChange();
-      setMessage(`Dispatched and driver text sent${receipt.mobileSuffix ? ` to mobile ending ${receipt.mobileSuffix}` : ""}. ${readiness.explanation} ETA calculated${result.approximate ? " using the resilient road estimate" : ""}.${updatedSites.length ? ` Saved postcode to Site Master for ${updatedSites.join(", ")}.` : ""}`);
+      const structuralNote = readiness.acknowledgedUnverified ? " Structural warnings were explicitly acknowledged before the live TachoMaster check." : "";
+      setMessage(`Dispatched and driver text sent${receipt.mobileSuffix ? ` to mobile ending ${receipt.mobileSuffix}` : ""}. ${readiness.explanation}${structuralNote} ETA calculated${result.approximate ? " using the resilient road estimate" : ""}.${updatedSites.length ? ` Saved postcode to Site Master for ${updatedSites.join(", ")}.` : ""}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The run could not be dispatched.");
     } finally { setSaving(false); }
