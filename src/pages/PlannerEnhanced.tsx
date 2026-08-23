@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
-import { PlannerMailboxImport } from "../components/PlannerMailboxImport";
 import { OptimiserProposalReview } from "../components/OptimiserProposalReview";
 import { signalPlanningChange } from "../lib/planningEvents";
 import { RunPlannerLive } from "./RunPlannerLive";
@@ -32,14 +31,16 @@ export function PlannerEnhanced() {
           onChange={(event) => setDate(event.target.value)}
         />
       </label>
-      <span>Use this date before importing customer orders.</span>
+      <span>Approved orders for this date appear automatically in the planning pool.</span>
     </div>
-    <PlannerMailboxImport
-      planningDate={date}
-      onImported={() => {
-        signalPlanningChange();
-      }}
-    />
+    <div className="panel" style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+      <div>
+        <p className="eyebrow" style={{ marginBottom: 3 }}>Automatic order intake</p>
+        <strong>Info mailbox orders are staged for review before planning.</strong><br />
+        <small>Power Automate submits new mailbox orders to the TMS. Review, amend, approve or reject them in Order control; only approved orders enter live planning.</small>
+      </div>
+      <Link className="button-like primary" to="/staging">Review orders →</Link>
+    </div>
     <OptimiserProposalReview planningDate={date} onApplied={() => signalPlanningChange()} />
     <RunPlannerLive planningDate={date} />
     <div className="mobile-planner-handoff">
