@@ -13,6 +13,7 @@ import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
 import {
   api,
+  request,
   type CreateLoad,
   type Driver,
   type Load,
@@ -32,6 +33,12 @@ type RouteLine = [number, number][];
 type PlannerStop = CreateLoad["stops"][number];
 type PlanningPeriod = "AM" | "PM" | "TBC";
 type RouteLeg = { points?: Array<{ latitude?: number; longitude?: number }> };
+type PalletControlOrder = {
+  id: string; reference: string; customerCode: string; collectionDate: string; deliveryDate?: string;
+  deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; orderedPallets: number; plannedPallets: number;
+  outstandingPallets: number; collection?: string; destination?: string; loadUnitType?: string;
+};
+type PalletControlData = { orders?: PalletControlOrder[] };
 
 type PlannerJob = {
   order: TransportOrder;
@@ -160,6 +167,17 @@ function siteFor(sites: Site[], name: string) {
     site.driverTextName,
     ...(site.aliases || "").split(/[,;|]/),
   ].some((candidate) => normal(candidate) === key));
+}
+
+function alignJobWithSites(item: PlannerJob, sites: Site[]): PlannerJob {
+  const collectionSite = siteFor(sites, item.collectionSite);
+  const deliverySite = siteFor(sites, item.destination) || siteFor(sites, item.deliveryAddress);
+  return {
+    ...item,
+    collectionSite: collectionSite?.driverTextName || collectionSite?.name || item.collectionSite,
+    destination: deliverySite?.driverTextName || deliverySite?.name || item.destination,
+    deliveryAddress: item.deliveryAddress || deliverySite?.collectionAddress || "",
+  };
 }
 
 function coordinateFrom(value: unknown): Coordinate | undefined {
@@ -435,6 +453,7 @@ function PlannerV3Content() {
   const [route, setRoute] = useState<RouteLine>([]);
 
   const ordersApi = useApi(useCallback(async () => api.orders(date, date, await token()), [date, token]));
+  const palletControlApi = useApi(useCallback(async () => request<PalletControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, await token()), [date, token]));
   const loadsApi = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
   const vehiclesApi = useApi(useCallback(async () => api.vehicles(await token()), [token]));
   const driversApi = useApi(useCallback(async () => api.drivers(await token()), [token]));
@@ -448,10 +467,38 @@ function PlannerV3Content() {
   const trailers = useMemo(() => safeArray<Trailer>(trailersApi.data), [trailersApi.data]);
   const loads = useMemo(() => safeArray<Load>(loadsApi.data).map((load) => ({ ...load, stops: safeStops(load) })), [loadsApi.data]);
   const plannedIds = useMemo(() => new Set(loads.flatMap((load) => safeStops(load).flatMap((stop) => stop.orderId ? [stop.orderId] : []))), [loads]);
-  const jobs = useMemo(() => safeArray<TransportOrder>(ordersApi.data)
-    .filter((order) => order?.id && !plannedIds.has(order.id))
+  const palletOrders = useMemo(() => safeArray<PalletControlOrder>(palletControlApi.data?.orders), [palletControlApi.data]);
+  const palletById = useMemo(() => new Map(palletOrders.map((order) => [order.id, order])), [palletOrders]);
+  const operationalOrders = useMemo(() => {
+    const merged = new Map(safeArray<TransportOrder>(ordersApi.data).filter((order) => order?.id).map((order) => [order.id, order]));
+    for (const row of palletOrders) {
+      const remaining = Math.max(Number(row.outstandingPallets) || 0, 0);
+      const current = merged.get(row.id);
+      if (current) {
+        merged.set(row.id, {
+          ...current,
+          pallets: remaining,
+          sellerName: current.sellerName || row.collection,
+          stallNumber: current.stallNumber || row.destination,
+        });
+      } else if (remaining > 0) {
+        merged.set(row.id, {
+          id: row.id, reference: row.reference, customerCode: row.customerCode, collectionDate: row.collectionDate,
+          deliveryDate: row.deliveryDate, deliveryWindowStartUtc: row.deliveryWindowStartUtc, deliveryWindowEndUtc: row.deliveryWindowEndUtc,
+          pallets: remaining, status: "ReadyToPlan", sellerName: row.collection, stallNumber: row.destination,
+          driverInstructions: row.loadUnitType ? `Order type: ${row.loadUnitType}` : undefined,
+        });
+      }
+    }
+    return [...merged.values()];
+  }, [ordersApi.data, palletOrders]);
+  const jobs = useMemo(() => operationalOrders
     .filter((order) => !["Cancelled", "Delivered"].includes(text(order.status)))
-    .map(asJob), [ordersApi.data, plannedIds]);
+    .filter((order) => {
+      const balance = palletById.get(order.id);
+      return balance ? balance.outstandingPallets > 0 : !plannedIds.has(order.id);
+    })
+    .map((order) => alignJobWithSites(asJob(order), sites)), [operationalOrders, palletById, plannedIds, sites]);
 
   const visibleJobs = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -584,7 +631,7 @@ function PlannerV3Content() {
       }, await token());
       setSelectedLoadId(created.id);
       setSelectedJobId(undefined);
-      await Promise.all([ordersApi.refresh(), loadsApi.refresh(), suggestionsApi.refresh()]);
+      await Promise.all([ordersApi.refresh(), palletControlApi.refresh(), loadsApi.refresh(), suggestionsApi.refresh()]);
       setMessage(`Run ${nextRunNumber} created in ${item.period} planning: ${item.collectionSite} → ${item.destination}.`);
     } catch (exception) {
       setMessage(exception instanceof Error ? exception.message : "The run could not be created.");
@@ -620,7 +667,7 @@ function PlannerV3Content() {
         plannerNotes: load.plannerNotes,
       }, await token());
       setSelectedJobId(undefined);
-      await Promise.all([ordersApi.refresh(), loadsApi.refresh(), suggestionsApi.refresh()]);
+      await Promise.all([ordersApi.refresh(), palletControlApi.refresh(), loadsApi.refresh(), suggestionsApi.refresh()]);
       const mixed = runPeriod(load) !== "TBC" && item.period !== "TBC" && runPeriod(load) !== item.period;
       setMessage(`${item.collectionSite} → ${item.destination} added to Run ${runNumberById.get(load.id) || ""}.${mixed ? ` Check timing: this mixes ${runPeriod(load)} and ${item.period} work.` : ""}`);
     } catch (exception) {
@@ -805,7 +852,7 @@ function PlannerV3Content() {
       <div><p className="eyebrow">Planner</p><h1>Plan the day by time and run</h1><p>AM and PM work is separated, runs are numbered from 1, and map failures are isolated from the planning board.</p></div>
       <div className="op-header-actions">
         <label>Plan date<input type="date" value={date} onChange={(event) => { setDate(event.target.value); setSelectedLoadId(undefined); setSelectedJobId(undefined); setGeocodes({}); }} /></label>
-        <button disabled={busy} onClick={() => { void ordersApi.refresh(); void loadsApi.refresh(); void suggestionsApi.refresh(); }}>{busy ? "Working…" : "Refresh"}</button>
+        <button disabled={busy} onClick={() => { void ordersApi.refresh(); void palletControlApi.refresh(); void loadsApi.refresh(); void suggestionsApi.refresh(); }}>{busy ? "Working…" : "Refresh"}</button>
       </div>
     </div>
 
@@ -819,7 +866,11 @@ function PlannerV3Content() {
     </div>
 
     {message && <p className="notice inline-notice">{message}</p>}
-    {(ordersApi.error || loadsApi.error || sitesApi.error) && <p className="notice inline-notice">{ordersApi.error || loadsApi.error || sitesApi.error}</p>}
+    {ordersApi.error && palletControlApi.data && <p className="notice inline-notice">Orders service is temporarily unavailable. Planner is using the live Pallet Control outstanding balance so work can still be planned.</p>}
+    {ordersApi.error && !palletControlApi.data && <p className="notice inline-notice">Orders: {ordersApi.error}</p>}
+    {palletControlApi.error && <p className="notice inline-notice">Pallet balance: {palletControlApi.error}</p>}
+    {loadsApi.error && <p className="notice inline-notice">Runs: {loadsApi.error}</p>}
+    {sitesApi.error && <p className="notice inline-notice">Site Master: {sitesApi.error}</p>}
 
     {suggestions.length > 0 && <section style={{ marginBottom: 12, border: "1px solid #dce7ea", borderRadius: 13, background: "#f7fafb" }}>
       <div className="op-column-heading"><div><p className="eyebrow">SLH Assistant</p><h2>Previous-day positioning</h2></div><span>{suggestions.length}</span></div>
