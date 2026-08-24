@@ -16,13 +16,17 @@
   }
 
   function queryValue(name) {
-    var query = window.location.search || '';
-    var parts = query.replace(/^\?/, '').split('&');
-    var i;
-    for (i = 0; i < parts.length; i += 1) {
-      var pair = parts[i].split('=');
-      if (decodeURIComponent(pair[0] || '') === name) {
-        return decodeURIComponent((pair.slice(1).join('=') || '').replace(/\+/g, ' '));
+    var sources = [window.location.search || '', window.location.hash || ''];
+    var i, text, parts, j, pair;
+    for (i = 0; i < sources.length; i += 1) {
+      text = sources[i].replace(/^[?#]/, '');
+      if (!text) { continue; }
+      parts = text.split('&');
+      for (j = 0; j < parts.length; j += 1) {
+        pair = parts[j].split('=');
+        if (decodeURIComponent(pair[0] || '') === name) {
+          return decodeURIComponent((pair.slice(1).join('=') || '').replace(/\+/g, ' '));
+        }
       }
     }
     return '';
@@ -458,7 +462,7 @@
     var errors = [];
     function done(name, err, data) {
       if (err) {
-        if (name !== 'progress' && name !== 'dwell') { errors.push(name + ': ' + err.message); }
+        if (name !== 'progress' && name !== 'dwell' && name !== 'etas') { errors.push(name + ': ' + err.message); }
       } else if (name === 'loads') { state.loads = data || []; }
       else if (name === 'assignments') { state.assignments = data || []; }
       else if (name === 'progress') {
