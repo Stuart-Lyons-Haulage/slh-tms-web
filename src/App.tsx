@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode, useEffect, useState } from 'react';
+import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { DriverAssignments, DriverMobile, LiveTracking } from './pages/Pages';
@@ -22,7 +22,8 @@ import { DashboardOperational } from './pages/DashboardOperational';
 import { OperationsWallboard } from './pages/OperationsWallboard';
 import { ImportCentre } from './pages/ImportCentre';
 import { ReportingOperational } from './pages/ReportingOperational';
-import { apiScope } from './lib/auth';
+import { apiScope, useAccessToken } from './lib/auth';
+import { api } from './lib/api';
 import { TmsAssistant } from './components/TmsAssistant';
 import { GlobalSearch } from './components/GlobalSearch';
 import { HeaderIntelligence } from './components/HeaderIntelligence';
@@ -39,24 +40,48 @@ const insightNavigation = [
 
 type NavItem = string[];
 function pathActive(current: string, path: string) { return path === '/' ? current === '/' : current === path || current.startsWith(`${path}/`); }
-function NavSection({ title, storageKey, items, current, closeMobile }: { title: string; storageKey: string; items: NavItem[]; current: string; closeMobile: () => void }) {
+function NavSection({ title, storageKey, items, current, closeMobile, reviewOrderCount }: { title: string; storageKey: string; items: NavItem[]; current: string; closeMobile: () => void; reviewOrderCount?: number }) {
   const active = items.some(([path]) => pathActive(current, path));
   const [open, setOpen] = useState(() => localStorage.getItem(storageKey) !== 'closed');
   const expanded = open || active;
   const toggle = () => { const next = !open; setOpen(next); localStorage.setItem(storageKey, next ? 'open' : 'closed'); };
-  return <div className="nav-section"><button className="nav-title nav-toggle" onClick={toggle} aria-expanded={expanded}><span>{title}</span><b>{expanded ? '−' : '+'}</b></button>{expanded && <div className="nav-links">{items.map(([path,label]) => <NavLink key={path} to={path} end={path === '/'} onClick={closeMobile}>{label}</NavLink>)}</div>}</div>;
+  return <div className="nav-section"><button className="nav-title nav-toggle" onClick={toggle} aria-expanded={expanded}><span>{title}</span><b>{expanded ? '−' : '+'}</b></button>{expanded && <div className="nav-links">{items.map(([path,label]) => <NavLink key={path} to={path} end={path === '/'} onClick={closeMobile}><span>{label}</span>{path === '/staging' && reviewOrderCount !== undefined && reviewOrderCount > 0 && <b className="nav-count" aria-label={`${reviewOrderCount} orders awaiting review`}>{reviewOrderCount > 1999 ? '2000+' : reviewOrderCount}</b>}</NavLink>)}</div>}</div>;
 }
 
 function Shell() {
   const authenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
+  const accessToken = useAccessToken();
   const [open, setOpen] = useState(false);
+  const [reviewOrderCount, setReviewOrderCount] = useState<number>();
   const location = useLocation();
   const tvMode = location.pathname === '/operations-wallboard/tv' || location.pathname === '/live-runs/tv' || location.pathname === '/tv';
   const hasTvAccessKey = tvMode && new URLSearchParams(location.search).has('key');
   const signIn = () => instance.loginRedirect({ scopes: apiScope ? [apiScope] : [] });
   const closeMobile = () => setOpen(false);
   useEffect(() => { setOpen(false); }, [location.pathname]);
+  const refreshReviewOrderCount = useCallback(async () => {
+    if (!authenticated || tvMode) return;
+    try {
+      const rows = await api.staging(await accessToken(), "PendingReview", "order", 2000);
+      setReviewOrderCount(rows.length);
+    } catch {
+      setReviewOrderCount(undefined);
+    }
+  }, [accessToken, authenticated, tvMode]);
+  useEffect(() => {
+    if (!authenticated || tvMode) return;
+    void refreshReviewOrderCount();
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshReviewOrderCount();
+    }, 30000);
+    const onFocus = () => void refreshReviewOrderCount();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [authenticated, refreshReviewOrderCount, tvMode]);
 
   return <div className={`app-shell ${authenticated && !tvMode ? 'with-system-strip' : ''} ${tvMode ? 'tv-public-mode' : ''}`}>
     {!tvMode && <header>
@@ -69,7 +94,7 @@ function Shell() {
     {authenticated && !tvMode && open && <button className="mobile-nav-scrim" type="button" aria-label="Close navigation" onClick={closeMobile} />}
     {!tvMode && <aside className={`side-nav ${open ? 'open' : ''}`}>
       {authenticated && <div className="mobile-nav-search"><GlobalSearch /></div>}
-      <NavSection title="Daily workflow" storageKey="slh-nav-daily" items={dailyNavigation} current={location.pathname} closeMobile={closeMobile}/>
+      <NavSection title="Daily workflow" storageKey="slh-nav-daily" items={dailyNavigation} current={location.pathname} closeMobile={closeMobile} reviewOrderCount={reviewOrderCount}/>
       <NavSection title="Master data" storageKey="slh-nav-master" items={masterNavigation} current={location.pathname} closeMobile={closeMobile}/>
       <NavSection title="Control & insight" storageKey="slh-nav-insight" items={insightNavigation} current={location.pathname} closeMobile={closeMobile}/>
       {authenticated && <button className="mobile-sign-out" type="button" onClick={() => instance.logoutRedirect()}>Sign out · {accounts[0]?.name || 'Microsoft account'}</button>}

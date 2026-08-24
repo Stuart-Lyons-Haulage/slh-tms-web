@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { OptimiserProposalReview } from "../components/OptimiserProposalReview";
 import { signalPlanningChange } from "../lib/planningEvents";
 import { RunPlannerLive } from "./RunPlannerLive";
 import { SubcontractorQuickAdd } from "./SubcontractorQuickAdd";
+import { api } from "../lib/api";
+import { useAccessToken } from "../lib/auth";
 
 function localDate() {
   const date = new Date();
@@ -11,7 +13,25 @@ function localDate() {
 }
 
 export function PlannerEnhanced() {
+  const token = useAccessToken();
   const [date, setDate] = useState(localDate());
+  const [reviewOrderCount, setReviewOrderCount] = useState<number>();
+  const refreshReviewOrderCount = useCallback(async () => {
+    try {
+      const rows = await api.staging(await token(), "PendingReview", "order", 2000);
+      setReviewOrderCount(rows.length);
+    } catch {
+      setReviewOrderCount(undefined);
+    }
+  }, [token]);
+  useEffect(() => {
+    void refreshReviewOrderCount();
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshReviewOrderCount();
+    }, 30000);
+    return () => window.clearInterval(id);
+  }, [refreshReviewOrderCount]);
+
   return <section className="planner-enhanced-page">
     <div className="panel planner-screen-switcher" style={{ marginBottom: 14, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
       <div>
@@ -39,7 +59,7 @@ export function PlannerEnhanced() {
         <strong>Info mailbox orders are staged for review before planning.</strong><br />
         <small>Power Automate submits new mailbox orders to the TMS. Review, amend, approve or reject them in Order control; only approved orders enter live planning.</small>
       </div>
-      <Link className="button-like primary" to="/staging">Review orders →</Link>
+      <Link className="button-like primary review-orders-link" to="/staging">Review orders{reviewOrderCount !== undefined && reviewOrderCount > 0 && <b className="nav-count planner-review-count" aria-label={`${reviewOrderCount} orders awaiting review`}>{reviewOrderCount > 1999 ? "2000+" : reviewOrderCount}</b>} →</Link>
     </div>
     <OptimiserProposalReview planningDate={date} onApplied={() => signalPlanningChange()} />
     <RunPlannerLive planningDate={date} />
