@@ -1,0 +1,65 @@
+name: Hotfix Planner Outstanding Orders
+
+on:
+  push:
+    paths:
+      - '.github/workflows/hotfix-planner-outstanding.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Patch Planner V3
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/pages/PlannerV3.tsx')
+          text = path.read_text()
+
+          text = text.replace('  api,\n  type CreateLoad,', '  api,\n  request,\n  type CreateLoad,')
+
+          marker = 'type RouteLeg = { points?: Array<{ latitude?: number; longitude?: number }> };\n'
+          addition = '''type RouteLeg = { points?: Array<{ latitude?: number; longitude?: number }> };\ntype PalletControlOrder = {\n  id: string; reference: string; customerCode: string; collectionDate: string; deliveryDate?: string;\n  deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; orderedPallets: number; plannedPallets: number;\n  outstandingPallets: number; collection?: string; destination?: string; loadUnitType?: string;\n};\ntype PalletControlData = { orders?: PalletControlOrder[] };\n'''
+          if marker in text and 'type PalletControlOrder' not in text:
+              text = text.replace(marker, addition)
+
+          marker = '''function siteFor(sites: Site[], name: string) {\n  const key = normal(name);\n  if (!key) return undefined;\n  return sites.find((site) => [\n    site.externalCode,\n    site.name,\n    site.driverTextName,\n    ...(site.aliases || "").split(/[,;|]/),\n  ].some((candidate) => normal(candidate) === key));\n}\n'''
+          addition = marker + '''\nfunction alignJobWithSites(item: PlannerJob, sites: Site[]): PlannerJob {\n  const collectionSite = siteFor(sites, item.collectionSite);\n  const deliverySite = siteFor(sites, item.destination) || siteFor(sites, item.deliveryAddress);\n  return {\n    ...item,\n    collectionSite: collectionSite?.driverTextName || collectionSite?.name || item.collectionSite,\n    destination: deliverySite?.driverTextName || deliverySite?.name || item.destination,\n    deliveryAddress: item.deliveryAddress || deliverySite?.collectionAddress || "",\n  };\n}\n'''
+          if marker in text and 'function alignJobWithSites' not in text:
+              text = text.replace(marker, addition)
+
+          marker = '  const ordersApi = useApi(useCallback(async () => api.orders(date, date, await token()), [date, token]));\n'
+          addition = marker + '  const palletControlApi = useApi(useCallback(async () => request<PalletControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, await token()), [date, token]));\n'
+          if marker in text and 'const palletControlApi' not in text:
+              text = text.replace(marker, addition)
+
+          old = '''  const loads = useMemo(() => safeArray<Load>(loadsApi.data).map((load) => ({ ...load, stops: safeStops(load) })), [loadsApi.data]);\n  const plannedIds = useMemo(() => new Set(loads.flatMap((load) => safeStops(load).flatMap((stop) => stop.orderId ? [stop.orderId] : []))), [loads]);\n  const jobs = useMemo(() => safeArray<TransportOrder>(ordersApi.data)\n    .filter((order) => order?.id && !plannedIds.has(order.id))\n    .filter((order) => !["Cancelled", "Delivered"].includes(text(order.status)))\n    .map(asJob), [ordersApi.data, plannedIds]);\n'''
+          new = '''  const loads = useMemo(() => safeArray<Load>(loadsApi.data).map((load) => ({ ...load, stops: safeStops(load) })), [loadsApi.data]);\n  const plannedIds = useMemo(() => new Set(loads.flatMap((load) => safeStops(load).flatMap((stop) => stop.orderId ? [stop.orderId] : []))), [loads]);\n  const palletOrders = useMemo(() => safeArray<PalletControlOrder>(palletControlApi.data?.orders), [palletControlApi.data]);\n  const palletById = useMemo(() => new Map(palletOrders.map((order) => [order.id, order])), [palletOrders]);\n  const operationalOrders = useMemo(() => {\n    const merged = new Map(safeArray<TransportOrder>(ordersApi.data).filter((order) => order?.id).map((order) => [order.id, order]));\n    for (const row of palletOrders) {\n      const remaining = Math.max(Number(row.outstandingPallets) || 0, 0);\n      const current = merged.get(row.id);\n      if (current) {\n        merged.set(row.id, {\n          ...current,\n          pallets: remaining,\n          sellerName: current.sellerName || row.collection,\n          stallNumber: current.stallNumber || row.destination,\n        });\n      } else if (remaining > 0) {\n        merged.set(row.id, {\n          id: row.id, reference: row.reference, customerCode: row.customerCode, collectionDate: row.collectionDate,\n          deliveryDate: row.deliveryDate, deliveryWindowStartUtc: row.deliveryWindowStartUtc, deliveryWindowEndUtc: row.deliveryWindowEndUtc,\n          pallets: remaining, status: "ReadyToPlan", sellerName: row.collection, stallNumber: row.destination,\n          driverInstructions: row.loadUnitType ? `Order type: ${row.loadUnitType}` : undefined,\n        });\n      }\n    }\n    return [...merged.values()];\n  }, [ordersApi.data, palletOrders]);\n  const jobs = useMemo(() => operationalOrders\n    .filter((order) => !["Cancelled", "Delivered"].includes(text(order.status)))\n    .filter((order) => {\n      const balance = palletById.get(order.id);\n      return balance ? balance.outstandingPallets > 0 : !plannedIds.has(order.id);\n    })\n    .map((order) => alignJobWithSites(asJob(order), sites)), [operationalOrders, palletById, plannedIds, sites]);\n'''
+          if old not in text:
+              raise SystemExit('Planner jobs block not found')
+          text = text.replace(old, new)
+
+          text = text.replace('await Promise.all([ordersApi.refresh(), loadsApi.refresh(), suggestionsApi.refresh()]);', 'await Promise.all([ordersApi.refresh(), palletControlApi.refresh(), loadsApi.refresh(), suggestionsApi.refresh()]);')
+          text = text.replace('onClick={() => { void ordersApi.refresh(); void loadsApi.refresh(); void suggestionsApi.refresh(); }}', 'onClick={() => { void ordersApi.refresh(); void palletControlApi.refresh(); void loadsApi.refresh(); void suggestionsApi.refresh(); }}')
+
+          old = '    {(ordersApi.error || loadsApi.error || sitesApi.error) && <p className="notice inline-notice">{ordersApi.error || loadsApi.error || sitesApi.error}</p>}\n'
+          new = '''    {ordersApi.error && palletControlApi.data && <p className="notice inline-notice">Orders service is temporarily unavailable. Planner is using the live Pallet Control outstanding balance so work can still be planned.</p>}\n    {ordersApi.error && !palletControlApi.data && <p className="notice inline-notice">Orders: {ordersApi.error}</p>}\n    {palletControlApi.error && <p className="notice inline-notice">Pallet balance: {palletControlApi.error}</p>}\n    {loadsApi.error && <p className="notice inline-notice">Runs: {loadsApi.error}</p>}\n    {sitesApi.error && <p className="notice inline-notice">Site Master: {sitesApi.error}</p>}\n'''
+          if old in text:
+              text = text.replace(old, new)
+
+          path.write_text(text)
+      - name: Commit patch
+        run: |
+          git config user.name "SLH TMS Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/pages/PlannerV3.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix Planner split-order outstanding balance"
+          git push origin main
