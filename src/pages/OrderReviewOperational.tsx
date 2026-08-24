@@ -11,6 +11,8 @@ type IntakePayload = Record<string, unknown> & {
   collectionDate?: string;
   deliveryDate?: string;
   pallets?: number | string;
+  unitType?: string;
+  palletType?: string;
   sellerName?: string;
   marketName?: string;
   stallNumber?: string;
@@ -92,6 +94,21 @@ function displayPo(payload: IntakePayload) {
 
 function setField(payload: IntakePayload, name: string, value: unknown): IntakePayload {
   return { ...payload, [name]: value };
+}
+
+function setUnitType(payload: IntakePayload, value: string): IntakePayload {
+  return { ...payload, unitType: value, palletType: value };
+}
+
+function unitType(payload: IntakePayload) {
+  const explicit = text(payload.unitType) || text(payload.palletType);
+  if (explicit) return explicit;
+  const haystack = [payload.jobType, payload.driverInstructions, payload.sourceSubject]
+    .map((value) => text(value).toLowerCase())
+    .join(" ");
+  if (haystack.includes("troll")) return "Trolleys";
+  if (haystack.includes("tray")) return "Trays";
+  return "Pallets";
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -229,6 +246,8 @@ export function OrderReviewOperational() {
         ...row.payload,
         ...draft,
         pallets: numberText(draft.pallets) === "" ? undefined : Number(draft.pallets),
+        unitType: unitType(draft),
+        palletType: unitType(draft),
       };
       await request<StagedImport>(`/api/v1/staging/${row.item.id}/payload`, await token(), {
         method: "PUT",
@@ -425,6 +444,7 @@ export function OrderReviewOperational() {
         const isEditing = editingId === row.item.id;
         const isBusy = busyId === row.item.id;
         const sourceLink = text(row.payload.sourceWebLink);
+        const selectedUnitType = unitType(payload);
         return <article className={`order-review-card confidence-${confidence(row.payload)}`} key={row.item.id}>
           <header>
             <div>
@@ -453,7 +473,8 @@ export function OrderReviewOperational() {
             <label>TMS order reference<input disabled={!isEditing} value={text(payload.poNumber)} onChange={(event) => setDraft((current) => setField(current || payload, "poNumber", event.target.value))} /></label>
             <label>Collection date<input type="date" disabled={!isEditing} value={text(payload.collectionDate)} onChange={(event) => setDraft((current) => setField(current || payload, "collectionDate", event.target.value))} /></label>
             <label>Delivery date<input type="date" disabled={!isEditing} value={text(payload.deliveryDate)} onChange={(event) => setDraft((current) => setField(current || payload, "deliveryDate", event.target.value))} /></label>
-            <label>Pallets<input type="number" min="0" disabled={!isEditing} value={numberText(payload.pallets)} onChange={(event) => setDraft((current) => setField(current || payload, "pallets", event.target.value))} /></label>
+            <label>Quantity<input type="number" min="0" disabled={!isEditing} value={numberText(payload.pallets)} onChange={(event) => setDraft((current) => setField(current || payload, "pallets", event.target.value))} /></label>
+            <label>Unit type<select disabled={!isEditing} value={selectedUnitType} onChange={(event) => setDraft((current) => setUnitType(current || payload, event.target.value))}><option>Pallets</option><option>Trays</option><option>Trolleys</option></select></label>
             <label>Collection site<input disabled={!isEditing} value={text(payload.sellerName)} onChange={(event) => setDraft((current) => setField(current || payload, "sellerName", event.target.value))} /></label>
             <label>Destination<input disabled={!isEditing} value={text(payload.stallNumber)} onChange={(event) => setDraft((current) => setField(current || payload, "stallNumber", event.target.value))} /></label>
             <label>Requested time<input disabled={!isEditing} value={text(payload.requestedTime)} onChange={(event) => setDraft((current) => setField(current || payload, "requestedTime", event.target.value))} /></label>

@@ -29,6 +29,7 @@ function editable(order: TransportOrder): OrderUpdatePayload {
     customerRef: tagged(order.driverInstructions, "Customer ref"),
     poRef: tagged(order.driverInstructions, "PO ref"),
     palletName: tagged(order.driverInstructions, "Pallet"),
+    unitType: tagged(order.driverInstructions, "Unit type") || tagged(order.driverInstructions, "Capacity type") || "Pallets",
     notes: "",
     mapLink: order.mapLink,
   };
@@ -108,6 +109,7 @@ export function JobsOperational() {
   }
 
   const set = (name: keyof OrderUpdatePayload, value: string) => setForm((current) => current ? ({ ...current, [name]: name === "pallets" ? (value === "" ? undefined : Number(value)) : value }) : current);
+  const unitLabel = form?.unitType || "Pallets";
 
   return <section>
     <div className="title-row">
@@ -126,9 +128,9 @@ export function JobsOperational() {
     {orders.error && <p className="notice inline-notice">{orders.error}</p>}
     <div className="master-table-wrap" style={{ overflowX: "auto" }}>
       <table className="master-table" style={{ minWidth: 1250 }}>
-        <thead><tr><th>Order</th><th>Customer</th><th>Collection</th><th>Depot</th><th>Destination</th><th>Delivery address</th><th>Pallets</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Order</th><th>Customer</th><th>Collection</th><th>Depot</th><th>Destination</th><th>Delivery address</th><th>Quantity</th><th>Unit</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>{rows.map((order) => <tr key={order.id}>
-          <td><strong>{order.reference}</strong></td><td>{order.customerCode}</td><td>{order.sellerName || "—"}</td><td>{order.marketName || "—"}</td><td>{order.stallNumber || "—"}</td><td>{tagged(order.driverInstructions, "Delivery address") || "—"}</td><td>{order.pallets ?? "—"}</td><td>{order.status}</td>
+          <td><strong>{order.reference}</strong></td><td>{order.customerCode}</td><td>{order.sellerName || "—"}</td><td>{order.marketName || "—"}</td><td>{order.stallNumber || "—"}</td><td>{tagged(order.driverInstructions, "Delivery address") || "—"}</td><td>{order.pallets ?? "—"}</td><td>{tagged(order.driverInstructions, "Unit type") || "Pallets"}</td><td>{order.status}</td>
           <td><div style={{ display: "flex", gap: 8 }}><button onClick={() => begin(order)}>Edit</button><button onClick={() => void cancel(order)} disabled={saving}>Delete</button></div></td>
         </tr>)}</tbody>
       </table>
@@ -146,10 +148,11 @@ export function JobsOperational() {
         <label>Depot ID<input value={form.depotId || ""} onChange={(e) => set("depotId", e.target.value)} /></label>
         <label>Destination<input value={form.destination || ""} onChange={(e) => set("destination", e.target.value)} /></label>
         <label>Delivery address / postcode<input value={form.deliveryAddress || ""} onChange={(e) => set("deliveryAddress", e.target.value)} /></label>
-        <label>Pallets<input inputMode="numeric" value={form.pallets ?? ""} onChange={(e) => set("pallets", e.target.value)} /></label>
+        <label>Quantity<input inputMode="numeric" value={form.pallets ?? ""} onChange={(e) => set("pallets", e.target.value)} /></label>
+        <label>Unit type<select value={unitLabel} onChange={(e) => set("unitType", e.target.value)}><option>Pallets</option><option>Trays</option><option>Trolleys</option></select></label>
         <label>Customer ref<input value={form.customerRef || ""} onChange={(e) => set("customerRef", e.target.value)} /></label>
         <label>PO ref<input value={form.poRef || ""} onChange={(e) => set("poRef", e.target.value)} /></label>
-        <label>Pallet / product<input value={form.palletName || ""} onChange={(e) => set("palletName", e.target.value)} /></label>
+        <label>{unitLabel === "Pallets" ? "Pallet / product" : "Product / load description"}<input value={form.palletName || ""} onChange={(e) => set("palletName", e.target.value)} /></label>
       </div>
       <button className="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save job changes"}</button>
     </div>}

@@ -15,6 +15,7 @@ export type OrderUpdatePayload = {
   customerRef?: string;
   poRef?: string;
   palletName?: string;
+  unitType?: string;
   notes?: string;
   mapLink?: string;
 };

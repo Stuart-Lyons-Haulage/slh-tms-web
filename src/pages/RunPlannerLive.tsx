@@ -102,6 +102,7 @@ function validPallets(value: string) {
 
 export function RunPlannerLive({ planningDate }: { planningDate?: string } = {}) {
   const token = useAccessToken();
+  const dateIsExternallyControlled = Boolean(planningDate);
   const [date, setDate] = useState(planningDate || localDate());
   const [control, setControl] = useState<PlanningControlData>();
   const [loads, setLoads] = useState<Load[]>([]);
@@ -476,7 +477,9 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
 
   return <section className="simple-planner">
     <div className="simple-planner-toolbar">
-      <label>Plan date <input type="date" value={date} onChange={(event) => resetForDate(event.target.value)} /></label>
+      {dateIsExternallyControlled
+        ? <span><strong>{date}</strong><small> plan date</small></span>
+        : <label>Plan date <input type="date" value={date} onChange={(event) => resetForDate(event.target.value)} /></label>}
       <button onClick={() => void refreshAll()} disabled={Boolean(busyKey)}>Refresh</button>
       <button className="primary" onClick={() => {
         const draft = blankRun(`shell-${date}-${crypto.randomUUID()}`);
