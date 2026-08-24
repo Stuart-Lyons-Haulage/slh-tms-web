@@ -125,6 +125,14 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
       priority: 58,
     };
   }
+  if (progress?.runState === "InProgress" || progress?.loadStatus === "Dispatched") {
+    return {
+      status: "route" as const,
+      label: "ON ROUTE",
+      detail: progress?.focusStop || progress?.nextStop?.name || nextEta?.stopName || "Started from plan time",
+      priority: 56,
+    };
+  }
   if ((progress?.completedStops || 0) > 0 || nextEta?.source === "Live" || String(nextEta?.source) === "Estimated") {
     return {
       status: "route" as const,

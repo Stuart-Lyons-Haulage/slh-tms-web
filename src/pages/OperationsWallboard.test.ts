@@ -75,4 +75,21 @@ describe("OperationsWallboard route progress merge", () => {
       },
     ])).toBe(3);
   });
+
+  it("shows an allocated started fallback route as on route instead of scheduled", () => {
+    expect(statusFor({
+      loadId: "load-1",
+      loadReference: "Run 1 AM",
+      loadStatus: "Planned",
+      runState: "InProgress",
+      totalStops: 4,
+      completedStops: 0,
+      progressPercent: 0,
+      nextStop: { id: "stop-1", sequence: 1, name: "NWF Selsey" },
+    }, undefined, [])).toMatchObject({
+      status: "route",
+      label: "ON ROUTE",
+      detail: "NWF Selsey",
+    });
+  });
 });
