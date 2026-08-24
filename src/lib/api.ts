@@ -766,7 +766,7 @@ export async function request<T>(
   path: string,
   token?: string,
   init?: RequestInit,
-  timeoutMs = 25000,
+  timeoutMs = 60000,
 ): Promise<T> {
   if (!baseUrl)
     throw new ApiError(0, "Set VITE_API_BASE_URL to connect the TMS API.");
@@ -788,7 +788,7 @@ export async function request<T>(
     if (exception instanceof DOMException && exception.name === "AbortError")
       throw new ApiError(
         0,
-        "The TMS service took too long to respond. The rest of the page is still available; retry this panel.",
+        "The TMS service is taking longer than usual to respond. The rest of the page is still available; retry this panel.",
       );
     throw exception;
   } finally {
