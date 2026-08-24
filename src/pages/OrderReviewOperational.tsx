@@ -7,6 +7,11 @@ import "../order-review.css";
 type IntakePayload = Record<string, unknown> & {
   poNumber?: string;
   customerPo?: string;
+  customerRef?: string;
+  poRef?: string;
+  productPo?: string;
+  cratePo?: string;
+  transportPo?: string;
   customerCode?: string;
   collectionDate?: string;
   deliveryDate?: string;
@@ -76,6 +81,35 @@ const warnings = (payload: IntakePayload) => Array.isArray(payload.intakeWarning
   ? payload.intakeWarnings.map(text).filter(Boolean)
   : [];
 
+function isPoReferenceWarning(value: string) {
+  const lower = value.toLowerCase();
+  return lower.includes("po") && (lower.includes("missing") || lower.includes("blank") || lower.includes("not found") || lower.includes("no customer"));
+}
+
+function driverReference(payload: IntakePayload) {
+  return text(payload.customerPo)
+    || text(payload.poRef)
+    || text(payload.customerRef)
+    || text(payload.productPo)
+    || text(payload.cratePo)
+    || text(payload.transportPo);
+}
+
+function needsDriverReference(payload: IntakePayload) {
+  const haystack = [payload.unitType, payload.palletType, payload.jobType, payload.driverInstructions, payload.sourceSubject]
+    .map((value) => text(value).toLowerCase())
+    .join(" ");
+  return /\b(crate|crates|tray|trays|trolley|trolleys)\b/.test(haystack);
+}
+
+function reviewWarnings(payload: IntakePayload) {
+  const sourceWarnings = warnings(payload).filter((warning) => !isPoReferenceWarning(warning));
+  if (needsDriverReference(payload) && !driverReference(payload)) {
+    return ["Tray/crate reference is missing for the driver text.", ...sourceWarnings];
+  }
+  return sourceWarnings;
+}
+
 function formatDateTime(value: unknown) {
   const raw = text(value);
   if (!raw) return "—";
@@ -84,8 +118,13 @@ function formatDateTime(value: unknown) {
 }
 
 function confidence(payload: IntakePayload) {
-  const value = text(payload.intakeConfidence) || (warnings(payload).length ? "Medium" : "High");
+  const value = text(payload.intakeConfidence) || (reviewWarnings(payload).length ? "Medium" : "High");
+  if (value.toLowerCase() !== "high" && warnings(payload).length > 0 && reviewWarnings(payload).length === 0) return "high";
   return value.toLowerCase();
+}
+
+function confidenceLabel(payload: IntakePayload) {
+  return confidence(payload) === "high" ? "High" : text(payload.intakeConfidence) || "Review";
 }
 
 function displayPo(payload: IntakePayload) {
@@ -159,15 +198,15 @@ export function OrderReviewOperational() {
   const visibleRows = useMemo(() => rows
     .filter((row) => showAll || row.payload.collectionDate === dateFilter || row.payload.deliveryDate === dateFilter)
     .sort((left, right) => {
-      const leftWarnings = warnings(left.payload).length;
-      const rightWarnings = warnings(right.payload).length;
+      const leftWarnings = reviewWarnings(left.payload).length;
+      const rightWarnings = reviewWarnings(right.payload).length;
       const priority = (value: string) => value === "low" ? 0 : value === "medium" ? 1 : 2;
       return priority(confidence(left.payload)) - priority(confidence(right.payload))
         || rightWarnings - leftWarnings
         || text(left.payload.sourceReceivedAtUtc).localeCompare(text(right.payload.sourceReceivedAtUtc));
     }), [dateFilter, rows, showAll]);
 
-  const cleanCount = rows.filter((row) => confidence(row.payload) === "high" && warnings(row.payload).length === 0).length;
+  const cleanCount = rows.filter((row) => confidence(row.payload) === "high" && reviewWarnings(row.payload).length === 0).length;
   const attentionCount = rows.length - cleanCount;
 
   const importSummary = useMemo(() => {
@@ -181,7 +220,7 @@ export function OrderReviewOperational() {
 
     for (const record of importRecords) {
       const payload = record.payload as unknown as Record<string, unknown>;
-      if (!text(payload.poNumber)) missingPo++;
+      if (!text(payload.poNumber) && needsDriverReference(payload as IntakePayload)) missingPo++;
       if (!text(payload.customerCode)) missingCustomer++;
       const collectionDate = text(payload.collectionDate);
       if (!collectionDate) missingDate++;
@@ -191,7 +230,7 @@ export function OrderReviewOperational() {
 
     const needsCorrection = importRecords.filter((record) => {
       const payload = record.payload as unknown as Record<string, unknown>;
-      return !text(payload.poNumber) || !text(payload.customerCode) || !text(payload.collectionDate);
+      return (needsDriverReference(payload as IntakePayload) && !driverReference(payload as IntakePayload)) || !text(payload.customerCode) || !text(payload.collectionDate);
     }).length;
 
     return {
@@ -387,7 +426,7 @@ export function OrderReviewOperational() {
         <div className="import-preview-metrics">
           <article><span>Orders in file</span><strong>{importSummary.total}</strong></article>
           <article className={importSummary.needsCorrection ? "attention" : ""}><span>Need correction</span><strong>{importSummary.needsCorrection}</strong></article>
-          <article className={importSummary.missingPo ? "attention" : ""}><span>Missing PO/ref</span><strong>{importSummary.missingPo}</strong></article>
+          <article className={importSummary.missingPo ? "attention" : ""}><span>Missing tray/crate ref</span><strong>{importSummary.missingPo}</strong></article>
           <article className={importSummary.missingCustomer ? "attention" : ""}><span>Missing customer</span><strong>{importSummary.missingCustomer}</strong></article>
           <article className={importSummary.warningCount ? "attention" : ""}><span>Source warnings</span><strong>{importSummary.warningCount}</strong></article>
         </div>
@@ -440,7 +479,7 @@ export function OrderReviewOperational() {
     <div className="order-review-list">
       {visibleRows.map((row) => {
         const payload = editingId === row.item.id && draft ? draft : row.payload;
-        const rowWarnings = warnings(row.payload);
+        const rowWarnings = reviewWarnings(row.payload);
         const isEditing = editingId === row.item.id;
         const isBusy = busyId === row.item.id;
         const sourceLink = text(row.payload.sourceWebLink);
@@ -449,7 +488,7 @@ export function OrderReviewOperational() {
           <header>
             <div>
               <div className="review-badges">
-                <span className={`confidence-chip ${confidence(row.payload)}`}>{text(row.payload.intakeConfidence) || "Review"}</span>
+                <span className={`confidence-chip ${confidence(row.payload)}`}>{confidenceLabel(row.payload)}</span>
                 <span>{text(row.payload.jobType) || "Order"}</span>
                 {rowWarnings.length > 0 && <span className="warning-chip">{rowWarnings.length} warning{rowWarnings.length === 1 ? "" : "s"}</span>}
               </div>

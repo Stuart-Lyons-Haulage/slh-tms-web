@@ -7,6 +7,11 @@ import "../order-control.css";
 type Payload = Record<string, unknown> & {
   poNumber?: string;
   customerPo?: string;
+  customerRef?: string;
+  poRef?: string;
+  productPo?: string;
+  cratePo?: string;
+  transportPo?: string;
   customerCode?: string;
   collectionDate?: string;
   deliveryDate?: string;
@@ -73,6 +78,35 @@ function warnings(payload: Payload) {
   return Array.isArray(payload.intakeWarnings) ? payload.intakeWarnings.map(text).filter(Boolean) : [];
 }
 
+function isPoReferenceWarning(value: string) {
+  const lower = value.toLowerCase();
+  return lower.includes("po") && (lower.includes("missing") || lower.includes("blank") || lower.includes("not found") || lower.includes("no customer"));
+}
+
+function driverReference(payload: Payload) {
+  return text(payload.customerPo)
+    || text(payload.poRef)
+    || text(payload.customerRef)
+    || text(payload.productPo)
+    || text(payload.cratePo)
+    || text(payload.transportPo);
+}
+
+function needsDriverReference(payload: Payload) {
+  const haystack = [payload.jobType, payload.driverInstructions, payload.sourceSubject]
+    .map((value) => text(value).toLowerCase())
+    .join(" ");
+  return /\b(crate|crates|tray|trays|trolley|trolleys)\b/.test(haystack);
+}
+
+function reviewWarnings(payload: Payload) {
+  const sourceWarnings = warnings(payload).filter((warning) => !isPoReferenceWarning(warning));
+  if (needsDriverReference(payload) && !driverReference(payload)) {
+    return ["Tray/crate reference is missing for the driver text.", ...sourceWarnings];
+  }
+  return sourceWarnings;
+}
+
 function blockingReason(row: ParsedRow, date: string) {
   if (row.parseError) return "Payload cannot be read";
   const payload = row.payload;
@@ -87,9 +121,10 @@ function blockingReason(row: ParsedRow, date: string) {
 
 function reviewFlagReason(row: ParsedRow) {
   const payload = row.payload;
-  const sourceWarnings = warnings(payload);
+  const sourceWarnings = reviewWarnings(payload);
   if (sourceWarnings.length) return sourceWarnings[0];
   const confidence = text(payload.intakeConfidence);
+  if (confidence && confidence.toLowerCase() !== "high" && warnings(payload).length > 0 && sourceWarnings.length === 0) return undefined;
   if (!confidence || confidence.toLowerCase() !== "high") return confidence ? `${confidence} confidence — check source` : "Source confidence not set — check source";
   return undefined;
 }
@@ -283,7 +318,7 @@ export function OrderReviewBulk() {
         const selected = selectedIds.has(row.item.id);
         const isEditing = editingId === row.item.id;
         const rowBusy = busyId === row.item.id;
-        const sourceWarnings = warnings(row.payload);
+        const sourceWarnings = reviewWarnings(row.payload);
         const payload = isEditing && draft ? draft : row.payload;
         const sourceLink = text(row.payload.sourceWebLink);
         const statusClass = blocked ? "blocked" : reviewFlag ? "review" : "ready";
