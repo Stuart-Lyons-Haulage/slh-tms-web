@@ -1,0 +1,148 @@
+import { useEffect, useState } from "react";
+import { OperationsWallboard as ExistingOperationsWallboard } from "./OperationsWallboardLive";
+
+type TimingRecord = {
+  loadId: string;
+  completed: boolean;
+  nextStopId?: string;
+  nextStopSequence?: number;
+  nextEtaUtc?: string;
+  previousGeofenceDepartureUtc?: string;
+  dwellStartedAtUtc?: string;
+  currentGeofenceName?: string;
+};
+type TimingResponse = { planningDate: string; geofenceAvailable: boolean; records: TimingRecord[] };
+
+type CachedTiming = { expiresAt: number; promise: Promise<TimingResponse | undefined> };
+
+function requestUrl(input: RequestInfo | URL) {
+  return typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+}
+
+function requestHeaders(input: RequestInfo | URL, init?: RequestInit) {
+  return new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+}
+
+function timingUrl(sourceUrl: string, date: string) {
+  const parsed = new URL(sourceUrl, window.location.origin);
+  const apiIndex = parsed.pathname.indexOf("/api/v1/");
+  const prefix = apiIndex >= 0 ? parsed.pathname.slice(0, apiIndex) : "";
+  return `${prefix}/api/v1/run-timing?date=${encodeURIComponent(date)}`;
+}
+
+function dateFromUrl(sourceUrl: string) {
+  try { return new URL(sourceUrl, window.location.origin).searchParams.get("date") || undefined; }
+  catch { return undefined; }
+}
+
+function jsonResponse(original: Response, payload: unknown) {
+  const headers = new Headers(original.headers);
+  headers.set("content-type", "application/json; charset=utf-8");
+  headers.delete("content-length");
+  return new Response(JSON.stringify(payload), {
+    status: original.status,
+    statusText: original.statusText,
+    headers,
+  });
+}
+
+function isCompletedProgress(record: { runState?: string; totalStops?: number; completedStops?: number }) {
+  return record.runState === "Completed" || Boolean(record.totalStops && record.completedStops === record.totalStops);
+}
+
+/**
+ * Wallboard-only adapter:
+ * - current site dwell continues to come from run-progress and therefore starts at first geofence entry;
+ * - between stops, the displayed next ETA is replaced with previous geofence departure + route time;
+ * - once all stops are geofence-departed, the run is removed from the wallboard/TV data feeds.
+ */
+export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: boolean }) {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const originalFetch = window.fetch.bind(window);
+    const cache = new Map<string, CachedTiming>();
+
+    const getTiming = (sourceUrl: string, input: RequestInfo | URL, init?: RequestInit) => {
+      const date = dateFromUrl(sourceUrl);
+      if (!date) return Promise.resolve(undefined);
+      const existing = cache.get(date);
+      if (existing && existing.expiresAt > Date.now()) return existing.promise;
+
+      const promise = originalFetch(timingUrl(sourceUrl, date), {
+        method: "GET",
+        headers: requestHeaders(input, init),
+        cache: "no-store",
+      }).then(async response => response.ok ? await response.json() as TimingResponse : undefined)
+        .catch(() => undefined);
+      cache.set(date, { expiresAt: Date.now() + 5000, promise });
+      return promise;
+    };
+
+    const patchedFetch: typeof window.fetch = async (input, init) => {
+      const response = await originalFetch(input, init);
+      if (!response.ok) return response;
+
+      const url = requestUrl(input);
+      const isLoads = /\/api\/v1\/loads(?:\?|$)/.test(url);
+      const isEta = url.includes("/api/v1/operations/delivery-etas");
+      const isProgress = url.includes("/api/v1/run-progress");
+      const isRouteProgress = url.includes("/api/v1/tv-display/route-progress");
+      if (!isLoads && !isEta && !isProgress && !isRouteProgress) return response;
+
+      try {
+        const payload = await response.clone().json();
+
+        if (isProgress && payload && Array.isArray(payload.records)) {
+          return jsonResponse(response, {
+            ...payload,
+            records: payload.records.filter((record: { runState?: string; totalStops?: number; completedStops?: number }) => !isCompletedProgress(record)),
+          });
+        }
+
+        const timing = await getTiming(url, input, init);
+        if (!timing?.geofenceAvailable) return response;
+        const timingByLoad = new Map(timing.records.map(record => [record.loadId, record]));
+        const completed = new Set(timing.records.filter(record => record.completed).map(record => record.loadId));
+
+        if (isLoads && Array.isArray(payload)) {
+          return jsonResponse(response, payload.filter((load: { id?: string }) => !load.id || !completed.has(load.id)));
+        }
+
+        if (isEta && payload && Array.isArray(payload.records)) {
+          const records = payload.records
+            .filter((eta: { loadId?: string }) => !eta.loadId || !completed.has(eta.loadId))
+            .map((eta: { loadId?: string; stopId?: string; sequence?: number; etaUtc?: string; source?: string }) => {
+              if (!eta.loadId) return eta;
+              const anchor = timingByLoad.get(eta.loadId);
+              if (!anchor?.nextEtaUtc) return eta;
+              const isNextStop = anchor.nextStopId && eta.stopId === anchor.nextStopId ||
+                anchor.nextStopSequence != null && eta.sequence === anchor.nextStopSequence;
+              return isNextStop ? { ...eta, etaUtc: anchor.nextEtaUtc, source: "Live" } : eta;
+            });
+          return jsonResponse(response, { ...payload, records });
+        }
+
+        if (isRouteProgress && payload && Array.isArray(payload.runs)) {
+          return jsonResponse(response, {
+            ...payload,
+            runs: payload.runs.filter((run: { loadId?: string }) => !run.loadId || !completed.has(run.loadId)),
+          });
+        }
+      } catch {
+        return response;
+      }
+
+      return response;
+    };
+
+    window.fetch = patchedFetch;
+    setReady(true);
+    return () => {
+      if (window.fetch === patchedFetch) window.fetch = originalFetch;
+    };
+  }, []);
+
+  if (!ready) return <section className="ops-wallboard"><div className="ops-board-empty">Loading live geofence timing...</div></section>;
+  return <ExistingOperationsWallboard tvMode={tvMode} />;
+}
