@@ -4,32 +4,9 @@ import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
+import { mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord } from "./operationsWallboardProgress";
 import "../operations-wallboard.css";
 
-type RunProgressStop = { id: string; sequence: number; name: string; plannedArrivalUtc?: string };
-type RunProgressVisit = {
-  geofenceName?: string;
-  loadStopId?: string;
-  enteredAtUtc: string;
-  confirmedAtUtc?: string;
-  dwellMinutes?: number;
-  waitLimitMinutes?: number;
-  isDelayed: boolean;
-  status: string;
-  statusReason?: string;
-};
-type RunProgressRecord = {
-  loadId: string;
-  loadReference: string;
-  loadStatus: string;
-  runState: string;
-  totalStops: number;
-  completedStops: number;
-  progressPercent: number;
-  nextStop?: RunProgressStop | null;
-  currentVisit?: RunProgressVisit | null;
-  lastDeparture?: { loadStopId?: string; exitedAtUtc?: string; dwellMinutes?: number } | null;
-};
 type RunProgressResponse = {
   planningDate: string;
   calculatedAtUtc: string;
@@ -39,17 +16,6 @@ type RunProgressResponse = {
   latestTrackingUtc?: string;
   warning?: string;
   records: RunProgressRecord[];
-};
-type RouteProgressRun = {
-  loadId: string;
-  reference: string;
-  totalStops: number;
-  completedStops: number;
-  phase: string;
-  truckPositionPercent: number;
-  focusStop?: string;
-  nextStopId?: string;
-  stops: Array<RunProgressStop & { state: string }>;
 };
 type RouteProgressResponse = {
   latestTrackingUtc?: string;
@@ -121,62 +87,6 @@ function minutesToWindow(eta?: DeliveryEta) {
   if (!eta?.etaUtc || !eta.deliveryWindowEndUtc) return undefined;
   const minutes = Math.round((ms(eta.deliveryWindowEndUtc) - ms(eta.etaUtc)) / 60000);
   return Number.isFinite(minutes) ? minutes : undefined;
-}
-function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: RouteProgressRun[]) {
-  const routeByLoad = new Map(routeRuns.map(run => [run.loadId, run]));
-  const merged = progress.map(record => {
-    const route = routeByLoad.get(record.loadId);
-    if (!route) return record;
-    routeByLoad.delete(record.loadId);
-    const nextStop = route.stops.find(stop => stop.id === route.nextStopId)
-      || route.stops.find(stop => stop.state === "heading" || stop.state === "upcoming")
-      || record.nextStop;
-    return {
-      ...record,
-      totalStops: Math.max(record.totalStops || 0, route.totalStops || 0),
-      completedStops: Math.max(record.completedStops || 0, route.completedStops || 0),
-      progressPercent: Math.max(record.progressPercent || 0, route.truckPositionPercent || 0),
-      runState: route.phase === "Complete" ? "Completed" : record.runState,
-      nextStop,
-    };
-  });
-  for (const route of routeByLoad.values()) {
-    merged.push({
-      loadId: route.loadId,
-      loadReference: route.reference,
-      loadStatus: route.phase,
-      runState: route.phase === "Complete" ? "Completed" : route.phase,
-      totalStops: route.totalStops,
-      completedStops: route.completedStops,
-      progressPercent: route.truckPositionPercent,
-      nextStop: route.stops.find(stop => stop.id === route.nextStopId)
-        || route.stops.find(stop => stop.state === "heading" || stop.state === "upcoming"),
-    });
-  }
-  return merged;
-}
-function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[]) {
-  const complete = progress?.runState === "Completed" || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops;
-  if (complete) return { status: "complete" as const, label: "AVAILABLE", detail: "Final stop complete · driver available for next work" };
-  if (progress?.currentVisit?.isDelayed) return {
-    status: "late" as const,
-    label: "SITE DELAY",
-    detail: `${progress.currentVisit.geofenceName || "On site"} · ${progress.currentVisit.dwellMinutes ?? 0} min dwell`,
-  };
-  if (progress?.currentVisit) return {
-    status: "onsite" as const,
-    label: progress.currentVisit.confirmedAtUtc ? "ON SITE" : "ARRIVED",
-    detail: `${progress.currentVisit.geofenceName || "Matched site"} · arrived ${formatTime(progress.currentVisit.enteredAtUtc)}`,
-  };
-  const hardRisk = etas.find(eta => eta.source === "Live" && (eta.risk === "Late" || eta.tachoStatus === "InsufficientDriveTime"));
-  if (hardRisk) return {
-    status: "late" as const,
-    label: hardRisk.tachoStatus === "InsufficientDriveTime" ? "HOURS RISK" : "LATE ETA",
-    detail: hardRisk.tachoStatus === "InsufficientDriveTime" ? "Tacho time is below remaining route need" : `${hardRisk.stopName} will miss its window`,
-  };
-  if (nextEta?.source === "Live" && nextEta.risk === "AtRisk") return { status: "risk" as const, label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer` };
-  if ((progress?.completedStops || 0) > 0 || nextEta?.source === "Live") return { status: "route" as const, label: "ON ROUTE", detail: progress?.nextStop?.name || nextEta?.stopName || "Live ETA active" };
-  return { status: "scheduled" as const, label: "SCHEDULED", detail: progress?.nextStop?.name || nextEta?.stopName || "Awaiting live tracker evidence" };
 }
 function tachoText(eta?: DeliveryEta) {
   if (!eta) return "tacho pending";
@@ -333,7 +243,13 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
         const completedStops = row.progress?.completedStops ?? 0;
         const totalStops = row.progress?.totalStops || row.load?.stops?.length || row.etas.length || 0;
         const percent = totalStops > 0 ? Math.min(100, Math.max(Math.round(completedStops / totalStops * 100), Math.round(row.progress?.progressPercent ?? 0))) : 0;
-        const progressLabel = row.progress?.currentVisit ? `${row.progress.currentVisit.geofenceName || "On site"} · ${row.progress.currentVisit.dwellMinutes ?? 0}m` : row.status === "complete" ? "Journey complete" : `${completedStops} of ${totalStops || "?"} stops`;
+        const progressLabel = row.progress?.currentVisit
+          ? `${row.progress.currentVisit.geofenceName || "On site"} · ${row.progress.currentVisit.dwellMinutes ?? 0}m`
+          : row.status === "complete"
+            ? "Journey complete"
+            : row.progress?.focusStop
+              ? `${row.progress.phase || "Next"} · ${row.progress.focusStop}`
+              : `${completedStops} of ${totalStops || "?"} stops`;
         return <article className={`ops-board-row ${row.status} ${row.id === presentRowId ? "present" : ""}`} role="row" key={row.id} data-row-id={row.id}>
           <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.status === "complete" ? "completed" : "planned start"}</small></span>
           <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small></span>
