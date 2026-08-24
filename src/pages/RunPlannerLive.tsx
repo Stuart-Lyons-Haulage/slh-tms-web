@@ -153,15 +153,19 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
 
   const refreshAll = useCallback(async () => {
     const access = await token();
-    const [nextControl, nextLoads, nextSites] = await Promise.all([
-      request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, access),
+    const nextControl = await request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, access);
+    const [loadsResult, sitesResult] = await Promise.allSettled([
       api.loads(date, access),
       api.sites(access),
     ]);
-    const safeLoads = Array.isArray(nextLoads) ? nextLoads : [];
+    const safeLoads = loadsResult.status === "fulfilled" && Array.isArray(loadsResult.value) ? loadsResult.value : [];
+    const safeSites = sitesResult.status === "fulfilled" && Array.isArray(sitesResult.value) ? sitesResult.value : [];
     setControl(nextControl);
     setLoads(safeLoads);
-    setSites(Array.isArray(nextSites) ? nextSites : []);
+    setSites(safeSites);
+    if (loadsResult.status === "rejected" || sitesResult.status === "rejected") {
+      setMessage("Planner loaded the approved pallet balance. Run or site lookup is temporarily unavailable, so new run stop details may be limited until refresh.");
+    }
     hydrate(nextControl, safeLoads);
   }, [date, hydrate, token]);
 
