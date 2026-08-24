@@ -5,13 +5,13 @@ import { useAccessToken } from "../lib/auth";
 type DriverSuggestion = {
   id: string; displayName: string; employeeNumber: string; tachoName?: string;
   dailyRemainingMinutes?: number; weeklyRemainingMinutes?: number; weeklyWorkRemainingMinutes?: number;
-  tachoVehicle?: string; previousRun?: string; previousDate?: string; previousEnd?: string;
+  tachoStatus?: "SignedOn" | "NotSignedOn" | string; tachoSignOnUtc?: string; tachoVehicle?: string; previousRun?: string; previousDate?: string; previousEnd?: string;
   estimatedRepositionMiles?: number; projectedShiftMinutes?: number; projectedShiftRisk?: "Green" | "Amber" | "Red" | "Unknown";
   score: number; shiftRisk: "Green" | "Amber" | "Red" | "Unknown"; reason: string;
 };
 type VehicleSuggestion = {
   id: string; registration: string; fleetNumber?: string; abbreviation?: string; liveUpdatedAtUtc?: string;
-  isMoving?: boolean; lastKnownStatus?: string; currentDriver?: string; previousRun?: string; previousEnd?: string;
+  isMoving?: boolean; lastKnownStatus?: string; currentDriver?: string; tachoStatus?: "SignedOn" | "NotSignedOn" | string; tachoSignOnUtc?: string; previousRun?: string; previousEnd?: string;
   estimatedEmptyMiles?: number; score: number; reason: string;
 };
 type Intelligence = {
@@ -28,6 +28,15 @@ type DriverLookup = { id: string; displayName: string; employeeNumber: string; t
 type VehicleLookup = { id: string; registration: string; fleetNumber?: string; abbreviation?: string; lastLocation?: { latitude?: number; longitude?: number; lastEventTimeUtc?: string; isMoving?: boolean; lastKnownStatus?: string } };
 
 const minutes = (value?: number) => value == null ? "Not returned" : `${Math.floor(value / 60)}h ${String(value % 60).padStart(2, "0")}m`;
+const tachoTime = (value?: string) => {
+  const parsed = value ? new Date(value) : undefined;
+  return parsed && Number.isFinite(parsed.getTime()) ? parsed.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : undefined;
+};
+const signOnText = (item: { tachoStatus?: string; tachoSignOnUtc?: string; tachoVehicle?: string; currentDriver?: string }) => {
+  if (item.tachoStatus === "SignedOn") return `Signed on ${tachoTime(item.tachoSignOnUtc) || ""}${item.tachoVehicle ? ` · ${item.tachoVehicle}` : ""}`.trim();
+  if (item.tachoStatus === "NotSignedOn") return "Not signed on";
+  return item.tachoStatus || "";
+};
 const riskSymbol = (risk?: string) => risk === "Red" ? "⚠" : risk === "Amber" ? "△" : risk === "Green" ? "✓" : "?";
 const availabilityRisk = (today?: number, week?: number): DriverSuggestion["shiftRisk"] => today != null && today < 240 || week != null && week < 600 ? "Red" : today != null && today < 360 || week != null && week < 900 ? "Amber" : today == null && week == null ? "Unknown" : "Green";
 const roadMiles = (aLat: number, aLon: number, bLat: number, bLon: number) => {
@@ -136,10 +145,10 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12, marginTop: 12 }}>
       <div><label><strong>Driver</strong><input value={driverQuery} onChange={e => setDriverQuery(e.target.value)} placeholder="Start typing driver name…" style={{ width: "100%" }} /></label>
-        <div style={{ maxHeight: 250, overflow: "auto", marginTop: 6 }}>{drivers.slice(0, 10).map(item => <button key={item.id} type="button" onClick={() => { setDriverId(item.id); setDriverQuery(item.displayName); }} style={{ width: "100%", textAlign: "left", marginBottom: 5, border: driverId === item.id ? "2px solid #0b5f78" : undefined }}><strong>{riskSymbol(item.shiftRisk)} {item.displayName}</strong>{item.tachoVehicle ? ` · Tacho ${item.tachoVehicle}` : ""}<br/><small>Daily driving {minutes(item.dailyRemainingMinutes)} · Weekly driving {minutes(item.weeklyRemainingMinutes)}</small><br/><small>Weekly work {minutes(item.weeklyWorkRemainingMinutes)} · Risk <b>{item.shiftRisk}</b></small><br/><small>{item.reason}</small></button>)}</div>
+        <div style={{ maxHeight: 250, overflow: "auto", marginTop: 6 }}>{drivers.slice(0, 10).map(item => <button key={item.id} type="button" onClick={() => { setDriverId(item.id); setDriverQuery(item.displayName); }} style={{ width: "100%", textAlign: "left", marginBottom: 5, border: driverId === item.id ? "2px solid #0b5f78" : undefined }}><strong>{riskSymbol(item.shiftRisk)} {item.displayName}</strong>{signOnText(item) ? ` · ${signOnText(item)}` : ""}<br/><small>Daily driving {minutes(item.dailyRemainingMinutes)} · Weekly driving {minutes(item.weeklyRemainingMinutes)}</small><br/><small>Weekly work {minutes(item.weeklyWorkRemainingMinutes)} · Risk <b>{item.shiftRisk}</b></small><br/><small>{item.reason}</small></button>)}</div>
       </div>
       <div><label><strong>Vehicle</strong><input value={vehicleQuery} onChange={e => setVehicleQuery(e.target.value)} placeholder="Type reg or last 3…" style={{ width: "100%" }} /></label>
-        <div style={{ maxHeight: 250, overflow: "auto", marginTop: 6 }}>{vehicles.slice(0, 10).map(item => <button key={item.id} type="button" onClick={() => { setVehicleId(item.id); setVehicleQuery(item.registration); }} style={{ width: "100%", textAlign: "left", marginBottom: 5, border: vehicleId === item.id ? "2px solid #0b5f78" : undefined }}><strong>{item.registration}</strong>{item.currentDriver ? ` · Current Tacho driver ${item.currentDriver}` : ""}<br/><small>{item.estimatedEmptyMiles == null ? "Empty miles not yet calculable" : `Estimated empty miles ${item.estimatedEmptyMiles.toFixed(1)}`}</small><br/><small>{item.reason}</small></button>)}</div>
+        <div style={{ maxHeight: 250, overflow: "auto", marginTop: 6 }}>{vehicles.slice(0, 10).map(item => <button key={item.id} type="button" onClick={() => { setVehicleId(item.id); setVehicleQuery(item.registration); }} style={{ width: "100%", textAlign: "left", marginBottom: 5, border: vehicleId === item.id ? "2px solid #0b5f78" : undefined }}><strong>{item.registration}</strong>{item.currentDriver ? ` · ${item.currentDriver}` : ""}{signOnText(item) ? ` · ${signOnText(item)}` : ""}<br/><small>{item.estimatedEmptyMiles == null ? "Empty miles not yet calculable" : `Estimated empty miles ${item.estimatedEmptyMiles.toFixed(1)}`}</small><br/><small>{item.reason}</small></button>)}</div>
       </div>
     </div>
     {(chosenDriver || chosenVehicle) && <div style={{ marginTop: 10, padding: 9, background: "#f4f8fa", borderRadius: 7 }}>{chosenDriver && <div><strong>{riskSymbol(chosenDriver.shiftRisk)} {chosenDriver.displayName}</strong> · daily {minutes(chosenDriver.dailyRemainingMinutes)} · weekly {minutes(chosenDriver.weeklyRemainingMinutes)} · risk {chosenDriver.shiftRisk}</div>}{chosenVehicle && <div><strong>{chosenVehicle.registration}</strong>{chosenVehicle.estimatedEmptyMiles != null ? ` · ${chosenVehicle.estimatedEmptyMiles.toFixed(1)} estimated empty miles to first job` : ""}</div>}</div>}

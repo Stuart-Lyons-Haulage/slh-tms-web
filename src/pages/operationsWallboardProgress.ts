@@ -41,12 +41,14 @@ export type RunProgressRecord = {
   tacho?: RunTachoEvidence | null;
 };
 export type RunTachoEvidence = {
-  status: "Matched" | "Mismatch" | "NoTachoDuty" | "NoPlannedDriver" | "Unavailable" | string;
+  status: "Matched" | "Mismatch" | "NoTachoDuty" | "NoPlannedDriver" | "NoPlannedVehicle" | "Unavailable" | string;
   driverName?: string;
   vehicleCode?: string;
   signOnUtc?: string;
   dutyEndUtc?: string;
   driveAvailableTodayMinutes?: number;
+  driveAvailableWeekMinutes?: number;
+  workAvailableWeekMinutes?: number;
   explanation?: string;
 };
 export type RouteProgressRun = {

@@ -12,7 +12,8 @@ type RunColour = "upcoming" | "stationary" | "on-time" | "at-risk";
 type RunProgressStop = { id: string; sequence: number; name: string; plannedArrivalUtc?: string };
 type RunProgressVisit = { geofenceName?: string; enteredAtUtc: string; siteArrivalUtc?: string; siteDepartureUtc?: string; confirmedAtUtc?: string; dwellMinutes?: number; liveDwellMinutes?: number; liveDwellSeconds?: number; finalDwellMinutes?: number; finalDwellSeconds?: number; waitLimitMinutes?: number; isDelayed: boolean; status: string; statusReason?: string };
 type RunStopDwell = { stopId: string; sequence: number; stopName: string; state: "EnRoute" | "OnSite" | "Departed"; siteArrivalUtc?: string; siteDepartureUtc?: string; liveDwellSeconds?: number; liveDwellMinutes?: number; finalDwellSeconds?: number; finalDwellMinutes?: number };
-type RunProgressRecord = { loadId: string; loadReference: string; loadStatus: string; runState: string; totalStops: number; completedStops: number; progressPercent: number; nextStop?: RunProgressStop | null; currentVisit?: RunProgressVisit | null; lastDeparture?: { exitedAtUtc: string; dwellMinutes: number; finalDwellSeconds?: number; finalDwellMinutes?: number } | null; stopDwell?: RunStopDwell[]; linkageException?: { state: string; geofenceName: string; message: string } | null };
+type RunTachoEvidence = { status: "Matched" | "Mismatch" | "NoTachoDuty" | "NoPlannedDriver" | "NoPlannedVehicle" | "Unavailable" | string; driverName?: string; vehicleCode?: string; signOnUtc?: string; dutyEndUtc?: string; driveAvailableTodayMinutes?: number; driveAvailableWeekMinutes?: number; workAvailableWeekMinutes?: number; explanation?: string };
+type RunProgressRecord = { loadId: string; loadReference: string; loadStatus: string; runState: string; totalStops: number; completedStops: number; progressPercent: number; nextStop?: RunProgressStop | null; currentVisit?: RunProgressVisit | null; lastDeparture?: { exitedAtUtc: string; dwellMinutes: number; finalDwellSeconds?: number; finalDwellMinutes?: number } | null; stopDwell?: RunStopDwell[]; linkageException?: { state: string; geofenceName: string; message: string } | null; tacho?: RunTachoEvidence | null };
 type RunProgressResponse = { planningDate: string; calculatedAtUtc: string; source?: string; geofenceAvailable?: boolean; geofenceCount?: number; geofenceVisitCount?: number; geofenceLinkedRuns?: number; warning?: string; records: RunProgressRecord[] };
 
 type LiveRunRow = {
@@ -63,6 +64,18 @@ function dwellLine(progress?: RunProgressRecord) {
   const departed = progress?.lastDeparture || [...(progress?.stopDwell || [])].reverse().find(stop => stop.state === "Departed");
   if (departed) return `Dwell time: ${formatDuration(departed.finalDwellSeconds, departed.finalDwellMinutes ?? ("dwellMinutes" in departed ? departed.dwellMinutes : undefined))}`;
   return progress?.linkageException ? "Geofence link needs review" : undefined;
+}
+
+function tachoLine(progress: RunProgressRecord | undefined, vehicle: LiveRunRow["vehicle"]) {
+  const tacho = progress?.tacho;
+  if (tacho?.status === "Matched") return `Signed on ${formatTime(tacho.signOnUtc)}${tacho.vehicleCode ? ` · ${tacho.vehicleCode}` : ""}`;
+  if (tacho?.status === "Mismatch") return `Tacho mismatch${tacho.driverName ? ` · ${tacho.driverName}` : ""}`;
+  if (tacho?.status === "NoTachoDuty") return "Not signed on in TachoMaster";
+  if (tacho?.status === "NoPlannedDriver") return "No planned driver";
+  if (tacho?.status === "NoPlannedVehicle") return "No planned vehicle";
+  if (tacho?.status === "Unavailable") return "TachoMaster unavailable";
+  if (vehicle?.tacho?.dutyStartUtc) return `Signed on ${formatTime(vehicle.tacho.dutyStartUtc)}${vehicle.tacho.vehicleCode ? ` · ${vehicle.tacho.vehicleCode}` : ""}`;
+  return "TachoMaster evidence missing";
 }
 
 function statusFor(progress: RunProgressRecord | undefined, vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
@@ -366,8 +379,9 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
         const baseRunLabel = displayRunReference(row.load.reference, row.load.plannerNotes, row.firstPlannedUtc);
         const runLabel = row.carryOver ? `${baseRunLabel} · CARRY-OVER` : baseRunLabel;
         const dwell = dwellLine(row.progress);
+        const tacho = tachoLine(row.progress, row.vehicle);
         return <article className={`live-run-row ${row.status}`} key={row.load.id}>
-          <div className="run-identity"><span className="run-truck">▰</span><div><strong>{row.registration}</strong>{dwell && <small className="run-dwell-line">{dwell}</small>}<span>{row.driver}</span><small>{row.trailer ? `${runLabel} · Trailer ${row.trailer}` : runLabel}</small></div></div>
+          <div className="run-identity"><span className="run-truck">▰</span><div><strong>{row.registration}</strong>{dwell && <small className="run-dwell-line">{dwell}</small>}<span>{row.driver}</span><small>{tacho}</small><small>{row.trailer ? `${runLabel} · Trailer ${row.trailer}` : runLabel}</small></div></div>
           <div className="run-route">
             <strong>{sortedStops.length ? sortedStops.map((stop) => stop.name).join(" → ") : runLabel}</strong>
             {sortedStops.length > 0 && <div className="run-progress" aria-label={`${completedStops} of ${sortedStops.length} stops completed`}>

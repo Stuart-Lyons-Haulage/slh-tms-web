@@ -105,8 +105,9 @@ function tachoText(tacho?: RunTachoEvidence | null, eta?: DeliveryEta) {
   if (tacho?.status === "Mismatch") return "tacho mismatch";
   if (tacho?.status === "NoTachoDuty") return "not signed on";
   if (tacho?.status === "NoPlannedDriver") return "no planned driver";
+  if (tacho?.status === "NoPlannedVehicle") return "no planned vehicle";
   if (tacho?.status === "Unavailable") return "TachoMaster unavailable";
-  if (!eta) return "tacho not checked";
+  if (!eta) return "TachoMaster evidence missing";
   if (eta.tachoStatus === "InsufficientDriveTime") return "insufficient drive time";
   if (eta.tachoStatus === "BreakIncluded") return `${eta.breakMinutesIncluded}m break included`;
   if (eta.tachoStatus === "WithinDriveTime") return "within drive time";
