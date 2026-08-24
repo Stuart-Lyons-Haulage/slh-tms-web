@@ -12,7 +12,7 @@ type RunColour = "upcoming" | "stationary" | "on-time" | "at-risk";
 type RunProgressStop = { id: string; sequence: number; name: string; plannedArrivalUtc?: string };
 type RunProgressVisit = { geofenceName?: string; enteredAtUtc: string; siteArrivalUtc?: string; siteDepartureUtc?: string; confirmedAtUtc?: string; dwellMinutes?: number; liveDwellMinutes?: number; liveDwellSeconds?: number; finalDwellMinutes?: number; finalDwellSeconds?: number; waitLimitMinutes?: number; isDelayed: boolean; status: string; statusReason?: string };
 type RunStopDwell = { stopId: string; sequence: number; stopName: string; state: "EnRoute" | "OnSite" | "Departed"; siteArrivalUtc?: string; siteDepartureUtc?: string; liveDwellSeconds?: number; liveDwellMinutes?: number; finalDwellSeconds?: number; finalDwellMinutes?: number };
-type RunTachoEvidence = { status: "Matched" | "Mismatch" | "NoTachoDuty" | "NoPlannedDriver" | "NoPlannedVehicle" | "Unavailable" | string; driverName?: string; vehicleCode?: string; signOnUtc?: string; dutyEndUtc?: string; driveAvailableTodayMinutes?: number; driveAvailableWeekMinutes?: number; workAvailableWeekMinutes?: number; explanation?: string };
+type RunTachoEvidence = { status: "Matched" | "CardConfirmed" | "Mismatch" | "NoTachoDuty" | "NoPlannedDriver" | "NoPlannedVehicle" | "Unavailable" | string; driverName?: string; vehicleCode?: string; signOnUtc?: string; dutyEndUtc?: string; driveAvailableTodayMinutes?: number; driveAvailableWeekMinutes?: number; workAvailableWeekMinutes?: number; cardConfirmed?: boolean; legalHoursAvailable?: boolean; evidenceSource?: string; explanation?: string };
 type RunProgressRecord = { loadId: string; loadReference: string; loadStatus: string; runState: string; totalStops: number; completedStops: number; progressPercent: number; nextStop?: RunProgressStop | null; currentVisit?: RunProgressVisit | null; lastDeparture?: { exitedAtUtc: string; dwellMinutes: number; finalDwellSeconds?: number; finalDwellMinutes?: number } | null; stopDwell?: RunStopDwell[]; linkageException?: { state: string; geofenceName: string; message: string } | null; tacho?: RunTachoEvidence | null };
 type RunProgressResponse = { planningDate: string; calculatedAtUtc: string; source?: string; geofenceAvailable?: boolean; geofenceCount?: number; geofenceVisitCount?: number; geofenceLinkedRuns?: number; warning?: string; records: RunProgressRecord[] };
 
@@ -69,6 +69,7 @@ function dwellLine(progress?: RunProgressRecord) {
 function tachoLine(progress: RunProgressRecord | undefined, vehicle: LiveRunRow["vehicle"]) {
   const tacho = progress?.tacho;
   if (tacho?.status === "Matched") return `Signed on ${formatTime(tacho.signOnUtc)}${tacho.vehicleCode ? ` · ${tacho.vehicleCode}` : ""}`;
+  if (tacho?.status === "CardConfirmed") return `Card confirmed ${formatTime(tacho.signOnUtc)}${tacho.legalHoursAvailable ? " · hours attached" : " · hours missing"}`;
   if (tacho?.status === "Mismatch") return `Tacho mismatch${tacho.driverName ? ` · ${tacho.driverName}` : ""}`;
   if (tacho?.status === "NoTachoDuty") return "Not signed on in TachoMaster";
   if (tacho?.status === "NoPlannedDriver") return "No planned driver";

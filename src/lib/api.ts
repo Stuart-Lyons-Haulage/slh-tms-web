@@ -498,7 +498,9 @@ export type DeliveryEta = {
     | "RouteUnavailable"
     | "WithinDriveTime"
     | "BreakIncluded"
-    | "InsufficientDriveTime";
+    | "InsufficientDriveTime"
+    | "CardConfirmedWithinDriveTime"
+    | "CardConfirmedHoursUnavailable";
   tachoExplanation: string;
 };
 export type DeliveryEtas = {

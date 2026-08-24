@@ -41,7 +41,7 @@ export type RunProgressRecord = {
   tacho?: RunTachoEvidence | null;
 };
 export type RunTachoEvidence = {
-  status: "Matched" | "Mismatch" | "NoTachoDuty" | "NoPlannedDriver" | "NoPlannedVehicle" | "Unavailable" | string;
+  status: "Matched" | "CardConfirmed" | "Mismatch" | "NoTachoDuty" | "NoPlannedDriver" | "NoPlannedVehicle" | "Unavailable" | string;
   driverName?: string;
   vehicleCode?: string;
   signOnUtc?: string;
@@ -49,6 +49,9 @@ export type RunTachoEvidence = {
   driveAvailableTodayMinutes?: number;
   driveAvailableWeekMinutes?: number;
   workAvailableWeekMinutes?: number;
+  cardConfirmed?: boolean;
+  legalHoursAvailable?: boolean;
+  evidenceSource?: string;
   explanation?: string;
 };
 export type RouteProgressRun = {

@@ -102,6 +102,7 @@ function formatTachoTime(value?: string) {
 }
 function tachoText(tacho?: RunTachoEvidence | null, eta?: DeliveryEta) {
   if (tacho?.status === "Matched") return `signed on ${formatTachoTime(tacho.signOnUtc) || ""}`.trim();
+  if (tacho?.status === "CardConfirmed") return `card confirmed ${formatTachoTime(tacho.signOnUtc) || ""}`.trim();
   if (tacho?.status === "Mismatch") return "tacho mismatch";
   if (tacho?.status === "NoTachoDuty") return "not signed on";
   if (tacho?.status === "NoPlannedDriver") return "no planned driver";
@@ -110,6 +111,8 @@ function tachoText(tacho?: RunTachoEvidence | null, eta?: DeliveryEta) {
   if (!eta) return "TachoMaster evidence missing";
   if (eta.tachoStatus === "InsufficientDriveTime") return "insufficient drive time";
   if (eta.tachoStatus === "BreakIncluded") return `${eta.breakMinutesIncluded}m break included`;
+  if (eta.tachoStatus === "CardConfirmedWithinDriveTime") return "card confirmed";
+  if (eta.tachoStatus === "CardConfirmedHoursUnavailable") return "card confirmed · hours missing";
   if (eta.tachoStatus === "WithinDriveTime") return "within drive time";
   if (eta.tachoDriverName) return `matched ${eta.tachoDriverName}`;
   return "tacho unavailable";
