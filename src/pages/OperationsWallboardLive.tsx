@@ -102,6 +102,16 @@ function tachoText(eta?: DeliveryEta) {
   if (eta.tachoDriverName) return `matched ${eta.tachoDriverName}`;
   return "tacho unavailable";
 }
+function formatDwell(seconds?: number, minutes?: number) {
+  const totalMinutes = seconds != null ? Math.max(0, Math.floor(seconds / 60)) : Math.max(0, minutes ?? 0);
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
+}
+function dwellLabel(progress?: RunProgressRecord) {
+  if (progress?.currentVisit) return `Time on site: ${formatDwell(progress.currentVisit.liveDwellSeconds, progress.currentVisit.liveDwellMinutes ?? progress.currentVisit.dwellMinutes)}`;
+  const departed = progress?.lastDeparture || [...(progress?.stopDwell || [])].reverse().find(stop => stop.state === "Departed");
+  if (departed) return `Dwell time: ${formatDwell(departed.finalDwellSeconds, departed.finalDwellMinutes ?? ("dwellMinutes" in departed ? departed.dwellMinutes : undefined))}`;
+  return progress?.linkageException ? "Geofence link needs review" : undefined;
+}
 
 export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
   const token = useAccessToken();
@@ -254,9 +264,9 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
         const totalStops = row.progress?.totalStops || row.load?.stops?.length || row.etas.length || 0;
         const percent = totalStops > 0 ? Math.min(100, Math.max(Math.round(completedStops / totalStops * 100), Math.round(row.progress?.progressPercent ?? 0))) : 0;
         const progressLabel = row.progress?.currentVisit
-          ? `${row.progress.currentVisit.geofenceName || "On site"} · ${row.progress.currentVisit.dwellMinutes ?? 0}m`
+          ? `${row.progress.currentVisit.geofenceName || "On site"} · ${dwellLabel(row.progress)}`
           : row.status === "complete"
-            ? "Journey complete"
+            ? dwellLabel(row.progress) || "Journey complete"
             : row.progress?.focusStop
               ? `${row.progress.phase || "Next"} · ${row.progress.focusStop}`
               : `${completedStops} of ${totalStops || "?"} stops`;
@@ -265,7 +275,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
           <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small></span>
           <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
           <span><strong>{row.driver}</strong><small>{tachoText(row.nextEta)}</small></span>
-          <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${percent}%` }} /></div><small>{row.route}</small></span>
+          <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${percent}%` }} /></div><small>{row.progress?.linkageException?.message || row.route}</small></span>
           <span className="time-cell eta"><strong>{row.displayTimeLabel === "AVAILABLE" ? "AVAILABLE" : formatTime(row.displayTimeUtc)}</strong><small>{row.displayTimeLabel}{row.displayTimeLabel === "LIVE ETA" ? ` · ${formatAge(row.nextEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}` : ""}</small></span>
           <span className="status-cell"><strong>{row.statusLabel}</strong><small>{buffer == null || row.status === "onsite" || row.status === "complete" ? row.statusDetail : `${buffer >= 0 ? "+" : ""}${buffer}m · ${row.statusDetail}`}</small></span>
         </article>;

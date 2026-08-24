@@ -23,6 +23,14 @@ type TvRun = {
   state: string;
   stateDetail: string;
   priority: number;
+  siteArrivalUtc?: string;
+  siteDepartureUtc?: string;
+  liveDwellMinutes?: number;
+  liveDwellSeconds?: number;
+  finalDwellMinutes?: number;
+  finalDwellSeconds?: number;
+  dwellState?: "EnRoute" | "OnSite" | "Departed";
+  linkageException?: string;
 };
 
 type TvFeed = {
@@ -49,6 +57,17 @@ function todayInLondon() {
 
 function time(value?: string) {
   return formatUkTime(value);
+}
+
+function duration(seconds?: number, minutes?: number) {
+  const totalMinutes = seconds != null ? Math.max(0, Math.floor(seconds / 60)) : Math.max(0, minutes ?? 0);
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
+}
+
+function dwellText(run: TvRun) {
+  if (run.dwellState === "OnSite") return `Time on site: ${duration(run.liveDwellSeconds, run.liveDwellMinutes)}`;
+  if (run.dwellState === "Departed" && run.finalDwellMinutes != null) return `Dwell time: ${duration(run.finalDwellSeconds, run.finalDwellMinutes)}`;
+  return run.linkageException ? "Geofence link needs review" : undefined;
 }
 
 function stateClass(value: string) {
@@ -236,10 +255,10 @@ export function PublicTvBoard() {
       <div className="tv-run-head"><span>Run</span><span>Allocation</span><span>Next stop</span><span>ETA</span><span>Live status</span></div>
       {(feed?.runs || []).map(run => <article className={`tv-run-row ${needsAttention(run.state) ? "tv-run-row-attention" : ""}`} key={run.id}>
         <div className="tv-run-ref"><strong>{run.displayReference || displayRunReference(run.reference, undefined, run.firstPlannedUtc)}</strong><small>{run.status}</small></div>
-        <div><strong>{run.vehicle}</strong><span>{run.driver}</span><small>{run.trailer ? `Trailer ${run.trailer}` : "Trailer TBC"}</small></div>
+        <div><strong>{run.vehicle}</strong>{dwellText(run) && <small className="tv-run-dwell">{dwellText(run)}</small>}<span>{run.driver}</span><small>{run.trailer ? `Trailer ${run.trailer}` : "Trailer TBC"}</small></div>
         <div><strong>{run.nextStop || (run.state === "COMPLETED" ? "Run complete" : "Next stop TBC")}</strong><small>Start {time(run.firstPlannedUtc)} · finish {time(run.finalPlannedUtc)}</small></div>
         <div className="tv-run-eta"><strong>{run.state === "COMPLETED" ? "✓" : time(run.etaUtc)}</strong><small>{run.etaSource === "Live" ? "LIVE ETA" : run.etaSource.toUpperCase()}</small></div>
-        <div className={`tv-run-state ${stateClass(run.state)}`}><strong>{run.state}</strong><span>{run.stateDetail}</span><small>{run.tracking}</small></div>
+        <div className={`tv-run-state ${stateClass(run.state)}`}><strong>{run.state}</strong><span>{run.stateDetail}</span><small>{run.linkageException || run.tracking}</small></div>
       </article>)}
       {!error && feed && feed.runs.length === 0 && <div className="tv-display-empty">No runs are planned for today.</div>}
     </section>

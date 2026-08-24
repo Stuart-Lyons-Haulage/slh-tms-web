@@ -5,8 +5,14 @@ export type RunProgressVisit = {
   geofenceName?: string;
   loadStopId?: string;
   enteredAtUtc: string;
+  siteArrivalUtc?: string;
+  siteDepartureUtc?: string;
   confirmedAtUtc?: string;
   dwellMinutes?: number;
+  liveDwellMinutes?: number;
+  liveDwellSeconds?: number;
+  finalDwellMinutes?: number;
+  finalDwellSeconds?: number;
   waitLimitMinutes?: number;
   isDelayed: boolean;
   status: string;
@@ -22,7 +28,9 @@ export type RunProgressRecord = {
   progressPercent: number;
   nextStop?: RunProgressStop | null;
   currentVisit?: RunProgressVisit | null;
-  lastDeparture?: { loadStopId?: string; exitedAtUtc?: string; dwellMinutes?: number } | null;
+  lastDeparture?: { loadStopId?: string; exitedAtUtc?: string; dwellMinutes?: number; finalDwellMinutes?: number; finalDwellSeconds?: number } | null;
+  stopDwell?: Array<{ stopId: string; sequence: number; stopName: string; state: "EnRoute" | "OnSite" | "Departed"; siteArrivalUtc?: string; siteDepartureUtc?: string; liveDwellMinutes?: number; liveDwellSeconds?: number; finalDwellMinutes?: number; finalDwellSeconds?: number }>;
+  linkageException?: { state: string; geofenceName: string; message: string } | null;
   phase?: string;
   focusStop?: string;
   geofenceOnSite?: boolean;
@@ -45,6 +53,9 @@ export type RouteProgressRun = {
   trackingMoving?: boolean;
   trackingAgeSeconds?: number;
   speedKph?: number;
+  currentVisit?: RunProgressVisit | null;
+  stopDwell?: RunProgressRecord["stopDwell"];
+  linkageException?: RunProgressRecord["linkageException"];
   stops: Array<RunProgressStop & { state: string }>;
 };
 
@@ -143,6 +154,9 @@ function routeFields(route: RouteProgressRun) {
     trackingMoving: route.trackingMoving,
     trackingAgeSeconds: route.trackingAgeSeconds,
     speedKph: route.speedKph,
+    currentVisit: route.currentVisit,
+    stopDwell: route.stopDwell,
+    linkageException: route.linkageException,
   };
 }
 

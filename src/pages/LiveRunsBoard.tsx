@@ -10,8 +10,9 @@ import "../live-runs.css";
 
 type RunColour = "upcoming" | "stationary" | "on-time" | "at-risk";
 type RunProgressStop = { id: string; sequence: number; name: string; plannedArrivalUtc?: string };
-type RunProgressVisit = { geofenceName?: string; enteredAtUtc: string; confirmedAtUtc?: string; dwellMinutes?: number; waitLimitMinutes?: number; isDelayed: boolean; status: string; statusReason?: string };
-type RunProgressRecord = { loadId: string; loadReference: string; loadStatus: string; runState: string; totalStops: number; completedStops: number; progressPercent: number; nextStop?: RunProgressStop | null; currentVisit?: RunProgressVisit | null; lastDeparture?: { exitedAtUtc: string; dwellMinutes: number } | null };
+type RunProgressVisit = { geofenceName?: string; enteredAtUtc: string; siteArrivalUtc?: string; siteDepartureUtc?: string; confirmedAtUtc?: string; dwellMinutes?: number; liveDwellMinutes?: number; liveDwellSeconds?: number; finalDwellMinutes?: number; finalDwellSeconds?: number; waitLimitMinutes?: number; isDelayed: boolean; status: string; statusReason?: string };
+type RunStopDwell = { stopId: string; sequence: number; stopName: string; state: "EnRoute" | "OnSite" | "Departed"; siteArrivalUtc?: string; siteDepartureUtc?: string; liveDwellSeconds?: number; liveDwellMinutes?: number; finalDwellSeconds?: number; finalDwellMinutes?: number };
+type RunProgressRecord = { loadId: string; loadReference: string; loadStatus: string; runState: string; totalStops: number; completedStops: number; progressPercent: number; nextStop?: RunProgressStop | null; currentVisit?: RunProgressVisit | null; lastDeparture?: { exitedAtUtc: string; dwellMinutes: number; finalDwellSeconds?: number; finalDwellMinutes?: number } | null; stopDwell?: RunStopDwell[]; linkageException?: { state: string; geofenceName: string; message: string } | null };
 type RunProgressResponse = { planningDate: string; calculatedAtUtc: string; source?: string; geofenceAvailable?: boolean; geofenceCount?: number; geofenceVisitCount?: number; geofenceLinkedRuns?: number; warning?: string; records: RunProgressRecord[] };
 
 type LiveRunRow = {
@@ -50,6 +51,18 @@ function formatAge(value?: string | Date, now = new Date()) {
   const seconds = Math.max(0, Math.round((now.getTime() - parsed.getTime()) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   return `${Math.round(seconds / 60)}m ago`;
+}
+
+function formatDuration(seconds?: number, minutes?: number) {
+  const totalMinutes = seconds != null ? Math.max(0, Math.floor(seconds / 60)) : Math.max(0, minutes ?? 0);
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
+}
+
+function dwellLine(progress?: RunProgressRecord) {
+  if (progress?.currentVisit) return `Time on site: ${formatDuration(progress.currentVisit.liveDwellSeconds, progress.currentVisit.liveDwellMinutes ?? progress.currentVisit.dwellMinutes)}`;
+  const departed = progress?.lastDeparture || [...(progress?.stopDwell || [])].reverse().find(stop => stop.state === "Departed");
+  if (departed) return `Dwell time: ${formatDuration(departed.finalDwellSeconds, departed.finalDwellMinutes ?? ("dwellMinutes" in departed ? departed.dwellMinutes : undefined))}`;
+  return progress?.linkageException ? "Geofence link needs review" : undefined;
 }
 
 function statusFor(progress: RunProgressRecord | undefined, vehicle: LiveRunRow["vehicle"], etas: DeliveryEta[]) {
@@ -352,8 +365,9 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
         const completed = row.progress?.runState === "Completed";
         const baseRunLabel = displayRunReference(row.load.reference, row.load.plannerNotes, row.firstPlannedUtc);
         const runLabel = row.carryOver ? `${baseRunLabel} · CARRY-OVER` : baseRunLabel;
+        const dwell = dwellLine(row.progress);
         return <article className={`live-run-row ${row.status}`} key={row.load.id}>
-          <div className="run-identity"><span className="run-truck">▰</span><div><strong>{row.registration}</strong><span>{row.driver}</span><small>{row.trailer ? `${runLabel} · Trailer ${row.trailer}` : runLabel}</small></div></div>
+          <div className="run-identity"><span className="run-truck">▰</span><div><strong>{row.registration}</strong>{dwell && <small className="run-dwell-line">{dwell}</small>}<span>{row.driver}</span><small>{row.trailer ? `${runLabel} · Trailer ${row.trailer}` : runLabel}</small></div></div>
           <div className="run-route">
             <strong>{sortedStops.length ? sortedStops.map((stop) => stop.name).join(" → ") : runLabel}</strong>
             {sortedStops.length > 0 && <div className="run-progress" aria-label={`${completedStops} of ${sortedStops.length} stops completed`}>
@@ -367,7 +381,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
           <div className="run-time"><strong>{formatTime(row.firstPlannedUtc)}</strong><small>{sortedStops[0]?.name || "First stop TBC"}</small></div>
           <div className="run-time"><strong>{formatTime(row.finalEta?.deliveryWindowEndUtc)}</strong><small>{row.finalEta?.stopName || "Window TBC"}</small></div>
           <div className="run-eta"><strong>{completed ? "✓" : formatTime(row.nextEta?.etaUtc)}</strong><small>{completed ? "Run completed" : row.progress?.currentVisit?.geofenceName || row.nextEta?.stopName || row.progress?.nextStop?.name || "ETA calculating"}</small></div>
-          <div className="run-tracking"><strong>{tracking.primary}</strong><small>{tracking.secondary}</small></div>
+          <div className="run-tracking"><strong>{tracking.primary}</strong><small>{row.progress?.linkageException?.message || tracking.secondary}</small></div>
           <div className="run-status"><span>{row.statusLabel}</span><small>{row.statusDetail}</small>{!tvMode && <Link to={`/timeline/run/${row.load.id}`}>Open run →</Link>}</div>
         </article>;
       })}

@@ -59,6 +59,7 @@
 .stationary .run-truck { background: #4b3611; color: var(--lr-amber); }
 .at-risk .run-truck { background: #4d1f28; color: var(--lr-red); }
 .run-identity strong, .run-identity span, .run-identity small, .run-time strong, .run-time small, .run-eta strong, .run-eta small, .run-tracking strong, .run-tracking small, .run-status small { display: block; }
+.run-dwell-line { color: #7fd6ad !important; font-weight: 800; margin-top: 2px; }
 .run-identity strong { color: #fff; font-size: 1rem; }
 .run-identity span { color: #edf3f6; font-size: .8rem; }
 .run-identity small { color: #91a5b3; font-size: .7rem; }
