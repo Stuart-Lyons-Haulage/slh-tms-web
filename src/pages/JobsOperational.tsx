@@ -120,7 +120,7 @@ export function JobsOperational() {
       </div>
     </div>
     <div className="planner-toolbar">
-      <label>Job date <input type="date" value={date} onChange={(event) => { setDate(event.target.value); setEditingId(undefined); }} /></label>
+      <label>Job date <input type="date" value={date} onChange={(event) => { setDate(event.target.value); setEditingId(undefined); setForm(undefined); }} /></label>
       <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customer, order, depot, address…" />
       <span>{rows.length} active job{rows.length === 1 ? "" : "s"}</span>
     </div>
@@ -137,24 +137,34 @@ export function JobsOperational() {
     </div>
     {!orders.loading && !rows.length && <p className="state">No active imported jobs for this date.</p>}
 
-    {editingId && form && <div className="panel" style={{ marginTop: 18 }}>
-      <div className="title-row"><div><p className="eyebrow">Edit job</p><h2>{form.reference}</h2></div><button onClick={() => { setEditingId(undefined); setForm(undefined); }}>Close</button></div>
-      <div className="form-grid">
-        <label>Order / reference<input value={form.reference} onChange={(e) => set("reference", e.target.value)} /></label>
-        <label>Customer<input value={form.customerCode} onChange={(e) => set("customerCode", e.target.value)} /></label>
-        <label>Collection date<input type="date" value={form.collectionDate} onChange={(e) => set("collectionDate", e.target.value)} /></label>
-        <label>Delivery date<input type="date" value={form.deliveryDate || ""} onChange={(e) => set("deliveryDate", e.target.value)} /></label>
-        <label>Collection site<input value={form.collectionSite || ""} onChange={(e) => set("collectionSite", e.target.value)} /></label>
-        <label>Depot ID<input value={form.depotId || ""} onChange={(e) => set("depotId", e.target.value)} /></label>
-        <label>Destination<input value={form.destination || ""} onChange={(e) => set("destination", e.target.value)} /></label>
-        <label>Delivery address / postcode<input value={form.deliveryAddress || ""} onChange={(e) => set("deliveryAddress", e.target.value)} /></label>
-        <label>Quantity<input inputMode="numeric" value={form.pallets ?? ""} onChange={(e) => set("pallets", e.target.value)} /></label>
-        <label>Unit type<select value={unitLabel} onChange={(e) => set("unitType", e.target.value)}><option>Pallets</option><option>Trays</option><option>Trolleys</option></select></label>
-        <label>Customer ref<input value={form.customerRef || ""} onChange={(e) => set("customerRef", e.target.value)} /></label>
-        <label>PO ref<input value={form.poRef || ""} onChange={(e) => set("poRef", e.target.value)} /></label>
-        <label>{unitLabel === "Pallets" ? "Pallet / product" : "Product / load description"}<input value={form.palletName || ""} onChange={(e) => set("palletName", e.target.value)} /></label>
-      </div>
-      <button className="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save job changes"}</button>
+    {editingId && form && <div className="job-edit-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) { setEditingId(undefined); setForm(undefined); } }}>
+      <section className="job-edit-modal" role="dialog" aria-modal="true" aria-label={`Edit job ${form.reference}`}>
+        <div className="job-edit-modal-header">
+          <div><p className="eyebrow">Edit job</p><h2>{form.reference}</h2></div>
+          <button onClick={() => { setEditingId(undefined); setForm(undefined); }} disabled={saving}>Close</button>
+        </div>
+        <div className="job-edit-modal-body">
+          <div className="form-grid">
+            <label>Order / reference<input value={form.reference} onChange={(e) => set("reference", e.target.value)} /></label>
+            <label>Customer<input value={form.customerCode} onChange={(e) => set("customerCode", e.target.value)} /></label>
+            <label>Collection date<input type="date" value={form.collectionDate} onChange={(e) => set("collectionDate", e.target.value)} /></label>
+            <label>Delivery date<input type="date" value={form.deliveryDate || ""} onChange={(e) => set("deliveryDate", e.target.value)} /></label>
+            <label>Collection site<input value={form.collectionSite || ""} onChange={(e) => set("collectionSite", e.target.value)} /></label>
+            <label>Depot ID<input value={form.depotId || ""} onChange={(e) => set("depotId", e.target.value)} /></label>
+            <label>Destination<input value={form.destination || ""} onChange={(e) => set("destination", e.target.value)} /></label>
+            <label>Delivery address / postcode<input value={form.deliveryAddress || ""} onChange={(e) => set("deliveryAddress", e.target.value)} /></label>
+            <label>Quantity<input inputMode="numeric" value={form.pallets ?? ""} onChange={(e) => set("pallets", e.target.value)} /></label>
+            <label>Unit type<select value={unitLabel} onChange={(e) => set("unitType", e.target.value)}><option>Pallets</option><option>Trays</option><option>Trolleys</option></select></label>
+            <label>Customer ref<input value={form.customerRef || ""} onChange={(e) => set("customerRef", e.target.value)} /></label>
+            <label>PO ref<input value={form.poRef || ""} onChange={(e) => set("poRef", e.target.value)} /></label>
+            <label>{unitLabel === "Pallets" ? "Pallet / product" : "Product / load description"}<input value={form.palletName || ""} onChange={(e) => set("palletName", e.target.value)} /></label>
+          </div>
+        </div>
+        <div className="job-edit-modal-footer">
+          <button onClick={() => { setEditingId(undefined); setForm(undefined); }} disabled={saving}>Cancel</button>
+          <button className="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save job changes"}</button>
+        </div>
+      </section>
     </div>}
   </section>;
 }

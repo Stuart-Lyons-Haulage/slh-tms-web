@@ -208,7 +208,14 @@ main { margin-top: 72px; margin-left: 248px; padding: 30px 34px; max-width: 1700
 .assistant-actions { display: flex; gap: 8px; }.assistant-actions button { flex: 1; }
 .assistant-fix { width: 100%; margin: 10px 0; border-color: #80bd6e; background: #eaf7e5; color: #286328; }
 .assistant-panel > small { display: block; margin-top: 10px; color: #71838c; font-size: .68rem; line-height: 1.4; }
-@media (max-width: 700px) { .planner-health { grid-template-columns: 1fr; }.tms-assistant { right: 12px; bottom: 12px; }.assistant-launch strong { display: none; }.assistant-panel { right: -4px; } }
+.job-edit-modal-backdrop { position: fixed; inset: 0; z-index: 130; display: grid; place-items: center; padding: 24px; background: rgba(3, 25, 39, .56); backdrop-filter: blur(3px); }
+.job-edit-modal { width: min(980px, 94vw); max-height: min(88dvh, 860px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #bfd0d5; border-radius: 12px; background: #fff; box-shadow: 0 28px 80px rgba(3, 25, 39, .35); }
+.job-edit-modal-header, .job-edit-modal-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 18px; background: #f7fafb; }
+.job-edit-modal-header { align-items: flex-start; border-bottom: 1px solid #dce7ea; }
+.job-edit-modal-header h2 { margin: 4px 0 0; color: #073a5a; font-size: 1.2rem; overflow-wrap: anywhere; }
+.job-edit-modal-body { overflow-y: auto; padding: 18px; -webkit-overflow-scrolling: touch; }
+.job-edit-modal-footer { justify-content: flex-end; border-top: 1px solid #dce7ea; }
+@media (max-width: 700px) { .planner-health { grid-template-columns: 1fr; }.tms-assistant { right: 12px; bottom: 12px; }.assistant-launch strong { display: none; }.assistant-panel { right: -4px; }.job-edit-modal-backdrop { align-items: end; padding: 0; }.job-edit-modal { width: 100vw; max-width: 100vw; max-height: 90dvh; border-radius: 16px 16px 0 0; border-left: 0; border-right: 0; border-bottom: 0; }.job-edit-modal-header, .job-edit-modal-footer { padding: 14px; }.job-edit-modal-body { padding: 14px 10px; } }
 .job-eta { display: grid; gap: 4px; margin-top: 10px; padding: 10px 12px; border-left: 4px solid #2b8b53; border-radius: 7px; background: #eef9f1; }
 .job-eta strong { color: #174f31; font-size: .85rem; }.job-eta span { color: #426555; font-size: .74rem; }.job-eta.critical { border-left-color: #c73d3d; background: #fff0f0; }.job-eta.critical strong, .job-eta.critical span { color: #922c2c; }
 .delivery-risk.tacho-critical { border-left-color: #a82222; box-shadow: 0 0 0 2px #f6caca inset; }
