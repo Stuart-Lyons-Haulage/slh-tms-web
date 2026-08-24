@@ -38,6 +38,16 @@ export type RunProgressRecord = {
   trackingMoving?: boolean;
   trackingAgeSeconds?: number;
   speedKph?: number;
+  tacho?: RunTachoEvidence | null;
+};
+export type RunTachoEvidence = {
+  status: "Matched" | "Mismatch" | "NoTachoDuty" | "NoPlannedDriver" | "Unavailable" | string;
+  driverName?: string;
+  vehicleCode?: string;
+  signOnUtc?: string;
+  dutyEndUtc?: string;
+  driveAvailableTodayMinutes?: number;
+  explanation?: string;
 };
 export type RouteProgressRun = {
   loadId: string;
@@ -53,6 +63,7 @@ export type RouteProgressRun = {
   trackingMoving?: boolean;
   trackingAgeSeconds?: number;
   speedKph?: number;
+  tacho?: RunTachoEvidence | null;
   currentVisit?: RunProgressVisit | null;
   stopDwell?: RunProgressRecord["stopDwell"];
   linkageException?: RunProgressRecord["linkageException"];
@@ -114,7 +125,7 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
       priority: 70,
     };
   }
-  if (progress?.trackingMoving || (progress?.phase || "").toLowerCase().includes("heading")) {
+  if (progress?.trackingMoving) {
     return {
       status: "route" as const,
       label: "ON ROUTE",
@@ -123,14 +134,6 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
         progress?.speedKph != null ? `${Math.round(progress.speedKph)} km/h` : undefined,
       ].filter(Boolean).join(" · "),
       priority: 58,
-    };
-  }
-  if (progress?.runState === "InProgress" || progress?.loadStatus === "Dispatched") {
-    return {
-      status: "route" as const,
-      label: "ON ROUTE",
-      detail: progress?.focusStop || progress?.nextStop?.name || nextEta?.stopName || "Started from plan time",
-      priority: 56,
     };
   }
   if ((progress?.completedStops || 0) > 0 || nextEta?.source === "Live" || String(nextEta?.source) === "Estimated") {
@@ -143,13 +146,13 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
       priority: 55,
     };
   }
-  return { status: "scheduled" as const, label: "SCHEDULED", detail: nextEta?.stopName || "Awaiting tracker/geofence evidence", priority: 30 };
+  return { status: "scheduled" as const, label: "SCHEDULED", detail: progress?.nextStop?.name || nextEta?.stopName || "Awaiting tracker/geofence evidence", priority: 30 };
 }
 
 function routeRunState(route: RouteProgressRun, fallback?: string) {
   if (route.phase === "Complete") return "Completed";
   if (route.geofenceOnSite || route.phase === "On site") return "OnSiteConfirmed";
-  if (route.trackingMoving || route.phase === "Heading to") return "InProgress";
+  if (route.trackingMoving || route.completedStops > 0) return "InProgress";
   return fallback || route.phase;
 }
 
@@ -162,6 +165,7 @@ function routeFields(route: RouteProgressRun) {
     trackingMoving: route.trackingMoving,
     trackingAgeSeconds: route.trackingAgeSeconds,
     speedKph: route.speedKph,
+    tacho: route.tacho,
     currentVisit: route.currentVisit,
     stopDwell: route.stopDwell,
     linkageException: route.linkageException,

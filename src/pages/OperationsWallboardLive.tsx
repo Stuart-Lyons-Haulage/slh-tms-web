@@ -4,7 +4,7 @@ import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
-import { completedJobCount, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord } from "./operationsWallboardProgress";
+import { completedJobCount, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
 import "../operations-wallboard.css";
 
 type RunProgressResponse = {
@@ -20,6 +20,7 @@ type RunProgressResponse = {
 type RouteProgressResponse = {
   latestTrackingUtc?: string;
   geofenceLinkedRuns?: number;
+  tachoWarning?: string;
   runs: RouteProgressRun[];
 };
 type BoardRow = {
@@ -40,6 +41,7 @@ type BoardRow = {
   status: "late" | "risk" | "onsite" | "route" | "scheduled" | "complete";
   statusLabel: string;
   statusDetail: string;
+  tacho?: RunTachoEvidence | null;
 };
 type WallboardData = {
   loads: Load[];
@@ -94,8 +96,17 @@ function minutesToWindow(eta?: DeliveryEta) {
   const minutes = Math.round((ms(eta.deliveryWindowEndUtc) - ms(eta.etaUtc)) / 60000);
   return Number.isFinite(minutes) ? minutes : undefined;
 }
-function tachoText(eta?: DeliveryEta) {
-  if (!eta) return "tacho pending";
+function formatTachoTime(value?: string) {
+  const valueDate = parsed(value);
+  return valueDate ? timeFormatter.format(valueDate) : undefined;
+}
+function tachoText(tacho?: RunTachoEvidence | null, eta?: DeliveryEta) {
+  if (tacho?.status === "Matched") return `signed on ${formatTachoTime(tacho.signOnUtc) || ""}`.trim();
+  if (tacho?.status === "Mismatch") return "tacho mismatch";
+  if (tacho?.status === "NoTachoDuty") return "not signed on";
+  if (tacho?.status === "NoPlannedDriver") return "no planned driver";
+  if (tacho?.status === "Unavailable") return "TachoMaster unavailable";
+  if (!eta) return "tacho not checked";
   if (eta.tachoStatus === "InsufficientDriveTime") return "insufficient drive time";
   if (eta.tachoStatus === "BreakIncluded") return `${eta.breakMinutesIncluded}m break included`;
   if (eta.tachoStatus === "WithinDriveTime") return "within drive time";
@@ -156,6 +167,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       progress: route ? mergeRouteProgress(progress?.records ?? previous?.progress ?? [], route.runs) : progress?.records ?? previous?.progress ?? [],
       warning: [
         progress?.warning,
+        route?.tachoWarning,
         etas ? undefined : "Live ETA refresh is catching up; planned journeys remain visible.",
         progress ? undefined : "Geofence refresh is catching up; planned journeys remain visible.",
         route ? undefined : "Live route position is catching up; planned journeys remain visible.",
@@ -198,10 +210,9 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       const status = statusFor(progress, nextEta, etas);
       const complete = status.status === "complete";
       const arrivalUtc = progress?.currentVisit?.enteredAtUtc;
-      const plannedNextUtc = progress?.nextStop?.plannedArrivalUtc;
       const liveEtaUtc = nextEta?.source === "Live" ? nextEta.etaUtc : undefined;
-      const fallbackEtaUtc = nextEta?.etaUtc || plannedNextUtc;
-      const scheduledUtc = firstStop(load)?.plannedArrivalUtc || fallbackEtaUtc;
+      const estimatedEtaUtc = nextEta?.source === "Estimated" ? nextEta.etaUtc : undefined;
+      const scheduledUtc = firstStop(load)?.plannedArrivalUtc || progress?.nextStop?.plannedArrivalUtc;
       const runReference = load?.reference || progress?.loadReference || nextEta?.loadReference || assignment?.loadReference || "RUN TBC";
       return {
         id, load, assignment, progress, etas, nextEta,
@@ -210,10 +221,11 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
         vehicle: assignment?.vehicle?.registration || nextEta?.vehicleRegistration || "VEHICLE TBC",
         driver: assignment?.driver?.displayName || nextEta?.tachoDriverName || "DRIVER TBC",
         scheduledUtc,
-        displayTimeUtc: complete ? undefined : arrivalUtc || liveEtaUtc || fallbackEtaUtc,
-        displayTimeLabel: complete ? "AVAILABLE" : arrivalUtc ? "ARRIVED" : liveEtaUtc ? "LIVE ETA" : fallbackEtaUtc ? "PLANNED BACKUP" : "ETA PENDING",
+        displayTimeUtc: complete ? undefined : arrivalUtc || liveEtaUtc || estimatedEtaUtc,
+        displayTimeLabel: complete ? "AVAILABLE" : arrivalUtc ? "ARRIVED" : liveEtaUtc ? "LIVE ETA" : estimatedEtaUtc ? "ESTIMATED ETA" : "ETA PENDING",
         focusStop: complete ? "Available for next job" : progress?.currentVisit?.geofenceName || progress?.nextStop?.name || nextEta?.stopName || "Next stop TBC",
         status: status.status, statusLabel: status.label, statusDetail: status.detail,
+        tacho: progress?.tacho,
       };
     }).filter(row => row.load?.status !== "Cancelled")
       .sort((a, b) => {
@@ -274,7 +286,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
           <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.status === "complete" ? "completed" : "planned start"}</small></span>
           <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small></span>
           <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
-          <span><strong>{row.driver}</strong><small>{tachoText(row.nextEta)}</small></span>
+          <span><strong>{row.driver}</strong><small title={row.tacho?.explanation}>{tachoText(row.tacho, row.nextEta)}</small></span>
           <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${percent}%` }} /></div><small>{row.progress?.linkageException?.message || row.route}</small></span>
           <span className="time-cell eta"><strong>{row.displayTimeLabel === "AVAILABLE" ? "AVAILABLE" : formatTime(row.displayTimeUtc)}</strong><small>{row.displayTimeLabel}{row.displayTimeLabel === "LIVE ETA" ? ` · ${formatAge(row.nextEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}` : ""}</small></span>
           <span className="status-cell"><strong>{row.statusLabel}</strong><small>{buffer == null || row.status === "onsite" || row.status === "complete" ? row.statusDetail : `${buffer >= 0 ? "+" : ""}${buffer}m · ${row.statusDetail}`}</small></span>

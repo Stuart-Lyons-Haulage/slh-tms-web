@@ -484,7 +484,7 @@ export type DeliveryEta = {
   customerCode?: string;
   vehicleRegistration?: string;
   etaUtc?: string;
-  source: "Live" | "Planned" | "Unavailable";
+  source: "Live" | "Estimated" | "Planned" | "Unavailable";
   deliveryWindowStartUtc?: string;
   deliveryWindowEndUtc?: string;
   risk: "Pending" | "Late" | "AtRisk" | "OnTrack";
