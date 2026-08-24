@@ -23,8 +23,11 @@ code { background: #eef3f4; padding: 2px 4px; border-radius: 3px; }
 .order-card span { color: #007878; margin: 3px 0; }
 .order-card small { color: #637985; }
 .order-card em { display: inline-block; margin-top: 9px; font-style: normal; }
-.order-card.selectable { width: 100%; text-align: left; font-weight: inherit; cursor: pointer; }
+.order-card.selectable { width: 100%; text-align: left; font-weight: inherit; }
 .order-card.selectable.selected { border-color: #007878; background: #eaf7f2; box-shadow: inset 0 0 0 1px #007878; }
+.order-card-main { display: block; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; font-weight: inherit; }
+.order-card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.order-card-actions button { padding: .42rem .6rem; font-size: .82rem; }
 .allocation-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
 .allocation-fields select { min-width: 0; border: 1px solid #c8d5da; border-radius: 6px; padding: .42rem; font: inherit; font-size: .78rem; color: #17344a; }
 .allocation-fields button { grid-column: span 2; padding: .42rem; font-size: .78rem; }

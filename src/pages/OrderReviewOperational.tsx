@@ -249,6 +249,31 @@ export function OrderReviewOperational() {
     setBusyId(row.item.id);
     setNotice(undefined);
     try {
+      if (approved) {
+        const duplicate = await api.duplicateCheck({
+          customer: text(row.payload.customerCode),
+          po: driverReference(row.payload) || text(row.payload.poNumber),
+          purchaseOrder: driverReference(row.payload),
+          orderReference: text(row.payload.poNumber),
+          collectionDate: text(row.payload.collectionDate),
+          deliveryDate: text(row.payload.deliveryDate),
+          collectionLocation: text(row.payload.sellerName),
+          deliveryLocation: text(row.payload.stallNumber),
+          pallets: numberText(row.payload.pallets) === "" ? undefined : Number(row.payload.pallets),
+        }, await token());
+        const matches = duplicate.matches.filter((match) => match.recordId !== row.item.id);
+        if (matches.length > 0) {
+          const match = matches[0];
+          const message = [
+            `${match.classification}: ${displayPo(row.payload)}`,
+            match.reference ? `Matched existing reference: ${match.reference}` : "",
+            match.status ? `Existing status: ${match.status}` : "",
+            match.collectionDate || match.deliveryDate ? `Existing dates: collection ${match.collectionDate || "-"} / delivery ${match.deliveryDate || "-"}` : "",
+            "Accepting will keep the source evidence and treat this as the latest approved order/revision where the reference matches.",
+          ].filter(Boolean).join("\n");
+          if (!window.confirm(message)) return;
+        }
+      }
       await api.review(
         row.item.id,
         approved,

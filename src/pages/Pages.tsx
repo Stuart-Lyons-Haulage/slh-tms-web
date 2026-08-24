@@ -2006,6 +2006,15 @@ type PlanningOrder = {
   driverInstructions?: string;
   mapLink?: string;
 };
+
+function shiftDate(value: string | undefined, days: number) {
+  if (!value || value === "—") return value;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function planningOrders(items?: TransportOrder[]): PlanningOrder[] {
   return (items || [])
     .filter((item) => item.status !== "Cancelled")
@@ -2059,6 +2068,7 @@ function FullPlanningBoard() {
   );
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [dateShiftId, setDateShiftId] = useState<string>();
   const [message, setMessage] = useState<string>();
   const today = planningOrders(ordersApi.data);
   const planned = loads.data || [];
@@ -2116,6 +2126,40 @@ function FullPlanningBoard() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+  async function moveOrderDate(order: PlanningOrder, days: number) {
+    const nextCollectionDate = shiftDate(order.collectionDate, days);
+    const nextDeliveryDate = shiftDate(order.deliveryDate || order.collectionDate, days);
+    if (!nextCollectionDate || nextCollectionDate === order.collectionDate) return;
+    const direction = days < 0 ? "bring this order forward" : "push this order back";
+    if (!window.confirm(`Confirm you want to ${direction} by one day.\n\n${order.poNumber}\nCollection: ${order.collectionDate} → ${nextCollectionDate}\nDelivery: ${order.deliveryDate || order.collectionDate} → ${nextDeliveryDate || nextCollectionDate}`))
+      return;
+    setDateShiftId(order.id);
+    setMessage(undefined);
+    try {
+      await api.updateOperationalOrder(order.id, {
+        reference: order.poNumber,
+        customerCode: order.customerCode,
+        collectionDate: nextCollectionDate,
+        deliveryDate: nextDeliveryDate || nextCollectionDate,
+        deliveryWindowStartUtc: order.deliveryWindowStartUtc,
+        deliveryWindowEndUtc: order.deliveryWindowEndUtc,
+        pallets: Number(order.pallets) || undefined,
+        collectionSite: order.sellerName,
+        depotId: order.marketName,
+        destination: order.stallNumber,
+        notes: order.driverInstructions,
+        mapLink: order.mapLink,
+      }, await token());
+      setSelected((current) => current.filter((id) => id !== order.id));
+      await ordersApi.refresh();
+      await loads.refresh();
+      setMessage(`${order.poNumber} moved to collection ${nextCollectionDate}, delivery ${nextDeliveryDate || nextCollectionDate}.`);
+    } catch (exception) {
+      setMessage(exception instanceof Error ? exception.message : "The order date could not be changed.");
+    } finally {
+      setDateShiftId(undefined);
     }
   }
   return (
@@ -2215,7 +2259,9 @@ function FullPlanningBoard() {
                 key={order.id}
                 order={order}
                 selected={selected.includes(order.id)}
+                shifting={dateShiftId === order.id}
                 onToggle={() => toggle(order.id)}
+                onShift={(days) => void moveOrderDate(order, days)}
               />
             ))
           ) : (
@@ -3098,26 +3144,35 @@ function OperationalMap({
 function OrderCard({
   order,
   selected,
+  shifting,
   onToggle,
+  onShift,
 }: {
   order: PlanningOrder;
   selected: boolean;
+  shifting: boolean;
   onToggle: () => void;
+  onShift: (days: number) => void;
 }) {
   return (
-    <button
-      className={`order-card selectable ${selected ? "selected" : ""}`}
-      onClick={onToggle}
-    >
-      <strong>{order.poNumber}</strong>
+    <article className={`order-card selectable ${selected ? "selected" : ""}`}>
+      <button className="order-card-main" onClick={onToggle}>
+        <strong>{order.sellerName || "Collection site to confirm"}</strong>
+        <span>{order.stallNumber || order.customerCode}</span>
+        <small>
+          {order.pallets} pallets · Delivery date {order.deliveryDate}
+        </small>
+        <small>Ref {order.poNumber}</small>
+      </button>
+      <div className="order-card-actions">
+        <button type="button" onClick={() => onShift(-1)} disabled={shifting}>Bring forward</button>
+        <button type="button" onClick={() => onShift(1)} disabled={shifting}>Push back</button>
+      </div>
       <span>{order.customerCode}</span>
-      <small>
-        {order.pallets} pallets · Delivery {order.deliveryDate}
-      </small>
       <em className={`status ${order.status.toLowerCase()}`}>
         {selected ? "Selected" : order.status}
       </em>
-    </button>
+    </article>
   );
 }
 function LoadCard({

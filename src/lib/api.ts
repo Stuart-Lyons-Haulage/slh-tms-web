@@ -287,6 +287,29 @@ export type MailboxEmailIntakeResponse = {
     reviewUrl?: string;
   }>;
 };
+export type DuplicateCheckResponse = {
+  classification: string;
+  confidence: string;
+  primaryIdentifier?: string;
+  matchCount: number;
+  matches: Array<{
+    classification: string;
+    confidence: string;
+    source: string;
+    recordId: string;
+    reference?: string;
+    status: string;
+    customer?: string;
+    po?: string;
+    collectionDate?: string;
+    deliveryDate?: string;
+    collectionLocation?: string;
+    deliveryLocation?: string;
+    pallets?: number;
+    observedAtUtc: string;
+  }>;
+  rule: string;
+};
 export type MasterApplyResponse = {
   received: number;
   applied: number;
@@ -898,6 +921,51 @@ export const api = {
     request<StagedImport>(`/api/v1/staging/${id}/approve`, token, {
       method: "POST",
       body: JSON.stringify({ note }),
+    }),
+  duplicateCheck: (
+    payload: {
+      customer?: string;
+      po?: string;
+      purchaseOrder?: string;
+      orderReference?: string;
+      collectionDate?: string;
+      deliveryDate?: string;
+      collectionLocation?: string;
+      deliveryLocation?: string;
+      pallets?: number;
+    },
+    token?: string,
+  ) =>
+    request<DuplicateCheckResponse>("/api/v1/order-intake/duplicate-check", token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateOperationalOrder: (
+    id: string,
+    payload: {
+      reference: string;
+      customerCode: string;
+      collectionDate: string;
+      deliveryDate?: string;
+      deliveryWindowStartUtc?: string;
+      deliveryWindowEndUtc?: string;
+      pallets?: number;
+      collectionSite?: string;
+      depotId?: string;
+      destination?: string;
+      deliveryAddress?: string;
+      customerRef?: string;
+      poRef?: string;
+      unitType?: string;
+      palletName?: string;
+      notes?: string;
+      mapLink?: string;
+    },
+    token?: string,
+  ) =>
+    request(`/api/v1/operational-recovery/orders/${id}`, token, {
+      method: "PUT",
+      body: JSON.stringify(payload),
     }),
   stageOrder: (
     payload: Record<string, string>,
