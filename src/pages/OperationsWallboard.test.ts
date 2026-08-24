@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeRouteProgress, statusFor } from "./operationsWallboardProgress";
+import { completedJobCount, mergeRouteProgress, statusFor } from "./operationsWallboardProgress";
 
 describe("OperationsWallboard route progress merge", () => {
   it("keeps live TV route fields when refreshing an existing progression record", () => {
@@ -51,5 +51,28 @@ describe("OperationsWallboard route progress merge", () => {
       label: "ON ROUTE",
       detail: "NWF Merston · 44 km/h",
     });
+  });
+
+  it("counts departed geofenced stops as completed jobs before the run is fully available", () => {
+    expect(completedJobCount([
+      {
+        loadId: "load-1",
+        loadReference: "Run 1 AM",
+        loadStatus: "InProgress",
+        runState: "BetweenStops",
+        totalStops: 3,
+        completedStops: 2,
+        progressPercent: 66,
+      },
+      {
+        loadId: "load-2",
+        loadReference: "Run 2 AM",
+        loadStatus: "InProgress",
+        runState: "OnSiteConfirmed",
+        totalStops: 2,
+        completedStops: 1,
+        progressPercent: 50,
+      },
+    ])).toBe(3);
   });
 });

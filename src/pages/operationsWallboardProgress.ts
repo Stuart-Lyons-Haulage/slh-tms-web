@@ -181,3 +181,7 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
   }
   return merged;
 }
+
+export function completedJobCount(progress: RunProgressRecord[]) {
+  return progress.reduce((total, record) => total + Math.max(0, record.completedStops || 0), 0);
+}

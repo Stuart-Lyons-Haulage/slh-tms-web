@@ -4,7 +4,7 @@ import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
-import { mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord } from "./operationsWallboardProgress";
+import { completedJobCount, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord } from "./operationsWallboardProgress";
 import "../operations-wallboard.css";
 
 type RunProgressResponse = {
@@ -80,8 +80,14 @@ function pickNextEta(etas: DeliveryEta[], progress?: RunProgressRecord) {
   const sorted = [...etas].sort((a, b) => a.sequence - b.sequence);
   if (!sorted.length) return undefined;
   const nextSequence = progress?.nextStop?.sequence;
-  if (nextSequence != null) return sorted.find(eta => eta.sequence === nextSequence) || sorted.find(eta => eta.sequence > nextSequence) || sorted.at(-1);
-  return sorted[0];
+  if (nextSequence != null) {
+    return sorted.find(eta => eta.sequence === nextSequence && eta.source === "Live")
+      || sorted.find(eta => eta.sequence > nextSequence && eta.source === "Live")
+      || sorted.find(eta => eta.sequence === nextSequence)
+      || sorted.find(eta => eta.sequence > nextSequence)
+      || sorted.at(-1);
+  }
+  return sorted.find(eta => eta.source === "Live") || sorted[0];
 }
 function minutesToWindow(eta?: DeliveryEta) {
   if (!eta?.etaUtc || !eta.deliveryWindowEndUtc) return undefined;
@@ -183,7 +189,9 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       const complete = status.status === "complete";
       const arrivalUtc = progress?.currentVisit?.enteredAtUtc;
       const plannedNextUtc = progress?.nextStop?.plannedArrivalUtc;
-      const scheduledUtc = firstStop(load)?.plannedArrivalUtc || nextEta?.etaUtc || plannedNextUtc;
+      const liveEtaUtc = nextEta?.source === "Live" ? nextEta.etaUtc : undefined;
+      const fallbackEtaUtc = nextEta?.etaUtc || plannedNextUtc;
+      const scheduledUtc = firstStop(load)?.plannedArrivalUtc || fallbackEtaUtc;
       const runReference = load?.reference || progress?.loadReference || nextEta?.loadReference || assignment?.loadReference || "RUN TBC";
       return {
         id, load, assignment, progress, etas, nextEta,
@@ -192,8 +200,8 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
         vehicle: assignment?.vehicle?.registration || nextEta?.vehicleRegistration || "VEHICLE TBC",
         driver: assignment?.driver?.displayName || nextEta?.tachoDriverName || "DRIVER TBC",
         scheduledUtc,
-        displayTimeUtc: complete ? undefined : arrivalUtc || nextEta?.etaUtc || plannedNextUtc,
-        displayTimeLabel: complete ? "AVAILABLE" : arrivalUtc ? "ARRIVED" : nextEta?.source === "Live" ? "LIVE ETA" : nextEta?.etaUtc || plannedNextUtc ? "PLANNED" : "ETA PENDING",
+        displayTimeUtc: complete ? undefined : arrivalUtc || liveEtaUtc || fallbackEtaUtc,
+        displayTimeLabel: complete ? "AVAILABLE" : arrivalUtc ? "ARRIVED" : liveEtaUtc ? "LIVE ETA" : fallbackEtaUtc ? "PLANNED BACKUP" : "ETA PENDING",
         focusStop: complete ? "Available for next job" : progress?.currentVisit?.geofenceName || progress?.nextStop?.name || nextEta?.stopName || "Next stop TBC",
         status: status.status, statusLabel: status.label, statusDetail: status.detail,
       };
@@ -211,6 +219,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
   const risk = rows.filter(row => row.status === "risk").length;
   const onSite = rows.filter(row => row.status === "onsite").length;
   const available = rows.filter(row => row.status === "complete").length;
+  const completeJobs = completedJobCount(boardData?.progress || []);
   const presentRowId = useMemo(() => rows.find(row => row.status !== "complete" && (ms(row.scheduledUtc) || 0) >= clock.getTime() - 30 * 60 * 1000)?.id || rows.find(row => row.status !== "complete")?.id, [clock, rows]);
 
   useEffect(() => {
@@ -230,6 +239,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       <article><span>Runs on board</span><strong>{rows.length}</strong><small>all planned journeys retained</small></article>
       <article className="green"><span>Tracker live</span><strong>{formatAge(boardData?.latestTrackingUtc, clock)}</strong><small>{boardData?.geofenceLinkedRuns ?? 0} geofence-linked runs</small></article>
       <article className="amber"><span>On site</span><strong>{onSite}</strong><small>arrival time replaces ETA</small></article>
+      <article className="green"><span>Complete</span><strong>{completeJobs}</strong><small>departed geofenced stops</small></article>
       <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} late · {risk} at risk</small></article>
       <article className="green"><span>Available</span><strong>{available}</strong><small>final stop completed</small></article>
     </div>
@@ -261,6 +271,6 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
         </article>;
       })}
     </div>
-    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Arrival replaces ETA while on site</span><span>Completed final job = AVAILABLE</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
+    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Live ETA first · planned time is backup only</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
   </section>;
 }
