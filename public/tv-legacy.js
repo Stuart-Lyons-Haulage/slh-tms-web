@@ -201,6 +201,8 @@
     var truckPct = progress && progress.truckPositionPercent != null ? Number(progress.truckPositionPercent) : null;
     if (truckPct == null || isNaN(truckPct)) { truckPct = Math.max(0, Math.min(100, (done / count) * 100)); }
     truckPct = Math.max(0, Math.min(100, truckPct));
+    var donePct = Math.max(0, Math.min(100, (done / count) * 100));
+    var fillPct = Math.max(donePct, truckPct);
     var liveMarker = progress && progress.trackingFresh
       ? '<span class="timeline-vehicle' + (progress.trackingMoving ? ' moving' : '') + '" style="left:' + truckPct + '%"></span>'
       : '';
@@ -213,7 +215,17 @@
       if (progress && progress.trackingMoving && progress.speedKph != null) { helper += ' · ' + Math.round(Number(progress.speedKph)) + ' km/h'; }
       helper += trackingWarning(progress);
     }
-    return '<div class="timeline"><span class="timeline-line"></span><span class="timeline-done" style="width:' + truckPct + '%"></span>' + dots + liveMarker + '</div><div class="next-job">' + esc(helper) + '</div>';
+    return '<div class="timeline"><span class="timeline-line"></span><span class="timeline-done" style="width:' + fillPct + '%"></span>' + dots + liveMarker + '</div><div class="next-job">' + esc(helper) + '</div>';
+  }
+
+  function isRunComplete(load, progress) {
+    var loadStatus = String(load && load.status ? load.status : '').toLowerCase();
+    if (loadStatus === 'completed' || loadStatus === 'complete') { return true; }
+    var phase = String(progress && progress.phase ? progress.phase : '').toLowerCase();
+    if (phase === 'completed' || phase === 'complete') { return true; }
+    var total = progress && Number(progress.totalStops);
+    var completed = progress && Number(progress.completedStops);
+    return total > 0 && completed >= total;
   }
 
   function attentionMarkup(rows) {
@@ -309,7 +321,7 @@
       var load = state.loads[i];
       if (load.status === 'Cancelled') { continue; }
       var prog = progress[String(load.id)];
-      var complete = String(load.status).toLowerCase() === 'completed' || (prog && String(prog.phase).toLowerCase() === 'complete');
+      var complete = isRunComplete(load, prog);
       var assignment = assignments[String(load.id)] || {};
       var eta = nextEta(etaGroups[String(load.id)], prog);
       var dwell = dwellByLoad[String(load.id)] || null;
@@ -382,11 +394,10 @@
     var riskCount = 0;
     var lateCount = 0;
     var dwellCount = 0;
-    var completeCount = 0;
     var i;
     for (i = 0; i < rows.length; i += 1) {
       var rowCount = rows[i];
-      if (rowCount.complete) { completeCount += 1; continue; }
+      if (rowCount.complete) { continue; }
       activeCount += 1;
       if (rowCount.prog && rowCount.prog.geofenceOnSite) { onSiteCount += 1; }
       if (rowCount.status.kind === 'risk') { riskCount += 1; }
@@ -394,12 +405,11 @@
       if (rowCount.dwell && Number(rowCount.dwell.dwellMinutes) >= 60) { dwellCount += 1; }
     }
 
-    kpis.innerHTML = kpi('ACTIVE', activeCount, 'active', '▣') +
+    kpis.innerHTML = kpi('STILL OUT', activeCount, 'active', '▣') +
       kpi('ON SITE', onSiteCount, 'onsite', '●') +
       kpi('AT RISK', riskCount, 'risk', '!') +
       kpi('LATE ETA', lateCount, 'late', '◷') +
-      kpi('DWELL > 1 HOUR', dwellCount, 'dwell', '◴') +
-      kpi('COMPLETE', completeCount, 'complete', '✓');
+      kpi('DWELL > 1 HOUR', dwellCount, 'dwell', '◴');
 
     var html = '<table><thead><tr><th>RUN</th><th>VEHICLE</th><th>DRIVER</th><th>JOURNEY PROGRESS</th><th>NEXT / ETA</th><th>STATUS</th></tr></thead><tbody>';
     for (i = 0; i < shown.length; i += 1) {
