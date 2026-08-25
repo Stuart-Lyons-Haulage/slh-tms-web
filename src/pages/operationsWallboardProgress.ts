@@ -279,8 +279,9 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
 
 function isFinalStopArrival(record: RunProgressRecord) {
   if (!record.currentVisit || record.totalStops <= 0) return false;
+  const nextStop = record.nextStop;
   const currentStopSequence = record.stopDwell?.find(stop => stop.stopId === record.currentVisit?.loadStopId)?.sequence
-    ?? (record.nextStop?.id === record.currentVisit.loadStopId ? record.nextStop.sequence : undefined);
+    ?? (nextStop && nextStop.id === record.currentVisit.loadStopId ? nextStop.sequence : undefined);
   if (currentStopSequence != null) return currentStopSequence === record.totalStops;
   return record.completedStops === record.totalStops - 1;
 }
