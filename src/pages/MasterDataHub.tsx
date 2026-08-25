@@ -8,6 +8,7 @@ import { MasterDataOperational, type MasterDataTab } from './MasterDataOperation
 import { GeofenceOperational } from './GeofenceOperational';
 import { MasterDataAddPanel, type AddableMasterSection } from './MasterDataAddPanel';
 import { MasterDataUploadSmall } from './MasterDataUploadSmall';
+import { MasterDataResetImportPanel } from './MasterDataResetImportPanel';
 import { DriverDocumentsIndex } from '../components/DriverDocumentsIndex';
 
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
@@ -44,6 +45,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       <span className="status approved">Live TMS Master Database</span>
     </div>
 
+    <MasterDataResetImportPanel onApplied={() => setRefreshKey(value => value + 1)} />
     <MasterDataUploadSmall onApplied={() => setRefreshKey(value => value + 1)} />
 
     <div className="panel master-section-panel" style={{ marginBottom: 18 }}>

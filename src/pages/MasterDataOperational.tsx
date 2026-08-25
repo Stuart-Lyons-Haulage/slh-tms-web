@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
 import { useAccessToken } from '../lib/auth';
 import { MasterDocuments } from '../components/MasterDocuments';
@@ -30,8 +30,8 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
   const [tab, setTab] = useState<MasterDataTab>(initialTab); const [query, setQuery] = useState(''); const [includeInactive, setIncludeInactive] = useState(false);
   const [rows, setRows] = useState<Row[]>([]); const [selected, setSelected] = useState<Row>(); const [draft, setDraft] = useState<Record<string, unknown>>({}); const [audit, setAudit] = useState<Audit[]>([]);
   const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false); const [error, setError] = useState<string>(); const [notice, setNotice] = useState<string>();
-  const editorRef = useRef<HTMLDivElement>(null);
   const current = config[tab]; const endpoint = `/api/v1/operational-master-data/${tab}`;
+  const crmMode = tab === 'sites' || tab === 'customers';
 
   useEffect(() => { setTab(initialTab); }, [initialTab]);
   const load = useCallback(async () => {
@@ -73,7 +73,6 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
 
   const openEdit = async (row: Row) => {
     setSelected(row); setDraft({ ...row }); setAudit([]); setError(undefined); setNotice(undefined);
-    window.setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
     try { const access = await token(); setAudit(await request<Audit[]>(`/api/v1/operational-master-data/audit/${current.entityType}/${row.id}`, access)); } catch { /* history optional */ }
   };
 
@@ -128,19 +127,40 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
     {showHeading && <div className="title-row"><div><p className="eyebrow">Master data control</p><h1>Edit, archive, delete and audit master data</h1><p>Archive records to remove them from normal planning. Archived records can be permanently deleted only when the TMS confirms they are unused.</p></div></div>}
     {showCategoryButtons && <div className="panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{tabs.map(key => <button key={key} className={tab === key ? 'primary' : ''} onClick={() => setTab(key)}>{config[key].title}</button>)}</div>}
 
-    {selected && <div className="panel" ref={editorRef} style={{ scrollMarginTop: 90 }}>
-      <div className="title-row"><div><p className="eyebrow">Edit {current.entityType}</p><h2>{fmt(selected[current.columns[0][0]])}</h2>{tab === 'sites' && <p className="hint">This is the complete site record used by planning. Maintain the UK postcode/address and operational notes here; GPS coordinates remain internal to tracking/geofences only.</p>}</div><button onClick={() => setSelected(undefined)}>Close</button></div>
+    {selected && (crmMode ? <div className="crm-modal-backdrop" role="dialog" aria-modal="true" aria-label={`Edit ${current.entityType}`} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(undefined); }}>
+      <div className="crm-modal">
+        <div className="crm-modal-header">
+          <div><p className="eyebrow">{current.entityType} CRM record</p><h2>{fmt(selected[current.columns[0][0]])}</h2><p className="hint">{tab === 'sites' ? 'Edit the planner-facing site, customer/order aliases, driver notes and supporting documents from one place.' : 'Edit the customer master record and supporting documents from one place.'}</p></div>
+          <button type="button" onClick={() => setSelected(undefined)}>Close</button>
+        </div>
+        <div className="crm-modal-body">
+          <section>
+            <h3>Core information</h3>
+            <div className="crm-form-grid">
+              {current.editable.map(([key,label,type]) => <label key={key}>{label}{type === 'textarea' ? <textarea rows={3} value={String(draft[key] ?? '')} onChange={e => setDraft(v => ({...v,[key]:e.target.value}))} /> : type === 'checkbox' ? <input type="checkbox" checked={Boolean(draft[key])} onChange={e => setDraft(v => ({...v,[key]:e.target.checked}))} /> : type === 'region' ? <select value={String(draft[key] ?? 'Other')} onChange={e => setDraft(v => ({...v,[key]:e.target.value}))}>{regions.map(item => <option key={item}>{item}</option>)}</select> : <input type={type} step={key === 'defaultTemperatureC' ? '0.5' : undefined} value={String(draft[key] ?? '')} onChange={e => setDraft(v => ({...v,[key]: type === 'number' ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value}))} />}</label>)}
+            </div>
+          </section>
+          <section>
+            <h3>Audit</h3>
+            {audit.length ? <div className="crm-audit-list">{audit.slice(0, 8).map(item => <article key={item.id}><strong>{item.action}</strong><span>{isoDate(item.changedAtUtc)}</span><small>{item.changedBy || '—'}</small></article>)}</div> : <p className="hint">No recorded changes yet.</p>}
+          </section>
+          {documentEntity && <section className="crm-documents"><MasterDocuments entityType={documentEntity} entityId={selected.id} title={String(selected[current.columns[0][0]] ?? documentEntity)} /></section>}
+        </div>
+        <div className="crm-modal-actions"><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : tab === 'sites' ? 'Save site CRM record' : 'Save customer CRM record'}</button><button disabled={saving} onClick={() => setSelected(undefined)}>Cancel</button></div>
+      </div>
+    </div> : <div className="panel" style={{ scrollMarginTop: 90 }}>
+      <div className="title-row"><div><p className="eyebrow">Edit {current.entityType}</p><h2>{fmt(selected[current.columns[0][0]])}</h2></div><button onClick={() => setSelected(undefined)}>Close</button></div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 12 }}>
         {current.editable.map(([key,label,type]) => <label key={key}>{label}{type === 'textarea' ? <textarea rows={3} value={String(draft[key] ?? '')} onChange={e => setDraft(v => ({...v,[key]:e.target.value}))} /> : type === 'checkbox' ? <input type="checkbox" checked={Boolean(draft[key])} onChange={e => setDraft(v => ({...v,[key]:e.target.checked}))} /> : type === 'region' ? <select value={String(draft[key] ?? 'Other')} onChange={e => setDraft(v => ({...v,[key]:e.target.value}))}>{regions.map(item => <option key={item}>{item}</option>)}</select> : <input type={type} step={key === 'defaultTemperatureC' ? '0.5' : undefined} value={String(draft[key] ?? '')} onChange={e => setDraft(v => ({...v,[key]: type === 'number' ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value}))} />}</label>)}
       </div>
-      <div style={{ marginTop: 16, display: 'flex', gap: 8 }}><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : tab === 'sites' ? 'Save complete site' : 'Save changes'}</button><button disabled={saving} onClick={() => setSelected(undefined)}>Cancel</button></div>
+      <div style={{ marginTop: 16, display: 'flex', gap: 8 }}><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save changes'}</button><button disabled={saving} onClick={() => setSelected(undefined)}>Cancel</button></div>
       {documentEntity && <MasterDocuments entityType={documentEntity} entityId={selected.id} title={String(selected[current.columns[0][0]] ?? documentEntity)} />}
       <hr/><h3>Change history</h3>{audit.length ? <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Date</th><th>Action</th><th>Changed by</th></tr></thead><tbody>{audit.map(item => <tr key={item.id}><td>{isoDate(item.changedAtUtc)}</td><td>{item.action}</td><td>{item.changedBy || '—'}</td></tr>)}</tbody></table></div> : <p className="hint">No recorded changes yet.</p>}
-    </div>}
+    </div>)}
 
     <div className="panel"><div className="title-row"><div><h2>{current.title}</h2><small>{rows.length} record{rows.length === 1 ? '' : 's'} shown</small><p className="hint">{tab === 'sites' ? 'All active sites are shown with address/postcode, notes, temperature and region. Open Edit to maintain its Documents library.' : tab === 'customers' ? 'Open Edit on a customer to maintain its SOPs, instructions and supporting Documents.' : 'For duplicates: Archive first. Turn on Include archived, then Delete the unused duplicate. Records with operational history are protected from permanent deletion.'}</p></div><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><label>Search<input value={query} onChange={e => setQuery(e.target.value)} placeholder={current.search}/></label><label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}/> Include archived</label><button onClick={() => void load()} disabled={loading}>Refresh</button></div></div>
       {error && <p className="notice" style={{ borderColor: '#b42318' }}>{error}</p>}{notice && <p className="notice">{notice}</p>}
-      {loading ? <div className="state">Loading {current.title.toLowerCase()}…</div> : <div style={{ overflowX: 'auto' }}><table><thead><tr>{current.columns.map(([,label]) => <th key={label}>{label}</th>)}<th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}>{current.columns.map(([key]) => <td key={key}>{fmtCell(key, row[key])}</td>)}<td>{row.active ? 'Active' : 'Archived'}</td><td style={{ whiteSpace: 'nowrap' }}><button onClick={() => void openEdit(row)}>Edit / Documents</button>{' '}<button onClick={() => void setActive(row, !row.active)} disabled={saving}>{row.active ? 'Archive' : 'Restore'}</button>{!row.active && <>{' '}<button disabled={saving} onClick={() => void deleteRecord(row)} style={{ borderColor: '#b42318', color: '#b42318', fontWeight: 800 }}>Delete</button></>}</td></tr>)}</tbody></table>{rows.length === 0 && <div className="state">No records match this search.</div>}</div>}
+      {loading ? <div className="state">Loading {current.title.toLowerCase()}…</div> : <div style={{ overflowX: 'auto' }}><table><thead><tr>{current.columns.map(([,label]) => <th key={label}>{label}</th>)}<th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(row => <tr key={row.id} className={crmMode ? 'crm-click-row' : undefined} onClick={crmMode ? () => void openEdit(row) : undefined}>{current.columns.map(([key]) => <td key={key}>{fmtCell(key, row[key])}</td>)}<td>{row.active ? 'Active' : 'Archived'}</td><td style={{ whiteSpace: 'nowrap' }}><button onClick={(event) => { event.stopPropagation(); void openEdit(row); }}>{crmMode ? 'Open CRM' : 'Edit / Documents'}</button>{' '}<button onClick={(event) => { event.stopPropagation(); void setActive(row, !row.active); }} disabled={saving}>{row.active ? 'Archive' : 'Restore'}</button>{!row.active && <>{' '}<button disabled={saving} onClick={(event) => { event.stopPropagation(); void deleteRecord(row); }} style={{ borderColor: '#b42318', color: '#b42318', fontWeight: 800 }}>Delete</button></>}</td></tr>)}</tbody></table>{rows.length === 0 && <div className="state">No records match this search.</div>}</div>}
     </div>
   </section>;
 }
