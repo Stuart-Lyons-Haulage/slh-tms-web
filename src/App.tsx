@@ -20,6 +20,7 @@ import { PlanStability, TimelinePage } from './pages/OperationsIntelligence';
 import { AttentionAndExceptions } from './pages/AttentionAndExceptions';
 import { DashboardOperational } from './pages/DashboardOperational';
 import { OperationsWallboard } from './pages/OperationsWallboard';
+import { PublicTvBoard } from './pages/PublicTvBoard';
 import { ImportCentre } from './pages/ImportCentre';
 import { ReportingOperational } from './pages/ReportingOperational';
 import { apiScope, useAccessToken } from './lib/auth';
@@ -83,6 +84,12 @@ function Shell() {
     };
   }, [authenticated, refreshReviewOrderCount, tvMode]);
 
+  const tvContent = location.pathname === '/tv'
+    ? <PublicTvBoard />
+    : authenticated || hasTvAccessKey
+      ? <RouteErrorBoundary key={location.pathname + location.search}><OperationsWallboard tvMode /></RouteErrorBoundary>
+      : <section className="sign-in-panel"><p className="eyebrow">Secure operations wallboard</p><h1>Open the office wallboard</h1><p>Use the dedicated TV access link, or sign in with a Lyons Microsoft account.</p><button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button></section>;
+
   return <div className={`app-shell ${authenticated && !tvMode ? 'with-system-strip' : ''} ${tvMode ? 'tv-public-mode' : ''}`}>
     {!tvMode && <header>
       <button className="menu" onClick={() => setOpen(!open)} aria-label="Toggle navigation" aria-expanded={open}>☰</button>
@@ -99,7 +106,7 @@ function Shell() {
       <NavSection title="Control & insight" storageKey="slh-nav-insight" items={insightNavigation} current={location.pathname} closeMobile={closeMobile}/>
       {authenticated && <button className="mobile-sign-out" type="button" onClick={() => instance.logoutRedirect()}>Sign out · {accounts[0]?.name || 'Microsoft account'}</button>}
     </aside>}
-    <main className={tvMode ? 'tv-main' : undefined}>{tvMode ? authenticated || hasTvAccessKey ? <RouteErrorBoundary key={location.pathname + location.search}><OperationsWallboard tvMode /></RouteErrorBoundary> : <section className="sign-in-panel"><p className="eyebrow">Secure operations wallboard</p><h1>Open the office wallboard</h1><p>Use the dedicated TV access link, or sign in with a Lyons Microsoft account.</p><button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button></section> : authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
+    <main className={tvMode ? 'tv-main' : undefined}>{tvMode ? tvContent : authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
       <Route path="/" element={<PlannerEnhanced />} /><Route path="/dashboard" element={<DashboardOperational />} /><Route path="/operations-wallboard" element={<OperationsWallboard />} /><Route path="/live-runs" element={<OperationsWallboard />} /><Route path="/tv-display" element={<OperationsWallboard />} /><Route path="/order-intake" element={<ImportCentre initialTab="orders" />} /><Route path="/jobs" element={<OrderControl initialTab="live" />} /><Route path="/loads" element={<RunsOperational />} /><Route path="/allocation" element={<PlannerEnhanced />} /><Route path="/pallet-control" element={<PalletPlanningControl />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<ImportCentre />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderControl />} />
       <Route path="/attention" element={<AttentionAndExceptions />} /><Route path="/exceptions" element={<AttentionAndExceptions />} /><Route path="/readiness" element={<DashboardOperational />} /><Route path="/plan-stability" element={<PlanStability />} /><Route path="/timeline/run/:id" element={<TimelinePage kind="run" />} /><Route path="/timeline/order/:id" element={<TimelinePage kind="order" />} />
       <Route path="/management" element={<Management />} /><Route path="/night-outs" element={<NightOutReport />} /><Route path="/control-centre" element={<ControlCentre />} /><Route path="/operations-control" element={<ControlCentre />} /><Route path="/admin" element={<ControlCentre />} /><Route path="/driver" element={<DriverMobile />} />
