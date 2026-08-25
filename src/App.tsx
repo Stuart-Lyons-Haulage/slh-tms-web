@@ -98,7 +98,7 @@ function Shell() {
       <div className="header-actions">{authenticated ? <><span className="user">{accounts[0]?.name}</span><button onClick={() => instance.logoutRedirect()}>Sign out</button></> : <button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button>}</div>
     </header>}
     {authenticated && !tvMode && <div className="system-strip"><HeaderIntelligence /></div>}
-    {authenticated && !tvMode && open && <button className="mobile-nav-scrim" type="button" aria-label="Close navigation" />}
+    {authenticated && !tvMode && open && <button className="mobile-nav-scrim" type="button" aria-label="Close navigation" onClick={closeMobile} />}
     {!tvMode && <aside className={`side-nav ${open ? 'open' : ''}`}>
       {authenticated && <div className="mobile-nav-search"><GlobalSearch /></div>}
       <NavSection title="Daily workflow" storageKey="slh-nav-daily" items={dailyNavigation} current={location.pathname} closeMobile={closeMobile} reviewOrderCount={reviewOrderCount}/>
