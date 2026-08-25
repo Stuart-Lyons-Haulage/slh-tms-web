@@ -271,7 +271,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     </div>
     {(error || boardData?.warning || boardData?.geofenceAvailable === false) && <div className="ops-wallboard-alert">{error || boardData?.warning || "Geofence progression is unavailable; planned journeys remain displayed."}</div>}
     <div className="ops-board-table" ref={tableRef} role="table" aria-label="Operations arrivals and departures">
-      <div className="ops-board-head" role="row"><span>Time</span><span>Run</span><span>Vehicle</span><span>Driver</span><span>Journey</span><span>ETA / Arrival</span><span>Status</span></div>
+      <div className="ops-board-head" role="row"><span>Time</span><span>Run</span><span>Vehicle</span><span>Driver</span><span>Journey</span><span>Final ETA / Arrival</span><span>Status</span></div>
       {loading && !data && <div className="ops-board-empty">Loading planned journeys and live progression...</div>}
       {!loading && rows.length === 0 && <div className="ops-board-empty">No runs are planned for today.</div>}
       {rows.map(row => {

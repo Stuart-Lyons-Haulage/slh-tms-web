@@ -15,6 +15,8 @@ type TvRun = {
   firstPlannedUtc?: string;
   finalPlannedUtc?: string;
   nextStop?: string;
+  finalStop?: string;
+  etaTarget?: string;
   etaUtc?: string;
   etaSource: string;
   tracking: string;
@@ -252,12 +254,12 @@ export function PublicTvBoard() {
     </section>
 
     <section className="tv-run-table">
-      <div className="tv-run-head"><span>Run</span><span>Allocation</span><span>Next stop</span><span>ETA</span><span>Live status</span></div>
+      <div className="tv-run-head"><span>Run</span><span>Allocation</span><span>Next stop</span><span>Final ETA</span><span>Live status</span></div>
       {(feed?.runs || []).map(run => <article className={`tv-run-row ${needsAttention(run.state) ? "tv-run-row-attention" : ""}`} key={run.id}>
         <div className="tv-run-ref"><strong>{run.displayReference || displayRunReference(run.reference, undefined, run.firstPlannedUtc)}</strong><small>{run.status}</small></div>
         <div><strong>{run.vehicle}</strong>{dwellText(run) && <small className="tv-run-dwell">{dwellText(run)}</small>}<span>{run.driver}</span><small>{run.trailer ? `Trailer ${run.trailer}` : "Trailer TBC"}</small></div>
         <div><strong>{run.nextStop || (run.state === "COMPLETED" ? "Run complete" : "Next stop TBC")}</strong><small>Start {time(run.firstPlannedUtc)} · finish {time(run.finalPlannedUtc)}</small></div>
-        <div className="tv-run-eta"><strong>{run.state === "COMPLETED" ? "✓" : time(run.etaUtc)}</strong><small>{run.etaSource === "Live" ? "LIVE ETA" : run.etaSource.toUpperCase()}</small></div>
+        <div className="tv-run-eta"><strong>{run.state === "COMPLETED" ? "✓" : time(run.etaUtc)}</strong><small>{run.state === "COMPLETED" ? "FINAL COMPLETE" : `${run.etaSource === "Live" ? "LIVE" : run.etaSource.toUpperCase()} TO ${run.etaTarget || run.finalStop || "FINAL"}`}</small></div>
         <div className={`tv-run-state ${stateClass(run.state)}`}><strong>{run.state}</strong><span>{run.stateDetail}</span><small>{run.linkageException || run.tracking}</small></div>
       </article>)}
       {!error && feed && feed.runs.length === 0 && <div className="tv-display-empty">No runs are planned for today.</div>}
