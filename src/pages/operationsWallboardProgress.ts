@@ -277,6 +277,19 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
   return merged;
 }
 
+function isFinalStopArrival(record: RunProgressRecord) {
+  if (!record.currentVisit || record.totalStops <= 0) return false;
+  const nextStop = record.nextStop;
+  const currentStopSequence = record.stopDwell?.find(stop => stop.stopId === record.currentVisit?.loadStopId)?.sequence
+    ?? (nextStop && nextStop.id === record.currentVisit.loadStopId ? nextStop.sequence : undefined);
+  if (currentStopSequence != null) return currentStopSequence === record.totalStops;
+  return record.completedStops === record.totalStops - 1;
+}
+
 export function completedJobCount(progress: RunProgressRecord[]) {
-  return progress.reduce((total, record) => total + Math.max(0, record.completedStops || 0), 0);
+  return progress.reduce((total, record) => {
+    const completed = Math.max(0, record.completedStops || 0);
+    const finalArrival = isFinalStopArrival(record) ? 1 : 0;
+    return total + Math.min(Math.max(0, record.totalStops || completed + finalArrival), completed + finalArrival);
+  }, 0);
 }
