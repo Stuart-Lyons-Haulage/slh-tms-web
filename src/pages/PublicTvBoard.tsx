@@ -88,7 +88,7 @@ function needsAttention(value: string) {
 
 function initialDisplayKey() {
   const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
-  const legacy = new URLSearchParams(hash).get("key")?.trim();
+  const legacy = new URLSearchParams(hash).get("key")?.trim() || new URLSearchParams(window.location.search).get("key")?.trim();
   if (legacy) {
     localStorage.setItem(STORAGE_KEY, legacy);
     window.history.replaceState(null, "", window.location.pathname);
