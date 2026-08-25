@@ -1,4 +1,27 @@
 .order-selection-panel { display: grid; gap: 14px; }
+.order-date-strip { display: grid; grid-template-columns: repeat(11, minmax(72px, 1fr)); gap: 8px; overflow-x: auto; padding: 2px 1px 6px; }
+.order-date-strip button { min-width: 72px; display: grid; justify-items: center; gap: 1px; padding: 9px 7px; border: 1px solid #c9d9de; border-radius: 14px; background: #fff; color: #49636f; }
+.order-date-strip button span { font-size: .7rem; font-weight: 900; letter-spacing: .04em; }
+.order-date-strip button strong { font-size: 1.45rem; line-height: 1.05; color: #173d50; }
+.order-date-strip button small { font-size: .72rem; color: #758992; }
+.order-date-strip button b { margin-top: 5px; min-width: 26px; padding: 3px 7px; border-radius: 999px; background: #e8f0f2; color: #42606c; }
+.order-date-strip button em { font-size: .66rem; font-style: normal; color: #78909a; }
+.order-date-strip button.has-orders { border-color: #8fc7c2; background: #f5fbfa; }
+.order-date-strip button.has-orders b { background: #d8f0ec; color: #0b6e68; }
+.order-date-strip button.today { box-shadow: inset 0 3px 0 #e7b43a; }
+.order-date-strip button.selected { border-color: #0c7c76; background: #eaf8f6; box-shadow: inset 0 0 0 1px #0c7c76; }
+.order-date-strip button.selected strong { color: #086862; }
+.order-date-strip button.empty { opacity: .72; }
+.order-waiting-band { display: grid; grid-template-columns: minmax(150px, 210px) 1fr; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid #cbdde1; border-radius: 12px; background: #f8fbfc; }
+.order-waiting-band > div:first-child { display: grid; gap: 2px; }
+.order-waiting-band > div:first-child strong { color: #173d50; }
+.order-waiting-band > div:first-child small { color: #70858f; }
+.order-waiting-bubbles { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.order-waiting-bubbles button { display: inline-grid; grid-template-columns: auto auto; gap: 1px 8px; align-items: center; min-height: 42px; padding: 7px 11px; border: 1px solid #9fc9c5; border-radius: 999px; background: #eef9f7; color: #27525c; }
+.order-waiting-bubbles button span { font-weight: 800; }
+.order-waiting-bubbles button strong { min-width: 24px; padding: 2px 7px; border-radius: 999px; background: #0c7c76; color: #fff; }
+.order-waiting-bubbles button small { grid-column: 1 / -1; font-size: .66rem; color: #8a6510; }
+.order-waiting-bubbles button.selected { border-color: #075d59; box-shadow: inset 0 0 0 1px #075d59; background: #dff4f1; }
 .bulk-selection-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid #b8d8d5; border-radius: 10px; background: #f7fcfb; }
 .bulk-select-all { display: inline-flex; align-items: center; gap: 9px; font-weight: 800; color: #173d50; cursor: pointer; }
 .bulk-select-all input { width: 18px; height: 18px; }
@@ -38,6 +61,7 @@
 .bulk-source-line a { margin-left: auto; font-weight: 800; }
 
 @media (max-width: 1100px) {
+  .order-date-strip { grid-template-columns: repeat(11, minmax(82px, 1fr)); }
   .bulk-order-row { grid-template-columns: auto minmax(160px, 1fr) minmax(210px, 1.3fr) 70px minmax(150px, .8fr); }
   .bulk-order-actions { grid-column: 2 / -1; justify-content: flex-start; }
   .bulk-order-status { justify-self: start; }
@@ -45,6 +69,11 @@
 }
 
 @media (max-width: 700px) {
+  .order-date-strip { display: flex; }
+  .order-date-strip button { flex: 0 0 78px; }
+  .order-waiting-band { grid-template-columns: 1fr; }
+  .order-waiting-bubbles { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 3px; }
+  .order-waiting-bubbles button { flex: 0 0 auto; }
   .bulk-selection-count { width: 100%; margin-left: 0; }
   .bulk-selection-toolbar button { flex: 1 1 150px; }
   .bulk-order-list { max-height: none; }
