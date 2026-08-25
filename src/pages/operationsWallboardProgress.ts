@@ -124,10 +124,10 @@ function collectionRisk(progress: RunProgressRecord | undefined, eta: DeliveryEt
   const overdueMinutes = Math.floor((nowMs - deadlineMs) / 60000);
   if (overdueMinutes >= 0) {
     return {
-      status: "late" as const,
-      label: "LATE / NO ARRIVAL",
-      detail: `${stopName} was due ${overdueMinutes}m ago and no arrival is recorded`,
-      priority: 93,
+      status: "risk" as const,
+      label: "ETA UNCONFIRMED",
+      detail: `${stopName} planned time passed ${overdueMinutes}m ago · no live arrival/ETA evidence`,
+      priority: 82,
     };
   }
   const minutesUntilDue = Math.ceil((deadlineMs - nowMs) / 60000);
@@ -140,6 +140,10 @@ function collectionRisk(progress: RunProgressRecord | undefined, eta: DeliveryEt
     };
   }
   return undefined;
+}
+
+export function finalEtaFor(etas: DeliveryEta[]) {
+  return [...etas].sort((a, b) => a.sequence - b.sequence).at(-1);
 }
 
 export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()) {

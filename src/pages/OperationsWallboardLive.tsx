@@ -4,7 +4,7 @@ import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
-import { completedJobCount, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
+import { completedJobCount, finalEtaFor, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
 import "../operations-wallboard.css";
 
 type RunProgressResponse = {
@@ -30,6 +30,7 @@ type BoardRow = {
   progress?: RunProgressRecord;
   etas: DeliveryEta[];
   nextEta?: DeliveryEta;
+  finalEta?: DeliveryEta;
   route: string;
   runLabel: string;
   vehicle: string;
@@ -91,6 +92,13 @@ function pickNextEta(etas: DeliveryEta[], progress?: RunProgressRecord) {
   }
   return sorted.find(eta => eta.source === "Live") || sorted[0];
 }
+function isFinalCurrentVisit(progress?: RunProgressRecord) {
+  if (!progress?.currentVisit || progress.totalStops <= 0) return false;
+  const currentStopSequence = progress.stopDwell?.find(stop => stop.stopId === progress.currentVisit?.loadStopId)?.sequence
+    ?? (progress.nextStop && progress.nextStop.id === progress.currentVisit.loadStopId ? progress.nextStop.sequence : undefined);
+  if (currentStopSequence != null) return currentStopSequence === progress.totalStops;
+  return progress.completedStops === progress.totalStops - 1;
+}
 function minutesToWindow(eta?: DeliveryEta) {
   if (!eta?.etaUtc || !eta.deliveryWindowEndUtc) return undefined;
   const minutes = Math.round((ms(eta.deliveryWindowEndUtc) - ms(eta.etaUtc)) / 60000);
@@ -104,7 +112,7 @@ function tachoText(tacho?: RunTachoEvidence | null, eta?: DeliveryEta) {
   if (tacho?.status === "Matched") return `signed on ${formatTachoTime(tacho.signOnUtc) || ""}`.trim();
   if (tacho?.status === "CardConfirmed") return `card confirmed ${formatTachoTime(tacho.signOnUtc) || ""}`.trim();
   if (tacho?.status === "Mismatch") return "tacho mismatch";
-  if (tacho?.status === "NoTachoDuty") return "not signed on";
+  if (tacho?.status === "NoTachoDuty") return "sign-on evidence unavailable";
   if (tacho?.status === "NoPlannedDriver") return "no planned driver";
   if (tacho?.status === "NoPlannedVehicle") return "no planned vehicle";
   if (tacho?.status === "Unavailable") return "TachoMaster unavailable";
@@ -211,22 +219,23 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
       const assignment = assignmentByLoad.get(id);
       const etas = [...(etaByLoad.get(id) || [])].sort((a, b) => a.sequence - b.sequence);
       const nextEta = pickNextEta(etas, progress);
+      const finalEta = finalEtaFor(etas);
       const status = statusFor(progress, nextEta, etas);
       const complete = status.status === "complete";
-      const arrivalUtc = progress?.currentVisit?.enteredAtUtc;
-      const liveEtaUtc = nextEta?.source === "Live" ? nextEta.etaUtc : undefined;
-      const estimatedEtaUtc = nextEta?.source === "Estimated" ? nextEta.etaUtc : undefined;
+      const finalArrivalUtc = isFinalCurrentVisit(progress) ? progress?.currentVisit?.enteredAtUtc : undefined;
+      const liveEtaUtc = finalEta?.source === "Live" ? finalEta.etaUtc : undefined;
+      const estimatedEtaUtc = finalEta?.source === "Estimated" ? finalEta.etaUtc : undefined;
       const scheduledUtc = firstStop(load)?.plannedArrivalUtc || progress?.nextStop?.plannedArrivalUtc;
-      const runReference = load?.reference || progress?.loadReference || nextEta?.loadReference || assignment?.loadReference || "RUN TBC";
+      const runReference = load?.reference || progress?.loadReference || nextEta?.loadReference || finalEta?.loadReference || assignment?.loadReference || "RUN TBC";
       return {
-        id, load, assignment, progress, etas, nextEta,
+        id, load, assignment, progress, etas, nextEta, finalEta,
         route: routeText(load, etas),
         runLabel: displayRunReference(runReference, load?.plannerNotes, firstStop(load)?.plannedArrivalUtc || scheduledUtc),
-        vehicle: assignment?.vehicle?.registration || nextEta?.vehicleRegistration || "VEHICLE TBC",
-        driver: assignment?.driver?.displayName || nextEta?.tachoDriverName || "DRIVER TBC",
+        vehicle: assignment?.vehicle?.registration || nextEta?.vehicleRegistration || finalEta?.vehicleRegistration || "VEHICLE TBC",
+        driver: assignment?.driver?.displayName || nextEta?.tachoDriverName || finalEta?.tachoDriverName || "DRIVER TBC",
         scheduledUtc,
-        displayTimeUtc: complete ? undefined : arrivalUtc || liveEtaUtc || estimatedEtaUtc,
-        displayTimeLabel: complete ? "AVAILABLE" : arrivalUtc ? "ARRIVED" : liveEtaUtc ? "LIVE ETA" : estimatedEtaUtc ? "ESTIMATED ETA" : "ETA PENDING",
+        displayTimeUtc: complete ? undefined : finalArrivalUtc || liveEtaUtc || estimatedEtaUtc,
+        displayTimeLabel: complete ? "AVAILABLE" : finalArrivalUtc ? "ARRIVED" : liveEtaUtc ? "LIVE FINAL ETA" : estimatedEtaUtc ? "ESTIMATED FINAL ETA" : "FINAL ETA PENDING",
         focusStop: complete ? "Available for next job" : progress?.currentVisit?.geofenceName || progress?.nextStop?.name || nextEta?.stopName || "Next stop TBC",
         status: status.status, statusLabel: status.label, statusDetail: status.detail,
         tacho: progress?.tacho,
@@ -264,9 +273,9 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     <div className="ops-wallboard-summary">
       <article><span>Runs on board</span><strong>{rows.length}</strong><small>all planned journeys retained</small></article>
       <article className="green"><span>Tracker live</span><strong>{formatAge(boardData?.latestTrackingUtc, clock)}</strong><small>{boardData?.geofenceLinkedRuns ?? 0} geofence-linked runs</small></article>
-      <article className="amber"><span>On site</span><strong>{onSite}</strong><small>arrival time replaces ETA</small></article>
+      <article className="amber"><span>On site</span><strong>{onSite}</strong><small>current site evidence retained</small></article>
       <article className="green"><span>Complete</span><strong>{completeJobs}</strong><small>departed geofenced stops</small></article>
-      <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} late · {risk} at risk</small></article>
+      <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} proved late · {risk} needs attention</small></article>
       <article className="green"><span>Available</span><strong>{available}</strong><small>final stop completed</small></article>
     </div>
     {(error || boardData?.warning || boardData?.geofenceAvailable === false) && <div className="ops-wallboard-alert">{error || boardData?.warning || "Geofence progression is unavailable; planned journeys remain displayed."}</div>}
@@ -290,13 +299,13 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
           <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.status === "complete" ? "completed" : "planned start"}</small></span>
           <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small></span>
           <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
-          <span><strong>{row.driver}</strong><small title={row.tacho?.explanation}>{tachoText(row.tacho, row.nextEta)}</small></span>
+          <span><strong>{row.driver}</strong><small title={row.tacho?.explanation}>{tachoText(row.tacho, row.finalEta || row.nextEta)}</small></span>
           <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${percent}%` }} /></div><small>{row.progress?.linkageException?.message || row.route}</small></span>
-          <span className="time-cell eta"><strong>{row.displayTimeLabel === "AVAILABLE" ? "AVAILABLE" : formatTime(row.displayTimeUtc)}</strong><small>{row.displayTimeLabel}{row.displayTimeLabel === "LIVE ETA" ? ` · ${formatAge(row.nextEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}` : ""}</small></span>
+          <span className="time-cell eta"><strong>{row.displayTimeLabel === "AVAILABLE" ? "AVAILABLE" : formatTime(row.displayTimeUtc)}</strong><small>{row.displayTimeLabel}{row.displayTimeLabel === "LIVE FINAL ETA" ? ` · ${formatAge(row.finalEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}` : ""}</small></span>
           <span className="status-cell"><strong>{row.statusLabel}</strong><small>{buffer == null || row.status === "onsite" || row.status === "complete" ? row.statusDetail : `${buffer >= 0 ? "+" : ""}${buffer}m · ${row.statusDetail}`}</small></span>
         </article>;
       })}
     </div>
-    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Live ETA first · planned time is backup only</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
+    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final ETA uses last remaining job · next stop drives risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
   </section>;
 }
