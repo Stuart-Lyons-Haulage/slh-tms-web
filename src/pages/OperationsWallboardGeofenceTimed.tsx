@@ -50,11 +50,22 @@ function isCompletedProgress(record: { runState?: string; totalStops?: number; c
   return record.runState === "Completed" || Boolean(record.totalStops && record.completedStops === record.totalStops);
 }
 
+function relabelCollectionTiming() {
+  const board = document.querySelector<HTMLElement>(".ops-wallboard");
+  if (!board) return;
+  const firstHeader = board.querySelector<HTMLElement>(".ops-board-head > span:first-child");
+  if (firstHeader && firstHeader.textContent !== "Collection due") firstHeader.textContent = "Collection due";
+  board.querySelectorAll<HTMLElement>(".ops-board-row .time-cell > small").forEach(label => {
+    if (label.textContent === "planned start") label.textContent = "first collection due";
+  });
+}
+
 /**
  * Wallboard-only adapter:
  * - current site dwell continues to come from run-progress and therefore starts at first geofence entry;
  * - between stops, the displayed next ETA is replaced with previous geofence departure + route time;
- * - once all stops are geofence-departed, the run is removed from the wallboard/TV data feeds.
+ * - once all stops are geofence-departed, the run is removed from the wallboard/TV data feeds;
+ * - the first time column is labelled as the first collection due time, not a driver start time.
  */
 export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: boolean }) {
   const [ready, setReady] = useState(false);
@@ -142,6 +153,14 @@ export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: 
       if (window.fetch === patchedFetch) window.fetch = originalFetch;
     };
   }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    relabelCollectionTiming();
+    const observer = new MutationObserver(relabelCollectionTiming);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [ready]);
 
   if (!ready) return <section className="ops-wallboard"><div className="ops-board-empty">Loading live geofence timing...</div></section>;
   return <ExistingOperationsWallboard tvMode={tvMode} />;

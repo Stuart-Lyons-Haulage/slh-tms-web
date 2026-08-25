@@ -75,12 +75,74 @@ export type RouteProgressRun = {
   stops: Array<RunProgressStop & { state: string }>;
 };
 
+const RISK_BUFFER_MINUTES = 15;
+
 function trackingAgeText(progress?: RunProgressRecord) {
   if (!progress || progress.trackingFresh !== false || progress.trackingAgeSeconds == null) return "";
   return `tracking ${Math.max(1, Math.round(progress.trackingAgeSeconds / 60))}m old`;
 }
 
-export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[]) {
+function timeMs(value?: string) {
+  if (!value) return Number.NaN;
+  const valueMs = Date.parse(value);
+  return Number.isFinite(valueMs) ? valueMs : Number.NaN;
+}
+
+function collectionDeadline(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined) {
+  return eta?.deliveryWindowEndUtc || progress?.nextStop?.plannedArrivalUtc;
+}
+
+function collectionRisk(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined, nowMs: number) {
+  if (progress?.currentVisit || progress?.geofenceOnSite) return undefined;
+  const deadline = collectionDeadline(progress, eta);
+  const deadlineMs = timeMs(deadline);
+  if (!Number.isFinite(deadlineMs)) return undefined;
+
+  const etaMs = timeMs(eta?.etaUtc);
+  const stopName = progress?.nextStop?.name || eta?.stopName || "Next collection";
+  if (Number.isFinite(etaMs)) {
+    const bufferMinutes = Math.floor((deadlineMs - etaMs) / 60000);
+    if (bufferMinutes < 0) {
+      return {
+        status: "late" as const,
+        label: "LATE ETA",
+        detail: `${stopName} ETA is ${Math.abs(bufferMinutes)}m after collection due`,
+        priority: 94,
+      };
+    }
+    if (bufferMinutes <= RISK_BUFFER_MINUTES) {
+      return {
+        status: "risk" as const,
+        label: "AT RISK",
+        detail: `${stopName} has ${bufferMinutes}m ETA buffer to collection due`,
+        priority: 84,
+      };
+    }
+    return undefined;
+  }
+
+  const overdueMinutes = Math.floor((nowMs - deadlineMs) / 60000);
+  if (overdueMinutes >= 0) {
+    return {
+      status: "late" as const,
+      label: "LATE / NO ARRIVAL",
+      detail: `${stopName} was due ${overdueMinutes}m ago and no arrival is recorded`,
+      priority: 93,
+    };
+  }
+  const minutesUntilDue = Math.ceil((deadlineMs - nowMs) / 60000);
+  if (minutesUntilDue <= RISK_BUFFER_MINUTES) {
+    return {
+      status: "risk" as const,
+      label: "AT RISK",
+      detail: `${stopName} due in ${minutesUntilDue}m · ETA not confirmed`,
+      priority: 83,
+    };
+  }
+  return undefined;
+}
+
+export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()) {
   const complete = progress?.runState === "Completed" || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops;
   if (complete) {
     return { status: "complete" as const, label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
@@ -91,27 +153,6 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
       label: "SITE DELAY",
       detail: `${progress.currentVisit.geofenceName || "On site"} · ${progress.currentVisit.dwellMinutes ?? 0} min dwell`,
       priority: 100,
-    };
-  }
-  const hardRisk = etas.find((eta) => eta.source === "Live" && (eta.risk === "Late" || eta.tachoStatus === "InsufficientDriveTime"));
-  if (hardRisk) {
-    return {
-      status: "late" as const,
-      label: hardRisk.tachoStatus === "InsufficientDriveTime" ? "HOURS RISK" : "LATE ETA",
-      detail: hardRisk.tachoStatus === "InsufficientDriveTime" ? "Tacho time is below remaining route need" : `${hardRisk.stopName} will miss its window`,
-      priority: 95,
-    };
-  }
-  if (nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
-    return { status: "risk" as const, label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
-  }
-  const staleTracking = trackingAgeText(progress);
-  if (staleTracking) {
-    return {
-      status: "risk" as const,
-      label: "TRACKING STALE",
-      detail: [progress?.focusStop || nextEta?.stopName, staleTracking].filter(Boolean).join(" · "),
-      priority: 75,
     };
   }
   if (progress?.currentVisit) {
@@ -128,6 +169,29 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
       label: "ON SITE",
       detail: progress.focusStop || "Matched geofence",
       priority: 70,
+    };
+  }
+  const hardRisk = etas.find((eta) => eta.source === "Live" && (eta.risk === "Late" || eta.tachoStatus === "InsufficientDriveTime"));
+  if (hardRisk) {
+    return {
+      status: "late" as const,
+      label: hardRisk.tachoStatus === "InsufficientDriveTime" ? "HOURS RISK" : "LATE ETA",
+      detail: hardRisk.tachoStatus === "InsufficientDriveTime" ? "Tacho time is below remaining route need" : `${hardRisk.stopName} will miss its window`,
+      priority: 95,
+    };
+  }
+  const calculatedRisk = collectionRisk(progress, nextEta, nowMs);
+  if (calculatedRisk) return calculatedRisk;
+  if (nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
+    return { status: "risk" as const, label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
+  }
+  const staleTracking = trackingAgeText(progress);
+  if (staleTracking) {
+    return {
+      status: "risk" as const,
+      label: "TRACKING STALE",
+      detail: [progress?.focusStop || nextEta?.stopName, staleTracking].filter(Boolean).join(" · "),
+      priority: 75,
     };
   }
   if (progress?.trackingMoving) {
