@@ -18,6 +18,7 @@ import './preferredVehicleAllocationPatch';
 import './allocationResiliencePatch';
 import './runsReadinessPatch';
 import './geofenceRecoveryPatch';
+import './geofenceRefreshPolicy';
 import './commercialRemovalPatch';
 import './routeGeocodeFallbackPatch';
 import './pollingLoadGuard';
