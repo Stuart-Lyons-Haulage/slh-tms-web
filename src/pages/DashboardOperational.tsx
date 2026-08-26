@@ -27,11 +27,14 @@ export function DashboardOperational() {
   const snapshot = readiness.data;
   const readyRuns = snapshot ? Math.max(0, snapshot.runs - snapshot.missingAllocations) : 0;
   const highAttention = attention.data?.items.filter((item) => item.severity === "High").length || 0;
+  const refreshReadiness = readiness.refresh;
+  const refreshAttention = attention.refresh;
+  const refreshFreshness = freshness.refresh;
 
-  const refreshAll = () => void Promise.all([readiness.refresh(), attention.refresh(), freshness.refresh()]);
+  const refreshAll = () => void Promise.all([refreshReadiness(), refreshAttention(), refreshFreshness()]);
 
   useEffect(() => {
-    const refreshFeeds = () => void freshness.refresh();
+    const refreshFeeds = () => void refreshFreshness();
     const interval = window.setInterval(refreshFeeds, 60_000);
     const onFocus = () => refreshFeeds();
     const onVisibility = () => { if (document.visibilityState === "visible") refreshFeeds(); };
@@ -42,7 +45,7 @@ export function DashboardOperational() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [freshness.refresh]);
+  }, [refreshFreshness]);
 
   return <section className="dashboard-health-page">
     <div className="title-row dashboard-health-title">
