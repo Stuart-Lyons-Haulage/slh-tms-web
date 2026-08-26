@@ -54,8 +54,8 @@ function mailboxSource(lastReceivedUtc: string | undefined, now: number): Freshn
     state: ageMinutes == null || ageMinutes > 36 * 60 ? 'amber' : 'green',
     cadence: 'event-driven',
     detail: lastReceivedUtc
-      ? 'Event-driven order intake · this timestamp is the last transport email received, not a connectivity heartbeat.'
-      : 'Event-driven order intake · no mailbox order receipt has been recorded yet, so connectivity is unconfirmed rather than failed.',
+      ? 'Info mailbox is event-driven · this timestamp is the last transport email received, not a connectivity heartbeat.'
+      : 'Info mailbox is event-driven · no mailbox order receipt has been recorded yet, so connectivity is unconfirmed rather than failed.',
   };
 }
 
