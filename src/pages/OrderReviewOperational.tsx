@@ -216,7 +216,7 @@ export function OrderReviewOperational() {
   const siteMaster = useApi(useCallback(async () =>
     request<Site[]>("/api/v1/operational-master-data/sites/search?includeInactive=false", await token()), [token]));
   const geofences = useApi(useCallback(async () =>
-    request<GeofenceOption[]>("/api/v1/operational-master-data/geofences/search?includeInactive=false", await token()), [token]));
+    request<GeofenceOption[]>("/api/v1/operational-master-data/geofences/search?includeInactive=false&take=5000", await token()), [token]));
 
   const rows = useMemo(() => (queue.data || []).map(parsePayload), [queue.data]);
   const visibleRows = useMemo(() => rows

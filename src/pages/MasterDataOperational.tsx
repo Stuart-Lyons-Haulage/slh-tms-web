@@ -64,7 +64,7 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
           request<Row[]>('/api/v1/sites', access),
           request<SitePlanningProfile[]>('/api/v1/site-planning-profiles', access),
           request<SiteGeofenceStatus[]>('/api/v1/site-geofence-sync/sites', access),
-          request<GeofenceOption[]>('/api/v1/operational-master-data/geofences/search?includeInactive=false', access),
+          request<GeofenceOption[]>('/api/v1/operational-master-data/geofences/search?includeInactive=false&take=5000', access),
         ]);
         setSiteGeofences(geofenceOptions);
         let sourceSites = activeSites;
