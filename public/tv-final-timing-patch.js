@@ -57,6 +57,21 @@
   function normalise(value) { return String(value || '').replace(/\s+/g, ' ').trim().toUpperCase(); }
   function stripPrefix(value) { return String(value || 'Final job').replace(/^(Collect|Collection|Deliver|Delivery)\s*·?\s*/i, ''); }
 
+  // Reset/re-import can expose the same run as PLAN-YYYYMMDD-23 in /loads while
+  // run-timing deliberately presents the operational label Run 23 AM. The legacy TV
+  // table also renders the display label, so exact reference-text matching loses the
+  // final ETA even though all three refer to the same run. The run number is unique
+  // within the planning date and is therefore the stable cross-feed display key here.
+  function runKey(value) {
+    var text = normalise(value);
+    var plan = text.match(/PLAN-\d{8}-(\d+)/);
+    var run = text.match(/\bRUN\s*(\d+)/);
+    var number = plan ? plan[1] : run ? run[1] : '';
+    if (!number) { return text; }
+    number = number.replace(/^0+/, '');
+    return number || '0';
+  }
+
   function finalStop(load) {
     var stops = load && load.stops ? load.stops.slice(0) : [];
     stops.sort(function (a, b) { return Number(a.sequence || 0) - Number(b.sequence || 0); });
@@ -122,13 +137,13 @@
     if (applying || !latestTiming || !latestLoads) { return; }
     applying = true;
     try {
-      var timingByRef = {};
-      var loadByRef = {};
+      var timingByKey = {};
+      var loadByKey = {};
       var i;
       var records = latestTiming.records || [];
       var loads = latestLoads || [];
-      for (i = 0; i < records.length; i += 1) { timingByRef[normalise(records[i].loadReference)] = records[i]; }
-      for (i = 0; i < loads.length; i += 1) { loadByRef[normalise(loads[i].reference)] = loads[i]; }
+      for (i = 0; i < records.length; i += 1) { timingByKey[runKey(records[i].loadReference)] = records[i]; }
+      for (i = 0; i < loads.length; i += 1) { loadByKey[runKey(loads[i].reference)] = loads[i]; }
 
       var header = document.querySelector('#legacy-board thead th:nth-child(5)');
       setText(header, 'FINAL ETA');
@@ -136,9 +151,9 @@
       var rows = document.querySelectorAll('#legacy-board tbody tr');
       for (i = 0; i < rows.length; i += 1) {
         var runNode = rows[i].querySelector('.run-name');
-        var key = normalise(runNode ? runNode.textContent : '');
-        var timing = timingByRef[key];
-        var load = loadByRef[key];
+        var key = runKey(runNode ? runNode.textContent : '');
+        var timing = timingByKey[key];
+        var load = loadByKey[key];
         if (!timing || !load) { continue; }
 
         if (timing.completed) {
@@ -185,11 +200,7 @@
         if (records[i].completed) { continue; }
         active += 1;
         if (records[i].currentGeofenceName) { onSite += 1; }
-        var linkedLoad = null;
-        var j;
-        for (j = 0; j < loads.length; j += 1) {
-          if (normalise(loads[j].reference) === normalise(records[i].loadReference)) { linkedLoad = loads[j]; break; }
-        }
+        var linkedLoad = loadByKey[runKey(records[i].loadReference)] || null;
         var linkedRisk = riskFor(records[i], finalStop(linkedLoad));
         if (linkedRisk && linkedRisk.kind === 'late') { lateCount += 1; }
         else if (linkedRisk && linkedRisk.kind === 'risk') { riskCount += 1; }
