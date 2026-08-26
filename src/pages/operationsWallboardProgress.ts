@@ -75,6 +75,19 @@ export type RouteProgressRun = {
   stops: Array<RunProgressStop & { state: string }>;
 };
 
+type WallboardStatusResult = {
+  status: "late" | "risk" | "onsite" | "route" | "scheduled" | "complete";
+  label: string;
+  detail: string;
+  priority: number;
+};
+
+type FinalDeliveryAssessment = {
+  result?: WallboardStatusResult;
+  onTime: boolean;
+  bufferMinutes?: number;
+};
+
 const RISK_BUFFER_MINUTES = 15;
 
 function trackingAgeText(progress?: RunProgressRecord) {
@@ -92,7 +105,7 @@ function collectionDeadline(progress: RunProgressRecord | undefined, eta: Delive
   return progress?.nextStop?.plannedArrivalUtc || eta?.deliveryWindowEndUtc;
 }
 
-function collectionAdvisory(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined, nowMs: number) {
+function collectionAdvisory(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined, nowMs: number): WallboardStatusResult | undefined {
   if (progress?.currentVisit || progress?.geofenceOnSite) return undefined;
   const deadlineMs = timeMs(collectionDeadline(progress, eta));
   if (!Number.isFinite(deadlineMs)) return undefined;
@@ -103,7 +116,7 @@ function collectionAdvisory(progress: RunProgressRecord | undefined, eta: Delive
     const bufferMinutes = Math.floor((deadlineMs - etaMs) / 60000);
     if (bufferMinutes < 0) {
       return {
-        status: "risk" as const,
+        status: "risk",
         label: "COLLECTION BEHIND",
         detail: `${stopName} is ${Math.abs(bufferMinutes)}m behind collection plan · final delivery ETA assessed separately`,
         priority: 64,
@@ -111,7 +124,7 @@ function collectionAdvisory(progress: RunProgressRecord | undefined, eta: Delive
     }
     if (bufferMinutes <= RISK_BUFFER_MINUTES) {
       return {
-        status: "risk" as const,
+        status: "risk",
         label: "COLLECTION TIGHT",
         detail: `${stopName} has ${bufferMinutes}m buffer to collection plan`,
         priority: 63,
@@ -123,7 +136,7 @@ function collectionAdvisory(progress: RunProgressRecord | undefined, eta: Delive
   const overdueMinutes = Math.floor((nowMs - deadlineMs) / 60000);
   if (overdueMinutes >= 0) {
     return {
-      status: "risk" as const,
+      status: "risk",
       label: "ETA UNCONFIRMED",
       detail: `${stopName} planned time passed ${overdueMinutes}m ago · no live arrival/ETA evidence`,
       priority: 62,
@@ -136,42 +149,50 @@ export function finalEtaFor(etas: DeliveryEta[]) {
   return [...etas].sort((a, b) => a.sequence - b.sequence).at(-1);
 }
 
-function finalDeliveryRisk(etas: DeliveryEta[]) {
+function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
   const finalEta = finalEtaFor(etas);
   const etaMs = timeMs(finalEta?.etaUtc);
   const deadlineMs = timeMs(finalEta?.deliveryWindowEndUtc);
-  if (!Number.isFinite(etaMs) || !Number.isFinite(deadlineMs)) return undefined;
+  if (!Number.isFinite(etaMs) || !Number.isFinite(deadlineMs)) return { onTime: false };
 
   const bufferMinutes = Math.floor((deadlineMs - etaMs) / 60000);
   const stopName = finalEta?.stopName || "Final delivery";
   if (bufferMinutes < 0) {
     const estimated = finalEta?.source === "Estimated";
     return {
-      status: estimated ? "risk" as const : "late" as const,
-      label: estimated ? "FINAL ETA AT RISK" : "LATE FINAL ETA",
-      detail: `${stopName} final ETA is ${Math.abs(bufferMinutes)}m after delivery latest time`,
-      priority: estimated ? 89 : 96,
+      onTime: false,
+      bufferMinutes,
+      result: {
+        status: estimated ? "risk" : "late",
+        label: estimated ? "FINAL ETA AT RISK" : "LATE FINAL ETA",
+        detail: `${stopName} final ETA is ${Math.abs(bufferMinutes)}m after delivery latest time`,
+        priority: estimated ? 89 : 96,
+      },
     };
   }
   if (bufferMinutes <= RISK_BUFFER_MINUTES) {
     return {
-      status: "risk" as const,
-      label: "FINAL ETA AT RISK",
-      detail: `${stopName} has ${bufferMinutes}m buffer to delivery latest time`,
-      priority: 88,
+      onTime: false,
+      bufferMinutes,
+      result: {
+        status: "risk",
+        label: "FINAL ETA AT RISK",
+        detail: `${stopName} has ${bufferMinutes}m buffer to delivery latest time`,
+        priority: 88,
+      },
     };
   }
-  return { onTime: true as const, bufferMinutes };
+  return { onTime: true, bufferMinutes };
 }
 
-export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()) {
+export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
   const complete = progress?.runState === "Completed" || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops;
   if (complete) {
-    return { status: "complete" as const, label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
+    return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
   }
   if (progress?.currentVisit?.isDelayed) {
     return {
-      status: "late" as const,
+      status: "late",
       label: "SITE DELAY",
       detail: `${progress.currentVisit.geofenceName || "On site"} · ${progress.currentVisit.dwellMinutes ?? 0} min dwell`,
       priority: 100,
@@ -179,7 +200,7 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   }
   if (progress?.currentVisit) {
     return {
-      status: "onsite" as const,
+      status: "onsite",
       label: progress.currentVisit.confirmedAtUtc ? "ON SITE" : "ARRIVED",
       detail: `${progress.currentVisit.geofenceName || "Matched geofence"} · ${progress.currentVisit.dwellMinutes ?? 0} min`,
       priority: 70,
@@ -187,7 +208,7 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   }
   if (progress?.geofenceOnSite) {
     return {
-      status: "onsite" as const,
+      status: "onsite",
       label: "ON SITE",
       detail: progress.focusStop || "Matched geofence",
       priority: 70,
@@ -197,21 +218,20 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   const hoursRisk = etas.find((eta) => eta.tachoStatus === "InsufficientDriveTime");
   if (hoursRisk) {
     return {
-      status: "late" as const,
+      status: "late",
       label: "HOURS RISK",
       detail: "Tacho time is below remaining route need",
       priority: 95,
     };
   }
 
-  const finalRisk = finalDeliveryRisk(etas);
-  if (finalRisk && "status" in finalRisk) return finalRisk;
-  const finalDeliveryConfirmedOnTime = Boolean(finalRisk?.onTime);
+  const finalAssessment = finalDeliveryAssessment(etas);
+  if (finalAssessment.result) return finalAssessment.result;
 
   // A collection slot is an execution milestone, not the customer promise. Once a
   // cumulative final ETA and final delivery latest time are both known and healthy,
   // do not colour the whole run red/amber merely because a collection is behind plan.
-  if (!finalDeliveryConfirmedOnTime) {
+  if (!finalAssessment.onTime) {
     const collectionTiming = collectionAdvisory(progress, nextEta, nowMs);
     if (collectionTiming) return collectionTiming;
   }
@@ -219,20 +239,20 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   const hardCustomerRisk = etas.find((eta) => eta.source === "Live" && eta.risk === "Late" && eta.deliveryWindowEndUtc);
   if (hardCustomerRisk) {
     return {
-      status: "late" as const,
+      status: "late",
       label: "LATE DELIVERY ETA",
       detail: `${hardCustomerRisk.stopName} will miss its customer window`,
       priority: 94,
     };
   }
 
-  if (!finalDeliveryConfirmedOnTime && nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
-    return { status: "risk" as const, label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
+  if (!finalAssessment.onTime && nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
+    return { status: "risk", label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
   }
   const staleTracking = trackingAgeText(progress);
   if (staleTracking) {
     return {
-      status: "risk" as const,
+      status: "risk",
       label: "TRACKING STALE",
       detail: [progress?.focusStop || nextEta?.stopName, staleTracking].filter(Boolean).join(" · "),
       priority: 75,
@@ -240,7 +260,7 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   }
   if (progress?.trackingMoving) {
     return {
-      status: "route" as const,
+      status: "route",
       label: "ON ROUTE",
       detail: [
         progress?.focusStop || progress?.nextStop?.name || nextEta?.stopName || "Live route active",
@@ -251,7 +271,7 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   }
   if ((progress?.completedStops || 0) > 0 || nextEta?.source === "Live" || String(nextEta?.source) === "Estimated") {
     return {
-      status: "route" as const,
+      status: "route",
       label: "ON ROUTE",
       detail: String(nextEta?.source) === "Estimated"
         ? `${progress?.nextStop?.name || nextEta?.stopName || "Next stop"} · resilient ETA only`
@@ -259,7 +279,7 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
       priority: 55,
     };
   }
-  return { status: "scheduled" as const, label: "SCHEDULED", detail: progress?.nextStop?.name || nextEta?.stopName || "Awaiting tracker/geofence evidence", priority: 30 };
+  return { status: "scheduled", label: "SCHEDULED", detail: progress?.nextStop?.name || nextEta?.stopName || "Awaiting tracker/geofence evidence", priority: 30 };
 }
 
 function routeRunState(route: RouteProgressRun, fallback?: string) {
