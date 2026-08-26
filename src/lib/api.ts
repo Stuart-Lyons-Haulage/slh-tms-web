@@ -826,6 +826,7 @@ export async function request<T>(
         ? "Microsoft sign-in worked, but your account has not been granted TMS API access yet."
         : error?.detail ||
           error?.message ||
+          error?.error ||
           `Request failed (${response.status}).`;
     throw new ApiError(response.status, message);
   }
