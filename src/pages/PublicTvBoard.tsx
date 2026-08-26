@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { formatTime as formatUkTime } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
+import { mergeAuthoritativeFinalTiming, type TvTimingResponse } from "./publicTvFinalTiming";
 import "../tv-display.css";
 
 type TvRun = {
@@ -110,15 +111,20 @@ export function PublicTvBoard() {
   const refresh = useCallback(async (key = displayKey) => {
     if (!key) return;
     try {
+      const headers = { Accept: "application/json", "X-TV-Display-Key": key };
       const liveRequest = fetch(`/tms-api/api/v1/tv-display/live-runs?date=${encodeURIComponent(date)}`, {
-        headers: { Accept: "application/json", "X-TV-Display-Key": key },
+        headers,
         cache: "no-store",
       });
       const labelsRequest = fetch(`/tms-api/api/v1/tv-display/run-labels?date=${encodeURIComponent(date)}`, {
-        headers: { Accept: "application/json", "X-TV-Display-Key": key },
+        headers,
         cache: "no-store",
       }).catch(() => undefined);
-      const [response, labelResponse] = await Promise.all([liveRequest, labelsRequest]);
+      const timingRequest = fetch(`/tms-api/api/v1/run-timing?date=${encodeURIComponent(date)}`, {
+        headers,
+        cache: "no-store",
+      }).catch(() => undefined);
+      const [response, labelResponse, timingResponse] = await Promise.all([liveRequest, labelsRequest, timingRequest]);
       if (response.status === 401) {
         localStorage.removeItem(STORAGE_KEY);
         setDisplayKey("");
@@ -133,6 +139,12 @@ export function PublicTvBoard() {
       }
 
       const nextFeed = await response.json() as TvFeed;
+      if (timingResponse?.ok) {
+        try {
+          const timing = await timingResponse.json() as TvTimingResponse;
+          nextFeed.runs = mergeAuthoritativeFinalTiming(nextFeed.runs, timing);
+        } catch { /* the live-runs feed remains the safe fallback during staggered API/web deployments */ }
+      }
       if (labelResponse?.ok) {
         try {
           const labelFeed = await labelResponse.json() as RunLabelFeed;
