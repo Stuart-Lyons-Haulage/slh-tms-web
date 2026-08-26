@@ -8,11 +8,12 @@ on:
       - '**/*.md'
   workflow_dispatch:
 
-# Azure Container Apps serialises control-plane mutations. Keep production
-# portal releases in one queue so two commits cannot race the same app.
+# Azure Container Apps serialises control-plane mutations. Newer main commits
+# supersede older queued releases; the deployment steps below still wait for any
+# Azure-side operation already accepted by Container Apps to finish safely.
 concurrency:
   group: slh-tms-portal-prod
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   AZURE_RESOURCE_GROUP: slh-tms-prod-rg
