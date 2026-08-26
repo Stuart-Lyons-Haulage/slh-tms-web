@@ -24,19 +24,8 @@ type Fence = {
   validationStatus: string;
 };
 
-type Hit = {
-  geofenceName: string;
-  vehicleIdentifier: string;
-  enteredAtUtc: string;
-  confirmedAtUtc?: string;
-  exitedAtUtc?: string;
-  loadId?: string;
-  loadStopId?: string;
-  dwellMinutes: number;
-  status: string;
-  statusReason?: string;
-};
-
+type SiteOption = { siteId: string; siteCode: string; siteName: string; linkedGeofences: string[]; geofenceLinked: boolean; needsReview: boolean };
+type Hit = { geofenceName: string; vehicleIdentifier: string; enteredAtUtc: string; confirmedAtUtc?: string; exitedAtUtc?: string; loadId?: string; loadStopId?: string; dwellMinutes: number; status: string; statusReason?: string };
 type Integrity = {
   checkedAtUtc: string;
   engineReady: boolean;
@@ -58,6 +47,7 @@ const text = (value: unknown) => value == null || value === '' ? '—' : String(
 export function GeofenceOperational() {
   const token = useAccessToken();
   const [data, setData] = useState<Integrity>();
+  const [sites, setSites] = useState<SiteOption[]>([]);
   const [query, setQuery] = useState('');
   const [includeArchived, setIncludeArchived] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -70,7 +60,13 @@ export function GeofenceOperational() {
   const load = useCallback(async () => {
     setLoading(true); setError(undefined);
     try {
-      setData(await request<Integrity>('/api/v1/geofence-integrity', await token()));
+      const access = await token();
+      const [integrity, siteOptions] = await Promise.all([
+        request<Integrity>('/api/v1/geofence-integrity', access),
+        request<SiteOption[]>('/api/v1/site-geofence-sync/sites', access),
+      ]);
+      setData(integrity);
+      setSites(siteOptions);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Geofence integrity could not be loaded.');
     } finally { setLoading(false); }
@@ -96,13 +92,13 @@ export function GeofenceOperational() {
           maxWaitMinutes: draft.maxWaitMinutes ?? null,
           pendingEntryMinutes: Number(draft.pendingEntryMinutes || 0),
           pendingExitMinutes: Number(draft.pendingExitMinutes || 0),
-          siteNumber: draft.siteNumber,
-          siteId: draft.siteId || null,
-          locationOnly: Boolean(draft.locationOnly),
+          siteNumber: selected.locationOnly ? undefined : selected.siteCode || selected.siteNumber,
+          siteId: selected.locationOnly ? null : selected.siteId || null,
+          locationOnly: Boolean(selected.locationOnly),
           polygonJson: draft.polygonJson,
         }),
       });
-      setSelected(undefined); setNotice('Geofence updated.'); await load();
+      setSelected(undefined); setNotice('Geofence details updated. Site linkage is only changed by Sync Site.'); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Geofence update failed.'); }
     finally { setSaving(false); }
   }
@@ -111,17 +107,21 @@ export function GeofenceOperational() {
     if (!selected) return;
     setSaving(true); setError(undefined); setNotice(undefined);
     try {
-      const result = await request<{ siteCode?: string; siteName?: string; locationOnly?: boolean }>(`/api/v1/operational-master-data/geofences/${selected.id}/sync-site`, await token(), {
-        method: 'POST',
-        body: JSON.stringify({
-          name: draft.name || selected.name,
-          siteNumber: locationOnly ? undefined : draft.siteNumber,
-          siteId: locationOnly ? null : draft.siteId || null,
-          locationOnly,
-          polygonJson: draft.polygonJson || selected.polygonJson,
-        }),
-      });
-      setNotice(result.locationOnly ? 'Geofence marked as location only.' : `Geofence linked to ${result.siteCode || draft.siteNumber || 'site'}${result.siteName ? ` · ${result.siteName}` : ''}.`);
+      if (locationOnly) {
+        const result = await request<{ locationOnly?: boolean }>(`/api/v1/operational-master-data/geofences/${selected.id}/sync-site`, await token(), {
+          method: 'POST',
+          body: JSON.stringify({ name: draft.name || selected.name, siteId: null, locationOnly: true, polygonJson: draft.polygonJson || selected.polygonJson }),
+        });
+        setNotice(result.locationOnly ? 'Geofence marked as location only.' : 'Location-only update completed.');
+      } else {
+        const siteCode = String(draft.siteNumber || draft.siteCode || '').trim();
+        if (!siteCode) throw new Error('Choose a canonical SITE### record before syncing this geofence.');
+        const result = await request<SiteOption>(`/api/v1/site-geofence-sync/geofences/${selected.id}/link`, await token(), {
+          method: 'POST',
+          body: JSON.stringify({ siteCode }),
+        });
+        setNotice(`Geofence linked to ${result.siteCode} · ${result.siteName}. The link was accepted because the geofence name confirms this Site.`);
+      }
       setSelected(undefined);
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Site sync failed.'); }
@@ -149,12 +149,13 @@ export function GeofenceOperational() {
     finally { setSaving(false); }
   }
 
-  async function repairLinks() {
+  async function syncAllSites() {
     setSaving(true); setError(undefined); setNotice(undefined);
     try {
-      const result = await request<{ relinked: number; unlinked: number }>('/api/v1/geofences/repair-links', await token(), { method: 'POST' });
-      setNotice(`Site links repaired: ${result.relinked} relinked, ${result.unlinked} still unlinked.`); await load();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Geofence link repair failed.'); }
+      const result = await request<{ sitesCoded: number; geofencesLinked: number; geofencesUnlinked: number; sitesMissingGeofence: number }>('/api/v1/site-geofence-sync/sync-sites', await token(), { method: 'POST' });
+      setNotice(`Sites synced: ${result.sitesCoded} code(s) canonicalised, ${result.geofencesLinked} geofence(s) linked, ${result.geofencesUnlinked} stale link(s) removed, ${result.sitesMissingGeofence} site(s) need review.`);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Site/geofence sync failed.'); }
     finally { setSaving(false); }
   }
 
@@ -173,16 +174,8 @@ export function GeofenceOperational() {
 
   return <section>
     <div className="title-row">
-      <div>
-        <p className="eyebrow">RoadTech → geofence → Live Runs</p>
-        <h2>Geofence integrity</h2>
-        <p className="hint">This screen shows actual geofence progression evidence, not just whether vehicle tracking is online.</p>
-      </div>
-      <div className="title-actions">
-        <button onClick={() => void load()} disabled={loading}>Refresh status</button>
-        <button onClick={() => void repairLinks()} disabled={saving}>Repair site links</button>
-        <button onClick={() => void reloadSeed()} disabled={saving}>Reload SLH geofences</button>
-      </div>
+      <div><p className="eyebrow">RoadTech → geofence → Live Runs</p><h2>Geofence integrity</h2><p className="hint">Geofence-to-Site links use canonical SITE### records and must be confirmed by the geofence name.</p></div>
+      <div className="title-actions"><button onClick={() => void load()} disabled={loading}>Refresh status</button><button className="primary" onClick={() => void syncAllSites()} disabled={saving}>{saving ? 'Syncing…' : 'Sync Sites'}</button><button onClick={() => void reloadSeed()} disabled={saving}>Reload SLH geofences</button></div>
     </div>
 
     {error && <p className="notice" style={{ borderColor: '#b42318' }}>{error}</p>}
@@ -196,37 +189,29 @@ export function GeofenceOperational() {
         <article className="metric"><span>Linked to Sites</span><strong>{data.geofences.linked}</strong><small>{data.geofences.unlinked} valid but unlinked</small></article>
         <article className="metric"><span>RoadTech age</span><strong>{data.trackingAgeMinutes == null ? '—' : `${Math.round(data.trackingAgeMinutes)}m`}</strong><small>{data.latestTracking ? `${data.latestTracking.vehicleIdentifier} · ${dt(data.latestTracking.eventTimeUtc)}` : 'No tracking event'}</small></article>
       </div>
-
-      <div className="panel" style={{ marginBottom: 16 }}>
-        <div className="title-row"><div><p className="eyebrow">Actual progression evidence</p><h3>Latest geofence hits</h3></div></div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 12 }}>
-          <article><strong>Latest entry / visit</strong>{latest ? <p>{latest.geofenceName}<br/><small>{latest.vehicleIdentifier} · {dt(latest.enteredAtUtc)} · {latest.status}<br/>Run {latest.loadId || 'not linked'} · stop {latest.loadStopId || 'not linked'}</small></p> : <p className="hint">No geofence hit has been recorded yet.</p>}</article>
-          <article><strong>Latest confirmed dwell hit</strong>{confirmed ? <p>{confirmed.geofenceName}<br/><small>{confirmed.vehicleIdentifier} · confirmed {dt(confirmed.confirmedAtUtc)} · {confirmed.dwellMinutes} min<br/>Run {confirmed.loadId || 'not linked'} · stop {confirmed.loadStopId || 'not linked'}</small></p> : <p className="hint">No confirmed dwell hit has been recorded yet.</p>}</article>
-        </div>
-      </div>
+      <div className="panel" style={{ marginBottom: 16 }}><div className="title-row"><div><p className="eyebrow">Actual progression evidence</p><h3>Latest geofence hits</h3></div></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 12 }}><article><strong>Latest entry / visit</strong>{latest ? <p>{latest.geofenceName}<br/><small>{latest.vehicleIdentifier} · {dt(latest.enteredAtUtc)} · {latest.status}<br/>Run {latest.loadId || 'not linked'} · stop {latest.loadStopId || 'not linked'}</small></p> : <p className="hint">No geofence hit has been recorded yet.</p>}</article><article><strong>Latest confirmed dwell hit</strong>{confirmed ? <p>{confirmed.geofenceName}<br/><small>{confirmed.vehicleIdentifier} · confirmed {dt(confirmed.confirmedAtUtc)} · {confirmed.dwellMinutes} min<br/>Run {confirmed.loadId || 'not linked'} · stop {confirmed.loadStopId || 'not linked'}</small></p> : <p className="hint">No confirmed dwell hit has been recorded yet.</p>}</article></div></div>
     </>}
 
     {selected && <div className="panel" style={{ marginBottom: 16 }}>
       <div className="title-row"><div><p className="eyebrow">Edit geofence</p><h3>{selected.name}</h3></div><button onClick={() => setSelected(undefined)}>Close</button></div>
       <div className="form-grid">
         <label>Name<input value={String(draft.name || '')} onChange={e => setDraft(v => ({ ...v, name: e.target.value }))}/></label>
-        <label>Site code<input value={String(draft.siteNumber || draft.siteCode || '')} onChange={e => setDraft(v => ({ ...v, siteNumber: e.target.value, locationOnly: false }))}/></label>
+        <label>Linked Site<select disabled={Boolean(draft.locationOnly)} value={String(draft.siteNumber || draft.siteCode || '')} onChange={e => setDraft(v => ({ ...v, siteNumber: e.target.value, siteCode: e.target.value, locationOnly: false }))}><option value="">Choose SITE###…</option>{sites.map(site => <option key={site.siteId} value={site.siteCode}>{site.siteCode} · {site.siteName}</option>)}</select></label>
         <label>Category<input value={String(draft.category || '')} onChange={e => setDraft(v => ({ ...v, category: e.target.value }))}/></label>
         <label>Entry confirm (min)<input type="number" value={String(draft.pendingEntryMinutes ?? 0)} onChange={e => setDraft(v => ({ ...v, pendingEntryMinutes: Number(e.target.value) }))}/></label>
         <label>Exit confirm (min)<input type="number" value={String(draft.pendingExitMinutes ?? 0)} onChange={e => setDraft(v => ({ ...v, pendingExitMinutes: Number(e.target.value) }))}/></label>
         <label>Max wait (min)<input type="number" value={String(draft.maxWaitMinutes ?? '')} onChange={e => setDraft(v => ({ ...v, maxWaitMinutes: e.target.value === '' ? undefined : Number(e.target.value) }))}/></label>
         <label style={{ gridColumn: '1 / -1' }}>Polygon JSON<textarea rows={5} value={String(draft.polygonJson || '')} onChange={e => setDraft(v => ({ ...v, polygonJson: e.target.value }))}/></label>
       </div>
-      <div className="notice" style={{ marginTop: 12 }}>
-        <strong>Registered site:</strong> {draft.locationOnly ? 'Location only' : draft.siteName ? `${draft.siteCode || draft.siteNumber || 'Code pending'} · ${draft.siteName}` : draft.siteNumber ? 'Code entered, not synced yet' : 'No site link'}
-      </div>
-      <label className="check-label" style={{ marginTop: 12 }}><input type="checkbox" checked={Boolean(draft.locationOnly)} onChange={e => setDraft(v => ({ ...v, locationOnly: e.target.checked, siteNumber: e.target.checked ? '' : v.siteNumber }))}/> Location only / do not link to a Site</label>
-      <div className="actions"><button className="primary" disabled={saving} onClick={() => void syncSite(false)}>Sync site code</button><button disabled={saving} onClick={() => void syncSite(true)}>Mark location only</button><button disabled={saving} onClick={() => void save()}>Save geofence</button><button onClick={() => setSelected(undefined)}>Cancel</button></div>
+      <div className="notice" style={{ marginTop: 12 }}><strong>Current registered Site:</strong> {draft.locationOnly ? 'Location only' : draft.siteName ? `${draft.siteCode || draft.siteNumber || 'Code pending'} · ${draft.siteName}` : draft.siteNumber ? `${draft.siteNumber} selected — press Sync Site to validate the name match` : 'No Site link'}</div>
+      <p className="hint">A Site link is accepted only when this geofence name has the strongest unique meaningful-name match to that Site. A generic brand-only match remains unlinked if it could refer to more than one Site.</p>
+      <label className="check-label" style={{ marginTop: 12 }}><input type="checkbox" checked={Boolean(draft.locationOnly)} onChange={e => setDraft(v => ({ ...v, locationOnly: e.target.checked, siteNumber: e.target.checked ? '' : v.siteNumber, siteCode: e.target.checked ? '' : v.siteCode }))}/> Location only / do not link to a Site</label>
+      <div className="actions"><button className="primary" disabled={saving || Boolean(draft.locationOnly)} onClick={() => void syncSite(false)}>Sync Site</button><button disabled={saving} onClick={() => void syncSite(true)}>Mark location only</button><button disabled={saving} onClick={() => void save()}>Save geofence details</button><button onClick={() => setSelected(undefined)}>Cancel</button></div>
     </div>}
 
     <div className="panel">
-      <div className="title-row"><div><h3>Geofences</h3><small>{rows.length} shown</small></div><div className="title-actions"><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search geofence, site or category…"/><label className="check-label"><input type="checkbox" checked={includeArchived} onChange={e => setIncludeArchived(e.target.checked)}/> Include archived</label></div></div>
-      {loading && !data ? <div className="state">Loading repaired geofence data…</div> : <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Geofence</th><th>Site code</th><th>Linked site</th><th>Category</th><th>Polygon</th><th>Site link</th><th>Entry confirm</th><th>Max wait</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td><strong>{row.name}</strong></td><td>{row.locationOnly ? 'Location only' : text(row.siteCode || row.siteNumber)}</td><td>{text(row.siteName)}</td><td>{text(row.category)}</td><td>{row.polygonValid ? 'Valid' : 'Invalid'}</td><td>{row.locationOnly ? 'Location only' : row.siteLinked ? row.manualOverride ? 'Manual' : 'Linked' : 'Unlinked'}</td><td>{row.pendingEntryMinutes} min</td><td>{row.maxWaitMinutes == null ? '—' : `${row.maxWaitMinutes} min`}</td><td>{row.active ? row.validationStatus : 'Archived'}</td><td style={{ whiteSpace: 'nowrap' }}><button onClick={() => { setSelected(row); setDraft({ ...row, siteNumber: row.siteCode || row.siteNumber || '' }); }}>Edit</button>{' '}<button disabled={saving} onClick={() => void setActive(row, !row.active)}>{row.active ? 'Archive' : 'Restore'}</button>{!row.active && <>{' '}<button disabled={saving} onClick={() => void deleteFence(row)} style={{ borderColor: '#b42318', color: '#b42318' }}>Delete</button></>}</td></tr>)}</tbody></table>{!rows.length && <div className="state">No geofences match this filter.</div>}</div>}
+      <div className="title-row"><div><h3>Geofences</h3><small>{rows.length} shown</small></div><div className="title-actions"><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search geofence, Site or category…"/><label className="check-label"><input type="checkbox" checked={includeArchived} onChange={e => setIncludeArchived(e.target.checked)}/> Include archived</label></div></div>
+      {loading && !data ? <div className="state">Loading geofence data…</div> : <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Geofence</th><th>Site code</th><th>Linked site</th><th>Category</th><th>Polygon</th><th>Site link</th><th>Entry confirm</th><th>Max wait</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td><strong>{row.name}</strong></td><td>{row.locationOnly ? 'Location only' : text(row.siteCode || row.siteNumber)}</td><td>{text(row.siteName)}</td><td>{text(row.category)}</td><td>{row.polygonValid ? 'Valid' : 'Invalid'}</td><td>{row.locationOnly ? 'Location only' : row.siteLinked ? row.manualOverride ? 'Manual' : 'Linked' : 'Unlinked'}</td><td>{row.pendingEntryMinutes} min</td><td>{row.maxWaitMinutes == null ? '—' : `${row.maxWaitMinutes} min`}</td><td>{row.active ? row.validationStatus : 'Archived'}</td><td style={{ whiteSpace: 'nowrap' }}><button onClick={() => { setSelected(row); setDraft({ ...row, siteNumber: row.siteCode || row.siteNumber || '' }); }}>Edit</button>{' '}<button disabled={saving} onClick={() => void setActive(row, !row.active)}>{row.active ? 'Archive' : 'Restore'}</button>{!row.active && <>{' '}<button disabled={saving} onClick={() => void deleteFence(row)} style={{ borderColor: '#b42318', color: '#b42318' }}>Delete</button></>}</td></tr>)}</tbody></table>{!rows.length && <div className="state">No geofences match this filter.</div>}</div>}
     </div>
   </section>;
 }
