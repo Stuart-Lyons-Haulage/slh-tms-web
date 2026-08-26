@@ -1,0 +1,60 @@
+name: Temporary operations housekeeping
+
+on:
+  push:
+    branches:
+      - housekeeping/operations-ui-20260826
+
+permissions:
+  contents: write
+
+jobs:
+  implement-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: housekeeping/operations-ui-20260826
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply housekeeping implementation
+        run: python tools/_temporary_operations_housekeeping.py
+
+      - name: Focused housekeeping contract
+        run: pnpm test -- src/operationsHousekeeping.test.ts src/pages/MasterDataCsvImport.test.ts
+
+      - name: Full test suite
+        run: pnpm test
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Production build
+        run: pnpm build
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          rm -f .github/workflows/_temporary_operations_housekeeping.yml tools/_temporary_operations_housekeeping.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Simplify daily operations workspace" \
+            -m "Improve dashboard health visibility, historical order review navigation, planner focus, mixed-unit run presentation, compact pallet control, import placement, master-data contingency import and single-page control centre."
+          git push origin HEAD:housekeeping/operations-ui-20260826
