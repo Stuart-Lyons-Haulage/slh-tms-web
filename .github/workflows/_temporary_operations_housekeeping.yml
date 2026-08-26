@@ -34,7 +34,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Apply housekeeping implementation
-        run: python tools/_temporary_operations_housekeeping.py
+        run: |
+          python tools/_temporary_operations_housekeeping.py
+          python tools/_temporary_operations_housekeeping_lintfix.py
 
       - name: Focused housekeeping contract
         run: pnpm test -- src/operationsHousekeeping.test.ts src/pages/MasterDataCsvImport.test.ts
@@ -51,7 +53,7 @@ jobs:
       - name: Commit verified implementation
         shell: bash
         run: |
-          rm -f .github/workflows/_temporary_operations_housekeeping.yml tools/_temporary_operations_housekeeping.py
+          rm -f .github/workflows/_temporary_operations_housekeeping.yml tools/_temporary_operations_housekeeping.py tools/_temporary_operations_housekeeping_lintfix.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
