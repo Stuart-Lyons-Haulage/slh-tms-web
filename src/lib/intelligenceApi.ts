@@ -23,8 +23,18 @@ type SystemSyncState = {
   status: string;
   generatedAtUtc: string;
   lastPlatformUpdateUtc?: string;
-  schedules: { dot: string; tachoMaster: string; sageHr: string; fleetio: string };
+  schedules: { dot: string; tachoMaster: string; sageHr: string; fleetio: string; infoMailbox?: string };
   providers: Array<{ name: string; configured: boolean; state: string; lastUpdatedUtc?: string; ageMinutes?: number }>;
+  mailbox?: {
+    mailbox?: string;
+    lastHeartbeatUtc?: string;
+    heartbeatAgeMinutes?: number;
+    latestInboxReceivedAtUtc?: string;
+    lastOrderReceivedUtc?: string;
+    heartbeatFlowName?: string;
+    heartbeatFlowRunId?: string;
+    probe?: string;
+  };
 };
 
 function colourForProviderState(state: string): FreshnessSource['state'] {
@@ -42,7 +52,20 @@ function providerCadence(name: string, schedules: SystemSyncState['schedules']) 
   if (name === 'TachoMaster') return schedules.tachoMaster;
   if (name === 'Sage HR') return schedules.sageHr;
   if (name === 'Fleetio') return schedules.fleetio;
+  if (name === 'Info mailbox') return schedules.infoMailbox;
   return undefined;
+}
+
+function mailboxHeartbeatDetail(providerState: string, state: SystemSyncState) {
+  const probe = state.mailbox?.probe || 'shared Outlook mailbox read + TMS API write';
+  const evidence = state.mailbox?.lastOrderReceivedUtc
+    ? ` Last TMS order receipt: ${new Date(state.mailbox.lastOrderReceivedUtc).toLocaleString('en-GB')}.`
+    : '';
+  if (providerState === 'current')
+    return `Heartbeat current · ${probe} succeeded within the expected window.${evidence}`;
+  if (providerState === 'pending')
+    return `Heartbeat delayed/unconfirmed · the last successful ${probe} is outside the normal window but still within the grace period.${evidence}`;
+  return `Heartbeat stale · no successful ${probe} has been recorded within the allowed window.${evidence}`;
 }
 
 function mailboxSource(lastReceivedUtc: string | undefined, now: number): FreshnessSource {
@@ -67,29 +90,33 @@ async function freshness(token?: string): Promise<FreshnessResponse> {
   const now = Date.now();
   const providers = systemState.providers.map<FreshnessSource>((provider) => {
     const cadence = providerCadence(provider.name, systemState.schedules);
+    const isMailboxHeartbeat = provider.name === 'Info mailbox';
     return {
       name: providerDisplayName(provider.name),
       lastUpdatedUtc: provider.lastUpdatedUtc,
       ageMinutes: provider.ageMinutes,
       state: colourForProviderState(provider.state),
       cadence,
-      detail: provider.state === 'current'
-        ? `Receiving on expected cadence${cadence ? ` · ${cadence}` : ''}.`
-        : provider.state === 'pending'
-          ? `Configured but no completed receipt is recorded yet${cadence ? ` · expected ${cadence}` : ''}.`
-          : provider.state === 'not-configured'
-            ? 'Integration is not configured.'
-            : `No data has been received within the expected cadence${cadence ? ` · expected ${cadence}` : ''}.`,
+      detail: isMailboxHeartbeat
+        ? mailboxHeartbeatDetail(provider.state, systemState)
+        : provider.state === 'current'
+          ? `Receiving on expected cadence${cadence ? ` · ${cadence}` : ''}.`
+          : provider.state === 'pending'
+            ? `Configured but no completed receipt is recorded yet${cadence ? ` · expected ${cadence}` : ''}.`
+            : provider.state === 'not-configured'
+              ? 'Integration is not configured.'
+              : `No data has been received within the expected cadence${cadence ? ` · expected ${cadence}` : ''}.`,
     };
   });
 
-  const mailbox = confidence
+  const hasMailboxHeartbeat = providers.some((provider) => provider.name === 'Info mailbox');
+  const mailboxFallback = confidence
     ? mailboxSource(confidence.emailIntake.lastReceivedUtc, now)
     : { name: 'Info mailbox', state: 'red' as const, cadence: 'event-driven', detail: 'Mailbox receipt evidence could not be checked.' };
 
   return {
     generatedAtUtc: systemState.generatedAtUtc,
-    sources: [...providers, mailbox],
+    sources: hasMailboxHeartbeat ? providers : [...providers, mailboxFallback],
   };
 }
 
