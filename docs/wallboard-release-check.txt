@@ -1,0 +1,1 @@
+Run tests, build and production smoke checks before merge.
