@@ -196,12 +196,25 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
     setSaving(true); setError(undefined); setNotice(undefined);
     try {
       const access = await token();
-      const result = await request<{ deleted: number; blocked: number; notFound: number; message?: string }>(`/api/v1/master-data-cleanup/${tab}/bulk-delete`, access, {
+      const result = await request<{
+        deleted: number;
+        blocked: number;
+        notFound: number;
+        message?: string;
+        blockedRows?: { label?: string; references?: { area?: string; count?: number }[] }[];
+      }>(`/api/v1/master-data-cleanup/${tab}/bulk-delete`, access, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, adminPassword: bulkDeletePassword }),
       });
-      setNotice(result.message || `${result.deleted} deleted. ${result.blocked} blocked. ${result.notFound} already removed.`);
+      const blockedDetail = (result.blockedRows || [])
+        .slice(0, 8)
+        .map(row => {
+          const refs = (row.references || []).map(ref => `${ref.area || 'Reference'}${ref.count ? ` (${ref.count})` : ''}`).join(', ');
+          return `${row.label || 'Selected row'}: ${refs || 'live/history reference'}`;
+        })
+        .join('; ');
+      setNotice(`${result.message || `${result.deleted} deleted. ${result.blocked} blocked. ${result.notFound} already removed.`}${blockedDetail ? ` Blocked: ${blockedDetail}` : ''}`);
       setBulkDeleteIds(new Set());
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Bulk delete failed.'); }
