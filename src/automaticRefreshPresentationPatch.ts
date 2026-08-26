@@ -6,6 +6,9 @@ function removeRoutineRefreshControls() {
   document.querySelectorAll<HTMLButtonElement>('button').forEach(button => {
     const text = (button.textContent || '').trim().replace(/\s+/g, ' ');
     if (/^force\s/i.test(text)) return;
+    // Geofence integrity is an operational recovery surface. Keep this control
+    // visible even though the page also refreshes itself automatically.
+    if (/^refresh status$/i.test(text)) return;
     if (/^refresh(?:\s|$)/i.test(text) || /^sync tachomaster$/i.test(text) || /^update tacho(?:master)?$/i.test(text)) {
       button.hidden = true;
       button.setAttribute('aria-hidden', 'true');
