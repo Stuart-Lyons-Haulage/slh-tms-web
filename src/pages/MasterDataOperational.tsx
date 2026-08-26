@@ -75,7 +75,6 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
         }
         const profileBySite = new Map(profiles.map(profile => [profile.siteId, profile]));
         const geofenceBySite = new Map(geofenceStatus.map(status => [status.siteId, status]));
-        setGeofences(activeGeofences);
         const merged = sourceSites.map(site => {
           const profile = profileBySite.get(site.id);
           const geofence = geofenceBySite.get(site.id);
