@@ -41,9 +41,13 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
   const [siteSyncChecked, setSiteSyncChecked] = useState(false);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
+  const [bulkDeletePassword, setBulkDeletePassword] = useState('');
+  const [bulkDeleteIds, setBulkDeleteIds] = useState<Set<string>>(() => new Set());
   const current = config[tab];
   const endpoint = `/api/v1/operational-master-data/${tab}`;
   const crmMode = tab === 'sites' || tab === 'customers';
+  const bulkDeleteAvailable = tab === 'drivers' || tab === 'sites';
 
   useEffect(() => { setTab(initialTab); }, [initialTab]);
 
@@ -95,7 +99,8 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
   }, [endpoint, includeInactive, query, tab, token]);
 
   useEffect(() => { const handle = window.setTimeout(() => void load(), 180); return () => window.clearTimeout(handle); }, [load]);
-  useEffect(() => { setSelected(undefined); setDraft({}); setAudit([]); setQuery(''); if (tab !== 'sites') setSiteSyncChecked(false); }, [tab]);
+  useEffect(() => { setSelected(undefined); setDraft({}); setAudit([]); setQuery(''); if (tab !== 'sites') setSiteSyncChecked(false); setBulkDeleteMode(false); setBulkDeletePassword(''); setBulkDeleteIds(new Set()); }, [tab]);
+  useEffect(() => { setBulkDeleteIds(selectedIds => new Set([...selectedIds].filter(id => rows.some(row => row.id === id)))); }, [rows]);
 
   const openEdit = async (row: Row) => {
     setSelected(row); setDraft({ ...row }); setAudit([]); setError(undefined); setNotice(undefined);
@@ -162,6 +167,47 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
     finally { setSaving(false); }
   };
 
+  const startBulkDelete = () => {
+    const password = window.prompt('Admin delete password');
+    if (!password) return;
+    setBulkDeletePassword(password);
+    setBulkDeleteMode(true);
+    setBulkDeleteIds(new Set());
+    setError(undefined);
+    setNotice(undefined);
+  };
+
+  const toggleBulkDeleteRow = (id: string, checked: boolean) => {
+    setBulkDeleteIds(previous => {
+      const next = new Set(previous);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleBulkDeleteAll = (checked: boolean) => {
+    setBulkDeleteIds(checked ? new Set(rows.map(row => row.id)) : new Set());
+  };
+
+  const bulkDeleteSelected = async () => {
+    const ids = [...bulkDeleteIds];
+    if (!ids.length) { setError('Tick at least one row to delete.'); return; }
+    if (!window.confirm(`Permanently delete ${ids.length} selected ${current.title.toLowerCase()} record${ids.length === 1 ? '' : 's'}?\n\nRows linked to live TMS history will be blocked and kept.`)) return;
+    setSaving(true); setError(undefined); setNotice(undefined);
+    try {
+      const access = await token();
+      const result = await request<{ deleted: number; blocked: number; notFound: number; message?: string }>(`/api/v1/master-data-cleanup/${tab}/bulk-delete`, access, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, adminPassword: bulkDeletePassword }),
+      });
+      setNotice(result.message || `${result.deleted} deleted. ${result.blocked} blocked. ${result.notFound} already removed.`);
+      setBulkDeleteIds(new Set());
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Bulk delete failed.'); }
+    finally { setSaving(false); }
+  };
+
   const tabs = useMemo(() => Object.keys(config) as MasterDataTab[], []);
   const documentEntity = tab === 'sites' ? 'Site' : tab === 'customers' ? 'Customer' : undefined;
   const selectedMissingGeofence = tab === 'sites' && Boolean(selected?.geofenceMissing);
@@ -204,11 +250,11 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
       <hr/><h3>Change history</h3>{audit.length ? <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Date</th><th>Action</th><th>Changed by</th></tr></thead><tbody>{audit.map(item => <tr key={item.id}><td>{isoDate(item.changedAtUtc)}</td><td>{item.action}</td><td>{item.changedBy || '—'}</td></tr>)}</tbody></table></div> : <p className="hint">No recorded changes yet.</p>}
     </div>)}
 
-    <div className="panel"><div className="title-row"><div><h2>{current.title}</h2><small>{rows.length} record{rows.length === 1 ? '' : 's'} shown</small><p className="hint">{tab === 'sites' ? 'Click Sync Sites to assign SITE001…SITExxx and validate each geofence by meaningful Site-name overlap. Missing or ambiguous geofences are highlighted red after the check.' : tab === 'customers' ? 'Open CRM on a customer to maintain its SOPs, instructions and supporting Documents.' : 'For duplicates: Archive first. Turn on Include archived, then Delete the unused duplicate. Records with operational history are protected from permanent deletion.'}</p></div><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><label>Search<input value={query} onChange={e => setQuery(e.target.value)} placeholder={current.search}/></label><label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}/> Include archived</label>{tab === 'sites' && <button className="primary" onClick={() => void syncSites()} disabled={saving}>{saving ? 'Syncing…' : 'Sync Sites'}</button>}<button onClick={() => void load()} disabled={loading}>Refresh</button></div></div>
+    <div className="panel"><div className="title-row"><div><h2>{current.title}</h2><small>{rows.length} record{rows.length === 1 ? '' : 's'} shown</small><p className="hint">{tab === 'sites' ? 'Click Sync Sites to assign SITE001…SITExxx and validate each geofence by meaningful Site-name overlap. Missing or ambiguous geofences are highlighted red after the check.' : tab === 'customers' ? 'Open CRM on a customer to maintain its SOPs, instructions and supporting Documents.' : 'For duplicates: Archive first. Turn on Include archived, then Delete the unused duplicate. Records with operational history are protected from permanent deletion.'}</p></div><div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}><label>Search<input value={query} onChange={e => setQuery(e.target.value)} placeholder={current.search}/></label><label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}/> Include archived</label>{tab === 'sites' && <button className="primary" onClick={() => void syncSites()} disabled={saving || bulkDeleteMode}>{saving ? 'Syncing…' : 'Sync Sites'}</button>}{bulkDeleteAvailable && (bulkDeleteMode ? <><button disabled={saving || bulkDeleteIds.size === 0} onClick={() => void bulkDeleteSelected()} style={{ borderColor: '#b42318', color: '#b42318', fontWeight: 800 }}>Delete selected ({bulkDeleteIds.size})</button><button disabled={saving} onClick={() => { setBulkDeleteMode(false); setBulkDeletePassword(''); setBulkDeleteIds(new Set()); }}>Exit delete</button></> : <button disabled={saving} onClick={startBulkDelete}>Mass delete</button>)}<button onClick={() => void load()} disabled={loading}>Refresh</button></div></div>
       {error && <p className="notice" style={{ borderColor: '#b42318' }}>{error}</p>}{notice && <p className="notice">{notice}</p>}
-      {loading ? <div className="state">Loading {current.title.toLowerCase()}…</div> : <div style={{ overflowX: 'auto' }}><table><thead><tr>{current.columns.map(([,label]) => <th key={label}>{label}</th>)}<th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(row => {
+      {loading ? <div className="state">Loading {current.title.toLowerCase()}…</div> : <div style={{ overflowX: 'auto' }}><table><thead><tr>{bulkDeleteMode && <th><input type="checkbox" aria-label="Select all visible rows" checked={rows.length > 0 && rows.every(row => bulkDeleteIds.has(row.id))} onChange={event => toggleBulkDeleteAll(event.target.checked)} /></th>}{current.columns.map(([,label]) => <th key={label}>{label}</th>)}<th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(row => {
         const needsGeofence = tab === 'sites' && siteSyncChecked && Boolean(row.geofenceMissing);
-        return <tr key={row.id} className={crmMode ? 'crm-click-row' : undefined} style={needsGeofence ? { background: '#fff1f0', boxShadow: 'inset 4px 0 #b42318' } : undefined} onClick={crmMode ? () => void openEdit(row) : undefined}>{current.columns.map(([key]) => <td key={key} style={needsGeofence && key === 'linkedGeofence' ? { color: '#b42318', fontWeight: 800 } : undefined}>{fmtCell(key, row[key])}</td>)}<td>{needsGeofence ? <strong style={{ color: '#b42318' }}>Needs geofence</strong> : row.active ? 'Active' : 'Archived'}</td><td style={{ whiteSpace: 'nowrap' }}><button onClick={(event) => { event.stopPropagation(); void openEdit(row); }}>{crmMode ? 'Open CRM' : 'Edit / Documents'}</button>{' '}<button onClick={(event) => { event.stopPropagation(); void setActive(row, !row.active); }} disabled={saving}>{row.active ? 'Archive' : 'Restore'}</button>{!row.active && <>{' '}<button disabled={saving} onClick={(event) => { event.stopPropagation(); void deleteRecord(row); }} style={{ borderColor: '#b42318', color: '#b42318', fontWeight: 800 }}>Delete</button></>}</td></tr>;
+        return <tr key={row.id} className={crmMode ? 'crm-click-row' : undefined} style={needsGeofence ? { background: '#fff1f0', boxShadow: 'inset 4px 0 #b42318' } : undefined} onClick={crmMode && !bulkDeleteMode ? () => void openEdit(row) : undefined}>{bulkDeleteMode && <td><input type="checkbox" aria-label={`Select ${fmt(row[current.columns[0][0]])}`} checked={bulkDeleteIds.has(row.id)} onChange={event => toggleBulkDeleteRow(row.id, event.target.checked)} onClick={event => event.stopPropagation()} /></td>}{current.columns.map(([key]) => <td key={key} style={needsGeofence && key === 'linkedGeofence' ? { color: '#b42318', fontWeight: 800 } : undefined}>{fmtCell(key, row[key])}</td>)}<td>{needsGeofence ? <strong style={{ color: '#b42318' }}>Needs geofence</strong> : row.active ? 'Active' : 'Archived'}</td><td style={{ whiteSpace: 'nowrap' }}><button onClick={(event) => { event.stopPropagation(); void openEdit(row); }}>{crmMode ? 'Open CRM' : 'Edit / Documents'}</button>{' '}<button onClick={(event) => { event.stopPropagation(); void setActive(row, !row.active); }} disabled={saving || bulkDeleteMode}>{row.active ? 'Archive' : 'Restore'}</button>{!row.active && <>{' '}<button disabled={saving || bulkDeleteMode} onClick={(event) => { event.stopPropagation(); void deleteRecord(row); }} style={{ borderColor: '#b42318', color: '#b42318', fontWeight: 800 }}>Delete</button></>}</td></tr>;
       })}</tbody></table>{rows.length === 0 && <div className="state">No records match this search.</div>}</div>}
     </div>
   </section>;
