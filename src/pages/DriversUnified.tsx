@@ -128,6 +128,9 @@ export function DriversUnified() {
   const [history, setHistory] = useState<TachoHistory>();
   const [historyError, setHistoryError] = useState<string>();
   const [message, setMessage] = useState<string>();
+  const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
+  const [bulkDeletePassword, setBulkDeletePassword] = useState("");
+  const [bulkDeleteIds, setBulkDeleteIds] = useState<Set<string>>(() => new Set());
 
   const visible = useMemo(() => {
     return filterDrivers(drivers.data || [], filter, columnFilters);
@@ -182,6 +185,53 @@ export function DriversUnified() {
     }
   }
 
+  function startBulkDelete() {
+    const password = window.prompt("Admin delete password");
+    if (!password) return;
+    setBulkDeletePassword(password);
+    setBulkDeleteMode(true);
+    setBulkDeleteIds(new Set());
+    setMessage(undefined);
+  }
+
+  function toggleBulkDeleteRow(id: string, checked: boolean) {
+    setBulkDeleteIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleBulkDeleteAll(checked: boolean) {
+    setBulkDeleteIds(checked ? new Set(visible.map((driver) => driver.id)) : new Set());
+  }
+
+  async function bulkDeleteSelected() {
+    const ids = [...bulkDeleteIds];
+    if (!ids.length) { setMessage("Tick at least one driver to delete."); return; }
+    if (!window.confirm(`Permanently delete ${ids.length} selected driver${ids.length === 1 ? "" : "s"}?\n\nDrivers linked to live TMS history will be blocked and kept.`)) return;
+    setSaving(true);
+    setMessage(undefined);
+    try {
+      const result = await request<{ deleted: number; blocked: number; notFound: number; message?: string }>(
+        "/api/v1/master-data-cleanup/drivers/bulk-delete",
+        await token(),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids, adminPassword: bulkDeletePassword }),
+        },
+      );
+      setMessage(result.message || `${result.deleted} deleted. ${result.blocked} blocked. ${result.notFound} already removed.`);
+      setBulkDeleteIds(new Set());
+      await drivers.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Bulk delete failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function loadHistory(driver: Driver) {
     setHistoryLoading(true);
     setHistoryError(undefined);
@@ -214,6 +264,9 @@ export function DriversUnified() {
         </div>
         <div className="title-actions">
           <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search driver…" />
+          {bulkDeleteMode
+            ? <><button disabled={saving || bulkDeleteIds.size === 0} onClick={() => void bulkDeleteSelected()} style={{ borderColor: "#b42318", color: "#b42318", fontWeight: 800 }}>Delete selected ({bulkDeleteIds.size})</button><button disabled={saving} onClick={() => { setBulkDeleteMode(false); setBulkDeletePassword(""); setBulkDeleteIds(new Set()); }}>Exit delete</button></>
+            : <button disabled={saving} onClick={startBulkDelete}>Mass delete</button>}
           <button onClick={() => void drivers.refresh()} disabled={drivers.loading}>Refresh</button>
           <button className="primary" onClick={() => void syncTacho()} disabled={syncing}>{syncing ? "Syncing…" : "Sync TachoMaster"}</button>
         </div>
@@ -222,15 +275,17 @@ export function DriversUnified() {
       {historyError && <p className="notice inline-notice" style={{ borderColor: "#b42318" }}>{historyError}</p>}
       {drivers.error ? <div className="state error"><p>{drivers.error}</p></div> : (
         <div className="master-table-wrap" style={{ overflowX: "auto" }}>
-          <table className="master-table driver-unified-table" style={{ minWidth: 2360 }}>
+          <table className="master-table driver-unified-table" style={{ minWidth: bulkDeleteMode ? 2420 : 2360 }}>
             <thead>
               <tr>
+                {bulkDeleteMode && <th><input type="checkbox" aria-label="Select all visible drivers" checked={visible.length > 0 && visible.every((driver) => bulkDeleteIds.has(driver.id))} onChange={(event) => toggleBulkDeleteAll(event.target.checked)} /></th>}
                 <th>Employee</th><th>Driver</th><th>Mobile</th><th>Type</th><th>Group</th><th>Skills</th><th>Coding</th>
                 <th>North</th><th>Preload</th><th>Tacho name</th><th>Tacho card</th><th>Tacho member</th>
                 <th>Drive left today</th><th>Drive left week</th><th>Work left week</th><th>Last Tacho sync</th>
                 <th>Licence no.</th><th>Licence expiry</th><th>Licence status</th><th>Notes</th><th>Active</th><th>Actions</th>
               </tr>
               <tr className="driver-column-filters">
+                {bulkDeleteMode && <th />}
                 {driverColumnKeys.map((key) => (
                   <th key={key}>
                     <input
@@ -250,6 +305,7 @@ export function DriversUnified() {
                 const row = isEditing ? draft : driver;
                 return (
                   <tr key={driver.id}>
+                    {bulkDeleteMode && <td><input type="checkbox" aria-label={`Select ${driver.displayName}`} checked={bulkDeleteIds.has(driver.id)} onChange={(event) => toggleBulkDeleteRow(driver.id, event.target.checked)} /></td>}
                     <td>{isEditing ? <input value={row.employeeNumber} onChange={(e) => edit("employeeNumber", e.target.value)} /> : value(row.employeeNumber)}</td>
                     <td>{isEditing ? <input value={row.displayName} onChange={(e) => edit("displayName", e.target.value)} /> : <strong>{value(row.displayName)}</strong>}</td>
                     <td>{isEditing ? <input value={row.mobileNumber || ""} onChange={(e) => edit("mobileNumber", e.target.value)} /> : value(row.mobileNumber)}</td>
@@ -272,7 +328,7 @@ export function DriversUnified() {
                     <td>{isEditing ? <input value={row.notes || ""} onChange={(e) => edit("notes", e.target.value)} /> : value(row.notes)}</td>
                     <td>{isEditing ? <input type="checkbox" checked={row.active} onChange={(e) => edit("active", e.target.checked)} /> : row.active ? "Yes" : "No"}</td>
                     <td>
-                      {isEditing ? <div className="actions"><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button><button onClick={() => { setEditingId(undefined); setDraft(undefined); }}>Cancel</button></div> : <div className="actions"><button onClick={() => startEdit(driver)}>Edit</button><button onClick={() => void loadHistory(driver)} disabled={historyLoading}>{historyLoading ? "Loading…" : "Live / History"}</button></div>}
+                      {isEditing ? <div className="actions"><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button><button onClick={() => { setEditingId(undefined); setDraft(undefined); }}>Cancel</button></div> : <div className="actions"><button disabled={bulkDeleteMode} onClick={() => startEdit(driver)}>Edit</button><button onClick={() => void loadHistory(driver)} disabled={historyLoading || bulkDeleteMode}>{historyLoading ? "Loading…" : "Live / History"}</button></div>}
                     </td>
                   </tr>
                 );
