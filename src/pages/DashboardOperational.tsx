@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { intelligenceApi } from "../lib/intelligenceApi";
 import { useAccessToken } from "../lib/auth";
@@ -6,10 +6,16 @@ import { todayIsoDate, formatDateLong } from "../lib/dateUtils";
 import { useApi } from "../lib/useApi";
 
 function feedAge(minutes?: number) {
-  if (minutes == null) return "No recent update";
+  if (minutes == null) return "No receipt recorded";
   if (minutes < 1) return "Live";
   if (minutes < 60) return `${Math.round(minutes)}m ago`;
   return `${Math.round(minutes / 60)}h ago`;
+}
+
+function checkedAt(value?: string) {
+  if (!value) return "Checking…";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export function DashboardOperational() {
@@ -21,8 +27,25 @@ export function DashboardOperational() {
   const snapshot = readiness.data;
   const readyRuns = snapshot ? Math.max(0, snapshot.runs - snapshot.missingAllocations) : 0;
   const highAttention = attention.data?.items.filter((item) => item.severity === "High").length || 0;
+  const refreshReadiness = readiness.refresh;
+  const refreshAttention = attention.refresh;
+  const refreshFreshness = freshness.refresh;
 
-  const refreshAll = () => void Promise.all([readiness.refresh(), attention.refresh(), freshness.refresh()]);
+  const refreshAll = () => void Promise.all([refreshReadiness(), refreshAttention(), refreshFreshness()]);
+
+  useEffect(() => {
+    const refreshFeeds = () => void refreshFreshness();
+    const interval = window.setInterval(refreshFeeds, 60_000);
+    const onFocus = () => refreshFeeds();
+    const onVisibility = () => { if (document.visibilityState === "visible") refreshFeeds(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refreshFreshness]);
 
   return <section className="dashboard-health-page">
     <div className="title-row dashboard-health-title">
@@ -59,9 +82,10 @@ export function DashboardOperational() {
       </section>
 
       <section className="panel dashboard-feed-panel">
-        <div className="title-row"><div><p className="eyebrow">System feeds</p><h2>Is the picture trustworthy?</h2></div><Link to="/control-centre">Control centre →</Link></div>
-        {freshness.error && <p className="notice inline-notice">Feed freshness could not refresh: {freshness.error}</p>}
-        <div className="dashboard-feed-list">{freshness.data?.sources.map((feed) => <div key={feed.name} className={`dashboard-feed-row feed-${feed.state}`}><span aria-hidden="true" /><div><strong>{feed.name}</strong><small>{feedAge(feed.ageMinutes)}</small></div><b>{feed.state.toUpperCase()}</b></div>)}</div>
+        <div className="title-row"><div><p className="eyebrow">System feeds</p><h2>Are we receiving current data?</h2><small>Same receipt-state used by Control Centre · checks refresh every 60 seconds and whenever this screen regains focus.</small></div><Link to="/control-centre">Control centre →</Link></div>
+        {freshness.error && <p className="notice inline-notice">Feed health could not refresh: {freshness.error}</p>}
+        {freshness.data && <p className="hint">Last health check: <strong>{checkedAt(freshness.data.generatedAtUtc)}</strong>. Green means data is arriving within that provider's configured cadence; amber means unconfirmed/pending; red means stale or not configured.</p>}
+        <div className="dashboard-feed-list">{freshness.data?.sources.map((feed) => <div key={feed.name} className={`dashboard-feed-row feed-${feed.state}`} title={feed.detail}><span aria-hidden="true" /><div><strong>{feed.name}</strong><small>{feedAge(feed.ageMinutes)}{feed.cadence ? ` · ${feed.cadence}` : ""}</small>{feed.detail && <small>{feed.detail}</small>}</div><b>{feed.state === "green" ? "CURRENT" : feed.state === "amber" ? "CHECK" : "ATTENTION"}</b></div>)}</div>
       </section>
     </div>
 
