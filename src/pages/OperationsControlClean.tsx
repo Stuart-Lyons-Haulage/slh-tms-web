@@ -1,5 +1,6 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { ApiError, api, request } from "../lib/api";
+import { intelligenceApi, type FreshnessSource } from "../lib/intelligenceApi";
 import { useAccessToken } from "../lib/auth";
 import { todayIsoDate } from "../lib/dateUtils";
 import { useApi } from "../lib/useApi";
@@ -13,8 +14,24 @@ type LiveCoverageResponse = {
   unmatchedMovingVehicles: Array<{ vehicleIdentifier: string; lastEventUtc: string; speedKph?: number; dotDriverName?: string; dotDriverCardDetected: boolean; plannedDriverName?: string; plannedLoadReference?: string; reason: string }>;
 };
 
-function StatusCard({ title, configured, connected, detail, meta }: { title: string; configured?: boolean; connected?: boolean; detail: string; meta?: string }) {
-  return <article className="admin-card"><span className={connected ? "integration-state ready" : "integration-state pending"}>{connected ? "Live" : configured ? "Configured" : "Setup needed"}</span><h2>{title}</h2><p>{detail}</p>{meta && <small>{meta}</small>}</article>;
+function receiptTime(value?: string) {
+  if (!value) return "no receipt recorded";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("en-GB");
+}
+
+function StatusCard({ title, configured, connected, detail, meta, receipt }: { title: string; configured?: boolean; connected?: boolean; detail: string; meta?: string; receipt?: FreshnessSource }) {
+  const receiptCurrent = receipt?.state === "green";
+  const ready = Boolean(connected) && (receipt ? receiptCurrent : true);
+  const label = receipt
+    ? receipt.state === "green"
+      ? "Connected · current"
+      : connected
+        ? receipt.state === "red" ? "Connected · stale" : "Connected · check"
+        : configured ? "Configured · no current receipt" : "Setup needed"
+    : connected ? "Live" : configured ? "Configured" : "Setup needed";
+  const receiptMeta = receipt ? `Last receipt ${receiptTime(receipt.lastUpdatedUtc)}${receipt.cadence ? ` · ${receipt.cadence}` : ""}` : undefined;
+  return <article className="admin-card"><span className={ready ? "integration-state ready" : "integration-state pending"}>{label}</span><h2>{title}</h2><p>{detail}</p>{meta && <small>{meta}</small>}{receiptMeta && <small style={{ display: "block", marginTop: 4 }}>{receiptMeta}</small>}</article>;
 }
 
 export function OperationsControlClean() {
@@ -25,6 +42,7 @@ export function OperationsControlClean() {
   const road = useApi(useCallback(async () => api.roadTechStatus(await token()), [token]));
   const fleetio = useApi(useCallback(async () => api.fleetioStatus(await token()), [token]));
   const fleet = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));
+  const feedHealth = useApi(useCallback(async () => intelligenceApi.freshness(await token()), [token]));
   const liveCoverage = useApi(useCallback(async () => {
     const authToken = await token();
     try { return await request<LiveCoverageResponse>("/api/v1/operations/live-coverage", authToken, undefined, 45000); }
@@ -44,19 +62,36 @@ export function OperationsControlClean() {
   const movingWithTachoMember = liveCoverage.data?.summary.movingWithTachoMemberMatch ?? movingWithTachoFallback;
   const movingWithDotCard = liveCoverage.data?.summary.movingWithLiveCardOrNameFromDot ?? movingWithDotIdentityFallback;
   const movingWithoutTacho = liveCoverage.data?.summary.movingWithoutTachoIdentity ?? Math.max(0, moving.length - movingWithTachoFallback);
+  const receipt = (name: string) => feedHealth.data?.sources.find((feed) => feed.name === name);
 
-  const refresh = () => { void sage.refresh(); void tacho.refresh(); void road.refresh(); void fleetio.refresh(); void fleet.refresh(); void liveCoverage.refresh(); void exceptions.refresh(); void reconciliation.refresh(); };
+  const refresh = useCallback(() => {
+    void sage.refresh(); void tacho.refresh(); void road.refresh(); void fleetio.refresh(); void fleet.refresh(); void feedHealth.refresh(); void liveCoverage.refresh(); void exceptions.refresh(); void reconciliation.refresh();
+  }, [sage.refresh, tacho.refresh, road.refresh, fleetio.refresh, fleet.refresh, feedHealth.refresh, liveCoverage.refresh, exceptions.refresh, reconciliation.refresh]);
+
+  useEffect(() => {
+    const interval = window.setInterval(refresh, 60_000);
+    const onFocus = () => refresh();
+    const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refresh]);
 
   return <section>
-    <div className="title-row"><div><p className="eyebrow">Control & insight</p><h1>Operations control</h1><p className="hint">Live status always refreshes against today. Planning dates are controlled from the operational planning screens.</p></div><button onClick={refresh}>Refresh live checks</button></div>
+    <div className="title-row"><div><p className="eyebrow">Control & insight</p><h1>Operations control</h1><p className="hint">Connection and receipt health refresh every 60 seconds and whenever this screen regains focus. Green now means the provider is connected and data is being received within its expected cadence.</p></div><button onClick={refresh}>Refresh live checks</button></div>
 
     <section className="panel" style={{ marginBottom: 18 }}>
-      <div className="title-row"><div><p className="eyebrow">Integration confidence</p><h2>Live provider status</h2></div><small>DOT supplies live vehicle location. Tachomaster supplies live card confirmation where available, plus driver profile/hours enrichment through TMS allocations.</small></div>
+      <div className="title-row"><div><p className="eyebrow">Integration confidence</p><h2>Live provider + receipt status</h2></div><small>Dashboard and Control Centre now share the same receipt-state. Connection alone no longer makes a stale feed green.</small></div>
+      {feedHealth.error && <p className="notice inline-notice">Receipt health could not refresh: {feedHealth.error}</p>}
       <div className="admin-grid">
-        <StatusCard title="Sage HR" configured={sage.data?.configured} connected={sage.data?.connected} detail={sage.data?.message || sage.error || "Checking Sage HR…"} meta={sage.data ? `${sage.data.employeeCount} active employees · ${sage.data.driverCandidateCount} driver candidates returned by Sage HR` : undefined} />
-        <StatusCard title="TachoMaster" configured={liveCoverage.data?.tachoMaster.configured ?? tacho.data?.configured} connected={liveCoverage.data?.tachoMaster.connected ?? tacho.data?.connected} detail={liveCoverage.data ? liveCoverage.data.tachoMaster.error ? `Tachomaster identity check failed: ${liveCoverage.data.tachoMaster.error}` : `Tachomaster returned ${liveCoverage.data.tachoMaster.vehicleIdentityCount} live vehicle/card identities and ${liveCoverage.data.tachoMaster.driverProfileCount ?? 0} driver profiles.` : tacho.data?.message || tacho.error || "Checking TachoMaster…"} meta={liveCoverage.data ? `${liveCoverage.data.tachoMaster.dutyRecordCount} duty candidates · ${liveCoverage.data.tachoMaster.tachoMemberIdentityCount} live member matches` : tacho.data ? `${tacho.data.matchedVehicleCount} current TachoMaster vehicle duty/card assignments` : undefined} />
-        <StatusCard title="DOT / RoadTech" configured={liveCoverage.data?.dot.configured ?? road.data?.configured} connected={Boolean(liveCoverage.data?.dot.liveVehicleCount) || road.data?.connected} detail={liveCoverage.data ? `${liveCoverage.data.dot.provider} returned ${liveCoverage.data.dot.liveVehicleCount} live vehicle location records.` : road.data?.message || road.error || "Checking DOT / RoadTech…"} meta={liveCoverage.data ? `${liveCoverage.data.dot.movingVehicleCount} moving now` : road.data ? `${road.data.recordCount} latest vehicle telemetry records returned` : undefined} />
-        <StatusCard title="Fleetio" configured={fleetio.data?.configured} connected={fleetio.data?.connected} detail={fleetio.data?.message || fleetio.error || "Checking Fleetio…"} meta={fleetio.data ? `${fleetio.data.sampleVehicleCount} sampled vehicle records` : undefined} />
+        <StatusCard title="Sage HR" configured={sage.data?.configured} connected={sage.data?.connected} receipt={receipt("Sage HR")} detail={sage.data?.message || sage.error || "Checking Sage HR…"} meta={sage.data ? `${sage.data.employeeCount} active employees · ${sage.data.driverCandidateCount} driver candidates returned by Sage HR` : undefined} />
+        <StatusCard title="TachoMaster" configured={liveCoverage.data?.tachoMaster.configured ?? tacho.data?.configured} connected={liveCoverage.data?.tachoMaster.connected ?? tacho.data?.connected} receipt={receipt("TachoMaster")} detail={liveCoverage.data ? liveCoverage.data.tachoMaster.error ? `Tachomaster identity check failed: ${liveCoverage.data.tachoMaster.error}` : `Tachomaster returned ${liveCoverage.data.tachoMaster.vehicleIdentityCount} live vehicle/card identities and ${liveCoverage.data.tachoMaster.driverProfileCount ?? 0} driver profiles.` : tacho.data?.message || tacho.error || "Checking TachoMaster…"} meta={liveCoverage.data ? `${liveCoverage.data.tachoMaster.dutyRecordCount} duty candidates · ${liveCoverage.data.tachoMaster.tachoMemberIdentityCount} live member matches` : tacho.data ? `${tacho.data.matchedVehicleCount} current TachoMaster vehicle duty/card assignments` : undefined} />
+        <StatusCard title="DOT / RoadTech" configured={liveCoverage.data?.dot.configured ?? road.data?.configured} connected={Boolean(liveCoverage.data?.dot.liveVehicleCount) || road.data?.connected} receipt={receipt("Tracking")} detail={liveCoverage.data ? `${liveCoverage.data.dot.provider} returned ${liveCoverage.data.dot.liveVehicleCount} live vehicle location records.` : road.data?.message || road.error || "Checking DOT / RoadTech…"} meta={liveCoverage.data ? `${liveCoverage.data.dot.movingVehicleCount} moving now` : road.data ? `${road.data.recordCount} latest vehicle telemetry records returned` : undefined} />
+        <StatusCard title="Fleetio" configured={fleetio.data?.configured} connected={fleetio.data?.connected} receipt={receipt("Fleetio")} detail={fleetio.data?.message || fleetio.error || "Checking Fleetio…"} meta={fleetio.data ? `${fleetio.data.sampleVehicleCount} sampled vehicle records` : undefined} />
       </div>
       <div className="metrics" style={{ marginTop: 16 }}>
         <article><span>Vehicles moving now</span><strong>{movingCount}</strong><small>DOT/RoadTech live movement</small></article>
