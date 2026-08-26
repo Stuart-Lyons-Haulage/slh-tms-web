@@ -1,0 +1,1 @@
+The paired public TV feed has a stability adapter with regression coverage. It is kept separate from the signed-in operations wallboard adapter so the pairing flow remains unchanged while live-run arrival/ETA semantics are validated.
