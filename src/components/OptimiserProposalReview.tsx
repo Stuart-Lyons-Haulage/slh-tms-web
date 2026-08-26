@@ -99,7 +99,7 @@ export function OptimiserProposalReview({ planningDate, onApplied }: { planningD
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planningDate, period }),
-      }, 60000);
+      }, 180000);
       setProposal(result);
       setExpandedRun(result.runs.find((run) => !run.isLocked)?.id || result.runs[0]?.id);
       setMessage(`Proposal v${result.version} generated. Review the evidence before applying it.`);
@@ -119,7 +119,7 @@ export function OptimiserProposalReview({ planningDate, onApplied }: { planningD
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ acknowledgeUnverified }),
-      }, 60000);
+      }, 180000);
       setProposal((current) => current ? { ...current, status: result.status } : current);
       signalPlanningChange();
       await onApplied?.();
