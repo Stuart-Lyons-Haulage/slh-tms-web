@@ -17,7 +17,7 @@ const regions = ['North', 'Midlands', 'East', 'London', 'South East', 'South Wes
 const config: Record<MasterDataTab, { title: string; search: string; entityType: string; columns: Array<[string, string]>; editable: Array<[string, string, EditType]> }> = {
   drivers: { title: 'Drivers', search: 'Name, employee number or Tacho name', entityType: 'Driver', columns: [['displayName','Driver'],['employeeNumber','Employee'],['tachoName','Tacho name'],['driverType','Type'],['driverGroup','Group']], editable: [['displayName','Driver name','text'],['employeeNumber','Employee number','text'],['tachoName','Tacho name','text'],['mobileNumber','Mobile','text'],['driverType','Driver type','text'],['driverGroup','Driver group','text'],['skills','Skills','textarea']] },
   vehicles: { title: 'Vehicles', search: 'Registration, last 3, fleet number or abbreviation', entityType: 'Vehicle', columns: [['registration','Registration'],['fleetNumber','Fleet no.'],['abbreviation','Short code'],['transmission','Transmission'],['fleetioStatus','Fleetio']], editable: [['registration','Registration','text'],['fleetNumber','Fleet number','text'],['abbreviation','Abbreviation / last 3','text'],['transmission','Transmission','text'],['cabMobile','Cab mobile','text'],['fleetioId','Fleetio ID','text'],['fleetioName','Fleetio name','text'],['notes','Notes','textarea']] },
-  trailers: { title: 'Trailers', search: 'Trailer number or type', entityType: 'Trailer', columns: [['trailerNumber','Trailer'],['type','Type'],['standardCapacity','Standard capacity'],['euroCapacity','Euro capacity']], editable: [['trailerNumber','Trailer number','text'],['type','Type','text'],['standardCapacity','Standard capacity','number'],['euroCapacity','Euro capacity','number']] },
+  trailers: { title: 'Trailers', search: 'Trailer number or type', entityType: 'Trailer', columns: [['trailerNumber','Trailer'],['type','Type'],['standardCapacity','Standard capacity'],['euroCapacity','Euro capacity']], editable: [['trailerNumber','Trailer number','text'],['type','Type'],['standardCapacity','Standard capacity','number'],['euroCapacity','Euro capacity','number']] },
   sites: { title: 'Sites', search: 'Site name, SITE code, geofence, postcode, region or driver text name', entityType: 'Site', columns: [['name','Site'],['externalCode','Code'],['linkedGeofence','Linked geofence'],['driverTextName','Driver text'],['collectionAddress','Address / postcode'],['defaultTemperatureC','Default temp'],['region','Planning region']], editable: [['name','Site name','text'],['driverTextName','Driver text name','text'],['collectionAddress','Address / postcode','textarea'],['collectionInstructions','Collection instructions / notes','textarea'],['mapLink','Map link','text'],['defaultTemperatureC','Default temperature °C','number'],['region','Planning region','region']] },
   geofences: { title: 'Geofences', search: 'Geofence name, site number or category', entityType: 'Geofence', columns: [['name','Geofence'],['siteNumber','Site no.'],['category','Category'],['maxWaitMinutes','Max wait'],['pendingEntryMinutes','Entry confirm']], editable: [['name','Name','text'],['siteNumber','Site number','text'],['category','Category','text'],['categoryMaxWaitMinutes','Category max wait (min)','number'],['maxWaitMinutes','Max wait (min)','number'],['pendingEntryMinutes','Entry confirm (min)','number'],['pendingExitMinutes','Exit confirm (min)','number'],['polygonJson','Polygon JSON','textarea']] },
   customers: { title: 'Customers', search: 'Customer name or code', entityType: 'Customer', columns: [['name','Customer'],['code','Code']], editable: [['code','Customer code','text'],['name','Customer name','text']] },
@@ -149,14 +149,23 @@ export function MasterDataOperational({ initialTab = 'drivers', showCategoryButt
     if (!geofenceId) return;
     const geofence = siteGeofences.find(item => item.id === geofenceId);
     if (!geofence) { setError('The selected geofence is no longer available. Refresh the Sites list and try again.'); return; }
+    const siteCode = String(site.externalCode || '').trim();
+    if (!siteCode) { setError('This Site has no canonical Site code, so the geofence cannot be saved yet. Run Sync Sites and try again.'); return; }
     setSaving(true); setError(undefined); setNotice(undefined);
     try {
-      await request(`/api/v1/operational-master-data/geofences/${geofence.id}/sync-site`, await token(), {
+      const access = await token();
+      await request<SiteGeofenceStatus>(`/api/v1/site-geofence-sync/geofences/${geofence.id}/link`, access, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: geofence.name, siteNumber: String(site.externalCode || ''), siteId: site.id, locationOnly: false }),
+        body: JSON.stringify({ siteCode }),
       });
-      setNotice(`${geofence.name} is now linked to ${fmt(site.name)}. This is saved in the Site Master for future orders.`);
+      const statuses = await request<SiteGeofenceStatus[]>('/api/v1/site-geofence-sync/sites', access, { cache: 'no-store' });
+      const persisted = statuses.find(status => status.siteId === site.id);
+      const selectedName = geofence.name.trim().toLowerCase();
+      const confirmed = persisted?.geofenceLinked === true
+        && persisted.linkedGeofences.some(name => name.trim().toLowerCase() === selectedName);
+      if (!confirmed) throw new Error('The geofence link was accepted but could not be confirmed in Site Master. It has not been marked as linked.');
+      setNotice(`${geofence.name} is linked to ${fmt(site.name)} and the saved Site Master link has been verified.`);
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'The geofence link could not be saved.'); }
     finally { setSaving(false); }
