@@ -63,10 +63,27 @@ export function OperationsControlClean() {
   const movingWithDotCard = liveCoverage.data?.summary.movingWithLiveCardOrNameFromDot ?? movingWithDotIdentityFallback;
   const movingWithoutTacho = liveCoverage.data?.summary.movingWithoutTachoIdentity ?? Math.max(0, moving.length - movingWithTachoFallback);
   const receipt = (name: string) => feedHealth.data?.sources.find((feed) => feed.name === name);
+  const refreshSage = sage.refresh;
+  const refreshTacho = tacho.refresh;
+  const refreshRoad = road.refresh;
+  const refreshFleetio = fleetio.refresh;
+  const refreshFleet = fleet.refresh;
+  const refreshFeedHealth = feedHealth.refresh;
+  const refreshLiveCoverage = liveCoverage.refresh;
+  const refreshExceptions = exceptions.refresh;
+  const refreshReconciliation = reconciliation.refresh;
 
   const refresh = useCallback(() => {
-    void sage.refresh(); void tacho.refresh(); void road.refresh(); void fleetio.refresh(); void fleet.refresh(); void feedHealth.refresh(); void liveCoverage.refresh(); void exceptions.refresh(); void reconciliation.refresh();
-  }, [sage.refresh, tacho.refresh, road.refresh, fleetio.refresh, fleet.refresh, feedHealth.refresh, liveCoverage.refresh, exceptions.refresh, reconciliation.refresh]);
+    void refreshSage();
+    void refreshTacho();
+    void refreshRoad();
+    void refreshFleetio();
+    void refreshFleet();
+    void refreshFeedHealth();
+    void refreshLiveCoverage();
+    void refreshExceptions();
+    void refreshReconciliation();
+  }, [refreshSage, refreshTacho, refreshRoad, refreshFleetio, refreshFleet, refreshFeedHealth, refreshLiveCoverage, refreshExceptions, refreshReconciliation]);
 
   useEffect(() => {
     const interval = window.setInterval(refresh, 60_000);
