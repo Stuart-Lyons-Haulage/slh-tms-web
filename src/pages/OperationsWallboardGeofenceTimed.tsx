@@ -80,6 +80,8 @@ function mappedEtaSource(source?: string) {
   return source === "Geofence" ? "Live" : source === "GeofenceEstimated" ? "Estimated" : undefined;
 }
 
+// The helper is exported for a focused regression test; it is pure and does not hold React state.
+// eslint-disable-next-line react-refresh/only-export-components
 export function syntheticTimingEtas(load: LoadSnapshot, anchor: TimingRecord): EtaRecord[] {
   if (!load.id) return [];
   const stops = [...(load.stops || [])]
