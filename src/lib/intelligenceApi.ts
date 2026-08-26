@@ -3,7 +3,7 @@ import { request } from './api';
 export type AttentionItem = { id: string; severity: 'High' | 'Medium' | 'Low'; type: string; title: string; detail: string; entityId?: string; entityType?: string; href: string };
 export type AttentionResponse = { planningDate: string; generatedAtUtc: string; source?: string; count: number; items: AttentionItem[] };
 export type SearchResult = { type: string; id: string; label: string; detail: string; href: string };
-export type FreshnessSource = { name: string; lastUpdatedUtc?: string; ageMinutes?: number; state: 'green' | 'amber' | 'red' };
+export type FreshnessSource = { name: string; lastUpdatedUtc?: string; ageMinutes?: number; state: 'green' | 'amber' | 'red'; detail?: string; cadence?: string };
 export type FreshnessResponse = { generatedAtUtc: string; sources: FreshnessSource[] };
 export type TimelineEvent = { atUtc: string; title: string; detail: string; source: string; by?: string };
 export type TimelineResponse = { entityType: 'Run' | 'Order'; id: string; reference: string; planningDate?: string; status: string; events: TimelineEvent[] };
@@ -18,31 +18,78 @@ type ConfidenceResponse = {
   dotTracking: { latestEventUtc?: string };
   emailIntake: { lastReceivedUtc?: string };
 };
-type TachoLiveStatus = { configured: boolean; connected: boolean; matchedVehicleCount: number; message?: string };
 
-function freshnessSource(name: string, lastUpdatedUtc: string | undefined, now: number, amberAfter: number, redAfter: number): FreshnessSource {
-  const ageMinutes = lastUpdatedUtc ? Math.max(0, (now - new Date(lastUpdatedUtc).getTime()) / 60000) : undefined;
-  const state: FreshnessSource['state'] = ageMinutes == null ? 'red' : ageMinutes <= amberAfter ? 'green' : ageMinutes <= redAfter ? 'amber' : 'red';
-  return { name, lastUpdatedUtc, ageMinutes: ageMinutes == null ? undefined : Math.round(ageMinutes * 10) / 10, state };
+type SystemSyncState = {
+  status: string;
+  generatedAtUtc: string;
+  lastPlatformUpdateUtc?: string;
+  schedules: { dot: string; tachoMaster: string; sageHr: string; fleetio: string };
+  providers: Array<{ name: string; configured: boolean; state: string; lastUpdatedUtc?: string; ageMinutes?: number }>;
+};
+
+function colourForProviderState(state: string): FreshnessSource['state'] {
+  if (state === 'current') return 'green';
+  if (state === 'pending') return 'amber';
+  return 'red';
+}
+
+function providerDisplayName(name: string) {
+  return name === 'DOT / Falcon' ? 'Tracking' : name;
+}
+
+function providerCadence(name: string, schedules: SystemSyncState['schedules']) {
+  if (name === 'DOT / Falcon') return schedules.dot;
+  if (name === 'TachoMaster') return schedules.tachoMaster;
+  if (name === 'Sage HR') return schedules.sageHr;
+  if (name === 'Fleetio') return schedules.fleetio;
+  return undefined;
+}
+
+function mailboxSource(lastReceivedUtc: string | undefined, now: number): FreshnessSource {
+  const ageMinutes = lastReceivedUtc ? Math.max(0, (now - new Date(lastReceivedUtc).getTime()) / 60000) : undefined;
+  return {
+    name: 'Info mailbox',
+    lastUpdatedUtc: lastReceivedUtc,
+    ageMinutes: ageMinutes == null ? undefined : Math.round(ageMinutes * 10) / 10,
+    state: ageMinutes == null || ageMinutes > 36 * 60 ? 'amber' : 'green',
+    cadence: 'event-driven',
+    detail: lastReceivedUtc
+      ? 'Event-driven order intake · this timestamp is the last transport email received, not a connectivity heartbeat.'
+      : 'Event-driven order intake · no mailbox order receipt has been recorded yet, so connectivity is unconfirmed rather than failed.',
+  };
 }
 
 async function freshness(token?: string): Promise<FreshnessResponse> {
-  const [confidence, liveTacho] = await Promise.all([
-    request<ConfidenceResponse>('/api/v1/operations/confidence', token),
-    request<TachoLiveStatus>('/api/v1/integrations/tachomaster/status', token).catch(() => null),
+  const [systemState, confidence] = await Promise.all([
+    request<SystemSyncState>('/api/v1/system-sync/state', token),
+    request<ConfidenceResponse>('/api/v1/operations/confidence', token).catch(() => null),
   ]);
   const now = Date.now();
-  const tacho = liveTacho?.connected
-    ? { name: 'TachoMaster', lastUpdatedUtc: new Date(now).toISOString(), ageMinutes: 0, state: 'green' as const }
-    : freshnessSource('TachoMaster', confidence.tachoMaster.lastSyncUtc, now, 30, 120);
+  const providers = systemState.providers.map<FreshnessSource>((provider) => {
+    const cadence = providerCadence(provider.name, systemState.schedules);
+    return {
+      name: providerDisplayName(provider.name),
+      lastUpdatedUtc: provider.lastUpdatedUtc,
+      ageMinutes: provider.ageMinutes,
+      state: colourForProviderState(provider.state),
+      cadence,
+      detail: provider.state === 'current'
+        ? `Receiving on expected cadence${cadence ? ` · ${cadence}` : ''}.`
+        : provider.state === 'pending'
+          ? `Configured but no completed receipt is recorded yet${cadence ? ` · expected ${cadence}` : ''}.`
+          : provider.state === 'not-configured'
+            ? 'Integration is not configured.'
+            : `No data has been received within the expected cadence${cadence ? ` · expected ${cadence}` : ''}.`,
+    };
+  });
+
+  const mailbox = confidence
+    ? mailboxSource(confidence.emailIntake.lastReceivedUtc, now)
+    : { name: 'Info mailbox', state: 'red' as const, cadence: 'event-driven', detail: 'Mailbox receipt evidence could not be checked.' };
+
   return {
-    generatedAtUtc: confidence.generatedAtUtc,
-    sources: [
-      freshnessSource('Tracking', confidence.dotTracking.latestEventUtc, now, 10, 30),
-      tacho,
-      freshnessSource('Info mailbox', confidence.emailIntake.lastReceivedUtc, now, 15, 60),
-      freshnessSource('Sage HR', confidence.sageHr.lastSyncUtc, now, 180, 720),
-    ],
+    generatedAtUtc: systemState.generatedAtUtc,
+    sources: [...providers, mailbox],
   };
 }
 
