@@ -1,2 +1,3 @@
 Restore 2026-08-26 morning wallboard runtime baseline. Progress first; TV ETA to be repaired separately.
 Deployment trigger: restore baseline after wallboard regression.
+CI validation: obsolete synthetic ETA handoff test removed.
