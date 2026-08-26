@@ -20,7 +20,7 @@ import { PlanStability, TimelinePage } from './pages/OperationsIntelligence';
 import { AttentionAndExceptions } from './pages/AttentionAndExceptions';
 import { DashboardOperational } from './pages/DashboardOperational';
 import { OperationsWallboard } from './pages/OperationsWallboard';
-import { PublicTvBoard } from './pages/PublicTvBoard';
+import { PublicTvBoardStability as PublicTvBoard } from './pages/PublicTvBoardStability';
 import { ImportCentre } from './pages/ImportCentre';
 import { ReportingOperational } from './pages/ReportingOperational';
 import { apiScope, useAccessToken } from './lib/auth';

@@ -1,1 +1,1 @@
-export { OperationsWallboardGeofenceTimed as OperationsWallboard } from "./OperationsWallboardGeofenceTimed";
+export { OperationsWallboardStability as OperationsWallboard } from "./OperationsWallboardStability";
