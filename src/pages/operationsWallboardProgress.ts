@@ -89,13 +89,12 @@ function timeMs(value?: string) {
 }
 
 function collectionDeadline(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined) {
-  return eta?.deliveryWindowEndUtc || progress?.nextStop?.plannedArrivalUtc;
+  return progress?.nextStop?.plannedArrivalUtc || eta?.deliveryWindowEndUtc;
 }
 
-function collectionRisk(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined, nowMs: number) {
+function collectionAdvisory(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined, nowMs: number) {
   if (progress?.currentVisit || progress?.geofenceOnSite) return undefined;
-  const deadline = collectionDeadline(progress, eta);
-  const deadlineMs = timeMs(deadline);
+  const deadlineMs = timeMs(collectionDeadline(progress, eta));
   if (!Number.isFinite(deadlineMs)) return undefined;
 
   const etaMs = timeMs(eta?.etaUtc);
@@ -104,18 +103,18 @@ function collectionRisk(progress: RunProgressRecord | undefined, eta: DeliveryEt
     const bufferMinutes = Math.floor((deadlineMs - etaMs) / 60000);
     if (bufferMinutes < 0) {
       return {
-        status: "late" as const,
-        label: "LATE ETA",
-        detail: `${stopName} ETA is ${Math.abs(bufferMinutes)}m after collection due`,
-        priority: 94,
+        status: "risk" as const,
+        label: "COLLECTION BEHIND",
+        detail: `${stopName} is ${Math.abs(bufferMinutes)}m behind collection plan · final delivery ETA assessed separately`,
+        priority: 64,
       };
     }
     if (bufferMinutes <= RISK_BUFFER_MINUTES) {
       return {
         status: "risk" as const,
-        label: "AT RISK",
-        detail: `${stopName} has ${bufferMinutes}m ETA buffer to collection due`,
-        priority: 84,
+        label: "COLLECTION TIGHT",
+        detail: `${stopName} has ${bufferMinutes}m buffer to collection plan`,
+        priority: 63,
       };
     }
     return undefined;
@@ -125,18 +124,9 @@ function collectionRisk(progress: RunProgressRecord | undefined, eta: DeliveryEt
   if (overdueMinutes >= 0) {
     return {
       status: "risk" as const,
-      label: "ETA UNCONFIRMED",
-      detail: `${stopName} planned time passed ${overdueMinutes}m ago · no live arrival/ETA evidence`,
-      priority: 82,
-    };
-  }
-  const minutesUntilDue = Math.ceil((deadlineMs - nowMs) / 60000);
-  if (minutesUntilDue <= RISK_BUFFER_MINUTES) {
-    return {
-      status: "risk" as const,
-      label: "AT RISK",
-      detail: `${stopName} due in ${minutesUntilDue}m · ETA not confirmed`,
-      priority: 83,
+      label: "COLLECTION TIMING",
+      detail: `${stopName} planned time passed ${overdueMinutes}m ago · no collection ETA evidence`,
+      priority: 62,
     };
   }
   return undefined;
@@ -144,6 +134,34 @@ function collectionRisk(progress: RunProgressRecord | undefined, eta: DeliveryEt
 
 export function finalEtaFor(etas: DeliveryEta[]) {
   return [...etas].sort((a, b) => a.sequence - b.sequence).at(-1);
+}
+
+function finalDeliveryRisk(etas: DeliveryEta[]) {
+  const finalEta = finalEtaFor(etas);
+  const etaMs = timeMs(finalEta?.etaUtc);
+  const deadlineMs = timeMs(finalEta?.deliveryWindowEndUtc);
+  if (!Number.isFinite(etaMs) || !Number.isFinite(deadlineMs)) return undefined;
+
+  const bufferMinutes = Math.floor((deadlineMs - etaMs) / 60000);
+  const stopName = finalEta?.stopName || "Final delivery";
+  if (bufferMinutes < 0) {
+    const estimated = finalEta?.source === "Estimated";
+    return {
+      status: estimated ? "risk" as const : "late" as const,
+      label: estimated ? "FINAL ETA AT RISK" : "LATE FINAL ETA",
+      detail: `${stopName} final ETA is ${Math.abs(bufferMinutes)}m after delivery latest time`,
+      priority: estimated ? 89 : 96,
+    };
+  }
+  if (bufferMinutes <= RISK_BUFFER_MINUTES) {
+    return {
+      status: "risk" as const,
+      label: "FINAL ETA AT RISK",
+      detail: `${stopName} has ${bufferMinutes}m buffer to delivery latest time`,
+      priority: 88,
+    };
+  }
+  return { onTime: true as const, bufferMinutes };
 }
 
 export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()) {
@@ -175,18 +193,40 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
       priority: 70,
     };
   }
-  const hardRisk = etas.find((eta) => eta.source === "Live" && (eta.risk === "Late" || eta.tachoStatus === "InsufficientDriveTime"));
-  if (hardRisk) {
+
+  const hoursRisk = etas.find((eta) => eta.tachoStatus === "InsufficientDriveTime");
+  if (hoursRisk) {
     return {
       status: "late" as const,
-      label: hardRisk.tachoStatus === "InsufficientDriveTime" ? "HOURS RISK" : "LATE ETA",
-      detail: hardRisk.tachoStatus === "InsufficientDriveTime" ? "Tacho time is below remaining route need" : `${hardRisk.stopName} will miss its window`,
+      label: "HOURS RISK",
+      detail: "Tacho time is below remaining route need",
       priority: 95,
     };
   }
-  const calculatedRisk = collectionRisk(progress, nextEta, nowMs);
-  if (calculatedRisk) return calculatedRisk;
-  if (nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
+
+  const finalRisk = finalDeliveryRisk(etas);
+  if (finalRisk && "status" in finalRisk) return finalRisk;
+  const finalDeliveryConfirmedOnTime = Boolean(finalRisk?.onTime);
+
+  // A collection slot is an execution milestone, not the customer promise. Once a
+  // cumulative final ETA and final delivery latest time are both known and healthy,
+  // do not colour the whole run red/amber merely because a collection is behind plan.
+  if (!finalDeliveryConfirmedOnTime) {
+    const collectionTiming = collectionAdvisory(progress, nextEta, nowMs);
+    if (collectionTiming) return collectionTiming;
+  }
+
+  const hardCustomerRisk = etas.find((eta) => eta.source === "Live" && eta.risk === "Late" && eta.deliveryWindowEndUtc);
+  if (hardCustomerRisk) {
+    return {
+      status: "late" as const,
+      label: "LATE DELIVERY ETA",
+      detail: `${hardCustomerRisk.stopName} will miss its customer window`,
+      priority: 94,
+    };
+  }
+
+  if (!finalDeliveryConfirmedOnTime && nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
     return { status: "risk" as const, label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
   }
   const staleTracking = trackingAgeText(progress);
