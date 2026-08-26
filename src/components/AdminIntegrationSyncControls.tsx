@@ -78,8 +78,21 @@ export function AdminIntegrationSyncControls() {
     setBusy(provider);
     setMessage(undefined);
     try {
-      const result = await request<SyncResult | SyncResult[]>(`/api/v1/system-sync/force/${provider}`, await token(), { method: 'POST' }, 120000);
-      const rows = Array.isArray(result) ? result : [result];
+      const accessToken = await token();
+      const providers: Array<'tacho' | 'sage' | 'fleetio'> = provider === 'all' ? ['tacho', 'sage', 'fleetio'] : [provider];
+      const rows: SyncResult[] = [];
+      for (const item of providers) {
+        try {
+          rows.push(await request<SyncResult>(`/api/v1/system-sync/force/${item}`, accessToken, { method: 'POST' }, 120000));
+        } catch (error) {
+          rows.push({
+            provider: item,
+            success: false,
+            completedAtUtc: new Date().toISOString(),
+            message: error instanceof Error ? error.message : 'Force refresh failed.',
+          });
+        }
+      }
       setMessage(rows.map(item => `${item.provider}: ${item.message}`).join(' · '));
       await loadState();
       await feedHealth.refresh();
