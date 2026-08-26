@@ -124,8 +124,8 @@ function collectionAdvisory(progress: RunProgressRecord | undefined, eta: Delive
   if (overdueMinutes >= 0) {
     return {
       status: "risk" as const,
-      label: "COLLECTION TIMING",
-      detail: `${stopName} planned time passed ${overdueMinutes}m ago · no collection ETA evidence`,
+      label: "ETA UNCONFIRMED",
+      detail: `${stopName} planned time passed ${overdueMinutes}m ago · no live arrival/ETA evidence`,
       priority: 62,
     };
   }
