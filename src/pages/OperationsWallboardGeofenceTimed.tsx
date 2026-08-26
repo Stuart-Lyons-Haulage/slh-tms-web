@@ -72,6 +72,7 @@ function relabelCollectionTiming() {
  * - current site dwell continues to come from run-progress and therefore starts at first geofence entry;
  * - between stops, the displayed next ETA is replaced with previous geofence departure + route time;
  * - the displayed final ETA comes from the cumulative geofence route, including intermediate dwell projection;
+ * - the CSV/planner final delivery latest time is retained as the final ETA risk deadline;
  * - once all stops are geofence-departed, the run is removed from the wallboard/TV data feeds;
  * - the first time column is labelled as the first collection due time, not a driver start time.
  */
@@ -137,7 +138,7 @@ export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: 
 
           const records = payload.records
             .filter((eta: { loadId?: string }) => !eta.loadId || !completed.has(eta.loadId))
-            .map((eta: { loadId?: string; stopId?: string; sequence?: number; etaUtc?: string; source?: string }) => {
+            .map((eta: { loadId?: string; stopId?: string; sequence?: number; etaUtc?: string; source?: string; deliveryWindowEndUtc?: string }) => {
               if (!eta.loadId) return eta;
               const anchor = timingByLoad.get(eta.loadId);
               if (!anchor) return eta;
@@ -147,10 +148,12 @@ export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: 
               const isFinalStop = eta.sequence != null && eta.sequence === finalSequenceByLoad.get(eta.loadId);
 
               if (isFinalStop && anchor.finalEtaUtc) {
+                const finalDeliveryLatestUtc = eta.deliveryWindowEndUtc || (eta.source === "Planned" ? eta.etaUtc : undefined);
                 return {
                   ...eta,
                   etaUtc: anchor.finalEtaUtc,
                   source: mappedEtaSource(anchor.finalEtaSource) || eta.source,
+                  deliveryWindowEndUtc: finalDeliveryLatestUtc,
                 };
               }
               if (isNextStop && anchor.nextEtaUtc) {
