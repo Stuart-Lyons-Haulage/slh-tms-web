@@ -18,19 +18,24 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
   { key: 'vehicles', label: 'Vehicles', detail: 'One canonical vehicle master: TMS planning identity plus joined Fleetio status, specification, maintenance, defects and work orders' },
   { key: 'trailers', label: 'Trailers', detail: 'One canonical trailer master: SLH trailer identity and capacity plus joined Fleetio C-number, specification, maintenance, defects and work orders' },
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Vehicle fuel cards, PINs and fuel register' },
-  { key: 'customers', label: 'Customers', detail: 'Customer names, master codes and supporting document library' },
-  { key: 'sites', label: 'Sites', detail: 'One complete site register containing collection/delivery address and postcode, driver notes, default temperature, planning region and documents' },
-  { key: 'geofences', label: 'Geofences', detail: 'RoadTech hit integrity, site links, dwell thresholds and entry/exit confirmation used by Live Runs' },
+  { key: 'sites', label: 'Sites', detail: 'One canonical operational location register: site code, planner/driver wording, address, instructions, planning profile and all linked RoadTech geofences' },
   { key: 'markets', label: 'Markets', detail: 'Market master records and contacts' },
   { key: 'fuel-prices', label: 'Fuel prices', detail: 'Fuel pricing reference data' },
 ];
 
+function canonicalSection(value: MasterSection): MasterSection {
+  // Customers remain a commercial/order concept in the backend, and geofences remain
+  // execution evidence, but neither should compete with Site Master as an operational
+  // location register. Preserve old deep links by landing them in Sites.
+  return value === 'customers' || value === 'geofences' ? 'sites' : value;
+}
+
 export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?: MasterSection }) {
-  const [section, setSection] = useState<MasterSection>(initialSection);
+  const [section, setSection] = useState<MasterSection>(() => canonicalSection(initialSection));
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => { setSection(initialSection); setCleanupOpen(false); }, [initialSection]);
+  useEffect(() => { setSection(canonicalSection(initialSection)); setCleanupOpen(false); }, [initialSection]);
 
   const active = sections.find(item => item.key === section) || sections[0];
   const separateCleanup = section === 'drivers' || section === 'vehicles' || section === 'trailers';
@@ -61,9 +66,15 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       {section === 'drivers' && <><DriversUnified /><DriverDocumentsIndex /></>}
       {section === 'vehicles' && <FleetMasterUnified kind="vehicles" />}
       {section === 'trailers' && <FleetMasterUnified kind="trailers" />}
-      {(section === 'customers' || section === 'sites') &&
-        <MasterDataOperational initialTab={section} showCategoryButtons={false} showHeading={false} />}
-      {section === 'geofences' && <GeofenceOperational />}
+      {section === 'sites' && <>
+        <MasterDataOperational initialTab="sites" showCategoryButtons={false} showHeading={false} />
+        <div className="panel" style={{ marginTop: 18, marginBottom: 18 }}>
+          <p className="eyebrow">Site execution evidence</p>
+          <h2>Geofences attached to Site Master</h2>
+          <p className="hint">RoadTech polygons are execution children of the canonical Site record. A geofence may be linked to a Site, deliberately marked location-only, or left unassigned for reconciliation; it must never create a second competing site identity.</p>
+        </div>
+        <GeofenceOperational />
+      </>}
       {section === 'fuel-cards' && <FuelCardsOperational />}
       {section === 'markets' && <MarketsMasterClean />}
       {section === 'fuel-prices' && <FuelMaster />}
