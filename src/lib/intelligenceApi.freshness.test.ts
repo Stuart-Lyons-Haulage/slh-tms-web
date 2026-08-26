@@ -85,4 +85,52 @@ describe("system feed health", () => {
     expect(mailbox?.state).toBe("amber");
     expect(mailbox?.detail).toContain("event-driven");
   });
+
+  it("uses the scheduled mailbox heartbeat as authoritative health even when a recent order email exists", async () => {
+    mockedRequest.mockImplementation(async (url) => {
+      if (url === "/api/v1/system-sync/state") {
+        return {
+          status: "attention",
+          generatedAtUtc: new Date().toISOString(),
+          schedules: {
+            dot: "continuous ingestion",
+            tachoMaster: "every 5 minutes",
+            sageHr: "daily",
+            fleetio: "hourly",
+            infoMailbox: "every 5 minutes heartbeat",
+          },
+          providers: [
+            { name: "Info mailbox", configured: true, state: "stale", lastUpdatedUtc: isoMinutesAgo(25), ageMinutes: 25 },
+          ],
+          mailbox: {
+            mailbox: "info@lyonshaulage.com",
+            lastHeartbeatUtc: isoMinutesAgo(25),
+            heartbeatAgeMinutes: 25,
+            latestInboxReceivedAtUtc: isoMinutesAgo(1),
+            lastOrderReceivedUtc: isoMinutesAgo(1),
+            heartbeatFlowName: "SLH-TMS | Info Mailbox | Heartbeat | PROD",
+            heartbeatFlowRunId: "run-stale",
+            probe: "shared Outlook mailbox read + TMS API write",
+          },
+        } as never;
+      }
+      if (url === "/api/v1/operations/confidence") {
+        return {
+          generatedAtUtc: new Date().toISOString(),
+          sageHr: {}, tachoMaster: {}, dotTracking: {},
+          emailIntake: { lastReceivedUtc: isoMinutesAgo(1) },
+        } as never;
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+
+    const result = await intelligenceApi.freshness("token");
+    const mailboxFeeds = result.sources.filter((feed) => feed.name === "Info mailbox");
+
+    expect(mailboxFeeds).toHaveLength(1);
+    expect(mailboxFeeds[0].state).toBe("red");
+    expect(mailboxFeeds[0].cadence).toBe("every 5 minutes heartbeat");
+    expect(mailboxFeeds[0].detail?.toLowerCase()).toContain("heartbeat");
+    expect(mailboxFeeds[0].detail).toContain("Outlook");
+  });
 });
