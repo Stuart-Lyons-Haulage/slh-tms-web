@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stabiliseTvRuns } from "./PublicTvBoardStability";
+import { stabiliseTvRuns } from "./publicTvBoardStabilityLogic";
 
 describe("public TV stability", () => {
   it("changes a final on-site run from dwell to ARRIVED and uses its arrival time", () => {
