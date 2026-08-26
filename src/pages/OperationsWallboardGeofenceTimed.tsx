@@ -7,6 +7,9 @@ type TimingRecord = {
   nextStopId?: string;
   nextStopSequence?: number;
   nextEtaUtc?: string;
+  etaSource?: string;
+  finalEtaUtc?: string;
+  finalEtaSource?: string;
   previousGeofenceDepartureUtc?: string;
   dwellStartedAtUtc?: string;
   currentGeofenceName?: string;
@@ -50,6 +53,10 @@ function isCompletedProgress(record: { runState?: string; totalStops?: number; c
   return record.runState === "Completed" || Boolean(record.totalStops && record.completedStops === record.totalStops);
 }
 
+function mappedEtaSource(source?: string) {
+  return source === "Geofence" ? "Live" : source === "GeofenceEstimated" ? "Estimated" : undefined;
+}
+
 function relabelCollectionTiming() {
   const board = document.querySelector<HTMLElement>(".ops-wallboard");
   if (!board) return;
@@ -64,6 +71,7 @@ function relabelCollectionTiming() {
  * Wallboard-only adapter:
  * - current site dwell continues to come from run-progress and therefore starts at first geofence entry;
  * - between stops, the displayed next ETA is replaced with previous geofence departure + route time;
+ * - the displayed final ETA comes from the cumulative geofence route, including intermediate dwell projection;
  * - once all stops are geofence-departed, the run is removed from the wallboard/TV data feeds;
  * - the first time column is labelled as the first collection due time, not a driver start time.
  */
@@ -121,15 +129,38 @@ export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: 
         }
 
         if (isEta && payload && Array.isArray(payload.records)) {
+          const finalSequenceByLoad = new Map<string, number>();
+          for (const eta of payload.records as Array<{ loadId?: string; sequence?: number }>) {
+            if (!eta.loadId || eta.sequence == null) continue;
+            finalSequenceByLoad.set(eta.loadId, Math.max(finalSequenceByLoad.get(eta.loadId) ?? eta.sequence, eta.sequence));
+          }
+
           const records = payload.records
             .filter((eta: { loadId?: string }) => !eta.loadId || !completed.has(eta.loadId))
             .map((eta: { loadId?: string; stopId?: string; sequence?: number; etaUtc?: string; source?: string }) => {
               if (!eta.loadId) return eta;
               const anchor = timingByLoad.get(eta.loadId);
-              if (!anchor?.nextEtaUtc) return eta;
-              const isNextStop = anchor.nextStopId && eta.stopId === anchor.nextStopId ||
+              if (!anchor) return eta;
+
+              const isNextStop = Boolean(anchor.nextStopId && eta.stopId === anchor.nextStopId) ||
                 anchor.nextStopSequence != null && eta.sequence === anchor.nextStopSequence;
-              return isNextStop ? { ...eta, etaUtc: anchor.nextEtaUtc, source: "Live" } : eta;
+              const isFinalStop = eta.sequence != null && eta.sequence === finalSequenceByLoad.get(eta.loadId);
+
+              if (isFinalStop && anchor.finalEtaUtc) {
+                return {
+                  ...eta,
+                  etaUtc: anchor.finalEtaUtc,
+                  source: mappedEtaSource(anchor.finalEtaSource) || eta.source,
+                };
+              }
+              if (isNextStop && anchor.nextEtaUtc) {
+                return {
+                  ...eta,
+                  etaUtc: anchor.nextEtaUtc,
+                  source: mappedEtaSource(anchor.etaSource) || eta.source,
+                };
+              }
+              return eta;
             });
           return jsonResponse(response, { ...payload, records });
         }
