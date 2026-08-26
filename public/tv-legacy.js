@@ -319,11 +319,8 @@
     var i;
     for (i = 0; i < state.loads.length; i += 1) {
       var load = state.loads[i];
+      if (load.status === 'Cancelled') { continue; }
       var prog = progress[String(load.id)];
-      // A date reset can leave a cancelled live-table tombstone while the freshly
-      // re-imported planning-register run is active. Route-progress is the execution
-      // authority here: keep the row when it proves the same load is active.
-      if (load.status === 'Cancelled' && !prog) { continue; }
       var complete = isRunComplete(load, prog);
       var assignment = assignments[String(load.id)] || {};
       var eta = nextEta(etaGroups[String(load.id)], prog);

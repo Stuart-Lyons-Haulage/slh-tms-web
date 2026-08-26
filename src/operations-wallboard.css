@@ -11,9 +11,6 @@
 
 .ops-wallboard.tv {
   min-height: 100vh;
-  height: 100vh;
-  width: 100%;
-  box-sizing: border-box;
   margin: 0;
   padding: 14px;
   overflow: hidden;
@@ -128,16 +125,10 @@
   background: #0f1821;
 }
 
-.ops-wallboard.tv .ops-board-table {
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
-  scroll-behavior: auto;
-}
-
 .ops-board-head,
 .ops-board-row {
   display: grid;
-  grid-template-columns: 104px minmax(150px, .85fr) minmax(100px, .5fr) minmax(145px, .7fr) minmax(210px, 1.05fr) minmax(150px, .75fr) minmax(190px, 1fr);
+  grid-template-columns: 104px minmax(150px, .9fr) minmax(100px, .55fr) minmax(145px, .75fr) minmax(210px, 1.15fr) 104px minmax(150px, .8fr);
   align-items: stretch;
 }
 
@@ -302,7 +293,7 @@
   .ops-wallboard-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ops-board-head,
   .ops-board-row {
-    grid-template-columns: 92px minmax(140px, .82fr) minmax(90px, .5fr) minmax(130px, .68fr) minmax(190px, .95fr) minmax(140px, .72fr) minmax(175px, .95fr);
+    grid-template-columns: 92px minmax(140px, .9fr) minmax(90px, .55fr) minmax(130px, .75fr) minmax(190px, 1fr) 96px minmax(140px, .8fr);
   }
 }
 
@@ -326,7 +317,7 @@
   }
   .ops-board-head,
   .ops-board-row {
-    min-width: 1080px;
+    min-width: 980px;
   }
   .ops-wallboard-footer {
     flex-wrap: wrap;

@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { formatTime as formatUkTime } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
-import { mergeAuthoritativeFinalTiming, retainLastUsefulTvEtas, type TvTimingResponse } from "./publicTvFinalTiming";
 import "../tv-display.css";
 
 type TvRun = {
@@ -106,26 +105,20 @@ export function PublicTvBoard() {
   const [error, setError] = useState<string>();
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState<Date>();
-  const refreshSequence = useRef(0);
   const date = todayInLondon();
 
   const refresh = useCallback(async (key = displayKey) => {
     if (!key) return;
-    const sequence = ++refreshSequence.current;
     try {
-      const headers = { Accept: "application/json", "X-TV-Display-Key": key };
-      const labelsRequest = fetch(`/tms-api/api/v1/tv-display/run-labels?date=${encodeURIComponent(date)}`, {
-        headers,
-        cache: "no-store",
-      }).catch(() => undefined);
-      const timingRequest = fetch(`/tms-api/api/v1/run-timing?date=${encodeURIComponent(date)}`, {
-        headers,
-        cache: "no-store",
-      }).catch(() => undefined);
-      const response = await fetch(`/tms-api/api/v1/tv-display/live-runs?date=${encodeURIComponent(date)}`, {
-        headers,
+      const liveRequest = fetch(`/tms-api/api/v1/tv-display/live-runs?date=${encodeURIComponent(date)}`, {
+        headers: { Accept: "application/json", "X-TV-Display-Key": key },
         cache: "no-store",
       });
+      const labelsRequest = fetch(`/tms-api/api/v1/tv-display/run-labels?date=${encodeURIComponent(date)}`, {
+        headers: { Accept: "application/json", "X-TV-Display-Key": key },
+        cache: "no-store",
+      }).catch(() => undefined);
+      const [response, labelResponse] = await Promise.all([liveRequest, labelsRequest]);
       if (response.status === 401) {
         localStorage.removeItem(STORAGE_KEY);
         setDisplayKey("");
@@ -140,43 +133,18 @@ export function PublicTvBoard() {
       }
 
       const nextFeed = await response.json() as TvFeed;
-      if (sequence !== refreshSequence.current) return;
-      setFeed(previous => ({
-        ...nextFeed,
-        runs: retainLastUsefulTvEtas(nextFeed.runs, previous?.runs || []),
-      }));
+      if (labelResponse?.ok) {
+        try {
+          const labelFeed = await labelResponse.json() as RunLabelFeed;
+          const labelByLoad = new Map(labelFeed.labels.map(item => [item.loadId, item.displayReference]));
+          nextFeed.runs = nextFeed.runs.map(run => ({ ...run, displayReference: labelByLoad.get(run.id) || run.displayReference }));
+        } catch { /* fallback below keeps the TV usable during staggered API/web deployments */ }
+      }
+
+      setFeed(nextFeed);
       setError(undefined);
       setLastRefresh(new Date());
-
-      void (async () => {
-        const [labelResponse, timingResponse] = await Promise.all([labelsRequest, timingRequest]);
-        if (sequence !== refreshSequence.current) return;
-
-        let timing: TvTimingResponse | undefined;
-        if (timingResponse?.ok) {
-          try { timing = await timingResponse.json() as TvTimingResponse; }
-          catch { /* keep the last useful ETA already rendered */ }
-        }
-
-        let labels: RunLabelFeed | undefined;
-        if (labelResponse?.ok) {
-          try { labels = await labelResponse.json() as RunLabelFeed; }
-          catch { /* existing display references remain usable */ }
-        }
-
-        if (sequence !== refreshSequence.current) return;
-        setFeed(current => {
-          if (!current) return current;
-          let runs = mergeAuthoritativeFinalTiming(current.runs, timing);
-          if (labels) {
-            const labelByLoad = new Map(labels.labels.map(item => [item.loadId, item.displayReference]));
-            runs = runs.map(run => ({ ...run, displayReference: labelByLoad.get(run.id) || run.displayReference }));
-          }
-          return { ...current, runs };
-        });
-      })();
     } catch (exception) {
-      if (sequence !== refreshSequence.current) return;
       setError(exception instanceof Error ? exception.message : "The TV live-runs feed could not be loaded.");
     }
   }, [date, displayKey]);
