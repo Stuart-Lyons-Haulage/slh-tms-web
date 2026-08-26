@@ -32,12 +32,13 @@ import { ManagementStabilityBanner } from './components/ManagementStabilityBanne
 import { MobileDock } from './components/MobileDock';
 
 const dailyNavigation = [
-  ['/dashboard', 'Dashboard'], ['/operations-wallboard', 'Operations wallboard'], ['/staging', 'Review orders'], ['/', 'Planner'], ['/pallet-control', 'Pallet control'], ['/planner-import', 'Import planner plan'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'],
+  ['/dashboard', 'Dashboard'], ['/operations-wallboard', 'Operations wallboard'], ['/staging', 'Review orders'], ['/', 'Planner'], ['/pallet-control', 'Pallet control'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'],
 ];
 const masterNavigation = [['/master-data', 'Master data']];
 const insightNavigation = [
   ['/management', 'Management'], ['/night-outs', 'Driver hours / Compliance'], ['/plan-stability', 'Plan stability'], ['/control-centre', 'Control centre'], ['/reporting', 'Reporting'], ['/exports', 'Exports'],
 ];
+const importNavigation = [['/planner-import', 'Imports']];
 
 type NavItem = string[];
 function pathActive(current: string, path: string) { return path === '/' ? current === '/' : current === path || current.startsWith(`${path}/`); }
@@ -104,6 +105,7 @@ function Shell() {
       <NavSection title="Daily workflow" storageKey="slh-nav-daily" items={dailyNavigation} current={location.pathname} closeMobile={closeMobile} reviewOrderCount={reviewOrderCount}/>
       <NavSection title="Master data" storageKey="slh-nav-master" items={masterNavigation} current={location.pathname} closeMobile={closeMobile}/>
       <NavSection title="Control & insight" storageKey="slh-nav-insight" items={insightNavigation} current={location.pathname} closeMobile={closeMobile}/>
+      <NavSection title="Imports" storageKey="slh-nav-imports" items={importNavigation} current={location.pathname} closeMobile={closeMobile}/>
       {authenticated && <button className="mobile-sign-out" type="button" onClick={() => instance.logoutRedirect()}>Sign out · {accounts[0]?.name || 'Microsoft account'}</button>}
     </aside>}
     <main className={tvMode ? 'tv-main' : undefined}>{tvMode ? tvContent : authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>

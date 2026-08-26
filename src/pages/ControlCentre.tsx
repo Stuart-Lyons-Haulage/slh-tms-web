@@ -1,24 +1,25 @@
-import { useState } from 'react';
 import { AdminIntegrationSyncControls } from '../components/AdminIntegrationSyncControls';
 import { Admin } from './Pages';
 import { OperationsControlClean } from './OperationsControlClean';
 
 export function ControlCentre() {
-  const [view, setView] = useState<'operations' | 'admin'>('operations');
-
-  return <section>
+  return <section className="control-centre-one-page">
     <div className="title-row">
       <div>
         <p className="eyebrow">Control & administration</p>
         <h1>Control centre</h1>
-        <p className="intro">One place for live operational confidence, daily reconciliation, integrations, synchronisation and platform administration.</p>
-      </div>
-      <div className="actions">
-        <button className={view === 'operations' ? 'primary' : undefined} onClick={() => setView('operations')}>Live operations</button>
-        <button className={view === 'admin' ? 'primary' : undefined} onClick={() => setView('admin')}>Integrations & admin</button>
+        <p className="intro">One continuous operational control page: live confidence first, then integration health and administration. No duplicated switchable views.</p>
       </div>
     </div>
 
-    {view === 'operations' ? <OperationsControlClean /> : <><AdminIntegrationSyncControls /><Admin /></>}
+    <OperationsControlClean />
+
+    <div className="control-centre-admin-divider">
+      <p className="eyebrow">Integrations & administration</p>
+      <h2>Platform controls</h2>
+      <p className="hint">Use these only when an integration or platform control needs attention.</p>
+    </div>
+    <AdminIntegrationSyncControls />
+    <Admin />
   </section>;
 }

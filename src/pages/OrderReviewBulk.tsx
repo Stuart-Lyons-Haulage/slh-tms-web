@@ -75,9 +75,9 @@ function tomorrowDate() {
 function rollingDates() {
   const today = new Date();
   today.setHours(12, 0, 0, 0);
-  return Array.from({ length: 11 }, (_, index) => {
+  return Array.from({ length: 53 }, (_, index) => {
     const value = new Date(today);
-    value.setDate(today.getDate() + index - 3);
+    value.setDate(today.getDate() + index - 45);
     return dateKey(value);
   });
 }
@@ -185,6 +185,8 @@ export function OrderReviewBulk() {
   const rows = useMemo(() => (queue.data || []).map(parse), [queue.data]);
   const dateRange = useMemo(rollingDates, []);
   const today = useMemo(todayDate, []);
+  const pendingOrderDates = useMemo(() => Array.from(new Set(rows.flatMap((row) => [text(row.payload.collectionDate), text(row.payload.deliveryDate)]).filter(Boolean))).sort(), [rows]);
+  const visibleDates = useMemo(() => Array.from(new Set([...dateRange, ...pendingOrderDates, date])).sort(), [date, dateRange, pendingOrderDates]);
   const datedRows = useMemo(() => rows.filter((row) =>
     text(row.payload.collectionDate) === date || text(row.payload.deliveryDate) === date), [date, rows]);
   const selectableRows = useMemo(() => datedRows.filter((row) => !blockingReason(row, date)), [date, datedRows]);
@@ -196,7 +198,7 @@ export function OrderReviewBulk() {
   const selectedPallets = selectedRows.reduce((sum, row) => sum + palletCount(row.payload), 0);
   const allCleanSelected = cleanRows.length > 0 && cleanRows.every((row) => selectedIds.has(row.item.id));
 
-  const summaries = useMemo(() => dateRange.map<DateSummary>((planningDate) => {
+  const summaries = useMemo(() => visibleDates.map<DateSummary>((planningDate) => {
     const pending = rows.filter((row) => text(row.payload.collectionDate) === planningDate);
     const selectable = pending.filter((row) => !blockingReason(row, planningDate));
     return {
@@ -206,7 +208,7 @@ export function OrderReviewBulk() {
       flagged: selectable.filter((row) => Boolean(reviewFlagReason(row))).length,
       blocked: pending.length - selectable.length,
     };
-  }), [dateRange, rows]);
+  }), [rows, visibleDates]);
 
   const waitingDates = useMemo(() => summaries.filter((item) => item.waiting > 0), [summaries]);
 
@@ -334,8 +336,14 @@ export function OrderReviewBulk() {
       <div>
         <p className="eyebrow">Waiting for approval</p>
         <h2>Review and approve orders</h2>
-        <p className="hint">Use the rolling dates to see three days back, today and the next seven days. Counts come from the live approval queue.</p>
+        <p className="hint">Scroll the date bubbles for recent history and every day that still has work waiting. Use Jump to date for any other historical day.</p>
       </div>
+    </div>
+
+    <div className="order-date-history-controls">
+      <label>Jump to date <input type="date" value={date} onChange={(event) => selectDate(event.target.value)} disabled={busy || Boolean(busyId)} /></label>
+      <button type="button" onClick={() => selectDate(today)} disabled={busy || Boolean(busyId)}>Today</button>
+      <small>45 days of recent history + all dates still waiting</small>
     </div>
 
     <div className="order-date-strip" role="tablist" aria-label="Order review planning dates">

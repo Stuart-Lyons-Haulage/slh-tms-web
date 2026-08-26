@@ -502,11 +502,10 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
       <div className="simple-run-builder">
         <div className="simple-section-heading">
           <div><p className="eyebrow">Run builder</p><h2>{runs.length} run{runs.length === 1 ? "" : "s"}</h2></div>
-          <small>Click an order on the right. Pallet changes auto-save.</small>
+          <small>Click an order on the right. Run quantity changes auto-save.</small>
         </div>
 
         {runs.map((run, index) => {
-          const pallets = runTotal(run);
           const saving = busyKey === run.key || busyKey?.startsWith(`${run.key}:`);
           const load = loads.find((item) => item.id === run.loadId);
           return <article key={run.key} className={`simple-run-card ${activeKey === run.key ? "active" : ""}`} onClick={() => setActiveKey(run.key)}>
@@ -520,7 +519,6 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
                   void persistRunDetails(run, { period });
                 }}>{period}</button>)}
               </div>
-              <div className={`simple-run-pallets ${pallets > 26 ? "over" : ""}`}><strong>{pallets}</strong><small>/ 26 pallets</small></div>
             </div>
 
             <div className="simple-run-details">
