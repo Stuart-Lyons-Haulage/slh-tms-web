@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isFinalCurrentVisit, normaliseFinalArrival, retainUsefulEtas } from "./OperationsWallboardStability";
+import { isFinalCurrentVisit, normaliseFinalArrival, retainUsefulEtas } from "./operationsWallboardStabilityLogic";
 
 describe("wallboard stability guards", () => {
   it("recognises a live visit at the final planned stop", () => {
