@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import { api, request, type StageBatchRequest, type StagedImport } from "../lib/api";
+import { api, request, type Site, type StageBatchRequest, type StagedImport } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 import "../order-review.css";
@@ -19,6 +19,9 @@ type IntakePayload = Record<string, unknown> & {
   unitType?: string;
   palletType?: string;
   sellerName?: string;
+  deliverySite?: string;
+  deliveryLocation?: string;
+  destination?: string;
   marketName?: string;
   stallNumber?: string;
   requestedTime?: string;
@@ -55,6 +58,7 @@ type ResetResult = ResetPreview & {
   warnings: string[];
   message: string;
 };
+type GeofenceOption = { id: string; name: string; siteId?: string; siteNumber?: string };
 
 function tomorrowDate() {
   const date = new Date();
@@ -131,6 +135,20 @@ function displayPo(payload: IntakePayload) {
   return text(payload.customerPo) || text(payload.poNumber) || "Reference missing";
 }
 
+function importedDeliveryName(payload: IntakePayload) {
+  return text(payload.deliverySite) || text(payload.deliveryLocation) || text(payload.stallNumber) || text(payload.destination);
+}
+
+function normaliseSiteName(value: string | undefined) {
+  return (value || "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+}
+
+function siteMatchesImportedName(site: Site, value: string) {
+  const target = normaliseSiteName(value);
+  return [site.name, site.driverTextName, site.externalCode, ...(site.aliases || "").split(/[,;|]/)]
+    .some((candidate) => normaliseSiteName(candidate) === target);
+}
+
 function setField(payload: IntakePayload, name: string, value: unknown): IntakePayload {
   return { ...payload, [name]: value };
 }
@@ -190,9 +208,15 @@ export function OrderReviewOperational() {
   const [importRecords, setImportRecords] = useState<StageBatchRequest[]>([]);
   const [importError, setImportError] = useState<string>();
   const [importBusy, setImportBusy] = useState(false);
+  const [siteSelection, setSiteSelection] = useState<Record<string, string>>({});
+  const [geofenceSelection, setGeofenceSelection] = useState<Record<string, string>>({});
 
   const queue = useApi(useCallback(async () =>
     api.staging(await token(), "PendingReview", "order", 2000), [token]));
+  const siteMaster = useApi(useCallback(async () =>
+    request<Site[]>("/api/v1/operational-master-data/sites/search?includeInactive=false", await token()), [token]));
+  const geofences = useApi(useCallback(async () =>
+    request<GeofenceOption[]>("/api/v1/operational-master-data/geofences/search?includeInactive=false", await token()), [token]));
 
   const rows = useMemo(() => (queue.data || []).map(parsePayload), [queue.data]);
   const visibleRows = useMemo(() => rows
@@ -326,6 +350,30 @@ export function OrderReviewOperational() {
       setNotice(`${displayPo(next)} saved. It is still waiting for acceptance.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The staged order could not be saved.");
+    } finally {
+      setBusyId(undefined);
+    }
+  }
+
+  async function confirmDeliverySite(row: ReviewRow) {
+    const siteId = siteSelection[row.item.id];
+    const geofenceId = geofenceSelection[row.item.id];
+    const deliveryName = importedDeliveryName(row.payload);
+    if (!siteId || !deliveryName) return;
+    setBusyId(row.item.id);
+    setNotice(undefined);
+    try {
+      const result = await request<{ siteName: string; siteCode: string; aliasAdded: boolean; geofenceLinked: boolean; geofenceName?: string }>(
+        `/api/v1/staging/${row.item.id}/confirm-delivery-site`,
+        await token(),
+        { method: "POST", body: JSON.stringify({ siteId, geofenceId: geofenceId || undefined }) },
+      );
+      setNotice(`${deliveryName} is now matched to ${result.siteName} (${result.siteCode})${result.aliasAdded ? " for future imports" : ""}${result.geofenceLinked ? ` and geofence ${result.geofenceName} is confirmed.` : "."}`);
+      await siteMaster.refresh();
+      await geofences.refresh();
+      await queue.refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The delivery-site match could not be saved.");
     } finally {
       setBusyId(undefined);
     }
@@ -509,6 +557,8 @@ export function OrderReviewOperational() {
         const isBusy = busyId === row.item.id;
         const sourceLink = text(row.payload.sourceWebLink);
         const selectedUnitType = unitType(payload);
+        const deliveryName = importedDeliveryName(row.payload);
+        const matchingSite = deliveryName ? (siteMaster.data || []).find((site) => siteMatchesImportedName(site, deliveryName)) : undefined;
         return <article className={`order-review-card confidence-${confidence(row.payload)}`} key={row.item.id}>
           <header>
             <div>
@@ -544,6 +594,16 @@ export function OrderReviewOperational() {
             <label>Requested time<input disabled={!isEditing} value={text(payload.requestedTime)} onChange={(event) => setDraft((current) => setField(current || payload, "requestedTime", event.target.value))} /></label>
             <label>Job type<input disabled={!isEditing} value={text(payload.jobType)} onChange={(event) => setDraft((current) => setField(current || payload, "jobType", event.target.value))} /></label>
           </div>
+
+          {deliveryName && <div className="panel" style={{ marginTop: 14 }}>
+            <strong>Delivery site match</strong>
+            <p className="hint" style={{ margin: "4px 0 10px" }}>Imported name: <b>{deliveryName}</b>{matchingSite ? ` · matches ${matchingSite.name} (${matchingSite.externalCode})` : " · no Site Master match"}</p>
+            <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
+              <label>Use existing Site Master<select value={siteSelection[row.item.id] || matchingSite?.id || ""} onChange={(event) => setSiteSelection((current) => ({ ...current, [row.item.id]: event.target.value }))} disabled={isBusy || siteMaster.loading}><option value="">Select site…</option>{(siteMaster.data || []).map((site) => <option value={site.id} key={site.id}>{site.name} ({site.externalCode})</option>)}</select></label>
+              <label>Confirm physical geofence<select value={geofenceSelection[row.item.id] || ""} onChange={(event) => setGeofenceSelection((current) => ({ ...current, [row.item.id]: event.target.value }))} disabled={isBusy || geofences.loading}><option value="">No geofence confirmation</option>{(geofences.data || []).map((geofence) => <option value={geofence.id} key={geofence.id}>{geofence.name}{geofence.siteNumber ? ` (${geofence.siteNumber})` : ""}</option>)}</select></label>
+              <button onClick={() => void confirmDeliverySite(row)} disabled={isBusy || !deliveryName || !(siteSelection[row.item.id] || matchingSite?.id)}>{geofenceSelection[row.item.id] ? "Confirm site and geofence" : "Add imported name to site"}</button>
+            </div>
+          </div>}
 
           <div className="source-evidence">
             <div><span>Source email</span><strong>{text(row.payload.sourceSubject) || row.item.source || "Mailbox source"}</strong></div>
