@@ -8,10 +8,10 @@ import { Management } from './pages/Management';
 import { NightOutReport } from './pages/NightOutReport';
 import { ControlCentre } from './pages/ControlCentre';
 import { OrderControl } from './pages/OrderControl';
-import { RunsOperational } from './pages/RunsOperational';
 import { StablePlanner } from './pages/StablePlanner';
 import { PlannerEnhanced } from './pages/PlannerEnhanced';
 import { PalletPlanningControl } from './pages/PalletPlanningControl';
+import { DriverDispatch } from './pages/DriverDispatch';
 import { OperationalPlanner } from './pages/OperationalPlanner';
 import { PlannerV2 } from './pages/PlannerV2';
 import { PlannerV3 } from './pages/PlannerV3';
@@ -32,11 +32,11 @@ import { ManagementStabilityBanner } from './components/ManagementStabilityBanne
 import { MobileDock } from './components/MobileDock';
 
 const dailyNavigation = [
-  ['/dashboard', 'Dashboard'], ['/operations-wallboard', 'Operations wallboard'], ['/staging', 'Review orders'], ['/', 'Planner'], ['/pallet-control', 'Pallet control'], ['/loads', 'Runs'], ['/tracking', 'Live tracking'],
+  ['/dashboard', 'Dashboard'], ['/operations-wallboard', 'Operations wallboard'], ['/staging', 'Load Review'], ['/', 'Planner'], ['/driver-dispatch', 'Driver Dispatch'], ['/tracking', 'Live tracking'],
 ];
 const masterNavigation = [['/master-data', 'Master data']];
 const insightNavigation = [
-  ['/management', 'Management'], ['/night-outs', 'Driver hours / Compliance'], ['/plan-stability', 'Plan stability'], ['/control-centre', 'Control centre'], ['/reporting', 'Reporting'], ['/exports', 'Exports'],
+  ['/management', 'Management'], ['/night-outs', 'Driver hours / Compliance'], ['/driver-assignments', 'Driver history'], ['/plan-stability', 'Plan stability'], ['/control-centre', 'Control centre'], ['/reporting', 'Reporting'], ['/exports', 'Exports'],
 ];
 const importNavigation = [['/planner-import', 'Imports']];
 
@@ -47,7 +47,7 @@ function NavSection({ title, storageKey, items, current, closeMobile, reviewOrde
   const [open, setOpen] = useState(() => localStorage.getItem(storageKey) !== 'closed');
   const expanded = open || active;
   const toggle = () => { const next = !open; setOpen(next); localStorage.setItem(storageKey, next ? 'open' : 'closed'); };
-  return <div className="nav-section"><button className="nav-title nav-toggle" onClick={toggle} aria-expanded={expanded}><span>{title}</span><b>{expanded ? '−' : '+'}</b></button>{expanded && <div className="nav-links">{items.map(([path,label]) => <NavLink key={path} to={path} end={path === '/'} onClick={closeMobile}><span>{label}</span>{path === '/staging' && reviewOrderCount !== undefined && reviewOrderCount > 0 && <b className="nav-count" aria-label={`${reviewOrderCount} orders awaiting review`}>{reviewOrderCount > 1999 ? '2000+' : reviewOrderCount}</b>}</NavLink>)}</div>}</div>;
+  return <div className="nav-section"><button className="nav-title nav-toggle" onClick={toggle} aria-expanded={expanded}><span>{title}</span><b>{expanded ? '−' : '+'}</b></button>{expanded && <div className="nav-links">{items.map(([path,label]) => <NavLink key={path} to={path} end={path === '/'} onClick={closeMobile}><span>{label}</span>{path === '/staging' && reviewOrderCount !== undefined && reviewOrderCount > 0 && <b className="nav-count" aria-label={`${reviewOrderCount} loads awaiting review`}>{reviewOrderCount > 1999 ? '2000+' : reviewOrderCount}</b>}</NavLink>)}</div>}</div>;
 }
 
 function Shell() {
@@ -95,7 +95,7 @@ function Shell() {
     {!tvMode && <header>
       <button className="menu" onClick={() => setOpen(!open)} aria-label="Toggle navigation" aria-expanded={open}>☰</button>
       <NavLink className="brand" to="/dashboard"><span>SLH</span><small>Transport management</small></NavLink>
-      {authenticated ? <GlobalSearch /> : <div className="header-context"><b>Daily transport control</b><small>Orders → planning → runs → live operations</small></div>}
+      {authenticated ? <GlobalSearch /> : <div className="header-context"><b>Daily transport control</b><small>Load review → planning → driver dispatch → live operations</small></div>}
       <div className="header-actions">{authenticated ? <><span className="user">{accounts[0]?.name}</span><button onClick={() => instance.logoutRedirect()}>Sign out</button></> : <button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button>}</div>
     </header>}
     {authenticated && !tvMode && <div className="system-strip"><HeaderIntelligence /></div>}
@@ -104,12 +104,12 @@ function Shell() {
       {authenticated && <div className="mobile-nav-search"><GlobalSearch /></div>}
       <NavSection title="Daily workflow" storageKey="slh-nav-daily" items={dailyNavigation} current={location.pathname} closeMobile={closeMobile} reviewOrderCount={reviewOrderCount}/>
       <NavSection title="Master data" storageKey="slh-nav-master" items={masterNavigation} current={location.pathname} closeMobile={closeMobile}/>
-      <NavSection title="Control & insight" storageKey="slh-nav-insight" items={insightNavigation} current={location.pathname} closeMobile={closeMobile}/>
+      <NavSection title="Management & compliance" storageKey="slh-nav-insight" items={insightNavigation} current={location.pathname} closeMobile={closeMobile}/>
       <NavSection title="Imports" storageKey="slh-nav-imports" items={importNavigation} current={location.pathname} closeMobile={closeMobile}/>
       {authenticated && <button className="mobile-sign-out" type="button" onClick={() => instance.logoutRedirect()}>Sign out · {accounts[0]?.name || 'Microsoft account'}</button>}
     </aside>}
     <main className={tvMode ? 'tv-main' : undefined}>{tvMode ? tvContent : authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
-      <Route path="/" element={<PlannerEnhanced />} /><Route path="/dashboard" element={<DashboardOperational />} /><Route path="/operations-wallboard" element={<OperationsWallboard />} /><Route path="/live-runs" element={<OperationsWallboard />} /><Route path="/tv-display" element={<OperationsWallboard />} /><Route path="/order-intake" element={<ImportCentre initialTab="orders" />} /><Route path="/jobs" element={<OrderControl initialTab="live" />} /><Route path="/loads" element={<RunsOperational />} /><Route path="/allocation" element={<PlannerEnhanced />} /><Route path="/pallet-control" element={<PalletPlanningControl />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<ImportCentre />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderControl />} />
+      <Route path="/" element={<PlannerEnhanced />} /><Route path="/dashboard" element={<DashboardOperational />} /><Route path="/operations-wallboard" element={<OperationsWallboard />} /><Route path="/live-runs" element={<OperationsWallboard />} /><Route path="/tv-display" element={<OperationsWallboard />} /><Route path="/order-intake" element={<ImportCentre initialTab="orders" />} /><Route path="/jobs" element={<OrderControl initialTab="live" />} /><Route path="/driver-dispatch" element={<DriverDispatch />} /><Route path="/loads" element={<DriverDispatch />} /><Route path="/allocation" element={<DriverDispatch />} /><Route path="/pallet-control" element={<PalletPlanningControl />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<ImportCentre />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderControl />} />
       <Route path="/attention" element={<AttentionAndExceptions />} /><Route path="/exceptions" element={<AttentionAndExceptions />} /><Route path="/readiness" element={<DashboardOperational />} /><Route path="/plan-stability" element={<PlanStability />} /><Route path="/timeline/run/:id" element={<TimelinePage kind="run" />} /><Route path="/timeline/order/:id" element={<TimelinePage kind="order" />} />
       <Route path="/management" element={<Management />} /><Route path="/night-outs" element={<NightOutReport />} /><Route path="/control-centre" element={<ControlCentre />} /><Route path="/operations-control" element={<ControlCentre />} /><Route path="/admin" element={<ControlCentre />} /><Route path="/driver" element={<DriverMobile />} />
       <Route path="/master-data" element={<MasterDataHub />} /><Route path="/drivers" element={<MasterDataHub initialSection="drivers" />} /><Route path="/fleet-assets" element={<MasterDataHub initialSection="vehicles" />} /><Route path="/fuel-cards" element={<MasterDataHub initialSection="fuel-cards" />} /><Route path="/customers" element={<MasterDataHub initialSection="customers" />} /><Route path="/sites" element={<MasterDataHub initialSection="sites" />} /><Route path="/markets" element={<MasterDataHub initialSection="markets" />} /><Route path="/fuel" element={<MasterDataHub initialSection="fuel-prices" />} />
