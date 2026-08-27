@@ -58,7 +58,7 @@ function isDeliveryDestination(eta: EtaRecord) {
  * evidence (geofence departure/current visit or a valid live-route anchor), so it is safe
  * to override the CSV Deliver By time only when this feed provides one.
  */
-export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
+export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: boolean; tvAccessKey?: string }) {
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
     const lastTiming = new Map<string, TimingRecord>();
@@ -130,6 +130,6 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
 
   return <>
     {!tvMode && <RunGeofenceLinkagePanel />}
-    <ExistingOperationsWallboard tvMode={tvMode} />
+    <ExistingOperationsWallboard tvMode={tvMode} tvAccessKey={tvAccessKey} />
   </>;
 }
