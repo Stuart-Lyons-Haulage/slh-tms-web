@@ -6,7 +6,7 @@ Inspected from the production planning and tracking implementation of `danwillia
 
 The API is single-tenant Microsoft Entra JWT bearer authentication. Set the correct API audience (`api://<API-CLIENT-ID>`) and issuer (`https://login.microsoftonline.com/<TENANT-ID>/v2.0`; the tenant v1 issuer is also accepted). All routes use the fallback authenticated policy except the two health endpoints.
 
-Operational access requires the delegated `Tms.Access` scope in the `scp` claim. `TmsWrite` and `TmsApprove` currently enforce that same scope; app roles documented in the API README are not currently evaluated in controller policies.
+Operational access requires a valid single-tenant Microsoft Entra bearer token for the configured API audience and a trusted sign-in address claim (`preferred_username`, `upn`, or verified email claim) whose domain is authorised by the API. The current company domain is `lyonshaulage.com`, matched case-insensitively as an exact email/UPN domain. `TmsWrite` and `TmsApprove` currently enforce that same authenticated company-domain policy.
 
 ## Endpoints
 
