@@ -30,7 +30,12 @@ type DispatchDriver = {
   assignedRunCount: number;
   suggestedRunId?: string;
   suggestedRunReference?: string;
+  suggestedVehicleId?: string;
+  suggestedVehicleRegistration?: string;
+  assistantScore?: number;
   suggestion?: string;
+  agencyBookedFrom?: string;
+  agencyBookedThrough?: string;
 };
 
 type DispatchStop = {
@@ -64,8 +69,13 @@ type DispatchLoad = {
 
 type Workbench = {
   planningDate: string;
+  weekStart?: string;
+  weekEnd?: string;
   generatedAtUtc: string;
   leaveSource: string;
+  driverPopulationSource?: string;
+  dayNumberSource?: string;
+  assistantSource?: string;
   drivers: DispatchDriver[];
   vehicles: Vehicle[];
   trailers: Trailer[];
@@ -87,7 +97,38 @@ type DispatchReadiness = {
 
 type MessageMode = "dispatch" | "update";
 type MessageState = { load: DispatchLoad; mode: MessageMode; text: string; routeMinutes?: number; acknowledgeUnverified?: boolean };
+type DriverType = "Employed" | "Casual" | "Agency";
+type DriverForm = {
+  displayName: string;
+  employeeNumber: string;
+  driverType: DriverType;
+  agencyName: string;
+  startDate: string;
+  days: number;
+};
+type AddDriverResponse = { message?: string; created?: boolean; driverId?: string };
+type DispatchFilterKey = "driver" | "typeSkills" | "code" | "day" | "vehicle" | "trailer" | "run" | "start" | "assistant" | "compliance" | "dispatch";
+type DispatchFilters = Record<DispatchFilterKey, string>;
+type SearchOption = { id: string; label: string; search?: string };
 
+const dispatchFilterKeys: DispatchFilterKey[] = ["driver", "typeSkills", "code", "day", "vehicle", "trailer", "run", "start", "assistant", "compliance", "dispatch"];
+const dispatchFilterPlaceholders: Record<DispatchFilterKey, string> = {
+  driver: "Driver…",
+  typeSkills: "Type / skill…",
+  code: "Code…",
+  day: "Day…",
+  vehicle: "Vehicle…",
+  trailer: "Trailer…",
+  run: "Run…",
+  start: "Start…",
+  assistant: "Assistant…",
+  compliance: "Compliance…",
+  dispatch: "Status…",
+};
+
+function emptyDispatchFilters(): DispatchFilters {
+  return Object.fromEntries(dispatchFilterKeys.map(key => [key, ""])) as DispatchFilters;
+}
 function isoDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -109,7 +150,7 @@ function compactRun(load?: DispatchLoad) {
 }
 function runOptionLabel(load: DispatchLoad, drivers: DispatchDriver[]) {
   const allocatedDriver = load.driverId ? drivers.find(driver => driver.driverId === load.driverId) : undefined;
-  const allocation = load.driverId ? ` · allocated${allocatedDriver ? ` to ${allocatedDriver.displayName}` : ""}` : "";
+  const allocation = load.driverId ? ` · allocated${allocatedDriver ? ` to ${allocatedDriver.displayName}` : ""}` : " · unallocated";
   return `${compactRun(load)} · ${load.reference}${allocation}`;
 }
 function typeLetter(type: string) { return type === "Agency" ? "A" : type === "Casual" ? "C" : "E"; }
@@ -150,6 +191,84 @@ function buildDriverText(load: DispatchLoad, dispatch: LoadDispatch, startTime: 
   return lines.filter((line, index, all) => line !== "" || (index > 0 && all[index - 1] !== "")).join("\n").trim();
 }
 
+async function allocateRun(id: string, payload: { vehicleId?: string; driverId?: string; trailerId?: string }, access: string) {
+  return request<unknown>(`/api/v1/runs/${encodeURIComponent(id)}/allocation`, access, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+function TypeaheadSelect({ value, options, onChange, placeholder, disabled, listId }: {
+  value: string;
+  options: SearchOption[];
+  onChange: (value: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+  listId: string;
+}) {
+  const selected = options.find(option => option.id === value);
+  const [text, setText] = useState(selected?.label || "");
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setText(selected?.label || ""); }, [value, selected?.label]);
+
+  const matches = useMemo(() => {
+    const query = text.trim().toLowerCase();
+    return (query ? options.filter(option => `${option.label} ${option.search || ""}`.toLowerCase().includes(query)) : options).slice(0, 18);
+  }, [options, text]);
+
+  function choose(option: SearchOption) {
+    setText(option.label);
+    onChange(option.id);
+    setOpen(false);
+  }
+
+  function resolve() {
+    const query = text.trim().toLowerCase();
+    if (!query) { setText(""); onChange(""); return; }
+    const exact = options.find(option => option.label.toLowerCase() === query);
+    if (exact) { choose(exact); return; }
+    if (matches.length === 1) { choose(matches[0]); return; }
+    setText(selected?.label || "");
+  }
+
+  return <div className="dispatch-typeahead">
+    <input
+      id={listId}
+      role="combobox"
+      aria-expanded={open}
+      aria-controls={`${listId}-options`}
+      value={text}
+      disabled={disabled}
+      placeholder={placeholder}
+      autoComplete="off"
+      onFocus={() => setOpen(true)}
+      onChange={event => {
+        const next = event.target.value;
+        setText(next);
+        setOpen(true);
+        if (!next.trim()) onChange("");
+      }}
+      onBlur={() => window.setTimeout(() => { setOpen(false); resolve(); }, 120)}
+      onKeyDown={event => {
+        if (event.key === "Enter" && matches[0]) { event.preventDefault(); choose(matches[0]); }
+        if (event.key === "Escape") { setOpen(false); setText(selected?.label || ""); }
+        if (event.key === "ArrowDown") setOpen(true);
+      }}
+    />
+    {open && !disabled && <div id={`${listId}-options`} className="dispatch-typeahead-menu" role="listbox">
+      {matches.length === 0 ? <span className="dispatch-typeahead-empty">No matching option</span> : matches.map(option => <button
+        key={option.id}
+        type="button"
+        role="option"
+        aria-selected={option.id === value}
+        className={option.id === value ? "selected" : ""}
+        onMouseDown={event => event.preventDefault()}
+        onClick={() => choose(option)}
+      >{option.label}</button>)}
+    </div>}
+  </div>;
+}
+
 export function DriverDispatch() {
   const token = useAccessToken();
   const initialParams = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -159,6 +278,18 @@ export function DriverDispatch() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [message, setMessage] = useState<MessageState>();
+  const [showDriverTools, setShowDriverTools] = useState(false);
+  const [driverToolBusy, setDriverToolBusy] = useState(false);
+  const [driverToolNotice, setDriverToolNotice] = useState<string>();
+  const [filters, setFilters] = useState<DispatchFilters>(() => emptyDispatchFilters());
+  const [driverForm, setDriverForm] = useState<DriverForm>({
+    displayName: "",
+    employeeNumber: "",
+    driverType: "Agency",
+    agencyName: "",
+    startDate: date,
+    days: 7,
+  });
 
   const refresh = useCallback(async () => {
     setLoading(true); setError(undefined);
@@ -176,8 +307,74 @@ export function DriverDispatch() {
     if (readOnly) params.set("compare", "1");
     window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
   }, [date, readOnly]);
+  useEffect(() => { setDriverForm(current => ({ ...current, startDate: date })); }, [date]);
+
+  const filteredDrivers = useMemo(() => {
+    if (!data) return [];
+    return data.drivers.filter(driver => {
+      const assigned = data.loads.find(load => load.id === driver.assignedLoadId);
+      const vehicle = assigned?.vehicleId ? data.vehicles.find(item => item.id === assigned.vehicleId) : undefined;
+      const trailer = assigned?.trailerId ? data.trailers.find(item => item.id === assigned.trailerId) : undefined;
+      const compliance = dispatchState(driver);
+      const values: Record<DispatchFilterKey, string> = {
+        driver: `${driver.displayName} ${driver.employeeNumber}`,
+        typeSkills: `${driver.driverType} ${driver.driverGroup || ""} ${driver.skills || ""} ${driver.agencyName || ""}`,
+        code: driver.coding || "",
+        day: String(driver.dayNumber),
+        vehicle: `${vehicle?.registration || ""} ${driver.previousVehicleRegistration || ""} ${driver.suggestedVehicleRegistration || ""}`,
+        trailer: `${trailer?.trailerNumber || ""} ${trailer?.type || ""}`,
+        run: assigned ? `${compactRun(assigned)} ${assigned.reference} ${assigned.rawReference}` : `${driver.suggestedRunReference || ""} unallocated`,
+        start: localTime(assigned?.plannedStartUtc),
+        assistant: `${driver.suggestion || ""} ${driver.previousFinalStop || ""} ${driver.assistantScore ?? ""}`,
+        compliance: `${compliance.label} ${compliance.title}`,
+        dispatch: assigned ? `${assigned.status} allocated` : "unallocated",
+      };
+      return dispatchFilterKeys.every(key => {
+        const query = filters[key].trim().toLowerCase();
+        return !query || values[key].toLowerCase().includes(query);
+      });
+    });
+  }, [data, filters]);
 
   const yesterday = () => window.open(`/driver-dispatch?date=${encodeURIComponent(addDays(date, -1))}&compare=1`, "_blank", "noopener,noreferrer");
+
+  async function syncDrivers() {
+    if (readOnly) return;
+    setDriverToolBusy(true); setDriverToolNotice(undefined);
+    try {
+      await request(`/api/v1/driver-master/tachomaster/sync`, await token(), { method: "POST" }, 180000);
+      setDriverToolNotice("Driver Master sync completed. Dispatch has been refreshed.");
+      await refresh();
+    } catch (exception) {
+      setDriverToolNotice(exception instanceof Error ? exception.message : "Driver Master sync failed.");
+    } finally { setDriverToolBusy(false); }
+  }
+
+  async function addDriver() {
+    if (readOnly) return;
+    if (!driverForm.displayName.trim()) { setDriverToolNotice("Enter the driver's name."); return; }
+    if (driverForm.driverType === "Agency" && !driverForm.agencyName.trim()) { setDriverToolNotice("Enter the agency name."); return; }
+    if (driverForm.driverType !== "Agency" && !driverForm.employeeNumber.trim()) { setDriverToolNotice("Enter the employee number, or use Sync Drivers first."); return; }
+    setDriverToolBusy(true); setDriverToolNotice(undefined);
+    try {
+      const result = await request<AddDriverResponse>(`/api/v1/driver-dispatch/drivers`, await token(), {
+        method: "POST",
+        body: JSON.stringify({
+          displayName: driverForm.displayName.trim(),
+          employeeNumber: driverForm.employeeNumber.trim() || null,
+          driverType: driverForm.driverType,
+          agencyName: driverForm.driverType === "Agency" ? driverForm.agencyName.trim() : null,
+          startDate: driverForm.startDate,
+          days: driverForm.driverType === "Agency" ? Number(driverForm.days) : null,
+        }),
+      }, 90000);
+      setDriverToolNotice(result.message || "Driver saved.");
+      setDriverForm(current => ({ ...current, displayName: "", employeeNumber: "" }));
+      await refresh();
+    } catch (exception) {
+      setDriverToolNotice(exception instanceof Error ? exception.message : "Driver could not be added.");
+    } finally { setDriverToolBusy(false); }
+  }
 
   return <section className={`driver-dispatch-page ${readOnly ? "comparison-mode" : ""}`}>
     <div className="title-row dispatch-title">
@@ -189,36 +386,61 @@ export function DriverDispatch() {
       <div className="title-actions dispatch-actions">
         <label>Planning date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
         <button type="button" onClick={yesterday}>Open yesterday in new screen ↗</button>
+        {!readOnly && <button type="button" onClick={() => void syncDrivers()} disabled={driverToolBusy}>{driverToolBusy ? "Working…" : "Sync Drivers"}</button>}
+        {!readOnly && <button type="button" onClick={() => { setShowDriverTools(value => !value); setDriverToolNotice(undefined); }}>{showDriverTools ? "Close driver add" : "Add Driver"}</button>}
         <button type="button" onClick={() => void refresh()} disabled={loading}>Refresh</button>
       </div>
     </div>
 
+    {!readOnly && showDriverTools && <div className="dispatch-driver-tools">
+      <div>
+        <strong>Add or roster a driver</strong>
+        <p className="hint">Use Sync Drivers first where possible. If the driver is new to us, this creates a provisional identity that the next TachoMaster sync can bind.</p>
+      </div>
+      <label>Driver name<input value={driverForm.displayName} onChange={event => setDriverForm(current => ({ ...current, displayName: event.target.value }))} placeholder="Full name" /></label>
+      <label>Type<select value={driverForm.driverType} onChange={event => setDriverForm(current => ({ ...current, driverType: event.target.value as DriverType }))}><option value="Employed">Employed</option><option value="Casual">Casual</option><option value="Agency">Agency</option></select></label>
+      {driverForm.driverType !== "Agency" && <label>Employee number<input value={driverForm.employeeNumber} onChange={event => setDriverForm(current => ({ ...current, employeeNumber: event.target.value }))} placeholder="Employee number" /></label>}
+      {driverForm.driverType === "Agency" && <>
+        <label>Agency<input value={driverForm.agencyName} onChange={event => setDriverForm(current => ({ ...current, agencyName: event.target.value }))} placeholder="Agency name" /></label>
+        <label>Available from<input type="date" value={driverForm.startDate} onChange={event => setDriverForm(current => ({ ...current, startDate: event.target.value }))} /></label>
+        <label>How many days do we have them?<input type="number" min={1} max={7} value={driverForm.days} onChange={event => setDriverForm(current => ({ ...current, days: Math.max(1, Math.min(7, Number(event.target.value) || 1)) }))} /></label>
+      </>}
+      <button className="primary" type="button" onClick={() => void addDriver()} disabled={driverToolBusy}>{driverToolBusy ? "Saving…" : driverForm.driverType === "Agency" ? "Add to this week's roster" : "Add driver"}</button>
+    </div>}
+    {driverToolNotice && <p className="notice inline-notice">{driverToolNotice}</p>}
+
     {readOnly && <p className="notice inline-notice"><strong>Comparison view:</strong> no allocations can be changed from this window.</p>}
     {error && <p className="notice inline-notice" style={{ borderColor: "#b42318" }}>{error}</p>}
-    {loading && !data && <div className="state">Building Driver Dispatch from the Driver Master, run plan and Sage HR…</div>}
+    {loading && !data && <div className="state">Building Driver Dispatch from the planning-week roster, run plan and Sage HR…</div>}
     {data && <>
       <div className="dispatch-summary">
-        <span><strong>{data.drivers.length}</strong> active drivers</span>
+        <span><strong>{filteredDrivers.length === data.drivers.length ? data.drivers.length : `${filteredDrivers.length} / ${data.drivers.length}`}</strong> planning drivers</span>
         <span><strong>{data.loads.length}</strong> planned runs</span>
+        <span><strong>{data.drivers.filter(driver => Boolean(driver.suggestedRunId) && !driver.assignedLoadId).length}</strong> assistant matches</span>
         <span><strong>{data.drivers.filter(driver => driver.onLeave).length}</strong> away / leave</span>
         <span>Leave: <strong>{data.leaveSource}</strong></span>
+        {data.weekStart && data.weekEnd && <span>Week: <strong>{new Date(`${data.weekStart}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" })} → {new Date(`${data.weekEnd}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" })}</strong></span>}
+        {dispatchFilterKeys.some(key => filters[key]) && <button type="button" className="text-button clear-dispatch-filters" onClick={() => setFilters(emptyDispatchFilters())}>Clear filters</button>}
       </div>
       <div className="dispatch-table-wrap">
         <table className="dispatch-table">
-          <thead><tr><th>Driver</th><th>Type / skills</th><th>Code</th><th>Day</th><th>Vehicle</th><th>Trailer</th><th>Run</th><th>Start</th><th>Assistant</th><th>Compliance</th><th>Dispatch</th></tr></thead>
-          <tbody>{data.drivers.map((driver, index) => <DispatchRow
+          <thead>
+            <tr><th>Driver</th><th>Type / skills</th><th>Code</th><th>Day</th><th>Vehicle</th><th>Trailer</th><th>Run</th><th>Start</th><th>Assistant</th><th>Compliance</th><th>Dispatch</th></tr>
+            <tr className="dispatch-filter-row">{dispatchFilterKeys.map(key => <th key={key}><input aria-label={`Filter ${key}`} value={filters[key]} placeholder={dispatchFilterPlaceholders[key]} onChange={event => setFilters(current => ({ ...current, [key]: event.target.value }))} /></th>)}</tr>
+          </thead>
+          <tbody>{filteredDrivers.map((driver, index) => <DispatchRow
             key={driver.driverId}
             driver={driver}
             data={data}
             readOnly={readOnly}
-            showGroup={index === 0 || data.drivers[index - 1].driverType !== driver.driverType}
+            showGroup={index === 0 || filteredDrivers[index - 1].driverType !== driver.driverType}
             token={token}
             refresh={refresh}
             openMessage={setMessage}
           />)}</tbody>
         </table>
       </div>
-      <p className="hint">Employment order is Employed → Casual → Agency. Casual drivers remain separately visible because they are zero-hours employees, and follow the same employed-driver compliance rules. Agency company is available on hover. Green rows are Sage HR leave and are excluded from assisted allocation. Every planned run remains visible so the planner can manually compare or reassign work; a current allocation is shown in the run label rather than hiding the run.</p>
+      <p className="hint">Dispatch is a driver-only operational roster, not the full staff directory. The Assistant proposes one coherent Driver ↔ Run pairing at a time using live/last Falcon position, Day number, route direction, skills/code and learned regular/yesterday vehicle history. Suggestions never save automatically: use the suggestion, review it, then Save or Dispatch. Vehicle, trailer and run boxes use an in-app searchable dropdown so they work consistently on desktop, iPad and iPhone.</p>
     </>}
 
     {message && <MessageDialog state={message} token={token} close={() => setMessage(undefined)} sent={async () => { setMessage(undefined); await refresh(); }} />}
@@ -243,7 +465,31 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
   const [notice, setNotice] = useState<string>();
   const selected = data.loads.find(load => load.id === loadId);
   const compliance = dispatchState(driver);
-  const availableLoads = data.loads;
+  const availableLoads = [...data.loads].sort((left, right) => {
+    if (left.id === driver.suggestedRunId) return -1;
+    if (right.id === driver.suggestedRunId) return 1;
+    if (Boolean(left.driverId) !== Boolean(right.driverId)) return left.driverId ? 1 : -1;
+    return compactRun(left).localeCompare(compactRun(right), undefined, { numeric: true });
+  });
+  const vehicleOptions: SearchOption[] = [...data.vehicles].sort((left, right) => {
+    const leftRank = left.id === driver.suggestedVehicleId ? 0 : left.id === driver.previousVehicleId ? 1 : 2;
+    const rightRank = right.id === driver.suggestedVehicleId ? 0 : right.id === driver.previousVehicleId ? 1 : 2;
+    return leftRank - rightRank || left.registration.localeCompare(right.registration);
+  }).map(vehicle => ({
+    id: vehicle.id,
+    label: `${vehicle.registration}${vehicle.id === driver.suggestedVehicleId ? " · Assistant" : vehicle.id === driver.previousVehicleId ? " · yesterday" : ""}`,
+    search: `${vehicle.registration} ${vehicle.fleetNumber || ""}`,
+  }));
+  const trailerOptions: SearchOption[] = data.trailers.map(trailer => ({
+    id: trailer.id,
+    label: `${trailer.trailerNumber}${trailer.type ? ` · ${trailer.type}` : ""}`,
+    search: `${trailer.trailerNumber} ${trailer.type || ""}`,
+  }));
+  const runOptions: SearchOption[] = availableLoads.map(load => ({
+    id: load.id,
+    label: runOptionLabel(load, data.drivers),
+    search: `${load.reference} ${load.rawReference} ${compactRun(load)} ${load.stops.map(stop => stop.name).join(" ")}`,
+  }));
 
   useEffect(() => {
     const load = data.loads.find(item => item.id === driver.assignedLoadId);
@@ -253,6 +499,15 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
     setStartTime(localTime(load?.plannedStartUtc));
   }, [data.loads, driver.assignedLoadId, driver.previousVehicleId]);
 
+  function applySuggestion() {
+    if (readOnly || driver.onLeave) return;
+    const suggestedLoad = driver.suggestedRunId ? data.loads.find(load => load.id === driver.suggestedRunId) : undefined;
+    if (driver.suggestedRunId) setLoadId(driver.suggestedRunId);
+    if (driver.suggestedVehicleId) setVehicleId(driver.suggestedVehicleId);
+    if (suggestedLoad?.trailerId) setTrailerId(suggestedLoad.trailerId);
+    setNotice("Assistant suggestion loaded · review then Save or Dispatch.");
+  }
+
   async function save() {
     if (readOnly || driver.onLeave) return;
     setBusy(true); setNotice(undefined);
@@ -260,10 +515,10 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
       const access = await token();
       const previous = data.loads.find(load => load.id === driver.assignedLoadId);
       if (previous && previous.id !== loadId) {
-        await api.allocateLoad(previous.id, { vehicleId: previous.vehicleId, trailerId: previous.trailerId }, access);
+        await allocateRun(previous.id, { vehicleId: previous.vehicleId, trailerId: previous.trailerId }, access);
       }
       if (loadId) {
-        await api.allocateLoad(loadId, { driverId: driver.driverId, vehicleId: vehicleId || undefined, trailerId: trailerId || undefined }, access);
+        await allocateRun(loadId, { driverId: driver.driverId, vehicleId: vehicleId || undefined, trailerId: trailerId || undefined }, access);
         await request(`/api/v1/driver-dispatch/${encodeURIComponent(loadId)}/start-time`, access, { method: "PUT", body: JSON.stringify({ startTime: startTime || null }) });
       }
       setNotice("Saved");
@@ -279,7 +534,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
     setBusy(true); setNotice(undefined);
     try {
       const access = await token();
-      await api.allocateLoad(loadId, { driverId: driver.driverId, vehicleId, trailerId: trailerId || undefined }, access);
+      await allocateRun(loadId, { driverId: driver.driverId, vehicleId, trailerId: trailerId || undefined }, access);
       await request(`/api/v1/driver-dispatch/${encodeURIComponent(loadId)}/start-time`, access, { method: "PUT", body: JSON.stringify({ startTime }) });
       const route = await api.route(loadId, access);
       const minutes = routeMinutes(route);
@@ -318,17 +573,17 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
   }
 
   return <>
-    {showGroup && <tr className="dispatch-group"><td colSpan={11}>{driver.driverType === "Agency" ? "AGENCY" : driver.driverType === "Casual" ? "CASUAL · ZERO-HOURS EMPLOYED" : "EMPLOYED"}</td></tr>}
+    {showGroup && <tr className="dispatch-group"><td colSpan={11}>{driver.driverType === "Agency" ? "AGENCY · CURRENT / RECENT / ROSTERED" : driver.driverType === "Casual" ? "CASUAL · ZERO-HOURS EMPLOYED" : "EMPLOYED"}</td></tr>}
     <tr className={driver.onLeave ? "on-leave" : ""}>
-      <td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}</td>
+      <td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}{driver.agencyBookedThrough && <small>Booked to {new Date(`${driver.agencyBookedThrough}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" })}</small>}</td>
       <td><div className="badge-line"><span className={`driver-type type-${driver.driverType.toLowerCase()}`} title={driver.agencyName || driver.driverType}>{typeLetter(driver.driverType)}</span>{skillBadges(driver.skills).map(skill => <span className="skill-badge" key={skill}>{skill}</span>)}</div><small title={driver.agencyName}>{driver.driverType === "Agency" ? driver.agencyName || "Agency" : driver.driverGroup || ""}</small></td>
       <td><span className={`code-badge code-${driver.coding || "x"}`} title={driver.coding === "1" ? "Can do anything" : driver.coding === "2" ? "Established driver" : driver.coding === "3" ? "Newer driver · straightforward work" : driver.coding === "4" ? "Agency" : "Allocation code not set"}>{driver.coding || "—"}</span></td>
       <td><span className={`day-bubble ${driver.dayNumber >= 6 ? "high" : driver.dayNumber >= 5 ? "watch" : ""}`}>{driver.dayNumber}</span></td>
-      <td><select disabled={readOnly || driver.onLeave} value={vehicleId} onChange={event => setVehicleId(event.target.value)}><option value="">— vehicle —</option>{data.vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration}{vehicle.id === driver.previousVehicleId ? " · yesterday" : ""}</option>)}</select>{driver.previousVehicleRegistration && <small>Yesterday: {driver.previousVehicleRegistration}</small>}</td>
-      <td><select disabled={readOnly || driver.onLeave} value={trailerId} onChange={event => setTrailerId(event.target.value)}><option value="">— trailer —</option>{data.trailers.map(trailer => <option key={trailer.id} value={trailer.id}>{trailer.trailerNumber}{trailer.type ? ` · ${trailer.type}` : ""}</option>)}</select></td>
-      <td><div className="run-cell"><select disabled={readOnly || driver.onLeave} value={loadId} onChange={event => setLoadId(event.target.value)}><option value="">— run —</option>{availableLoads.map(load => <option key={load.id} value={load.id}>{runOptionLabel(load, data.drivers)}</option>)}</select>{selected && <RunHover load={selected} />}{!selected && driver.suggestedRunId && <button className="text-button" type="button" disabled={readOnly || driver.onLeave} onClick={() => setLoadId(driver.suggestedRunId || "")}>Use {driver.suggestedRunReference || "suggested SB"}</button>}</div></td>
+      <td><TypeaheadSelect disabled={readOnly || driver.onLeave} value={vehicleId} onChange={setVehicleId} options={vehicleOptions} placeholder="Type vehicle…" listId={`vehicle-${driver.driverId}`} />{driver.previousVehicleRegistration && <small>Yesterday: {driver.previousVehicleRegistration}</small>}</td>
+      <td><TypeaheadSelect disabled={readOnly || driver.onLeave} value={trailerId} onChange={setTrailerId} options={trailerOptions} placeholder="Type trailer…" listId={`trailer-${driver.driverId}`} /></td>
+      <td><div className="run-cell"><TypeaheadSelect disabled={readOnly || driver.onLeave} value={loadId} onChange={setLoadId} options={runOptions} placeholder="Type run…" listId={`run-${driver.driverId}`} />{selected && <RunHover load={selected} />}</div></td>
       <td><input type="time" value={startTime} disabled={readOnly || driver.onLeave} onChange={event => setStartTime(event.target.value)} /></td>
-      <td className="assistant-cell"><span>{driver.suggestion || (driver.previousFinalStop ? `Yesterday finished ${driver.previousFinalStop}.` : "Available for allocation.")}</span></td>
+      <td className="assistant-cell"><span>{driver.suggestion || (driver.previousFinalStop ? `Yesterday finished ${driver.previousFinalStop}.` : "Available for allocation.")}</span>{driver.assistantScore != null && driver.assistantScore > 0 && <small>Match score: {driver.assistantScore}</small>}{!readOnly && !driver.onLeave && (driver.suggestedRunId || driver.suggestedVehicleId) && <button className="assistant-use" type="button" onClick={applySuggestion}>Use suggestion{driver.suggestedRunReference ? ` · ${driver.suggestedRunReference}` : ""}</button>}</td>
       <td><span className={`compliance-pill ${compliance.className}`} title={compliance.title}>{compliance.label}</span></td>
       <td><div className="dispatch-buttons">{readOnly ? <>{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</> : <><button type="button" onClick={() => void save()} disabled={busy || driver.onLeave}>{busy ? "Working…" : "Save"}</button><button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave}>Dispatch</button>{selected && ["Dispatched", "InProgress"].includes(selected.status) && <button type="button" onClick={() => void prepareUpdate()} disabled={busy}>Plain text update</button>}{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</>}</div>{notice && <small className="row-notice">{notice}</small>}</td>
     </tr>
