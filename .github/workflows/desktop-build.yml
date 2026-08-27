@@ -1,0 +1,76 @@
+name: Desktop - Build Windows Installers
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/local-desktop-shell
+    paths:
+      - 'desktop/**'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'vite.config.ts'
+      - '.github/workflows/desktop-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package-windows:
+    name: Windows ${{ matrix.arch }} installer
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+
+    steps:
+      - name: Checkout desktop branch
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web application
+        run: pnpm run build
+        env:
+          VITE_TMS_ENVIRONMENT: Development
+          VITE_API_BASE_URL: https://localhost:5001
+          VITE_ENTRA_TENANT_ID: 5aec48a1-c3c7-4cfd-a073-b38ae50041b1
+          VITE_ENTRA_CLIENT_ID: b4d086ae-6e9d-4578-8861-e61410127359
+          VITE_ENTRA_API_SCOPE: api://497f6ea5-9753-43ee-8ccf-afaa0a3869c2/Tms.Access
+          VITE_AZURE_MAPS_CLIENT_ID: 58e0a4b4-b8e9-42e9-89cc-361ba0f33a5c
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: pnpm exec electron-builder --win nsis --${{ matrix.arch }}
+
+      - name: Verify installer output
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter "SLH-TMS-Desktop-*-*.exe" | Where-Object { $_.Name -like "*-${{ matrix.arch }}.exe" } | Select-Object -First 1
+          if (-not $installer) { throw "Expected ${{ matrix.arch }} installer was not produced." }
+          Write-Host "Built $($installer.FullName) ($($installer.Length) bytes)"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SLH-TMS-Desktop-${{ matrix.arch }}
+          path: release/SLH-TMS-Desktop-*-*.exe
+          if-no-files-found: error
+          retention-days: 14
