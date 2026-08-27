@@ -12,6 +12,7 @@ import { StablePlanner } from './pages/StablePlanner';
 import { PlannerEnhanced } from './pages/PlannerEnhanced';
 import { PalletPlanningControl } from './pages/PalletPlanningControl';
 import { DriverDispatch } from './pages/DriverDispatch';
+import { RunPerformance } from './pages/RunPerformance';
 import { OperationalPlanner } from './pages/OperationalPlanner';
 import { PlannerV2 } from './pages/PlannerV2';
 import { PlannerV3 } from './pages/PlannerV3';
@@ -36,7 +37,7 @@ const dailyNavigation = [
 ];
 const masterNavigation = [['/master-data', 'Master data']];
 const insightNavigation = [
-  ['/management', 'Management'], ['/night-outs', 'Driver hours / Compliance'], ['/driver-assignments', 'Driver history'], ['/plan-stability', 'Plan stability'], ['/control-centre', 'Control centre'], ['/reporting', 'Reporting'], ['/exports', 'Exports'],
+  ['/management', 'Management'], ['/run-performance', 'Run performance / Timelines'], ['/night-outs', 'Driver hours / Compliance'], ['/driver-assignments', 'Driver history'], ['/plan-stability', 'Plan stability'], ['/control-centre', 'Control centre'], ['/reporting', 'Reporting'], ['/exports', 'Exports'],
 ];
 const importNavigation = [['/planner-import', 'Imports']];
 
@@ -111,7 +112,7 @@ function Shell() {
     <main className={tvMode ? 'tv-main' : undefined}>{tvMode ? tvContent : authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
       <Route path="/" element={<PlannerEnhanced />} /><Route path="/dashboard" element={<DashboardOperational />} /><Route path="/operations-wallboard" element={<OperationsWallboard />} /><Route path="/live-runs" element={<OperationsWallboard />} /><Route path="/tv-display" element={<OperationsWallboard />} /><Route path="/order-intake" element={<ImportCentre initialTab="orders" />} /><Route path="/jobs" element={<OrderControl initialTab="live" />} /><Route path="/driver-dispatch" element={<DriverDispatch />} /><Route path="/loads" element={<DriverDispatch />} /><Route path="/allocation" element={<DriverDispatch />} /><Route path="/pallet-control" element={<PalletPlanningControl />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<ImportCentre />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderControl />} />
       <Route path="/attention" element={<AttentionAndExceptions />} /><Route path="/exceptions" element={<AttentionAndExceptions />} /><Route path="/readiness" element={<DashboardOperational />} /><Route path="/plan-stability" element={<PlanStability />} /><Route path="/timeline/run/:id" element={<TimelinePage kind="run" />} /><Route path="/timeline/order/:id" element={<TimelinePage kind="order" />} />
-      <Route path="/management" element={<Management />} /><Route path="/night-outs" element={<NightOutReport />} /><Route path="/control-centre" element={<ControlCentre />} /><Route path="/operations-control" element={<ControlCentre />} /><Route path="/admin" element={<ControlCentre />} /><Route path="/driver" element={<DriverMobile />} />
+      <Route path="/management" element={<Management />} /><Route path="/run-performance" element={<RunPerformance />} /><Route path="/night-outs" element={<NightOutReport />} /><Route path="/control-centre" element={<ControlCentre />} /><Route path="/operations-control" element={<ControlCentre />} /><Route path="/admin" element={<ControlCentre />} /><Route path="/driver" element={<DriverMobile />} />
       <Route path="/master-data" element={<MasterDataHub />} /><Route path="/drivers" element={<MasterDataHub initialSection="drivers" />} /><Route path="/fleet-assets" element={<MasterDataHub initialSection="vehicles" />} /><Route path="/fuel-cards" element={<MasterDataHub initialSection="fuel-cards" />} /><Route path="/customers" element={<MasterDataHub initialSection="customers" />} /><Route path="/sites" element={<MasterDataHub initialSection="sites" />} /><Route path="/markets" element={<MasterDataHub initialSection="markets" />} /><Route path="/fuel" element={<MasterDataHub initialSection="fuel-prices" />} />
       <Route path="/admin/fuel-card-migration" element={<FuelCardMigration />} /><Route path="/reporting" element={<ReportingOperational />} /><Route path="/exports" element={<ExportCentre />} />
     </Routes></RouteErrorBoundary></> : <section className="sign-in-panel"><p className="eyebrow">Secure operations portal</p><h1>Sign in to Stuart Lyons Haulage TMS</h1><p>Use your Lyons Microsoft account to open live planning, fleet tracking, orders and master data.</p><button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button></section>}</main>
