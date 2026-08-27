@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { OperationsWallboard } from "./OperationsWallboard";
 import "../tv-display.css";
 
@@ -68,9 +68,10 @@ export function PublicTvBoard() {
   const [clock, setClock] = useState(() => new Date());
 
   useEffect(() => {
+    if (displayKey) return;
     const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
     return () => window.clearInterval(clockTimer);
-  }, []);
+  }, [displayKey]);
 
   async function pair(event: FormEvent) {
     event.preventDefault();
@@ -104,11 +105,11 @@ export function PublicTvBoard() {
     }
   }
 
-  function resetPairing() {
+  const resetPairing = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setDisplayKey("");
     setError("This TV needs pairing again. Enter the current 6-digit code from TV display in the signed-in TMS.");
-  }
+  }, []);
 
   if (displayKey) return <TvOperationsBoard displayKey={displayKey} onUnauthorized={resetPairing} />;
 
