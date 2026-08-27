@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { GeofenceStatusBadge, SiteCoverageWarningPanel, useSiteGeofenceCoverage } from "../components/GeofenceCoverageWarnings";
 import { api, request, type TransportOrder } from "../lib/api";
 import { orderMaintenance, type OrderUpdatePayload } from "../lib/orderMaintenance";
 import { useAccessToken } from "../lib/auth";
@@ -53,6 +54,9 @@ export function JobsOperational() {
       .some((value) => String(value || "").toLowerCase().includes(q));
   }), [orders.data, query]);
 
+  const siteLabels = useMemo(() => Array.from(new Set(rows.flatMap(order => [order.sellerName, order.marketName, order.stallNumber]).map(value => String(value || "").trim()).filter(Boolean))), [rows]);
+  const geofenceCoverage = useSiteGeofenceCoverage(siteLabels);
+
   function begin(order: TransportOrder) {
     setEditingId(order.id);
     setForm(editable(order));
@@ -68,6 +72,7 @@ export function JobsOperational() {
       setEditingId(undefined);
       setForm(undefined);
       await orders.refresh();
+      await geofenceCoverage.refresh();
       setMessage("Job amended successfully. Planner data has been refreshed from the saved order.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The job could not be amended.");
@@ -115,7 +120,7 @@ export function JobsOperational() {
     <div className="title-row">
       <div><p className="eyebrow">Order control</p><h1>Manage imported jobs</h1><p className="intro">Amend imported work or remove it from planning without destroying the audit record.</p></div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => void orders.refresh()} disabled={orders.loading || saving}>Refresh jobs</button>
+        <button onClick={() => void Promise.all([orders.refresh(), geofenceCoverage.refresh()])} disabled={orders.loading || saving}>Refresh jobs</button>
         <button onClick={() => void clearAllOpenJobs()} disabled={saving}>Clear all open jobs</button>
       </div>
     </div>
@@ -126,11 +131,19 @@ export function JobsOperational() {
     </div>
     {message && <p className="notice inline-notice">{message}</p>}
     {orders.error && <p className="notice inline-notice">{orders.error}</p>}
+    {geofenceCoverage.error && <p className="notice inline-notice" style={{ borderColor: "#b42318" }}>⚠ Site/geofence coverage could not be checked. Orders remain available, but location linkage is unconfirmed.</p>}
+    <SiteCoverageWarningPanel issues={geofenceCoverage.issues} title="ORDER SITE / GEOFENCE COVERAGE" />
     <div className="master-table-wrap" style={{ overflowX: "auto" }}>
       <table className="master-table" style={{ minWidth: 1250 }}>
         <thead><tr><th>Order</th><th>Customer</th><th>Collection</th><th>Depot</th><th>Destination</th><th>Delivery address</th><th>Quantity</th><th>Unit</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>{rows.map((order) => <tr key={order.id}>
-          <td><strong>{order.reference}</strong></td><td>{order.customerCode}</td><td>{order.sellerName || "—"}</td><td>{order.marketName || "—"}</td><td>{order.stallNumber || "—"}</td><td>{tagged(order.driverInstructions, "Delivery address") || "—"}</td><td>{order.pallets ?? "—"}</td><td>{tagged(order.driverInstructions, "Unit type") || "Pallets"}</td><td>{order.status}</td>
+          <td><strong>{order.reference}</strong></td>
+          <td>{order.customerCode}</td>
+          <td>{order.sellerName || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.sellerName)} /></td>
+          <td>{order.marketName || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.marketName)} /></td>
+          <td>{order.stallNumber || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.stallNumber)} /></td>
+          <td>{tagged(order.driverInstructions, "Delivery address") || "—"}</td>
+          <td>{order.pallets ?? "—"}</td><td>{tagged(order.driverInstructions, "Unit type") || "Pallets"}</td><td>{order.status}</td>
           <td><div style={{ display: "flex", gap: 8 }}><button onClick={() => begin(order)}>Edit</button><button onClick={() => void cancel(order)} disabled={saving}>Delete</button></div></td>
         </tr>)}</tbody>
       </table>
