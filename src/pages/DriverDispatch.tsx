@@ -15,8 +15,6 @@ type DispatchDriver = {
   agencyName?: string;
   tachoMasterDriverId?: string;
   tachoCardNumber?: string;
-  licenceExpiry?: string;
-  licenceStatus?: string;
   dayNumber: number;
   onLeave: boolean;
   leaveType?: string;
@@ -113,13 +111,10 @@ function typeLetter(type: string) { return type === "Agency" ? "A" : type === "C
 function skillBadges(value?: string) {
   return (value || "").split(/[,;|/]+/).map(item => item.trim()).filter(Boolean).slice(0, 5);
 }
-function licenceState(driver: DispatchDriver) {
+function dispatchState(driver: DispatchDriver) {
   if (driver.onLeave) return { className: "leave", label: driver.partDayLeave ? "PART DAY" : "LEAVE", title: driver.leaveType || "Sage HR leave" };
-  const invalid = /expired|invalid|suspended|revoked|disqualified/i.test(driver.licenceStatus || "");
-  const expired = driver.licenceExpiry ? driver.licenceExpiry < new Date().toISOString().slice(0, 10) : false;
-  if (invalid || expired) return { className: "blocked", label: "BLOCKED", title: `Licence ${driver.licenceStatus || driver.licenceExpiry}` };
   if (!driver.tachoMasterDriverId && !driver.tachoCardNumber) return { className: "review", label: "REVIEW", title: "Canonical Tacho identity missing" };
-  return { className: "ready", label: "READY", title: "Canonical identity/licence checks available; full compliance is rechecked at dispatch" };
+  return { className: "ready", label: "READY", title: "Canonical Tacho identity available; live Tacho/hours compliance is rechecked at dispatch. Driving licence automation is currently paused." };
 }
 function routeMinutes(route: Record<string, unknown>) {
   const routes = route.routes as Array<{ summary?: { travelTimeInSeconds?: number } }> | undefined;
@@ -218,7 +213,7 @@ export function DriverDispatch() {
           />)}</tbody>
         </table>
       </div>
-      <p className="hint">Employment order is Employed → Casual → Agency. Agency company is available on hover. Green rows are Sage HR leave and are excluded from assisted allocation.</p>
+      <p className="hint">Employment order is Employed → Casual → Agency. Casual drivers remain separately visible because they are zero-hours employees, and follow the same employed-driver compliance rules. Agency company is available on hover. Green rows are Sage HR leave and are excluded from assisted allocation.</p>
     </>}
 
     {message && <MessageDialog state={message} token={token} close={() => setMessage(undefined)} sent={async () => { setMessage(undefined); await refresh(); }} />}
@@ -242,7 +237,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
   const selected = data.loads.find(load => load.id === loadId);
-  const compliance = licenceState(driver);
+  const compliance = dispatchState(driver);
   const availableLoads = data.loads.filter(load => !load.driverId || load.driverId === driver.driverId || load.id === loadId);
 
   useEffect(() => {
@@ -318,7 +313,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
   }
 
   return <>
-    {showGroup && <tr className="dispatch-group"><td colSpan={11}>{driver.driverType === "Agency" ? "AGENCY" : driver.driverType === "Casual" ? "CASUAL" : "EMPLOYED"}</td></tr>}
+    {showGroup && <tr className="dispatch-group"><td colSpan={11}>{driver.driverType === "Agency" ? "AGENCY" : driver.driverType === "Casual" ? "CASUAL · ZERO-HOURS EMPLOYED" : "EMPLOYED"}</td></tr>}
     <tr className={driver.onLeave ? "on-leave" : ""}>
       <td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}</td>
       <td><div className="badge-line"><span className={`driver-type type-${driver.driverType.toLowerCase()}`} title={driver.agencyName || driver.driverType}>{typeLetter(driver.driverType)}</span>{skillBadges(driver.skills).map(skill => <span className="skill-badge" key={skill}>{skill}</span>)}</div><small title={driver.agencyName}>{driver.driverType === "Agency" ? driver.agencyName || "Agency" : driver.driverGroup || ""}</small></td>
@@ -330,7 +325,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
       <td><input type="time" value={startTime} disabled={readOnly || driver.onLeave} onChange={event => setStartTime(event.target.value)} /></td>
       <td className="assistant-cell"><span>{driver.suggestion || (driver.previousFinalStop ? `Yesterday finished ${driver.previousFinalStop}.` : "Available for allocation.")}</span></td>
       <td><span className={`compliance-pill ${compliance.className}`} title={compliance.title}>{compliance.label}</span></td>
-      <td><div className="dispatch-buttons">{readOnly ? <>{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</> : <><button type="button" onClick={() => void save()} disabled={busy || driver.onLeave}>{busy ? "Working…" : "Save"}</button><button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave || compliance.className === "blocked"}>Dispatch</button>{selected && ["Dispatched", "InProgress"].includes(selected.status) && <button type="button" onClick={() => void prepareUpdate()} disabled={busy}>Plain text update</button>}{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</>}</div>{notice && <small className="row-notice">{notice}</small>}</td>
+      <td><div className="dispatch-buttons">{readOnly ? <>{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</> : <><button type="button" onClick={() => void save()} disabled={busy || driver.onLeave}>{busy ? "Working…" : "Save"}</button><button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave}>Dispatch</button>{selected && ["Dispatched", "InProgress"].includes(selected.status) && <button type="button" onClick={() => void prepareUpdate()} disabled={busy}>Plain text update</button>}{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</>}</div>{notice && <small className="row-notice">{notice}</small>}</td>
     </tr>
   </>;
 }
