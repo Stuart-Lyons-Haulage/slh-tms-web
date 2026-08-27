@@ -4,6 +4,7 @@ import { intelligenceApi } from "../lib/intelligenceApi";
 import { useAccessToken } from "../lib/auth";
 import { todayIsoDate, formatDateLong } from "../lib/dateUtils";
 import { useApi } from "../lib/useApi";
+import { DailyAllocationViewer } from "../components/DailyAllocationViewer";
 
 function feedAge(minutes?: number) {
   if (minutes == null) return "No receipt recorded";
@@ -52,7 +53,7 @@ export function DashboardOperational() {
       <div>
         <p className="eyebrow">Operational health · {formatDateLong(date)}</p>
         <h1>Today at a glance</h1>
-        <p className="hint">A decision-focused view of today's orders, runs, people, fleet, exceptions and the systems feeding the operation.</p>
+        <p className="hint">A decision-focused view of today's loads, runs, people, fleet, exceptions and the systems feeding the operation.</p>
       </div>
       <button type="button" onClick={refreshAll} disabled={readiness.loading || attention.loading || freshness.loading}>Refresh all</button>
     </div>
@@ -65,14 +66,16 @@ export function DashboardOperational() {
       </div>
 
       <div className="dashboard-health-grid">
-        <Link to="/staging"><article className={snapshot.unreviewedOrders ? "attention" : "good"}><span>Orders waiting</span><strong>{snapshot.unreviewedOrders}</strong><small>Need review / approval</small></article></Link>
-        <Link to="/"><article className={snapshot.missingAllocations ? "attention" : "good"}><span>Runs ready</span><strong>{readyRuns}/{snapshot.runs}</strong><small>{snapshot.missingAllocations} need allocation</small></article></Link>
+        <Link to="/staging"><article className={snapshot.unreviewedOrders ? "attention" : "good"}><span>Loads waiting</span><strong>{snapshot.unreviewedOrders}</strong><small>Need review / approval</small></article></Link>
+        <Link to="/driver-dispatch"><article className={snapshot.missingAllocations ? "attention" : "good"}><span>Runs ready</span><strong>{readyRuns}/{snapshot.runs}</strong><small>{snapshot.missingAllocations} need allocation</small></article></Link>
         <Link to="/fleet-assets"><article className={snapshot.vorConflicts ? "attention" : "good"}><span>Fleet / VOR</span><strong>{snapshot.vorConflicts}</strong><small>Conflicts against today's plan</small></article></Link>
         <Link to="/night-outs"><article className={snapshot.tachoConcerns ? "attention" : "good"}><span>Driver compliance</span><strong>{snapshot.tachoConcerns}</strong><small>Hours / Tacho concerns</small></article></Link>
         <Link to="/attention"><article className={highAttention ? "attention" : "good"}><span>High priority</span><strong>{highAttention}</strong><small>{attention.data?.count || 0} total exceptions</small></article></Link>
-        <Link to="/loads"><article className={snapshot.planLock ? "good" : "neutral"}><span>Plan baseline</span><strong>{snapshot.planLock ? "Locked" : "Open"}</strong><small>{snapshot.planLock ? `${snapshot.planLock.baselineRuns} baseline runs` : "Not locked yet"}</small></article></Link>
+        <Link to="/driver-dispatch"><article className={snapshot.planLock ? "good" : "neutral"}><span>Plan baseline</span><strong>{snapshot.planLock ? "Locked" : "Open"}</strong><small>{snapshot.planLock ? `${snapshot.planLock.baselineRuns} baseline runs` : "Not locked yet"}</small></article></Link>
       </div>
     </>}
+
+    <DailyAllocationViewer initialDate={date} />
 
     <div className="dashboard-health-columns">
       <section className="panel dashboard-attention-panel">
@@ -89,6 +92,6 @@ export function DashboardOperational() {
       </section>
     </div>
 
-    <div className="dashboard-handoff-links"><Link to="/staging">Review orders →</Link><Link to="/">Planner →</Link><Link to="/pallet-control">Pallet control →</Link><Link to="/operations-wallboard">Live operations →</Link></div>
+    <div className="dashboard-handoff-links"><Link to="/staging">Load Review →</Link><Link to="/">Planner →</Link><Link to="/driver-dispatch">Driver Dispatch →</Link><Link to="/operations-wallboard">Live operations →</Link></div>
   </section>;
 }

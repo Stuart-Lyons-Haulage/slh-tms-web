@@ -40,6 +40,7 @@ import './mobile-planner.css';
 import './master-fleet.css';
 import './live-vehicle-popup.css';
 import './operations-housekeeping.css';
+import './pallet-control.css';
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;

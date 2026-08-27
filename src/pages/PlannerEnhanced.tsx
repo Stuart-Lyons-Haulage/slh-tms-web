@@ -18,9 +18,12 @@ export function PlannerEnhanced() {
       <div>
         <p className="eyebrow" style={{ marginBottom: 3 }}>Planning workspace</p>
         <strong>Run Planner</strong><br />
-        <small>Build and amend runs here. Order approval stays in Review orders; live quantity control stays on the planner's second screen.</small>
+        <small>Build and amend runs here. Pallet Control remains the live second-screen view for pallets, trays, trolleys, crates and split allocations.</small>
       </div>
-      <Link className="button-like primary" to="/pallet-control" target="_blank" rel="noopener noreferrer">Open Pallet Control · Screen 2 ↗</Link>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Link className="button-like primary" to="/pallet-control">Open Pallet Control →</Link>
+        <Link className="button-like" to="/driver-dispatch">Driver Dispatch →</Link>
+      </div>
     </div>
 
     <div className="planner-toolbar" style={{ marginTop: 0 }}>
@@ -28,7 +31,7 @@ export function PlannerEnhanced() {
         Plan date{" "}
         <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
       </label>
-      <span>Approved orders for this date appear automatically in the planning pool.</span>
+      <span>Approved loads for this date appear automatically in the planning pool.</span>
     </div>
 
     <RunGeofenceWarningPanel planningDate={date} />
@@ -36,9 +39,10 @@ export function PlannerEnhanced() {
     <RunPlannerLive planningDate={date} />
 
     <div className="mobile-planner-handoff">
-      <strong>Allocation and dispatch are on Runs.</strong>
-      <span>After the plan is built, assign the driver, vehicle and trailer from Runs. Master records and subcontractor details are maintained outside this planning workspace.</span>
-      <Link to="/loads">Open Runs →</Link>
+      <strong>Keep Pallet Control alongside planning, then move to Driver Dispatch.</strong>
+      <span>Pallet Control updates every 2 seconds as splits are made. Driver Dispatch then allocates the driver, regular vehicle and trailer, records the start time, routes the run, checks live compliance and sends the driver text.</span>
+      <Link to="/pallet-control">Open Pallet Control →</Link>
+      <Link to="/driver-dispatch">Open Driver Dispatch →</Link>
     </div>
   </section>;
 }

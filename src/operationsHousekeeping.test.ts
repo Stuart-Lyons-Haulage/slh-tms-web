@@ -15,6 +15,7 @@ describe("operations housekeeping contract", () => {
     expect(planner).not.toContain("SubcontractorQuickAdd");
     expect(planner).not.toContain("Automatic order intake");
     expect(planner).not.toContain("review-orders-link");
+    expect(planner).toContain("Open Pallet Control");
   });
 
   it("removes pallet utilisation from the mixed-unit run builder and gives optimiser more time", () => {
@@ -28,9 +29,14 @@ describe("operations housekeeping contract", () => {
     expect(review).toContain("pendingOrderDates");
   });
 
-  it("shows Pallet Control as one compact To plan and Planned screen", () => {
-    expect(palletControl).toContain("To plan");
-    expect(palletControl).toContain("pallet-control-columns");
+  it("keeps Pallet Control as stacked live To plan and Planned boards", () => {
+    expect(app).toContain("['/pallet-control', 'Pallet Control']");
+    expect(palletControl).toContain('matrix("toPlan", "To plan"');
+    expect(palletControl).toContain('matrix("planned", "Planned"');
+    expect(palletControl).toContain("pallet-control-stack");
+    expect(palletControl).toContain("2000");
+    expect(palletControl).toContain("Trays / Crates");
+    expect(palletControl).toContain("Trolleys");
     expect(palletControl).not.toContain("Current orders");
   });
 

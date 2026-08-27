@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { request } from "../lib/api";
+import { api, request, type Driver } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 
@@ -57,6 +57,18 @@ const fmtTime = (value?: string) => value
   : "—";
 const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
 
+function canonicalEmploymentType(driver?: Driver, fallback = "Employed") {
+  if (!driver) return fallback;
+  const type = (driver.driverType || "").trim();
+  const group = (driver.driverGroup || "").trim();
+  const agency = (driver.agencyName || "").trim();
+  const text = `${type} ${group} ${agency}`;
+  if (/agency/i.test(text)) return "Agency";
+  if (/casual|zero[- ]?hour/i.test(text)) return "Casual";
+  if (/subcontract/i.test(text)) return "Subcontractor";
+  return "Employed";
+}
+
 function statusDot(status: ComplianceRow["status"]) {
   if (status === "Compliant") return "🟢";
   if (status === "Non-compliant") return "🔴";
@@ -71,17 +83,26 @@ export function DailyCompliance() {
   const [employment, setEmployment] = useState("all");
   const [search, setSearch] = useState("");
   const report = useApi(useCallback(async () => request<ComplianceReport>(`/api/v1/daily-compliance/report?date=${date}`, await token(), undefined, 90000), [date, token]));
+  const drivers = useApi(useCallback(async () => api.drivers(await token()), [token]));
+
+  const canonicalRows = useMemo(() => {
+    const byId = new Map((drivers.data || []).map(driver => [driver.id, driver]));
+    return (report.data?.rows || []).map(row => ({
+      ...row,
+      employmentType: canonicalEmploymentType(byId.get(row.driverId), row.employmentType),
+    }));
+  }, [drivers.data, report.data]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (report.data?.rows || []).filter(row => {
+    return canonicalRows.filter(row => {
       if (assetType !== "all" && row.assetType !== assetType) return false;
       if (status !== "all" && row.status !== status) return false;
       if (employment !== "all" && row.employmentType !== employment) return false;
       if (q && !`${row.assetName} ${row.driverName} ${row.runReference}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [report.data, assetType, status, employment, search]);
+  }, [canonicalRows, assetType, status, employment, search]);
 
   const filteredSummary = useMemo(() => ({
     total: rows.length,
@@ -117,7 +138,7 @@ export function DailyCompliance() {
       <div>
         <p className="eyebrow">Daily roadworthiness control</p>
         <h1>Daily compliance</h1>
-        <p className="intro">Fleetio walkround evidence for every vehicle and trailer used, reconciled to the actual driver, Tacho pre-use other-work and first DOT/Falcon movement. A new driver taking control creates a new compliance requirement.</p>
+        <p className="intro">Fleetio walkround evidence for every vehicle and trailer used, reconciled to the actual driver, Tacho pre-use other-work and first DOT/Falcon movement. Driver Type is taken from the canonical TMS Driver Master so Casual, Employed and Agency remain distinct.</p>
       </div>
       <button className="primary" type="button" onClick={exportFiltered} disabled={!rows.length}>Export filtered CSV</button>
     </div>
@@ -126,19 +147,20 @@ export function DailyCompliance() {
       <label>Date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
       <label>Asset<select value={assetType} onChange={event => setAssetType(event.target.value)}><option value="all">Vehicles & trailers</option><option value="Vehicle">Vehicles</option><option value="Trailer">Trailers</option></select></label>
       <label>Status<select value={status} onChange={event => setStatus(event.target.value)}><option value="all">All statuses</option><option value="Compliant">Compliant</option><option value="Paper evidence required">Agency / paper</option><option value="Review">Review</option><option value="Non-compliant">Non-compliant</option></select></label>
-      <label>Employment<select value={employment} onChange={event => setEmployment(event.target.value)}><option value="all">All drivers</option><option value="Employed">Employed</option><option value="Agency">Agency</option><option value="Subcontractor">Subcontractor</option></select></label>
+      <label>Employment<select value={employment} onChange={event => setEmployment(event.target.value)}><option value="all">All drivers</option><option value="Employed">Employed</option><option value="Casual">Casual</option><option value="Agency">Agency</option><option value="Subcontractor">Subcontractor</option></select></label>
       <label style={{ minWidth: 240 }}>Driver / asset / run<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Start typing…" /></label>
     </div>
 
-    {report.loading && <div className="state">Reconciling Fleetio, TachoMaster, DOT/Falcon and the TMS plan…</div>}
+    {(report.loading || drivers.loading) && !report.data && <div className="state">Reconciling Fleetio, TachoMaster, DOT/Falcon, the Driver Master and the TMS plan…</div>}
     {report.error && <p className="notice">{report.error}</p>}
+    {drivers.error && <p className="notice inline-notice">Driver Master classification could not refresh: {drivers.error}</p>}
 
     {report.data && <>
       <div className="metrics">
         <article className="metric"><span>Assets in this view</span><strong>{filteredSummary.total}</strong><small>{report.data.summary.vehicles} vehicle duties · {report.data.summary.trailers} trailer duties today</small></article>
         <article className="metric"><span>Compliant</span><strong>🟢 {filteredSummary.green}</strong><small>Fleetio + minimum {minimumMinutes}m Tacho other-work</small></article>
         <article className="metric"><span>Paper / review</span><strong>🟠 {filteredSummary.amber}</strong><small>Agency paper exception or incomplete electronic evidence</small></article>
-        <article className="metric"><span>Action required</span><strong>🔴 {filteredSummary.red}</strong><small>Employed-driver compliance gap</small></article>
+        <article className="metric"><span>Action required</span><strong>🔴 {filteredSummary.red}</strong><small>Driver compliance gap</small></article>
       </div>
 
       <div className="panel">
