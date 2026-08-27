@@ -146,7 +146,7 @@
       for (i = 0; i < loads.length; i += 1) { loadByKey[runKey(loads[i].reference)] = loads[i]; }
 
       var header = document.querySelector('#legacy-board thead th:nth-child(5)');
-      setText(header, 'FINAL ETA');
+      setText(header, 'FINAL DELIVERY / ETA');
 
       var rows = document.querySelectorAll('#legacy-board tbody tr');
       for (i = 0; i < rows.length; i += 1) {
@@ -156,10 +156,9 @@
         var load = loadByKey[key];
         if (!timing || !load) { continue; }
 
-        if (timing.completed) {
-          rows[i].style.display = 'none';
-          continue;
-        }
+        // Completed runs remain on the board. The Operations Wallboard is an operating
+        // picture for the whole day; completion changes state to AVAILABLE rather than
+        // deleting the row during a later refresh.
         rows[i].style.display = '';
 
         var stop = finalStop(load);
@@ -173,21 +172,27 @@
         if (oldAlert && oldAlert.parentNode) { oldAlert.parentNode.removeChild(oldAlert); }
 
         var statusNode = rows[i].querySelector('strong.status');
-        var risk = riskFor(timing, stop);
-        if (risk && statusNode) {
-          var current = normalise(statusNode.textContent);
-          if (risk.kind === 'late') {
-            statusNode.className = 'status late';
-            setText(statusNode, risk.label);
-            rows[i].className = 'exception late';
-          } else if (risk.kind === 'risk') {
-            statusNode.className = 'status risk';
-            setText(statusNode, risk.label);
-            rows[i].className = 'exception risk';
-          } else if (current === 'LATE ETA' || current === 'AT RISK' || current === 'UPCOMING' || current === 'LATE FINAL ETA' || current === 'FINAL ETA AT RISK') {
-            statusNode.className = 'status route';
-            setText(statusNode, timing.currentGeofenceName ? 'ON SITE' : 'ON ROUTE');
-            rows[i].className = '';
+        if (timing.completed && statusNode) {
+          statusNode.className = 'status complete';
+          setText(statusNode, 'AVAILABLE');
+          rows[i].className = '';
+        } else {
+          var risk = riskFor(timing, stop);
+          if (risk && statusNode) {
+            var current = normalise(statusNode.textContent);
+            if (risk.kind === 'late') {
+              statusNode.className = 'status late';
+              setText(statusNode, risk.label);
+              rows[i].className = 'exception late';
+            } else if (risk.kind === 'risk') {
+              statusNode.className = 'status risk';
+              setText(statusNode, risk.label);
+              rows[i].className = 'exception risk';
+            } else if (current === 'LATE ETA' || current === 'AT RISK' || current === 'UPCOMING' || current === 'LATE FINAL ETA' || current === 'FINAL ETA AT RISK') {
+              statusNode.className = 'status route';
+              setText(statusNode, timing.currentGeofenceName ? 'ON SITE' : 'ON ROUTE');
+              rows[i].className = '';
+            }
           }
         }
       }
