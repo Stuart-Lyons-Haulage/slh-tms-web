@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { Link } from "react-router-dom";
 import { useCallback, useMemo } from "react";
 import { request } from "../lib/api";
