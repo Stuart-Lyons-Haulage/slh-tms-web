@@ -54,10 +54,10 @@ function TvOperationsBoard({ displayKey, onUnauthorized }: { displayKey: string;
 
   if (!ready) return <div className="tv-display-page"><div className="tv-display-empty">Connecting TV wallboard…</div></div>;
 
-  // The paired TV now mounts the exact Operations wallboard used in the signed-in TMS.
-  // tvMode keeps the TV presentation/read-only behaviour and suppresses TMS-only
-  // geofence linkage diagnostics, while the fetch wrapper supplies the paired display key.
-  return <OperationsWallboard tvMode />;
+  // The paired TV mounts the exact Operations wallboard used in the signed-in TMS.
+  // The explicit key avoids any Microsoft-token dependency on the public TV, while
+  // tvMode suppresses the TMS-only geofence detail UI.
+  return <OperationsWallboard tvMode tvAccessKey={displayKey} />;
 }
 
 export function PublicTvBoard() {
