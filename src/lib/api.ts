@@ -1188,14 +1188,12 @@ export const api = {
     }),
   syncTachoMasterDrivers: (token?: string) =>
     request<{
-      configured: boolean;
-      connected: boolean;
-      sourceDrivers: number;
-      matched: number;
-      unmatched: number;
-      syncedAtUtc: string;
+      provider: string;
+      success: boolean;
+      completedAtUtc: string;
+      changed: number;
       message: string;
-    }>("/api/v1/integrations/tachomaster/sync-drivers", token, {
+    }>("/api/v1/system-sync/force/tacho", token, {
       method: "POST",
     }),
   review: (id: string, approved: boolean, note: string, token?: string) =>

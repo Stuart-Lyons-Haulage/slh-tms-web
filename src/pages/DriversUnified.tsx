@@ -20,22 +20,10 @@ function dateTime(input?: string | null) {
 }
 
 type TachoRefreshResult = {
-  configured: boolean;
-  connected: boolean;
-  sourceDrivers: number;
-  profilesWithHours: number;
-  matched: number;
-  matchedWithHours: number;
-  unmatched: number;
-  currentVehicleDuties: number;
-  matchReasons?: {
-    memberId: number;
-    cardNumber: number;
-    employeeNumber: number;
-    tachoName: number;
-    displayName: number;
-  };
-  syncedAtUtc?: string;
+  provider: string;
+  success: boolean;
+  completedAtUtc: string;
+  changed: number;
   message: string;
 };
 
@@ -171,7 +159,7 @@ export function DriversUnified() {
     setMessage(undefined);
     try {
       const result = await request<TachoRefreshResult>(
-        "/api/v1/operational-recovery/tachomaster/refresh-drivers",
+        "/api/v1/system-sync/force/tacho",
         await token(),
         { method: "POST" },
         60000,
