@@ -14,7 +14,7 @@
     "desktop:win:x64": "pnpm build && electron-builder --win nsis --x64",
     "preview": "vite preview",
     "lint": "eslint . --max-warnings=0",
-    "test": "vitest run && node --test desktop/static-server.test.cjs"
+    "test": "vitest run && node --test desktop/static-server.node-test.cjs"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.18.0",
