@@ -145,13 +145,15 @@ function relabelOperationalEvidence() {
 
   board.querySelectorAll<HTMLElement>(".ops-board-row > span:nth-child(4) > small").forEach(label => {
     const text = (label.textContent || "").trim();
-    if (/^signed on\b/i.test(text)) label.textContent = text.replace(/^signed on\b/i, "SIGNED ON");
-    else if (/^card confirmed\b/i.test(text)) label.textContent = text.replace(/^card confirmed\b/i, "CARD CONFIRMED");
-    else if (/^sign-on evidence unavailable$/i.test(text)) label.textContent = "NOT SIGNED ON";
-    else if (/^tacho mismatch$/i.test(text)) label.textContent = "TACHO MISMATCH";
-    else if (/^TachoMaster unavailable$/i.test(text) || /^tacho unavailable$/i.test(text) || /^TachoMaster evidence missing$/i.test(text)) label.textContent = "TACHO UNAVAILABLE";
-    else if (/^no planned driver$/i.test(text)) label.textContent = "NO PLANNED DRIVER";
-    else if (/^no planned vehicle$/i.test(text)) label.textContent = "NO PLANNED VEHICLE";
+    let nextText = text;
+    if (/^signed on\b/i.test(text)) nextText = text.replace(/^signed on\b/i, "SIGNED ON");
+    else if (/^card confirmed\b/i.test(text)) nextText = text.replace(/^card confirmed\b/i, "CARD CONFIRMED");
+    else if (/^sign-on evidence unavailable$/i.test(text)) nextText = "NOT SIGNED ON";
+    else if (/^tacho mismatch$/i.test(text)) nextText = "TACHO MISMATCH";
+    else if (/^TachoMaster unavailable$/i.test(text) || /^tacho unavailable$/i.test(text) || /^TachoMaster evidence missing$/i.test(text)) nextText = "TACHO UNAVAILABLE";
+    else if (/^no planned driver$/i.test(text)) nextText = "NO PLANNED DRIVER";
+    else if (/^no planned vehicle$/i.test(text)) nextText = "NO PLANNED VEHICLE";
+    if (nextText !== text) label.textContent = nextText;
   });
 }
 
@@ -307,9 +309,19 @@ export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: 
   useEffect(() => {
     if (!ready) return;
     relabelOperationalEvidence();
-    const observer = new MutationObserver(relabelOperationalEvidence);
+    let frame: number | undefined;
+    const observer = new MutationObserver(() => {
+      if (frame != null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = undefined;
+        relabelOperationalEvidence();
+      });
+    });
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (frame != null) window.cancelAnimationFrame(frame);
+    };
   }, [ready]);
 
   if (!ready) return <section className="ops-wallboard"><div className="ops-board-empty">Loading live geofence timing...</div></section>;
