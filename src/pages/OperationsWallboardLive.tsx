@@ -58,7 +58,7 @@ type WallboardData = {
 };
 
 const UK_TIME_ZONE = "Europe/London";
-const timeFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
+const timeFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, hour: "2-digit", minute: "2-digit", hour12: false, hourCycle: "h23" });
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
 function parsed(value?: string) { return parseApiDateTime(value); }
@@ -108,11 +108,47 @@ function minutesToWindow(eta?: DeliveryEta) {
   const minutes = Math.round((ms(eta.deliveryWindowEndUtc) - ms(eta.etaUtc)) / 60000);
   return Number.isFinite(minutes) ? minutes : undefined;
 }
+function destinationEtas(etas: DeliveryEta[], finalEta?: DeliveryEta) {
+  if (!finalEta) return etas;
+  return etas.filter(eta => eta.sequence <= finalEta.sequence);
+}
+function destinationTachoStatus(base: ReturnType<typeof statusFor>, finalEta: DeliveryEta | undefined, destinationArrived: boolean) {
+  if (destinationArrived || base.status === "complete" || finalEta?.tachoStatus !== "InsufficientDriveTime") return base;
+  const required = Math.max(0, Math.ceil(finalEta.routeDrivingMinutes || 0));
+  const available = finalEta.driveAvailableTodayMinutes;
+  const shortfall = available == null ? undefined : Math.max(0, required - available);
+  const etaBuffer = minutesToWindow(finalEta);
+  const etaAtRisk = etaBuffer != null && etaBuffer <= 15;
+  const detail = [
+    etaAtRisk ? etaBuffer! < 0 ? `final ETA ${Math.abs(etaBuffer!)}m late` : `final ETA ${etaBuffer}m buffer` : undefined,
+    `${required}m drive needed to final customer`,
+    available == null ? "Tacho drive left unavailable" : `${available}m Tacho drive left`,
+    shortfall && shortfall > 0 ? `${shortfall}m short` : undefined,
+  ].filter(Boolean).join(" · ");
+  return {
+    status: "late" as const,
+    label: etaAtRisk ? "ETA + TACHO RISK" : "TACHO RISK",
+    detail,
+    priority: Math.max(base.priority, 95),
+  };
+}
 function formatTachoTime(value?: string) {
   const valueDate = parsed(value);
   return valueDate ? timeFormatter.format(valueDate) : undefined;
 }
 function tachoText(tacho?: RunTachoEvidence | null, eta?: DeliveryEta) {
+  if (eta?.tachoStatus === "InsufficientDriveTime") {
+    const required = Math.max(0, Math.ceil(eta.routeDrivingMinutes || 0));
+    const available = eta.driveAvailableTodayMinutes;
+    return available == null ? `Tacho risk · ${required}m drive needed` : `Tacho risk · ${required}m need · ${available}m left`;
+  }
+  if (eta?.tachoStatus === "BreakIncluded") return `Tacho OK · ${eta.breakMinutesIncluded}m break included`;
+  if (eta?.tachoStatus === "CardConfirmedWithinDriveTime" || eta?.tachoStatus === "WithinDriveTime") {
+    const required = Math.max(0, Math.ceil(eta.routeDrivingMinutes || 0));
+    const available = eta.driveAvailableTodayMinutes;
+    return available == null ? "Tacho OK" : `Tacho OK · ${required}m need · ${available}m left`;
+  }
+  if (eta?.tachoStatus === "CardConfirmedHoursUnavailable") return "card confirmed · hours missing";
   if (tacho?.status === "Matched") return `signed on ${formatTachoTime(tacho.signOnUtc) || ""}`.trim();
   if (tacho?.status === "CardConfirmed") return `card confirmed ${formatTachoTime(tacho.signOnUtc) || ""}`.trim();
   if (tacho?.status === "Mismatch") return "tacho mismatch";
@@ -121,11 +157,6 @@ function tachoText(tacho?: RunTachoEvidence | null, eta?: DeliveryEta) {
   if (tacho?.status === "NoPlannedVehicle") return "no planned vehicle";
   if (tacho?.status === "Unavailable") return "TachoMaster unavailable";
   if (!eta) return "TachoMaster evidence missing";
-  if (eta.tachoStatus === "InsufficientDriveTime") return "insufficient drive time";
-  if (eta.tachoStatus === "BreakIncluded") return `${eta.breakMinutesIncluded}m break included`;
-  if (eta.tachoStatus === "CardConfirmedWithinDriveTime") return "card confirmed";
-  if (eta.tachoStatus === "CardConfirmedHoursUnavailable") return "card confirmed · hours missing";
-  if (eta.tachoStatus === "WithinDriveTime") return "within drive time";
   if (eta.tachoDriverName) return `matched ${eta.tachoDriverName}`;
   return "tacho unavailable";
 }
@@ -279,9 +310,10 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       const etas = [...(etaByLoad.get(id) || [])].sort((a, b) => a.sequence - b.sequence);
       const nextEta = pickNextEta(etas, progress);
       const finalEta = finalEtaFor(etas);
-      const status = statusFor(progress, nextEta, etas);
-      const complete = status.status === "complete";
       const finalArrivalUtc = isFinalCurrentVisit(progress) ? progress?.currentVisit?.enteredAtUtc : undefined;
+      const baseStatus = statusFor(progress, nextEta, destinationEtas(etas, finalEta));
+      const status = destinationTachoStatus(baseStatus, finalEta, Boolean(finalArrivalUtc));
+      const complete = status.status === "complete";
       const liveEtaUtc = finalEta?.source === "Live" ? finalEta.etaUtc : undefined;
       const estimatedEtaUtc = finalEta?.source === "Estimated" ? finalEta.etaUtc : undefined;
       const scheduledUtc = firstStop(load)?.plannedArrivalUtc || progress?.nextStop?.plannedArrivalUtc;
@@ -313,12 +345,13 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
   const risk = rows.filter(row => row.status === "risk").length;
   const onSite = rows.filter(row => row.status === "onsite").length;
   const available = rows.filter(row => row.status === "complete").length;
+  const tachoRisk = rows.filter(row => row.status !== "complete" && row.finalEta?.tachoStatus === "InsufficientDriveTime").length;
   const completeJobs = completedJobCount(boardData?.progress || []);
   const presentRowId = useMemo(() => rows.find(row => row.status !== "complete" && (ms(row.scheduledUtc) || 0) >= clock.getTime() - 30 * 60 * 1000)?.id || rows.find(row => row.status !== "complete")?.id, [clock, rows]);
 
   useEffect(() => {
     if (!tvMode || !presentRowId || loading) return;
-    window.setTimeout(() => tableRef.current?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 350);
+    window.setTimeout(() => tableRef.current?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`)?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" }), 350);
   }, [lastRefresh, loading, presentRowId, tvMode]);
 
   async function fullscreen() { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); }
@@ -334,7 +367,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       <article className="green"><span>Tracker live</span><strong>{formatAge(boardData?.latestTrackingUtc, clock)}</strong><small>{boardData?.geofenceLinkedRuns ?? 0} geofence-linked runs</small></article>
       <article className="amber"><span>On site</span><strong>{onSite}</strong><small>current site evidence retained</small></article>
       <article className="green"><span>Complete</span><strong>{completeJobs}</strong><small>departed geofenced stops</small></article>
-      <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} proved late · {risk} needs attention</small></article>
+      <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} late · {risk} attention · {tachoRisk} tacho</small></article>
       <article className="green"><span>Available</span><strong>{available}</strong><small>final stop completed</small></article>
     </div>
     {(error || boardData?.warning || boardData?.geofenceAvailable === false) && <div className="ops-wallboard-alert">{error || boardData?.warning || "Geofence progression is unavailable; planned journeys remain displayed."}</div>}
@@ -359,13 +392,13 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
           <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.status === "complete" ? "completed" : "planned start"}</small></span>
           <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small></span>
           <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
-          <span><strong>{row.driver}</strong><small title={row.tacho?.explanation}>{tachoText(row.tacho, row.finalEta || row.nextEta)}</small></span>
+          <span><strong>{row.driver}</strong><small title={row.finalEta?.tachoExplanation || row.tacho?.explanation}>{tachoText(row.tacho, row.finalEta || row.nextEta)}</small></span>
           <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${percent}%` }} /></div><small>{row.progress?.linkageException?.message || row.route}</small></span>
           <span className="time-cell eta"><strong>{row.displayTimeLabel === "AVAILABLE" ? "AVAILABLE" : formatTime(row.displayTimeUtc)}</strong><small>{finalStopName} · {row.displayTimeLabel}{row.displayTimeLabel === "LIVE FINAL ETA" ? ` · ${formatAge(row.finalEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}` : ""}</small></span>
           <span className="status-cell"><strong>{row.statusLabel}</strong><small>{buffer == null || row.status === "onsite" || row.status === "complete" ? row.statusDetail : `${buffer >= 0 ? "+" : ""}${buffer}m · ${row.statusDetail}`}</small></span>
         </article>;
       })}
     </div>
-    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final ETA targets final customer destination · next stop drives risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
+    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final ETA + legal drive time assessed to final customer destination</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
   </section>;
 }
