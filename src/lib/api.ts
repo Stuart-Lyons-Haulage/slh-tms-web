@@ -1,3 +1,5 @@
+import { runtimeConfig } from "./runtimeConfig";
+
 export type Customer = {
   id: string;
   code: string;
@@ -774,7 +776,7 @@ export type DriverStatusLog = {
   capturedAtUtc: string;
 };
 
-const baseUrl = (import.meta.env.VITE_API_BASE_URL || "/tms-api").replace(
+const baseUrl = runtimeConfig.apiBaseUrl.replace(
   /\/$/,
   "",
 );

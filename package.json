@@ -3,9 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "main": "desktop/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "desktop": "electron .",
+    "desktop:dev": "concurrently -k \"pnpm dev -- --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && SLH_TMS_DESKTOP_DEV_URL=http://127.0.0.1:5173 electron .\"",
+    "desktop:pack": "pnpm build && electron-builder --dir",
+    "desktop:win": "pnpm build && electron-builder --win nsis",
+    "desktop:win:x64": "pnpm build && electron-builder --win nsis --x64",
     "preview": "vite preview",
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run"
@@ -25,12 +31,44 @@
     "@eslint/js": "^9.22.0",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
+    "concurrently": "^9.2.1",
+    "electron": "^38.5.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.22.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^17.11.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.26.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.lyonshaulage.slhtms",
+    "productName": "SLH TMS Desktop",
+    "files": [
+      "desktop/**/*",
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/runtime-config",
+        "to": "runtime-config"
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis",
+      "artifactName": "SLH-TMS-Desktop-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

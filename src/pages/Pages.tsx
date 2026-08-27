@@ -38,6 +38,7 @@ import {
   type Vehicle,
 } from "../lib/api";
 import { apiScope, useAccessToken } from "../lib/auth";
+import { runtimeConfig } from "../lib/runtimeConfig";
 import { useApi } from "../lib/useApi";
 
 function ReconnectMicrosoft() {
@@ -2957,9 +2958,9 @@ function OperationalMap({
   );
   const points = all.filter((point) => point.type === "stop");
   const vehicles = all.filter((point) => point.type === "vehicle");
-  const mapsClientId = import.meta.env.VITE_AZURE_MAPS_CLIENT_ID;
-  const appClientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
-  const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
+  const mapsClientId = runtimeConfig.azureMapsClientId;
+  const appClientId = runtimeConfig.entraClientId;
+  const tenantId = runtimeConfig.entraTenantId;
   useEffect(() => {
     let cancelled = false;
     if (!loads.length) {
@@ -8882,15 +8883,15 @@ export function Admin() {
   const settings = [
     {
       label: "Microsoft sign-in",
-      detail: import.meta.env.VITE_ENTRA_CLIENT_ID
+      detail: runtimeConfig.entraClientId
         ? "Configured for this portal build"
         : "Needs client application ID",
-      status: Boolean(import.meta.env.VITE_ENTRA_CLIENT_ID),
+      status: Boolean(runtimeConfig.entraClientId),
     },
     {
       label: "API connection",
       detail:
-        import.meta.env.VITE_API_BASE_URL || "Uses the portal API default",
+        runtimeConfig.apiBaseUrl || "Uses the portal API default",
       status: true,
     },
     {

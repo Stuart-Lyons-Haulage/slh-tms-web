@@ -3,6 +3,7 @@ import { ExportCentre as LegacyExportCentre } from "./Pages";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { todayIsoDate } from "../lib/dateUtils";
+import { runtimeConfig } from "../lib/runtimeConfig";
 import { useApi } from "../lib/useApi";
 
 type CustomerEtaEvidenceSummary = {
@@ -14,7 +15,7 @@ type CustomerEtaEvidenceSummary = {
   customerPromiseReadyCount: number;
 };
 
-const baseUrl = (import.meta.env.VITE_API_BASE_URL || "/tms-api").replace(/\/$/, "");
+const baseUrl = runtimeConfig.apiBaseUrl.replace(/\/$/, "");
 
 export function ExportCentre() {
   const token = useAccessToken();

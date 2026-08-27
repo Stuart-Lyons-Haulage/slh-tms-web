@@ -3,6 +3,7 @@ import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
 import { api, type CreateLoad, type Load, type LoadStop, type Site, type TransportOrder } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { runtimeConfig } from "../lib/runtimeConfig";
 import { useApi } from "../lib/useApi";
 import "../operational-planner.css";
 
@@ -70,9 +71,9 @@ function stopCoordinate(stop: LoadStop) {
 function PlannerMap({ jobs, selectedLoad, route, geocodes }: { jobs: Job[]; selectedLoad?: Load; route: RouteLine; geocodes: Record<string, Coordinate | null> }) {
   const container = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string>();
-  const mapsClientId = import.meta.env.VITE_AZURE_MAPS_CLIENT_ID;
-  const appClientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
-  const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
+  const mapsClientId = runtimeConfig.azureMapsClientId;
+  const appClientId = runtimeConfig.entraClientId;
+  const tenantId = runtimeConfig.entraTenantId;
   const points = useMemo(() => {
     const unplanned = jobs.flatMap((item) => {
       const point = geocodes[item.deliveryAddress];

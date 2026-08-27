@@ -25,6 +25,7 @@ import {
 } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { plannerV2Api, type PlannerDaySuggestion } from "../lib/plannerV2Api";
+import { runtimeConfig } from "../lib/runtimeConfig";
 import { useApi } from "../lib/useApi";
 import "../operational-planner.css";
 
@@ -292,9 +293,9 @@ function PlannerMap({
   const sourceRef = useRef<atlas.source.DataSource | undefined>(undefined);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string>();
-  const mapsClientId = import.meta.env.VITE_AZURE_MAPS_CLIENT_ID;
-  const appClientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
-  const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
+  const mapsClientId = runtimeConfig.azureMapsClientId;
+  const appClientId = runtimeConfig.entraClientId;
+  const tenantId = runtimeConfig.entraTenantId;
 
   const points = useMemo<MapPoint[]>(() => {
     const result: MapPoint[] = [];

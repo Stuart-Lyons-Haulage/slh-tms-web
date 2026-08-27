@@ -40,9 +40,10 @@ import './mobile-planner.css';
 import './master-fleet.css';
 import './live-vehicle-popup.css';
 import './operations-housekeeping.css';
+import { runtimeConfig } from './lib/runtimeConfig';
 
-const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
-const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
+const clientId = runtimeConfig.entraClientId;
+const tenantId = runtimeConfig.entraTenantId;
 const msal = new PublicClientApplication({ auth: { clientId: clientId || '00000000-0000-0000-0000-000000000000', authority: `https://login.microsoftonline.com/${tenantId || 'common'}`, redirectUri: window.location.origin }, cache: { cacheLocation: 'sessionStorage' } });
 
 const tvPaths = new Set(['/tv', '/operations-wallboard/tv', '/live-runs/tv']);
