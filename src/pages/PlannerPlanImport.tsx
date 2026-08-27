@@ -1,6 +1,7 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useAccessToken } from "../lib/auth";
 import { formatDate, todayIsoDate } from "../lib/dateUtils";
+import { parsePlannerCsv } from "../lib/plannerCsvImport";
 import { displayPlannerRunChoice } from "../lib/runDisplay";
 import { importPlannerPlanInChunks, type PlannerImportSummary as ImportSummary } from "../lib/plannerImportChunking";
 
@@ -13,6 +14,8 @@ type ImportStop = {
   collectFrom?: string;
   collectTo?: string;
   deadline?: string;
+  collectionDate?: string;
+  deliveryDate?: string;
   collectionSiteArrDate?: string;
   collectionSiteArrTime?: string;
   despatchedDate?: string;
@@ -30,12 +33,24 @@ type SiteReconciliation = { changedStops?: number; unresolved?: string[]; ambigu
 function safeRuns(payload?: PlannerPlanPayload) { return Array.isArray(payload?.runs) ? payload!.runs! : []; }
 function clean(value?: string) { return String(value || "").trim(); }
 function sortedTimes(values: Array<string | undefined>) { return values.map(clean).filter(Boolean).sort((a, b) => a.localeCompare(b)); }
-function firstCollect(run: ImportRun) {
-  const from = sortedTimes((run.stops || []).map((stop) => stop.collectFrom))[0];
-  const to = sortedTimes((run.stops || []).filter((stop) => clean(stop.collectFrom) === from).map((stop) => stop.collectTo))[0];
-  return from ? `${from}${to ? `-${to}` : ""}` : "—";
+function collectEntries(run: ImportRun) {
+  return (run.stops || []).map((stop) => ({
+    date: clean(stop.collectionDate) || clean(run.planningDate),
+    from: clean(stop.collectFrom),
+    to: clean(stop.collectTo),
+  })).filter((entry) => entry.from).sort((a, b) => `${a.date}T${a.from}`.localeCompare(`${b.date}T${b.from}`));
 }
-function firstCollectTime(run: ImportRun) { return sortedTimes((run.stops || []).map((stop) => stop.collectFrom))[0]; }
+function firstCollect(run: ImportRun) {
+  const first = collectEntries(run)[0];
+  if (!first) return "—";
+  const window = `${first.from}${first.to ? `-${first.to}` : ""}`;
+  return first.date && first.date !== clean(run.planningDate) ? `${first.date} ${window}` : window;
+}
+function firstCollectTime(run: ImportRun) {
+  const planningDate = clean(run.planningDate);
+  const onPlanningDay = collectEntries(run).filter((entry) => !entry.date || entry.date === planningDate);
+  return (onPlanningDay[0] || collectEntries(run)[0])?.from;
+}
 function finalDeadline(run: ImportRun) { return sortedTimes((run.stops || []).map((stop) => stop.deadline)).at(-1) || "—"; }
 function manualActualCount(run: ImportRun) {
   return (run.stops || []).filter((stop) => clean(stop.collectionSiteArrTime) || clean(stop.despatchedTime) || clean(stop.deliveryArrivalTime) || clean(stop.deliveryDepartTime) || clean(stop.reasonForLate)).length;
@@ -80,7 +95,9 @@ export function PlannerPlanImport() {
     setError(undefined); setSummary(undefined); setReconcileMessage(undefined); setPayload(undefined);
     const file = event.target.files?.[0]; if (!file) return; setFileName(file.name);
     try {
-      const parsed = JSON.parse(await file.text()) as PlannerPlanPayload;
+      const raw = await file.text();
+      const isCsv = file.name.toLowerCase().endsWith(".csv") || file.type.toLowerCase().includes("csv");
+      const parsed = (isCsv ? parsePlannerCsv(raw, file.name) : JSON.parse(raw)) as PlannerPlanPayload;
       if (!parsed?.planningDate || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.planningDate)) throw new Error("The planner file needs a valid planningDate (YYYY-MM-DD). It will display as DD/MM/YYYY after upload.");
       if (!Array.isArray(parsed.runs) || parsed.runs.length === 0) throw new Error("The planner file contains no runs.");
       const refs = parsed.runs.map((run) => String(run.runRef || "").trim().toUpperCase());
@@ -163,7 +180,7 @@ export function PlannerPlanImport() {
     finally { setBusy(false); }
   }
 
-  return <section><div className="page-heading"><div><p className="eyebrow">Planner control</p><h1>Import planner plan</h1><p>Load the reconciled planner JSON, review the control totals, then confirm the authenticated import into the TMS.</p></div></div>
+  return <section><div className="page-heading"><div><p className="eyebrow">Planner control</p><h1>Import planner plan</h1><p>Load a planner JSON or collection-plan CSV, review the control totals, then confirm the authenticated import into the TMS.</p></div></div>
     <div className="card" style={{ maxWidth: 1100, display: "grid", gap: 18 }}>
       <div className="notice inline-notice" style={{ display: "grid", gap: 10 }}>
         <strong>Reset before re-import</strong>
@@ -172,7 +189,8 @@ export function PlannerPlanImport() {
         <button type="button" className="danger" onClick={() => void resetPlanningDay()} disabled={busy || resetBusy}>{resetBusy ? "Resetting…" : `Reset ${formatDate(resetDate)} planning day`}</button>
         {resetMessage && <span style={{ whiteSpace: "pre-wrap" }}>{resetMessage}</span>}
       </div>
-      <label style={{ display: "grid", gap: 8, maxWidth: 560 }}><strong>Planner JSON file</strong><input type="file" accept="application/json,.json" onChange={(event) => void chooseFile(event)} disabled={busy || resetBusy} /></label>
+      <label style={{ display: "grid", gap: 8, maxWidth: 560 }}><strong>Planner JSON or collection-plan CSV</strong><input type="file" accept="application/json,.json,text/csv,.csv" onChange={(event) => void chooseFile(event)} disabled={busy || resetBusy} /></label>
+      <p className="hint">CSV rows are grouped by <strong>Load number</strong>. Driver, vehicle and trailer must be consistent within each load. The converted plan uses the same authenticated JSON import and wallboard run references as the existing Planner import.</p>
       {fileName && <p><strong>Selected:</strong> {fileName}</p>}
       {payload && <><div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}><span className="badge"><strong>{formatDate(payload.planningDate)}</strong> planning date</span><span className="badge"><strong>{preview.total}</strong> source runs</span><span className="badge"><strong>{preview.included}</strong> to import</span><span className="badge"><strong>{preview.held}</strong> held / excluded</span><span className="badge"><strong>{preview.stops}</strong> source lines</span><span className="badge"><strong>{preview.actuals}</strong> manual actual/ETA lines</span><span className="badge"><strong>{preview.red}</strong> red</span><span className="badge"><strong>{preview.amber}</strong> amber</span></div>
       <p className="hint">Run names below are the operational names that will be shown on Runs and TV views. The dated TMS reference remains internal only.</p>
