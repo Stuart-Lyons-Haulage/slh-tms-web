@@ -5,6 +5,7 @@ import "../run-geofence-linkage.css";
 
 type EtaRecord = {
   loadId?: string;
+  loadReference?: string;
   stopId?: string;
   sequence?: number;
   stopName?: string;
@@ -13,11 +14,13 @@ type EtaRecord = {
   etaUtc?: string;
   source?: string;
   deliveryWindowEndUtc?: string;
+  risk?: string;
   isFinalDestination?: boolean;
   [key: string]: unknown;
 };
 type TimingRecord = {
   loadId: string;
+  loadReference?: string;
   completed: boolean;
   finalEtaUtc?: string;
   finalEtaSource?: string;
@@ -117,6 +120,31 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
             deliveryWindowEndUtc: eta.deliveryWindowEndUtc,
           };
         });
+
+        // On a fresh wallboard load the final customer destination may already be complete
+        // while a later return/depot leg is still active. The normal ETA feed then contains
+        // only the remaining operational work. Preserve Run Timing's actual customer-arrival
+        // evidence as a synthetic destination record so "final ETA" cannot jump to the return.
+        for (const authoritative of latestTiming.values()) {
+          if (authoritative.completed || !authoritative.finalDestinationStopId || !authoritative.finalEtaUtc) continue;
+          if (records.some(eta => eta.loadId === authoritative.loadId && eta.stopId === authoritative.finalDestinationStopId)) continue;
+          const highest = Math.max(0, ...records.filter(eta => eta.loadId === authoritative.loadId).map(eta => eta.sequence ?? 0));
+          records.push({
+            loadId: authoritative.loadId,
+            loadReference: authoritative.loadReference,
+            stopId: authoritative.finalDestinationStopId,
+            sequence: highest + 1,
+            stopName: authoritative.finalDestinationName || "Final destination",
+            etaUtc: authoritative.finalEtaUtc,
+            source: mappedEtaSource(authoritative.finalEtaSource) || "Live",
+            risk: "Pending",
+            isFinalDestination: true,
+            routeDrivingMinutes: 0,
+            breakMinutesIncluded: 0,
+            tachoStatus: "Unavailable",
+            tachoExplanation: "Final customer destination timing retained from authoritative Run Timing evidence.",
+          });
+        }
 
         return jsonResponse(response, { ...payload, records });
       } catch {
