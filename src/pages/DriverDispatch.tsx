@@ -107,6 +107,11 @@ function compactRun(load?: DispatchLoad) {
   const core = match?.[1] || load.reference;
   return `${load.southbound ? "SB " : ""}${core}`;
 }
+function runOptionLabel(load: DispatchLoad, drivers: DispatchDriver[]) {
+  const allocatedDriver = load.driverId ? drivers.find(driver => driver.driverId === load.driverId) : undefined;
+  const allocation = load.driverId ? ` · allocated${allocatedDriver ? ` to ${allocatedDriver.displayName}` : ""}` : "";
+  return `${compactRun(load)} · ${load.reference}${allocation}`;
+}
 function typeLetter(type: string) { return type === "Agency" ? "A" : type === "Casual" ? "C" : "E"; }
 function skillBadges(value?: string) {
   return (value || "").split(/[,;|/]+/).map(item => item.trim()).filter(Boolean).slice(0, 5);
@@ -213,7 +218,7 @@ export function DriverDispatch() {
           />)}</tbody>
         </table>
       </div>
-      <p className="hint">Employment order is Employed → Casual → Agency. Casual drivers remain separately visible because they are zero-hours employees, and follow the same employed-driver compliance rules. Agency company is available on hover. Green rows are Sage HR leave and are excluded from assisted allocation.</p>
+      <p className="hint">Employment order is Employed → Casual → Agency. Casual drivers remain separately visible because they are zero-hours employees, and follow the same employed-driver compliance rules. Agency company is available on hover. Green rows are Sage HR leave and are excluded from assisted allocation. Every planned run remains visible so the planner can manually compare or reassign work; a current allocation is shown in the run label rather than hiding the run.</p>
     </>}
 
     {message && <MessageDialog state={message} token={token} close={() => setMessage(undefined)} sent={async () => { setMessage(undefined); await refresh(); }} />}
@@ -238,7 +243,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
   const [notice, setNotice] = useState<string>();
   const selected = data.loads.find(load => load.id === loadId);
   const compliance = dispatchState(driver);
-  const availableLoads = data.loads.filter(load => !load.driverId || load.driverId === driver.driverId || load.id === loadId);
+  const availableLoads = data.loads;
 
   useEffect(() => {
     const load = data.loads.find(item => item.id === driver.assignedLoadId);
@@ -321,7 +326,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
       <td><span className={`day-bubble ${driver.dayNumber >= 6 ? "high" : driver.dayNumber >= 5 ? "watch" : ""}`}>{driver.dayNumber}</span></td>
       <td><select disabled={readOnly || driver.onLeave} value={vehicleId} onChange={event => setVehicleId(event.target.value)}><option value="">— vehicle —</option>{data.vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration}{vehicle.id === driver.previousVehicleId ? " · yesterday" : ""}</option>)}</select>{driver.previousVehicleRegistration && <small>Yesterday: {driver.previousVehicleRegistration}</small>}</td>
       <td><select disabled={readOnly || driver.onLeave} value={trailerId} onChange={event => setTrailerId(event.target.value)}><option value="">— trailer —</option>{data.trailers.map(trailer => <option key={trailer.id} value={trailer.id}>{trailer.trailerNumber}{trailer.type ? ` · ${trailer.type}` : ""}</option>)}</select></td>
-      <td><div className="run-cell"><select disabled={readOnly || driver.onLeave} value={loadId} onChange={event => setLoadId(event.target.value)}><option value="">— run —</option>{availableLoads.map(load => <option key={load.id} value={load.id}>{compactRun(load)} · {load.reference}</option>)}</select>{selected && <RunHover load={selected} />}{!selected && driver.suggestedRunId && <button className="text-button" type="button" disabled={readOnly || driver.onLeave} onClick={() => setLoadId(driver.suggestedRunId || "")}>Use {driver.suggestedRunReference || "suggested SB"}</button>}</div></td>
+      <td><div className="run-cell"><select disabled={readOnly || driver.onLeave} value={loadId} onChange={event => setLoadId(event.target.value)}><option value="">— run —</option>{availableLoads.map(load => <option key={load.id} value={load.id}>{runOptionLabel(load, data.drivers)}</option>)}</select>{selected && <RunHover load={selected} />}{!selected && driver.suggestedRunId && <button className="text-button" type="button" disabled={readOnly || driver.onLeave} onClick={() => setLoadId(driver.suggestedRunId || "")}>Use {driver.suggestedRunReference || "suggested SB"}</button>}</div></td>
       <td><input type="time" value={startTime} disabled={readOnly || driver.onLeave} onChange={event => setStartTime(event.target.value)} /></td>
       <td className="assistant-cell"><span>{driver.suggestion || (driver.previousFinalStop ? `Yesterday finished ${driver.previousFinalStop}.` : "Available for allocation.")}</span></td>
       <td><span className={`compliance-pill ${compliance.className}`} title={compliance.title}>{compliance.label}</span></td>
