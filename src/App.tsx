@@ -33,7 +33,7 @@ import { ManagementStabilityBanner } from './components/ManagementStabilityBanne
 import { MobileDock } from './components/MobileDock';
 
 const dailyNavigation = [
-  ['/dashboard', 'Dashboard'], ['/operations-wallboard', 'Operations wallboard'], ['/staging', 'Load Review'], ['/', 'Planner'], ['/driver-dispatch', 'Driver Dispatch'], ['/tracking', 'Live tracking'],
+  ['/dashboard', 'Dashboard'], ['/operations-wallboard', 'Operations wallboard'], ['/staging', 'Load Review'], ['/', 'Planner'], ['/pallet-control', 'Pallet Control'], ['/driver-dispatch', 'Driver Dispatch'], ['/tracking', 'Live tracking'],
 ];
 const masterNavigation = [['/master-data', 'Master data']];
 const insightNavigation = [
@@ -96,7 +96,7 @@ function Shell() {
     {!tvMode && <header>
       <button className="menu" onClick={() => setOpen(!open)} aria-label="Toggle navigation" aria-expanded={open}>☰</button>
       <NavLink className="brand" to="/dashboard"><span>SLH</span><small>Transport management</small></NavLink>
-      {authenticated ? <GlobalSearch /> : <div className="header-context"><b>Daily transport control</b><small>Load review → planning → driver dispatch → live operations</small></div>}
+      {authenticated ? <GlobalSearch /> : <div className="header-context"><b>Daily transport control</b><small>Load review → planning → Pallet Control → driver dispatch → live operations</small></div>}
       <div className="header-actions">{authenticated ? <><span className="user">{accounts[0]?.name}</span><button onClick={() => instance.logoutRedirect()}>Sign out</button></> : <button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button>}</div>
     </header>}
     {authenticated && !tvMode && <div className="system-strip"><HeaderIntelligence /></div>}
