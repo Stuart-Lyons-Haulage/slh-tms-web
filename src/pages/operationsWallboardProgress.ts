@@ -305,21 +305,34 @@ function routeRunState(route: RouteProgressRun, fallback?: string) {
   return fallback || route.phase;
 }
 
-function routeFields(route: RouteProgressRun) {
+function stopEvidenceScore(stops?: RunProgressRecord["stopDwell"]) {
+  return (stops || []).reduce((score, stop) => score + (stop.state === "Departed" ? 3 : stop.state === "OnSite" ? 2 : 1), 0);
+}
+
+function routeFields(route: RouteProgressRun, record?: RunProgressRecord) {
+  const recordGeofenceAhead = Boolean(record?.currentVisit || record?.geofenceOnSite)
+    || (record?.completedStops || 0) > (route.completedStops || 0);
+  const routeGeofenceAhead = Boolean(route.currentVisit || route.geofenceOnSite)
+    || (route.completedStops || 0) > (record?.completedStops || 0);
+  const preferRecordGeofence = recordGeofenceAhead && !routeGeofenceAhead;
+  const preferRouteTracking = route.trackingFresh === true || record?.trackingFresh !== true;
+  const routeStopScore = stopEvidenceScore(route.stopDwell);
+  const recordStopScore = stopEvidenceScore(record?.stopDwell);
+
   return {
-    phase: route.phase,
-    focusStop: route.focusStop,
-    geofenceOnSite: route.geofenceOnSite,
-    trackingFresh: route.trackingFresh,
-    trackingMoving: route.trackingMoving,
-    ignitionOn: route.ignitionOn,
-    driverCardPresent: route.driverCardPresent,
-    trackingAgeSeconds: route.trackingAgeSeconds,
-    speedKph: route.speedKph,
-    tacho: route.tacho,
-    currentVisit: route.currentVisit,
-    stopDwell: route.stopDwell,
-    linkageException: route.linkageException,
+    phase: preferRecordGeofence ? record?.phase : route.phase || record?.phase,
+    focusStop: preferRecordGeofence ? record?.focusStop : route.focusStop || record?.focusStop,
+    geofenceOnSite: Boolean(record?.geofenceOnSite || record?.currentVisit || route.geofenceOnSite || route.currentVisit),
+    trackingFresh: route.trackingFresh ?? record?.trackingFresh,
+    trackingMoving: Boolean(record?.trackingMoving || route.trackingMoving),
+    ignitionOn: preferRouteTracking ? route.ignitionOn ?? record?.ignitionOn : record?.ignitionOn ?? route.ignitionOn,
+    driverCardPresent: preferRouteTracking ? route.driverCardPresent ?? record?.driverCardPresent : record?.driverCardPresent ?? route.driverCardPresent,
+    trackingAgeSeconds: preferRouteTracking ? route.trackingAgeSeconds ?? record?.trackingAgeSeconds : record?.trackingAgeSeconds ?? route.trackingAgeSeconds,
+    speedKph: preferRouteTracking ? route.speedKph ?? record?.speedKph : record?.speedKph ?? route.speedKph,
+    tacho: route.tacho ?? record?.tacho,
+    currentVisit: route.currentVisit ?? record?.currentVisit,
+    stopDwell: routeStopScore > recordStopScore ? route.stopDwell : record?.stopDwell ?? route.stopDwell,
+    linkageException: preferRecordGeofence ? record?.linkageException : route.linkageException ?? record?.linkageException,
   };
 }
 
@@ -329,17 +342,23 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
     const route = routeByLoad.get(record.loadId);
     if (!route) return record;
     routeByLoad.delete(record.loadId);
-    const nextStop = route.stops.find((stop) => stop.id === route.nextStopId)
-      || route.stops.find((stop) => stop.state === "heading" || stop.state === "upcoming")
-      || record.nextStop;
+    const routeNextStop = route.stops.find((stop) => stop.id === route.nextStopId)
+      || route.stops.find((stop) => stop.state === "heading" || stop.state === "upcoming");
+    const nextStop = (route.completedStops || 0) > (record.completedStops || 0)
+      ? routeNextStop || record.nextStop
+      : record.nextStop || routeNextStop;
+    const totalStops = Math.max(record.totalStops || 0, route.totalStops || 0);
+    const completedStops = Math.max(record.completedStops || 0, route.completedStops || 0);
     return {
       ...record,
-      totalStops: Math.max(record.totalStops || 0, route.totalStops || 0),
-      completedStops: Math.max(record.completedStops || 0, route.completedStops || 0),
+      totalStops,
+      completedStops,
       progressPercent: Math.max(record.progressPercent || 0, route.truckPositionPercent || 0),
-      runState: routeRunState(route, record.runState),
+      runState: record.runState === "Completed" || totalStops > 0 && completedStops === totalStops
+        ? "Completed"
+        : routeRunState(route, record.runState),
       nextStop,
-      ...routeFields(route),
+      ...routeFields(route, record),
     };
   });
   for (const route of routeByLoad.values()) {
