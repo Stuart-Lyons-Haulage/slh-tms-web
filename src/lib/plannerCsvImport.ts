@@ -94,7 +94,7 @@ function value(record: CsvRecord, ...names: string[]) {
 function isoDate(raw: string) {
   const value = clean(raw);
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  const british = value.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  const british = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (british) return `${british[3]}-${british[2].padStart(2, "0")}-${british[1].padStart(2, "0")}`;
   return "";
 }
