@@ -73,6 +73,10 @@ function formatAge(value?: string | Date, now = new Date()) {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
 function firstStop(load?: Load) { return [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence)[0]; }
+function finalDestinationStop(load?: Load) {
+  const stops = [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence);
+  return [...stops].reverse().find(stop => /^Deliver\b/i.test(stop.name || "") || Boolean(stop.orderId)) || stops.at(-1);
+}
 function routeText(load: Load | undefined, etas: DeliveryEta[]) {
   const stops = [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence);
   if (stops.length) return stops.map(stop => stop.name.replace(/^Collect · |^Deliver · /i, "")).join(" -> ");
@@ -181,10 +185,12 @@ function mergeProgressSnapshots(previous: RunProgressRecord[], incoming: RunProg
   return [...merged.values()];
 }
 
-export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
+export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAccessKey }: { tvMode?: boolean; tvAccessKey?: string }) {
   const token = useAccessToken();
   const today = todayIsoDate();
-  const tvAccessKey = tvMode ? new URLSearchParams(window.location.search).get("key")?.trim() : undefined;
+  const tvAccessKey = tvMode
+    ? suppliedTvAccessKey?.trim() || new URLSearchParams(window.location.search).get("key")?.trim()
+    : undefined;
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
   const [liveData, setLiveData] = useState<Pick<WallboardData, "etas" | "progress" | "warning" | "geofenceAvailable" | "geofenceCount" | "geofenceLinkedRuns" | "latestTrackingUtc" | "calculatedAtUtc">>();
@@ -348,7 +354,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
             : row.progress?.focusStop
               ? `${row.progress.phase || "Next"} · ${row.progress.focusStop}`
               : `${completedStops} of ${totalStops || "?"} stops`;
-        const finalStopName = (row.finalEta?.stopName || [...(row.load?.stops || [])].sort((a, b) => a.sequence - b.sequence).at(-1)?.name || "Final delivery").replace(/^Collect · |^Deliver · /i, "");
+        const finalStopName = (row.finalEta?.stopName || finalDestinationStop(row.load)?.name || "Final delivery").replace(/^Collect · |^Deliver · /i, "");
         return <article className={`ops-board-row ${row.status} ${row.id === presentRowId ? "present" : ""}`} role="row" key={row.id} data-row-id={row.id}>
           <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.status === "complete" ? "completed" : "planned start"}</small></span>
           <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small></span>
@@ -360,6 +366,6 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
         </article>;
       })}
     </div>
-    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final ETA uses last remaining job · next stop drives risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
+    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final ETA targets final customer destination · next stop drives risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
   </section>;
 }

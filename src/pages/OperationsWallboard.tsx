@@ -5,17 +5,27 @@ import "../run-geofence-linkage.css";
 
 type EtaRecord = {
   loadId?: string;
+  loadReference?: string;
+  stopId?: string;
   sequence?: number;
+  stopName?: string;
+  orderReference?: string;
+  customerCode?: string;
   etaUtc?: string;
   source?: string;
   deliveryWindowEndUtc?: string;
+  risk?: string;
+  isFinalDestination?: boolean;
   [key: string]: unknown;
 };
 type TimingRecord = {
   loadId: string;
+  loadReference?: string;
   completed: boolean;
   finalEtaUtc?: string;
   finalEtaSource?: string;
+  finalDestinationStopId?: string;
+  finalDestinationName?: string;
 };
 type TimingResponse = { geofenceAvailable?: boolean; records?: TimingRecord[] };
 
@@ -41,13 +51,17 @@ function jsonResponse(original: Response, payload: unknown) {
   headers.delete("content-length");
   return new Response(JSON.stringify(payload), { status: original.status, statusText: original.statusText, headers });
 }
+function isDeliveryDestination(eta: EtaRecord) {
+  return /^deliver\b/i.test(String(eta.stopName || ""))
+    || Boolean(eta.orderReference || eta.customerCode || eta.deliveryWindowEndUtc);
+}
 
 /**
  * Run Progress wrapper. A run-timing final ETA exists only after authoritative execution
  * evidence (geofence departure/current visit or a valid live-route anchor), so it is safe
  * to override the CSV Deliver By time only when this feed provides one.
  */
-export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
+export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: boolean; tvAccessKey?: string }) {
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
     const lastTiming = new Map<string, TimingRecord>();
@@ -70,27 +84,67 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
 
         for (const record of timing?.records || []) {
           if (record.completed) lastTiming.delete(record.loadId);
-          else if (record.finalEtaUtc) lastTiming.set(record.loadId, record);
+          else lastTiming.set(record.loadId, { ...lastTiming.get(record.loadId), ...record });
         }
 
-        const finalSequenceByLoad = new Map<string, number>();
+        const latestTiming = new Map<string, TimingRecord>();
+        for (const record of timing?.records || []) latestTiming.set(record.loadId, record);
+
+        // Legacy/staggered deployments may not yet expose finalDestinationStopId. In that
+        // case choose the last customer delivery destination, not simply the highest stop
+        // sequence (which may be a return/depot or other operational stop).
+        const highestSequenceByLoad = new Map<string, number>();
+        const destinationSequenceByLoad = new Map<string, number>();
         for (const eta of payload.records) {
           if (!eta.loadId || eta.sequence == null) continue;
-          finalSequenceByLoad.set(eta.loadId, Math.max(finalSequenceByLoad.get(eta.loadId) ?? eta.sequence, eta.sequence));
+          highestSequenceByLoad.set(eta.loadId, Math.max(highestSequenceByLoad.get(eta.loadId) ?? eta.sequence, eta.sequence));
+          if (isDeliveryDestination(eta))
+            destinationSequenceByLoad.set(eta.loadId, Math.max(destinationSequenceByLoad.get(eta.loadId) ?? eta.sequence, eta.sequence));
         }
 
         const records = payload.records.map(eta => {
-          if (!eta.loadId || eta.sequence == null || eta.sequence !== finalSequenceByLoad.get(eta.loadId)) return eta;
-          const authoritative = (timing?.records || []).find(record => record.loadId === eta.loadId && !record.completed && record.finalEtaUtc)
-            || lastTiming.get(eta.loadId);
-          if (!authoritative?.finalEtaUtc) return eta;
+          if (!eta.loadId) return eta;
+          const authoritative = latestTiming.get(eta.loadId) || lastTiming.get(eta.loadId);
+          const fallbackSequence = destinationSequenceByLoad.get(eta.loadId) ?? highestSequenceByLoad.get(eta.loadId);
+          const finalDestination = authoritative?.finalDestinationStopId
+            ? eta.stopId === authoritative.finalDestinationStopId
+            : eta.sequence != null && eta.sequence === fallbackSequence;
+          if (!finalDestination) return eta;
+
+          if (!authoritative?.finalEtaUtc) return { ...eta, isFinalDestination: true };
           return {
             ...eta,
+            isFinalDestination: true,
             etaUtc: authoritative.finalEtaUtc,
             source: mappedEtaSource(authoritative.finalEtaSource) || eta.source,
             deliveryWindowEndUtc: eta.deliveryWindowEndUtc,
           };
         });
+
+        // On a fresh wallboard load the final customer destination may already be complete
+        // while a later return/depot leg is still active. The normal ETA feed then contains
+        // only the remaining operational work. Preserve Run Timing's actual customer-arrival
+        // evidence as a synthetic destination record so "final ETA" cannot jump to the return.
+        for (const authoritative of latestTiming.values()) {
+          if (authoritative.completed || !authoritative.finalDestinationStopId || !authoritative.finalEtaUtc) continue;
+          if (records.some(eta => eta.loadId === authoritative.loadId && eta.stopId === authoritative.finalDestinationStopId)) continue;
+          const highest = Math.max(0, ...records.filter(eta => eta.loadId === authoritative.loadId).map(eta => eta.sequence ?? 0));
+          records.push({
+            loadId: authoritative.loadId,
+            loadReference: authoritative.loadReference,
+            stopId: authoritative.finalDestinationStopId,
+            sequence: highest + 1,
+            stopName: authoritative.finalDestinationName || "Final destination",
+            etaUtc: authoritative.finalEtaUtc,
+            source: mappedEtaSource(authoritative.finalEtaSource) || "Live",
+            risk: "Pending",
+            isFinalDestination: true,
+            routeDrivingMinutes: 0,
+            breakMinutesIncluded: 0,
+            tachoStatus: "Unavailable",
+            tachoExplanation: "Final customer destination timing retained from authoritative Run Timing evidence.",
+          });
+        }
 
         return jsonResponse(response, { ...payload, records });
       } catch {
@@ -104,6 +158,6 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
 
   return <>
     {!tvMode && <RunGeofenceLinkagePanel />}
-    <ExistingOperationsWallboard tvMode={tvMode} />
+    <ExistingOperationsWallboard tvMode={tvMode} tvAccessKey={tvAccessKey} />
   </>;
 }

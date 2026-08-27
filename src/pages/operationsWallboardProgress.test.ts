@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeliveryEta } from "../lib/api";
-import { statusFor, type RunProgressRecord } from "./operationsWallboardProgress";
+import { finalEtaFor, statusFor, type RunProgressRecord } from "./operationsWallboardProgress";
 
 function eta(overrides: Partial<DeliveryEta>): DeliveryEta {
   return {
@@ -97,5 +97,42 @@ describe("wallboard final delivery risk", () => {
 
     expect(result.status).toBe("risk");
     expect(result.label).toBe("FINAL ETA AT RISK");
+  });
+
+  it("uses the final customer destination instead of a later depot/return stop", () => {
+    const destination = eta({
+      stopId: "delivery",
+      sequence: 4,
+      stopName: "Deliver · Morrisons-Stockton",
+      etaUtc: "2026-08-26T13:27:00Z",
+      deliveryWindowEndUtc: "2026-08-26T14:00:00Z",
+    });
+    const returnStop = eta({
+      stopId: "return",
+      sequence: 5,
+      stopName: "Return · Lake Lane",
+      etaUtc: "2026-08-26T15:00:00Z",
+      deliveryWindowEndUtc: undefined,
+    });
+
+    expect(finalEtaFor([destination, returnStop])?.stopId).toBe("delivery");
+  });
+
+  it("honours the final-destination marker supplied by run timing", () => {
+    const markedDestination = eta({
+      stopId: "destination",
+      sequence: 3,
+      stopName: "Customer destination",
+      etaUtc: "2026-08-26T12:00:00Z",
+    }) as DeliveryEta & { isFinalDestination?: boolean };
+    markedDestination.isFinalDestination = true;
+    const laterOperationalStop = eta({
+      stopId: "later",
+      sequence: 4,
+      stopName: "Depot return",
+      etaUtc: "2026-08-26T13:00:00Z",
+    });
+
+    expect(finalEtaFor([markedDestination, laterOperationalStop])?.stopId).toBe("destination");
   });
 });
