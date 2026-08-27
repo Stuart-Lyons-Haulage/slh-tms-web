@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { todayIsoDate } from "../lib/dateUtils";
@@ -18,6 +19,7 @@ type LinkageRecord = {
   visitRecorded: boolean;
   latestEnterUtc?: string;
   latestExitUtc?: string;
+  confirmedAtUtc?: string;
   evidence?: string;
 };
 type LinkageResponse = {
@@ -27,24 +29,60 @@ type LinkageResponse = {
   siteMatchedButGeofenceUnlinked: number;
   records: LinkageRecord[];
 };
+type RunLinkage = {
+  loadId: string;
+  run: string;
+  stops: LinkageRecord[];
+  linked: number;
+  hits: number;
+};
 
 function evidenceState(stop: LinkageRecord) {
   if (!stop.geofenceLinked) return stop.siteMatched ? "NO GEOFENCE" : "SITE UNRESOLVED";
   if (stop.latestExitUtc) return "DEPARTED";
-  if (stop.visitRecorded) return "HIT";
-  return "LINKED · NO HIT";
+  if (stop.visitRecorded) return "ON SITE";
+  return "LINKED";
 }
 
+function time(value?: string) {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+function InlineRunLinkage({ run }: { run: RunLinkage }) {
+  return <details className={`ops-row-geofence ${run.linked < run.stops.length ? "needs-link" : ""}`}>
+    <summary>
+      <strong>Geofences {run.linked}/{run.stops.length} linked</strong>
+      <span>{run.hits} hit{run.hits === 1 ? "" : "s"} · open for time in / time out</span>
+    </summary>
+    <div className="ops-row-geofence-stops">
+      {run.stops.map(stop => <div key={stop.stopId} className={`ops-row-geofence-stop ${stop.visitRecorded ? "hit" : ""} ${!stop.geofenceLinked ? "needs-link" : ""}`}>
+        <span className="stop-name"><b>{stop.sequence}. {stop.stopName}</b><small>{stop.geofenceName || stop.siteName || "Geofence not resolved"}</small></span>
+        <span><small>Status</small><b>{evidenceState(stop)}</b></span>
+        <span><small>Time in</small><b>{time(stop.latestEnterUtc)}</b></span>
+        <span><small>Time out</small><b>{time(stop.latestExitUtc)}</b></span>
+      </div>)}
+    </div>
+  </details>;
+}
+
+/**
+ * Signed-in TMS-only geofence detail. OperationsWallboard renders this component only
+ * outside tvMode. The details are portalled into the matching wallboard run row so the
+ * TV/Public wallboards continue to consume progression without exposing linkage detail.
+ */
 export function RunGeofenceLinkagePanel() {
   const token = useAccessToken();
   const date = todayIsoDate();
   const [data, setData] = useState<LinkageResponse>();
-  const [error, setError] = useState<string>();
+  const [, setError] = useState<string>();
+  const [targetVersion, setTargetVersion] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
       const access = await token();
-      const response = await request<LinkageResponse>(`/api/v1/planning/geofence-linkage?date=${encodeURIComponent(date)}`, access);
+      const response = await request<LinkageResponse>(`/api/v1/planning/geofence-linkage?date=${encodeURIComponent(date)}`, access, { cache: "no-store" }, 90000);
       setData(response);
       setError(undefined);
     } catch (exception) {
@@ -54,11 +92,21 @@ export function RunGeofenceLinkagePanel() {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 30_000);
+    const timer = window.setInterval(() => void refresh(), 20_000);
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  const runs = useMemo(() => {
+  useEffect(() => {
+    const table = document.querySelector(".ops-board-table");
+    const root = table || document.body;
+    const syncTargets = () => setTargetVersion(value => value + 1);
+    const observer = new MutationObserver(syncTargets);
+    observer.observe(root, { childList: true, subtree: true });
+    syncTargets();
+    return () => observer.disconnect();
+  }, []);
+
+  const runs = useMemo<RunLinkage[]>(() => {
     const grouped = new Map<string, LinkageRecord[]>();
     for (const record of data?.records || []) {
       const rows = grouped.get(record.loadId) || [];
@@ -74,24 +122,9 @@ export function RunGeofenceLinkagePanel() {
     }));
   }, [data]);
 
-  return <section className="ops-linkage-panel" aria-label="Run geofence linkage">
-    <div className="ops-linkage-summary">
-      <div><strong>Geofence linkage</strong><span>Run Progress configuration + RoadTech evidence</span></div>
-      {data && <div><b>{data.linkedStops}/{data.stops} stops linked</b><span>{data.siteNameUnresolved + data.siteMatchedButGeofenceUnlinked} need attention</span></div>}
-    </div>
-    {error && <p className="ops-linkage-error">{error}</p>}
-    <div className="ops-linkage-runs">
-      {runs.map(run => <details key={run.loadId} className={run.linked < run.stops.length ? "needs-link" : ""}>
-        <summary><strong>{run.run}</strong><span>{run.linked}/{run.stops.length} linked · {run.hits} hit</span></summary>
-        <div className="ops-linkage-stops">
-          {run.stops.map(stop => <div key={stop.stopId} className={!stop.geofenceLinked ? "needs-link" : ""}>
-            <b>{stop.sequence}. {stop.stopName}</b>
-            <span>{evidenceState(stop)}</span>
-            <small>{stop.geofenceLinked ? stop.geofenceName : stop.siteMatched ? `${stop.siteName || stop.stopName} · geofence not linked` : "No Site Master match"}</small>
-            {stop.latestEnterUtc && <small>Arrival {new Date(stop.latestEnterUtc).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}{stop.latestExitUtc ? ` · departure ${new Date(stop.latestExitUtc).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}</small>}
-          </div>)}
-        </div>
-      </details>)}
-    </div>
-  </section>;
+  void targetVersion;
+  return <>{runs.map(run => {
+    const target = document.querySelector<HTMLElement>(`.ops-board-row[data-row-id="${run.loadId}"]`);
+    return target ? createPortal(<InlineRunLinkage run={run} />, target, run.loadId) : null;
+  })}</>;
 }
