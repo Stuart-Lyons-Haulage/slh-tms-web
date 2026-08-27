@@ -22,8 +22,7 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
         setRepairNotice(result.message);
         setReviewVersion((value) => value + 1);
       } catch {
-        // The repair is compatibility-only and must never stop Order Control loading.
-        // New imports already use the corrected PO-first parser.
+        // Compatibility repair only; new imports already use the corrected PO-first parser.
       }
     })();
     return () => { active = false; };
@@ -33,23 +32,23 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
     <section className="panel" style={{ marginBottom: 18 }}>
       <div className="title-row" style={{ alignItems: "end" }}>
         <div>
-          <p className="eyebrow">Info mailbox → human review → live planning</p>
-          <h1>Order control</h1>
-          <p className="hint">One place to check incoming customer orders before approval and maintain work that has already been accepted into the TMS.</p>
+          <p className="eyebrow">Info mailbox → load review → live planning</p>
+          <h1>Load Review</h1>
+          <p className="hint">Review incoming transport work before it reaches the plan. This covers pallets, trays, trolleys, crates, mixed loads, markets, transfers and amendments rather than treating everything as a pallet order.</p>
         </div>
-        <div className="title-actions" role="tablist" aria-label="Order control view">
+        <div className="title-actions" role="tablist" aria-label="Load Review view">
           <button type="button" className={tab === "review" ? "primary" : ""} onClick={() => setTab("review")} role="tab" aria-selected={tab === "review"}>
-            Waiting for approval
+            Waiting for review
           </button>
           <button type="button" className={tab === "live" ? "primary" : ""} onClick={() => setTab("live")} role="tab" aria-selected={tab === "live"}>
-            Approved / live jobs
+            Approved / live loads
           </button>
         </div>
       </div>
       <p className="hint" style={{ marginBottom: 0 }}>
         {tab === "review"
-          ? "Review, amend, reject or approve staged orders. Approval remains mandatory before an order enters live planning."
-          : "Amend or cancel an already-approved job without leaving Order control; the audit record is retained."}
+          ? "Review, amend, reject or approve staged load instructions. Approval remains mandatory before the work enters live planning."
+          : "Amend or cancel already-approved work without leaving Load Review; the source and audit history are retained."}
       </p>
       {repairNotice && <p className="notice inline-notice" style={{ marginBottom: 0 }}>{repairNotice}</p>}
     </section>
