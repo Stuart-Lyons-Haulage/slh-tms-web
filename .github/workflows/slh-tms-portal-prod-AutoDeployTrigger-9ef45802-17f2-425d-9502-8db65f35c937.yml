@@ -186,3 +186,18 @@ jobs:
             sleep 10
           done
           exit 1
+
+      - name: Report production geofence health
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          fqdn="$(az containerapp show \
+            --name "$AZURE_CONTAINER_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)"
+          test -n "$fqdn"
+          echo "Production tracking/geofence health summary:"
+          curl --fail --silent --show-error "https://$fqdn/tms-api/api/v1/health/tracking/geofences"
+          echo
