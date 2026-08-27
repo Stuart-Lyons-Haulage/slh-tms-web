@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useMemo, useState, type ChangeEvent } from "react";
-import { api, type StageBatchRequest } from "../lib/api";
+import { api, type MasterApplyResponse, type StageBatchRequest } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 
 type MasterEntity = "driver" | "vehicle" | "trailer" | "site";
@@ -12,6 +12,8 @@ type ParsedMasterCsv = {
   preview: FlatPayload[];
   warnings: string[];
 };
+
+const MASTER_IMPORT_CHUNK_SIZE = 25;
 
 const identityFields: Record<MasterEntity, string[]> = {
   driver: ["employeeNumber", "displayName"],
@@ -108,6 +110,30 @@ export function parseMasterDataCsv(text: string, entity: MasterEntity, fileName:
   return { requests, headers, preview: preview.slice(0, 6), warnings };
 }
 
+export async function applyMasterDataInChunks(
+  records: StageBatchRequest[],
+  applyBatch: (batch: StageBatchRequest[]) => Promise<MasterApplyResponse>,
+  chunkSize = MASTER_IMPORT_CHUNK_SIZE,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<MasterApplyResponse> {
+  if (!Number.isInteger(chunkSize) || chunkSize < 1) throw new Error("Import chunk size must be at least 1.");
+  const aggregate: MasterApplyResponse = { received: 0, applied: 0, registered: 0, failed: 0, linked: 0, results: [] };
+
+  for (let offset = 0; offset < records.length; offset += chunkSize) {
+    const batch = records.slice(offset, offset + chunkSize);
+    const result = await applyBatch(batch);
+    aggregate.received += result.received;
+    aggregate.applied += result.applied;
+    aggregate.registered = (aggregate.registered ?? 0) + (result.registered ?? 0);
+    aggregate.failed += result.failed;
+    aggregate.linked = (aggregate.linked ?? 0) + (result.linked ?? 0);
+    aggregate.results.push(...result.results);
+    onProgress?.(Math.min(offset + batch.length, records.length), records.length);
+  }
+
+  return aggregate;
+}
+
 export function MasterDataCsvImport() {
   const token = useAccessToken();
   const [entity, setEntity] = useState<MasterEntity>("driver");
@@ -137,8 +163,14 @@ export function MasterDataCsvImport() {
     if (!parsed?.requests.length) return;
     setSaving(true); setError(undefined); setMessage(undefined);
     try {
-      const result = await api.applyMasterData(parsed.requests, await token());
-      setMessage(`${result.applied} applied${result.failed ? ` · ${result.failed} failed` : ""}.`);
+      const accessToken = await token();
+      const result = await applyMasterDataInChunks(
+        parsed.requests,
+        (batch) => api.applyMasterData(batch, accessToken),
+        MASTER_IMPORT_CHUNK_SIZE,
+        (completed, total) => setMessage(`Applying reviewed rows… ${completed} of ${total} completed.`),
+      );
+      setMessage(`${result.applied} applied${result.registered ? ` · ${result.registered} recovery-registered` : ""}${result.failed ? ` · ${result.failed} failed` : ""}.`);
       if (result.failed) {
         const failures = result.results.filter((item) => !item.applied).map((item) => item.error).filter(Boolean).slice(0, 5);
         if (failures.length) setError(failures.join(" · "));

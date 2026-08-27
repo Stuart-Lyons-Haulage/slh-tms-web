@@ -2,6 +2,7 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { useAccessToken } from "../lib/auth";
 import { formatDate, todayIsoDate } from "../lib/dateUtils";
 import { displayPlannerRunChoice } from "../lib/runDisplay";
+import { importPlannerPlanInChunks, type PlannerImportSummary as ImportSummary } from "../lib/plannerImportChunking";
 
 type ImportStop = {
   sequence?: number;
@@ -23,8 +24,6 @@ type ImportStop = {
 };
 type ImportRun = { runRef?: string; plannerRun?: string; runType?: string; planningDate?: string; driver?: string; vehicle?: string; trailer?: string; includeInImport?: boolean; reconciliationStatus?: string; capacityStatus?: string; mixedUtilisationPercent?: number; stops?: ImportStop[] };
 type PlannerPlanPayload = { schema?: string; planningDate?: string; runs?: ImportRun[]; exceptions?: Array<{ severity?: string; runRef?: string; code?: string; detail?: string }> };
-type ImportRunResult = { runRef: string; tmsReference: string; outcome: string; capacityStatus: string; utilisationPercent: number; detail?: string };
-type ImportSummary = { planningDate: string; received: number; created: number; updated: number; unchanged: number; held: number; warnings: string[]; unresolvedDrivers: string[]; unresolvedVehicles: string[]; unresolvedTrailers: string[]; runs: ImportRunResult[] };
 type ResourceReconciliation = { changed?: number; unresolvedDrivers?: string[]; unresolvedVehicles?: string[]; unresolvedTrailers?: string[] };
 type SiteReconciliation = { changedStops?: number; unresolved?: string[]; ambiguous?: string[] };
 
@@ -119,13 +118,20 @@ export function PlannerPlanImport() {
     try {
       const accessToken = await token();
       const authHeaders = { Accept: "application/json", ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) };
-      const response = await fetch("/tms-api/api/v1/planning/import-plan", {
-        method: "POST",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(await readError(response));
-      const importSummary = await response.json() as ImportSummary;
+      const importPayload = { ...payload, runs: safeRuns(payload) };
+      const importSummary = await importPlannerPlanInChunks(
+        importPayload,
+        async (batch) => {
+          const response = await fetch("/tms-api/api/v1/planning/import-plan", {
+            method: "POST",
+            headers: { ...authHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify(batch),
+          });
+          if (!response.ok) throw new Error(await readError(response));
+          return await response.json() as ImportSummary;
+        },
+        10,
+      );
       setSummary(importSummary);
 
       try {
