@@ -136,6 +136,51 @@ function dwellLabel(progress?: RunProgressRecord) {
   return progress?.linkageException ? "Geofence link needs review" : undefined;
 }
 
+function mergeEtaSnapshots(previous: DeliveryEta[], incoming: DeliveryEta[]) {
+  if (!incoming.length) return previous;
+  const merged = new Map(previous.map(eta => [`${eta.loadId}|${eta.sequence}`, eta]));
+  for (const eta of incoming) merged.set(`${eta.loadId}|${eta.sequence}`, eta);
+  return [...merged.values()];
+}
+
+function stopEvidenceScore(stops?: RunProgressRecord["stopDwell"]) {
+  return (stops || []).reduce((score, stop) => score + (stop.state === "Departed" ? 3 : stop.state === "OnSite" ? 2 : 1), 0);
+}
+
+function mergeProgressSnapshots(previous: RunProgressRecord[], incoming: RunProgressRecord[]) {
+  if (!incoming.length) return previous;
+  const merged = new Map(previous.map(record => [record.loadId, record]));
+  for (const next of incoming) {
+    const current = merged.get(next.loadId);
+    if (!current) { merged.set(next.loadId, next); continue; }
+    const preserveCurrentProgress = current.completedStops > next.completedStops;
+    const currentStopScore = stopEvidenceScore(current.stopDwell);
+    const nextStopScore = stopEvidenceScore(next.stopDwell);
+    merged.set(next.loadId, {
+      ...next,
+      completedStops: Math.max(current.completedStops, next.completedStops),
+      progressPercent: Math.max(current.progressPercent, next.progressPercent),
+      runState: current.runState === "Completed" ? current.runState : next.runState,
+      currentVisit: next.currentVisit ?? current.currentVisit,
+      lastDeparture: next.lastDeparture ?? current.lastDeparture,
+      stopDwell: nextStopScore >= currentStopScore ? next.stopDwell : current.stopDwell,
+      linkageException: next.linkageException ?? current.linkageException,
+      nextStop: preserveCurrentProgress ? current.nextStop ?? next.nextStop : next.nextStop ?? current.nextStop,
+      phase: preserveCurrentProgress ? current.phase ?? next.phase : next.phase ?? current.phase,
+      focusStop: preserveCurrentProgress ? current.focusStop ?? next.focusStop : next.focusStop ?? current.focusStop,
+      geofenceOnSite: Boolean(current.geofenceOnSite || current.currentVisit || next.geofenceOnSite || next.currentVisit),
+      trackingFresh: next.trackingFresh ?? current.trackingFresh,
+      trackingMoving: next.trackingMoving ?? current.trackingMoving,
+      ignitionOn: next.ignitionOn ?? current.ignitionOn,
+      driverCardPresent: next.driverCardPresent ?? current.driverCardPresent,
+      trackingAgeSeconds: next.trackingAgeSeconds ?? current.trackingAgeSeconds,
+      speedKph: next.speedKph ?? current.speedKph,
+      tacho: next.tacho ?? current.tacho,
+    });
+  }
+  return [...merged.values()];
+}
+
 export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
   const token = useAccessToken();
   const today = todayIsoDate();
@@ -174,22 +219,26 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     const etas = etaResult.status === "fulfilled" ? etaResult.value : undefined;
     const progress = progressResult.status === "fulfilled" ? progressResult.value : undefined;
     const route = routeResult.status === "fulfilled" ? routeResult.value : undefined;
-    setLiveData(previous => ({
-      etas: etas?.records ?? previous?.etas ?? [],
-      progress: route ? mergeRouteProgress(progress?.records ?? previous?.progress ?? [], route.runs) : progress?.records ?? previous?.progress ?? [],
-      warning: [
-        progress?.warning,
-        route?.tachoWarning,
-        etas ? undefined : "Live ETA refresh is catching up; planned journeys remain visible.",
-        progress ? undefined : "Geofence refresh is catching up; planned journeys remain visible.",
-        route ? undefined : "Live route position is catching up; planned journeys remain visible.",
-      ].filter(Boolean).join(" "),
-      geofenceAvailable: progress ? progress.geofenceAvailable !== false : previous?.geofenceAvailable ?? true,
-      geofenceCount: progress?.geofenceCount ?? previous?.geofenceCount ?? 0,
-      geofenceLinkedRuns: Math.max(route?.geofenceLinkedRuns ?? 0, progress?.geofenceLinkedRuns ?? 0, previous?.geofenceLinkedRuns ?? 0),
-      latestTrackingUtc: route?.latestTrackingUtc ?? progress?.latestTrackingUtc ?? previous?.latestTrackingUtc,
-      calculatedAtUtc: etas?.calculatedAtUtc ?? previous?.calculatedAtUtc,
-    }));
+    setLiveData(previous => {
+      const stableEtas = mergeEtaSnapshots(previous?.etas ?? [], etas?.records ?? []);
+      const stableProgress = mergeProgressSnapshots(previous?.progress ?? [], progress?.records ?? []);
+      return {
+        etas: stableEtas,
+        progress: route ? mergeRouteProgress(stableProgress, route.runs) : stableProgress,
+        warning: [
+          progress?.warning,
+          route?.tachoWarning,
+          etas ? undefined : "Live ETA refresh is catching up; previous final ETAs remain visible.",
+          progress ? undefined : "Geofence refresh is catching up; previous confirmed progression remains visible.",
+          route ? undefined : "Live route position is catching up; planned journeys remain visible.",
+        ].filter(Boolean).join(" "),
+        geofenceAvailable: progress ? progress.geofenceAvailable !== false : previous?.geofenceAvailable ?? true,
+        geofenceCount: progress?.geofenceCount ?? previous?.geofenceCount ?? 0,
+        geofenceLinkedRuns: Math.max(route?.geofenceLinkedRuns ?? 0, progress?.geofenceLinkedRuns ?? 0, previous?.geofenceLinkedRuns ?? 0),
+        latestTrackingUtc: route?.latestTrackingUtc ?? progress?.latestTrackingUtc ?? previous?.latestTrackingUtc,
+        calculatedAtUtc: etas?.calculatedAtUtc ?? previous?.calculatedAtUtc,
+      };
+    });
   }, [today, token, tvAccessKey]);
 
   useEffect(() => {
@@ -280,7 +329,7 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     </div>
     {(error || boardData?.warning || boardData?.geofenceAvailable === false) && <div className="ops-wallboard-alert">{error || boardData?.warning || "Geofence progression is unavailable; planned journeys remain displayed."}</div>}
     <div className="ops-board-table" ref={tableRef} role="table" aria-label="Operations arrivals and departures">
-      <div className="ops-board-head" role="row"><span>Time</span><span>Run</span><span>Vehicle</span><span>Driver</span><span>Journey</span><span>Final ETA / Arrival</span><span>Status</span></div>
+      <div className="ops-board-head" role="row"><span>Time</span><span>Run</span><span>Vehicle</span><span>Driver</span><span>Journey</span><span>Final delivery / ETA</span><span>Status</span></div>
       {loading && !data && <div className="ops-board-empty">Loading planned journeys and live progression...</div>}
       {!loading && rows.length === 0 && <div className="ops-board-empty">No runs are planned for today.</div>}
       {rows.map(row => {
@@ -295,13 +344,14 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
             : row.progress?.focusStop
               ? `${row.progress.phase || "Next"} · ${row.progress.focusStop}`
               : `${completedStops} of ${totalStops || "?"} stops`;
+        const finalStopName = (row.finalEta?.stopName || [...(row.load?.stops || [])].sort((a, b) => a.sequence - b.sequence).at(-1)?.name || "Final delivery").replace(/^Collect · |^Deliver · /i, "");
         return <article className={`ops-board-row ${row.status} ${row.id === presentRowId ? "present" : ""}`} role="row" key={row.id} data-row-id={row.id}>
           <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.status === "complete" ? "completed" : "planned start"}</small></span>
           <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small></span>
           <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
           <span><strong>{row.driver}</strong><small title={row.tacho?.explanation}>{tachoText(row.tacho, row.finalEta || row.nextEta)}</small></span>
           <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${percent}%` }} /></div><small>{row.progress?.linkageException?.message || row.route}</small></span>
-          <span className="time-cell eta"><strong>{row.displayTimeLabel === "AVAILABLE" ? "AVAILABLE" : formatTime(row.displayTimeUtc)}</strong><small>{row.displayTimeLabel}{row.displayTimeLabel === "LIVE FINAL ETA" ? ` · ${formatAge(row.finalEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}` : ""}</small></span>
+          <span className="time-cell eta"><strong>{row.displayTimeLabel === "AVAILABLE" ? "AVAILABLE" : formatTime(row.displayTimeUtc)}</strong><small>{finalStopName} · {row.displayTimeLabel}{row.displayTimeLabel === "LIVE FINAL ETA" ? ` · ${formatAge(row.finalEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}` : ""}</small></span>
           <span className="status-cell"><strong>{row.statusLabel}</strong><small>{buffer == null || row.status === "onsite" || row.status === "complete" ? row.statusDetail : `${buffer >= 0 ? "+" : ""}${buffer}m · ${row.statusDetail}`}</small></span>
         </article>;
       })}
