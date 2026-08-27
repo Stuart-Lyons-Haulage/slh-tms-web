@@ -30,6 +30,9 @@ type DispatchDriver = {
   assignedRunCount: number;
   suggestedRunId?: string;
   suggestedRunReference?: string;
+  suggestedVehicleId?: string;
+  suggestedVehicleRegistration?: string;
+  assistantScore?: number;
   suggestion?: string;
   agencyBookedFrom?: string;
   agencyBookedThrough?: string;
@@ -72,6 +75,7 @@ type Workbench = {
   leaveSource: string;
   driverPopulationSource?: string;
   dayNumberSource?: string;
+  assistantSource?: string;
   drivers: DispatchDriver[];
   vehicles: Vehicle[];
   trailers: Trailer[];
@@ -284,13 +288,13 @@ export function DriverDispatch() {
         typeSkills: `${driver.driverType} ${driver.driverGroup || ""} ${driver.skills || ""} ${driver.agencyName || ""}`,
         code: driver.coding || "",
         day: String(driver.dayNumber),
-        vehicle: `${vehicle?.registration || ""} ${driver.previousVehicleRegistration || ""}`,
+        vehicle: `${vehicle?.registration || ""} ${driver.previousVehicleRegistration || ""} ${driver.suggestedVehicleRegistration || ""}`,
         trailer: `${trailer?.trailerNumber || ""} ${trailer?.type || ""}`,
-        run: assigned ? `${compactRun(assigned)} ${assigned.reference} ${assigned.rawReference}` : "unallocated",
+        run: assigned ? `${compactRun(assigned)} ${assigned.reference} ${assigned.rawReference}` : `unallocated ${driver.suggestedRunReference || ""}`,
         start: localTime(assigned?.plannedStartUtc),
-        assistant: `${driver.suggestion || ""} ${driver.previousFinalStop || ""}`,
+        assistant: `${driver.suggestion || ""} ${driver.previousFinalStop || ""} ${driver.suggestedVehicleRegistration || ""}`,
         compliance: `${compliance.label} ${compliance.title}`,
-        dispatch: assigned ? `${assigned.status} allocated` : "unallocated",
+        dispatch: assigned ? `${assigned.status} allocated` : driver.onLeave ? "leave" : "unallocated",
       };
       return dispatchFilterKeys.every(key => {
         const query = filters[key].trim().toLowerCase();
@@ -339,6 +343,10 @@ export function DriverDispatch() {
     } finally { setDriverToolBusy(false); }
   }
 
+  const allocatedCount = data?.drivers.filter(driver => Boolean(driver.assignedLoadId)).length || 0;
+  const leaveCount = data?.drivers.filter(driver => driver.onLeave).length || 0;
+  const unallocatedCount = data?.drivers.filter(driver => !driver.assignedLoadId && !driver.onLeave).length || 0;
+
   return <section className={`driver-dispatch-page ${readOnly ? "comparison-mode" : ""}`}>
     <div className="title-row dispatch-title">
       <div>
@@ -377,10 +385,12 @@ export function DriverDispatch() {
     {loading && !data && <div className="state">Building Driver Dispatch from the planning-week roster, run plan and Sage HR…</div>}
     {data && <>
       <div className="dispatch-summary">
-        <span><strong>{filteredDrivers.length === data.drivers.length ? data.drivers.length : `${filteredDrivers.length} / ${data.drivers.length}`}</strong> planning drivers</span>
+        <span><strong>{filteredDrivers.length === data.drivers.length ? data.drivers.length : `${filteredDrivers.length} / ${data.drivers.length}`}</strong> drivers</span>
+        <span><strong>{allocatedCount}</strong> allocated</span>
+        <span><strong>{leaveCount}</strong> leave</span>
+        <button type="button" className="text-button" onClick={() => setFilters(current => ({ ...current, dispatch: "unallocated" }))}><strong>{unallocatedCount}</strong> unallocated</button>
+        <span><strong>{allocatedCount + leaveCount + unallocatedCount} / {data.drivers.length}</strong> accounted for</span>
         <span><strong>{data.loads.length}</strong> planned runs</span>
-        <span><strong>{data.drivers.filter(driver => driver.onLeave).length}</strong> away / leave</span>
-        <span>Leave: <strong>{data.leaveSource}</strong></span>
         {data.weekStart && data.weekEnd && <span>Week: <strong>{new Date(`${data.weekStart}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" })} → {new Date(`${data.weekEnd}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" })}</strong></span>}
         {dispatchFilterKeys.some(key => filters[key]) && <button type="button" className="text-button clear-dispatch-filters" onClick={() => setFilters(emptyDispatchFilters())}>Clear filters</button>}
       </div>
@@ -402,7 +412,7 @@ export function DriverDispatch() {
           />)}</tbody>
         </table>
       </div>
-      <p className="hint">Dispatch is a driver-only board: active Sage HR employees are admitted only when they match the configured Drivers team / Driver position. Casual drivers remain a separate zero-hours employed category. Agency is included when booked on the Wednesday–Tuesday roster, allocated today, used in the immediately previous planning week, or used on at least 3 days in the last 28 days. Vehicle, trailer and run boxes can be typed into or selected from their dropdown suggestions.</p>
+      <p className="hint">Dispatch is a driver-only board: Sage HR employees must match the configured Drivers team / Driver position. Casual remains a separate zero-hours employed category. Agency is limited to the Wednesday–Tuesday roster or proven recent use. The assistant proposes a one-to-one Run plan using current/last Falcon position, consecutive days, skills, allocation code, route direction and learned regular-vehicle history; the planner remains in control of accepting or changing it.</p>
     </>}
 
     {message && <MessageDialog state={message} token={token} close={() => setMessage(undefined)} sent={async () => { setMessage(undefined); await refresh(); }} />}
@@ -430,7 +440,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
   const availableLoads = data.loads;
   const vehicleOptions: SearchOption[] = data.vehicles.map(vehicle => ({
     id: vehicle.id,
-    label: `${vehicle.registration}${vehicle.id === driver.previousVehicleId ? " · yesterday" : ""}`,
+    label: `${vehicle.registration}${vehicle.id === driver.previousVehicleId ? " · yesterday" : vehicle.id === driver.suggestedVehicleId ? " · assistant" : ""}`,
     search: `${vehicle.registration} ${vehicle.fleetNumber || ""}`,
   }));
   const trailerOptions: SearchOption[] = data.trailers.map(trailer => ({
@@ -451,6 +461,12 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
     setTrailerId(load?.trailerId || "");
     setStartTime(localTime(load?.plannedStartUtc));
   }, [data.loads, driver.assignedLoadId, driver.previousVehicleId]);
+
+  function useAssistantPlan() {
+    if (driver.suggestedRunId) setLoadId(driver.suggestedRunId);
+    if (driver.suggestedVehicleId) setVehicleId(driver.suggestedVehicleId);
+    setNotice("Assistant plan loaded for review. Save when you are happy with it.");
+  }
 
   async function save() {
     if (readOnly || driver.onLeave) return;
@@ -523,11 +539,11 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
       <td><div className="badge-line"><span className={`driver-type type-${driver.driverType.toLowerCase()}`} title={driver.agencyName || driver.driverType}>{typeLetter(driver.driverType)}</span>{skillBadges(driver.skills).map(skill => <span className="skill-badge" key={skill}>{skill}</span>)}</div><small title={driver.agencyName}>{driver.driverType === "Agency" ? driver.agencyName || "Agency" : driver.driverGroup || ""}</small></td>
       <td><span className={`code-badge code-${driver.coding || "x"}`} title={driver.coding === "1" ? "Can do anything" : driver.coding === "2" ? "Established driver" : driver.coding === "3" ? "Newer driver · straightforward work" : driver.coding === "4" ? "Agency" : "Allocation code not set"}>{driver.coding || "—"}</span></td>
       <td><span className={`day-bubble ${driver.dayNumber >= 6 ? "high" : driver.dayNumber >= 5 ? "watch" : ""}`}>{driver.dayNumber}</span></td>
-      <td><TypeaheadSelect disabled={readOnly || driver.onLeave} value={vehicleId} onChange={setVehicleId} options={vehicleOptions} placeholder="Type vehicle…" listId={`vehicle-${driver.driverId}`} />{driver.previousVehicleRegistration && <small>Yesterday: {driver.previousVehicleRegistration}</small>}</td>
+      <td><TypeaheadSelect disabled={readOnly || driver.onLeave} value={vehicleId} onChange={setVehicleId} options={vehicleOptions} placeholder="Type vehicle…" listId={`vehicle-${driver.driverId}`} />{driver.previousVehicleRegistration && <small>Yesterday: {driver.previousVehicleRegistration}</small>}{driver.suggestedVehicleRegistration && driver.suggestedVehicleRegistration !== driver.previousVehicleRegistration && <small>Assistant: {driver.suggestedVehicleRegistration}</small>}</td>
       <td><TypeaheadSelect disabled={readOnly || driver.onLeave} value={trailerId} onChange={setTrailerId} options={trailerOptions} placeholder="Type trailer…" listId={`trailer-${driver.driverId}`} /></td>
-      <td><div className="run-cell"><TypeaheadSelect disabled={readOnly || driver.onLeave} value={loadId} onChange={setLoadId} options={runOptions} placeholder="Type run…" listId={`run-${driver.driverId}`} />{selected && <RunHover load={selected} />}{!selected && driver.suggestedRunId && <button className="text-button" type="button" disabled={readOnly || driver.onLeave} onClick={() => setLoadId(driver.suggestedRunId || "")}>Use {driver.suggestedRunReference || "suggested SB"}</button>}</div></td>
+      <td><div className="run-cell"><TypeaheadSelect disabled={readOnly || driver.onLeave} value={loadId} onChange={setLoadId} options={runOptions} placeholder="Type run…" listId={`run-${driver.driverId}`} />{selected && <RunHover load={selected} />}{!selected && driver.suggestedRunId && <button className="text-button" type="button" disabled={readOnly || driver.onLeave} onClick={useAssistantPlan}>Use {driver.suggestedRunReference || "assistant plan"}</button>}</div></td>
       <td><input type="time" value={startTime} disabled={readOnly || driver.onLeave} onChange={event => setStartTime(event.target.value)} /></td>
-      <td className="assistant-cell"><span>{driver.suggestion || (driver.previousFinalStop ? `Yesterday finished ${driver.previousFinalStop}.` : "Available for allocation.")}</span></td>
+      <td className="assistant-cell"><span>{driver.suggestion || (driver.previousFinalStop ? `Yesterday finished ${driver.previousFinalStop}.` : "Available for allocation.")}</span>{!readOnly && !driver.onLeave && !selected && (driver.suggestedRunId || driver.suggestedVehicleId) && <button className="text-button" type="button" onClick={useAssistantPlan}>Use assistant plan{driver.assistantScore ? ` · ${driver.assistantScore}` : ""}</button>}</td>
       <td><span className={`compliance-pill ${compliance.className}`} title={compliance.title}>{compliance.label}</span></td>
       <td><div className="dispatch-buttons">{readOnly ? <>{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</> : <><button type="button" onClick={() => void save()} disabled={busy || driver.onLeave}>{busy ? "Working…" : "Save"}</button><button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave}>Dispatch</button>{selected && ["Dispatched", "InProgress"].includes(selected.status) && <button type="button" onClick={() => void prepareUpdate()} disabled={busy}>Plain text update</button>}{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</>}</div>{notice && <small className="row-notice">{notice}</small>}</td>
     </tr>
