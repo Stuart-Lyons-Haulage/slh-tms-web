@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type ChangeEvent } from "react";
 import { api, request, type Site, type StageBatchRequest, type StagedImport } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
+import { resolveSourceEvidence } from "../sourceEvidence";
 import "../order-review.css";
 
 type IntakePayload = Record<string, unknown> & {
@@ -555,7 +556,8 @@ export function OrderReviewOperational() {
         const rowWarnings = reviewWarnings(row.payload);
         const isEditing = editingId === row.item.id;
         const isBusy = busyId === row.item.id;
-        const sourceLink = text(row.payload.sourceWebLink);
+        const sourceEvidence = resolveSourceEvidence(row.payload);
+        const sourceLink = sourceEvidence.webLink;
         const selectedUnitType = unitType(payload);
         const deliveryName = importedDeliveryName(row.payload);
         const matchingSite = deliveryName ? (siteMaster.data || []).find((site) => siteMatchesImportedName(site, deliveryName)) : undefined;
@@ -606,9 +608,9 @@ export function OrderReviewOperational() {
           </div>}
 
           <div className="source-evidence">
-            <div><span>Source email</span><strong>{text(row.payload.sourceSubject) || row.item.source || "Mailbox source"}</strong></div>
+            <div><span>Source email</span><strong>{sourceEvidence.subject || row.item.source || "Mailbox source"}</strong>{sourceEvidence.displayId && <small title={sourceEvidence.displayId}>Email ID: {sourceEvidence.displayId}</small>}</div>
             <div><span>Sender</span><strong>{text(row.payload.sourceSenderName) || text(row.payload.sourceSender) || "—"}</strong><small>{text(row.payload.sourceSender)}</small></div>
-            <div><span>Received</span><strong>{formatDateTime(row.payload.sourceReceivedAtUtc || row.item.receivedAtUtc)}</strong></div>
+            <div><span>Received</span><strong>{formatDateTime(sourceEvidence.receivedAt || row.item.receivedAtUtc)}</strong></div>
             <div><span>Attachment</span><strong>{text(row.payload.sourceAttachmentName) || "Body-only order"}</strong>{row.payload.sourceSheet && <small>{text(row.payload.sourceSheet)}{row.payload.sourceRow ? ` · row ${row.payload.sourceRow}` : ""}</small>}</div>
             {sourceLink && <a href={sourceLink} target="_blank" rel="noreferrer">Open source email ↗</a>}
           </div>

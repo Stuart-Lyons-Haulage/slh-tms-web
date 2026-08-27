@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, request, type StagedImport } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
+import { resolveSourceEvidence } from "../sourceEvidence";
 import "../order-control.css";
 
 type Payload = Record<string, unknown> & {
@@ -420,7 +421,8 @@ export function OrderReviewBulk() {
         const rowBusy = busyId === row.item.id;
         const sourceWarnings = reviewWarnings(row.payload);
         const payload = isEditing && draft ? draft : row.payload;
-        const sourceLink = text(row.payload.sourceWebLink);
+        const sourceEvidence = resolveSourceEvidence(row.payload);
+        const sourceLink = sourceEvidence.webLink;
         const statusClass = blocked ? "blocked" : reviewFlag ? "review" : "ready";
         const statusText = blocked ? blocked : reviewFlag ? `Check: ${reviewFlag}` : "Ready to approve";
 
@@ -443,6 +445,7 @@ export function OrderReviewBulk() {
               <button type="button" className="primary" onClick={() => void saveEdit(row)} disabled={rowBusy}>{rowBusy ? "Saving…" : "Save"}</button>
             </>}
             <button type="button" className="reject-button" onClick={() => void rejectRow(row)} disabled={busy || Boolean(busyId)}>{rowBusy ? "Working…" : "Reject"}</button>
+            {sourceLink && <a className="button-like" href={sourceLink} target="_blank" rel="noreferrer">Open email ↗</a>}
           </div>
 
           {(reviewFlag || sourceWarnings.length > 0) && !isEditing && <div className="bulk-row-warning">
@@ -465,7 +468,8 @@ export function OrderReviewBulk() {
             </div>
             <label className="bulk-editor-notes">Driver / planner notes<textarea rows={3} value={text(payload.driverInstructions)} onChange={(event) => setDraft((current) => ({ ...(current || payload), driverInstructions: event.target.value }))} /></label>
             <div className="bulk-source-line">
-              <span><strong>Source:</strong> {text(row.payload.sourceSubject) || row.item.source || "Order intake"}</span>
+              <span><strong>Source:</strong> {sourceEvidence.subject || row.item.source || "Order intake"}</span>
+              {sourceEvidence.displayId && <span title={sourceEvidence.displayId}><strong>Email ID:</strong> {sourceEvidence.displayId}</span>}
               {row.payload.sourceAttachmentName && <span><strong>Attachment:</strong> {text(row.payload.sourceAttachmentName)}</span>}
               {row.payload.intakeParser && <span><strong>Parser:</strong> {text(row.payload.intakeParser)}</span>}
               {sourceLink && <a href={sourceLink} target="_blank" rel="noreferrer">Open source email ↗</a>}
