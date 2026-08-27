@@ -58,7 +58,7 @@ jobs:
 
       - name: Build NSIS installer
         shell: pwsh
-        run: pnpm exec electron-builder --win nsis --${{ matrix.arch }}
+        run: pnpm exec electron-builder --win nsis --${{ matrix.arch }} --publish never
 
       - name: Verify installer output
         shell: pwsh
