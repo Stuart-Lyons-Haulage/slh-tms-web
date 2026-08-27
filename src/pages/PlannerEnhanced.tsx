@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { OptimiserProposalReview } from "../components/OptimiserProposalReview";
+import { RunGeofenceWarningPanel } from "../components/GeofenceCoverageWarnings";
 import { signalPlanningChange } from "../lib/planningEvents";
 import { RunPlannerLive } from "./RunPlannerLive";
 
@@ -30,6 +31,7 @@ export function PlannerEnhanced() {
       <span>Approved orders for this date appear automatically in the planning pool.</span>
     </div>
 
+    <RunGeofenceWarningPanel planningDate={date} />
     <OptimiserProposalReview planningDate={date} onApplied={() => signalPlanningChange()} />
     <RunPlannerLive planningDate={date} />
 
