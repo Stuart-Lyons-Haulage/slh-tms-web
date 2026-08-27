@@ -199,11 +199,15 @@ export function OperationsWallboard({ tvMode = false }: { tvMode?: boolean }) {
     const getAssignments = (from: string, to: string) => tvAccessKey
       ? request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, undefined, tvInit)
       : api.driverAssignments(from, to, access);
-    const [loads, assignments] = await Promise.all([getLoads(today), getAssignments(today, today)]);
+    const [loadsResult, assignmentsResult] = await Promise.allSettled([getLoads(today), getAssignments(today, today)]);
+    if (loadsResult.status === "rejected") throw loadsResult.reason;
     return {
-      loads: loads.filter(load => load.planningDate === today && load.status !== "Cancelled"),
-      assignments,
-      etas: [], progress: [], warning: "Live tracker, geofence and ETA evidence is loading.",
+      loads: loadsResult.value.filter(load => load.status !== "Cancelled"),
+      assignments: assignmentsResult.status === "fulfilled" ? assignmentsResult.value : [],
+      etas: [], progress: [],
+      warning: assignmentsResult.status === "rejected"
+        ? "Planned runs are visible; driver and vehicle assignment enrichment is temporarily unavailable."
+        : "Live tracker, geofence and ETA evidence is loading.",
       geofenceAvailable: true, geofenceCount: 0, geofenceLinkedRuns: 0,
     } satisfies WallboardData;
   }, [today, token, tvAccessKey]));
