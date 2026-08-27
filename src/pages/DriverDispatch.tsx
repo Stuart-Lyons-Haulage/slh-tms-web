@@ -31,6 +31,8 @@ type DispatchDriver = {
   suggestedRunId?: string;
   suggestedRunReference?: string;
   suggestion?: string;
+  agencyBookedFrom?: string;
+  agencyBookedThrough?: string;
 };
 
 type DispatchStop = {
@@ -64,8 +66,12 @@ type DispatchLoad = {
 
 type Workbench = {
   planningDate: string;
+  weekStart?: string;
+  weekEnd?: string;
   generatedAtUtc: string;
   leaveSource: string;
+  driverPopulationSource?: string;
+  dayNumberSource?: string;
   drivers: DispatchDriver[];
   vehicles: Vehicle[];
   trailers: Trailer[];
@@ -87,6 +93,16 @@ type DispatchReadiness = {
 
 type MessageMode = "dispatch" | "update";
 type MessageState = { load: DispatchLoad; mode: MessageMode; text: string; routeMinutes?: number; acknowledgeUnverified?: boolean };
+type DriverType = "Employed" | "Casual" | "Agency";
+type DriverForm = {
+  displayName: string;
+  employeeNumber: string;
+  driverType: DriverType;
+  agencyName: string;
+  startDate: string;
+  days: number;
+};
+type AddDriverResponse = { message?: string; created?: boolean; driverId?: string };
 
 function isoDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -159,6 +175,17 @@ export function DriverDispatch() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [message, setMessage] = useState<MessageState>();
+  const [showDriverTools, setShowDriverTools] = useState(false);
+  const [driverToolBusy, setDriverToolBusy] = useState(false);
+  const [driverToolNotice, setDriverToolNotice] = useState<string>();
+  const [driverForm, setDriverForm] = useState<DriverForm>({
+    displayName: "",
+    employeeNumber: "",
+    driverType: "Agency",
+    agencyName: "",
+    startDate: date,
+    days: 7,
+  });
 
   const refresh = useCallback(async () => {
     setLoading(true); setError(undefined);
@@ -176,8 +203,47 @@ export function DriverDispatch() {
     if (readOnly) params.set("compare", "1");
     window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
   }, [date, readOnly]);
+  useEffect(() => { setDriverForm(current => ({ ...current, startDate: date })); }, [date]);
 
   const yesterday = () => window.open(`/driver-dispatch?date=${encodeURIComponent(addDays(date, -1))}&compare=1`, "_blank", "noopener,noreferrer");
+
+  async function syncDrivers() {
+    if (readOnly) return;
+    setDriverToolBusy(true); setDriverToolNotice(undefined);
+    try {
+      await request(`/api/v1/driver-master/tachomaster/sync`, await token(), { method: "POST" }, 180000);
+      setDriverToolNotice("Driver Master sync completed. Dispatch has been refreshed.");
+      await refresh();
+    } catch (exception) {
+      setDriverToolNotice(exception instanceof Error ? exception.message : "Driver Master sync failed.");
+    } finally { setDriverToolBusy(false); }
+  }
+
+  async function addDriver() {
+    if (readOnly) return;
+    if (!driverForm.displayName.trim()) { setDriverToolNotice("Enter the driver's name."); return; }
+    if (driverForm.driverType === "Agency" && !driverForm.agencyName.trim()) { setDriverToolNotice("Enter the agency name."); return; }
+    if (driverForm.driverType !== "Agency" && !driverForm.employeeNumber.trim()) { setDriverToolNotice("Enter the employee number, or use Sync Drivers first."); return; }
+    setDriverToolBusy(true); setDriverToolNotice(undefined);
+    try {
+      const result = await request<AddDriverResponse>(`/api/v1/driver-dispatch/drivers`, await token(), {
+        method: "POST",
+        body: JSON.stringify({
+          displayName: driverForm.displayName.trim(),
+          employeeNumber: driverForm.employeeNumber.trim() || null,
+          driverType: driverForm.driverType,
+          agencyName: driverForm.driverType === "Agency" ? driverForm.agencyName.trim() : null,
+          startDate: driverForm.startDate,
+          days: driverForm.driverType === "Agency" ? Number(driverForm.days) : null,
+        }),
+      }, 90000);
+      setDriverToolNotice(result.message || "Driver saved.");
+      setDriverForm(current => ({ ...current, displayName: "", employeeNumber: "" }));
+      await refresh();
+    } catch (exception) {
+      setDriverToolNotice(exception instanceof Error ? exception.message : "Driver could not be added.");
+    } finally { setDriverToolBusy(false); }
+  }
 
   return <section className={`driver-dispatch-page ${readOnly ? "comparison-mode" : ""}`}>
     <div className="title-row dispatch-title">
@@ -189,19 +255,39 @@ export function DriverDispatch() {
       <div className="title-actions dispatch-actions">
         <label>Planning date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
         <button type="button" onClick={yesterday}>Open yesterday in new screen ↗</button>
+        {!readOnly && <button type="button" onClick={() => void syncDrivers()} disabled={driverToolBusy}>{driverToolBusy ? "Working…" : "Sync Drivers"}</button>}
+        {!readOnly && <button type="button" onClick={() => { setShowDriverTools(value => !value); setDriverToolNotice(undefined); }}>{showDriverTools ? "Close driver add" : "Add Driver"}</button>}
         <button type="button" onClick={() => void refresh()} disabled={loading}>Refresh</button>
       </div>
     </div>
 
+    {!readOnly && showDriverTools && <div className="dispatch-driver-tools">
+      <div>
+        <strong>Add or roster a driver</strong>
+        <p className="hint">Use Sync Drivers first where possible. If the driver is new to us, this creates a provisional identity that the next TachoMaster sync can bind.</p>
+      </div>
+      <label>Driver name<input value={driverForm.displayName} onChange={event => setDriverForm(current => ({ ...current, displayName: event.target.value }))} placeholder="Full name" /></label>
+      <label>Type<select value={driverForm.driverType} onChange={event => setDriverForm(current => ({ ...current, driverType: event.target.value as DriverType }))}><option value="Employed">Employed</option><option value="Casual">Casual</option><option value="Agency">Agency</option></select></label>
+      {driverForm.driverType !== "Agency" && <label>Employee number<input value={driverForm.employeeNumber} onChange={event => setDriverForm(current => ({ ...current, employeeNumber: event.target.value }))} placeholder="Employee number" /></label>}
+      {driverForm.driverType === "Agency" && <>
+        <label>Agency<input value={driverForm.agencyName} onChange={event => setDriverForm(current => ({ ...current, agencyName: event.target.value }))} placeholder="Agency name" /></label>
+        <label>Available from<input type="date" value={driverForm.startDate} onChange={event => setDriverForm(current => ({ ...current, startDate: event.target.value }))} /></label>
+        <label>How many days do we have them?<input type="number" min={1} max={7} value={driverForm.days} onChange={event => setDriverForm(current => ({ ...current, days: Math.max(1, Math.min(7, Number(event.target.value) || 1)) }))} /></label>
+      </>}
+      <button className="primary" type="button" onClick={() => void addDriver()} disabled={driverToolBusy}>{driverToolBusy ? "Saving…" : driverForm.driverType === "Agency" ? "Add to this week's roster" : "Add driver"}</button>
+    </div>}
+    {driverToolNotice && <p className="notice inline-notice">{driverToolNotice}</p>}
+
     {readOnly && <p className="notice inline-notice"><strong>Comparison view:</strong> no allocations can be changed from this window.</p>}
     {error && <p className="notice inline-notice" style={{ borderColor: "#b42318" }}>{error}</p>}
-    {loading && !data && <div className="state">Building Driver Dispatch from the Driver Master, run plan and Sage HR…</div>}
+    {loading && !data && <div className="state">Building Driver Dispatch from the planning-week roster, run plan and Sage HR…</div>}
     {data && <>
       <div className="dispatch-summary">
-        <span><strong>{data.drivers.length}</strong> active drivers</span>
+        <span><strong>{data.drivers.length}</strong> planning drivers</span>
         <span><strong>{data.loads.length}</strong> planned runs</span>
         <span><strong>{data.drivers.filter(driver => driver.onLeave).length}</strong> away / leave</span>
         <span>Leave: <strong>{data.leaveSource}</strong></span>
+        {data.weekStart && data.weekEnd && <span>Week: <strong>{new Date(`${data.weekStart}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" })} → {new Date(`${data.weekEnd}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" })}</strong></span>}
       </div>
       <div className="dispatch-table-wrap">
         <table className="dispatch-table">
@@ -218,7 +304,7 @@ export function DriverDispatch() {
           />)}</tbody>
         </table>
       </div>
-      <p className="hint">Employment order is Employed → Casual → Agency. Casual drivers remain separately visible because they are zero-hours employees, and follow the same employed-driver compliance rules. Agency company is available on hover. Green rows are Sage HR leave and are excluded from assisted allocation. Every planned run remains visible so the planner can manually compare or reassign work; a current allocation is shown in the run label rather than hiding the run.</p>
+      <p className="hint">Dispatch now loads all active employed staff, Casual drivers and only operationally relevant Agency drivers. Agency is included when booked on the Wednesday–Tuesday roster, allocated today, used in the immediately previous planning week, or used on at least 3 days in the last 28 days. TachoMaster history is not called seven times just to open this screen; live Tacho/hours compliance remains rechecked when the run is dispatched.</p>
     </>}
 
     {message && <MessageDialog state={message} token={token} close={() => setMessage(undefined)} sent={async () => { setMessage(undefined); await refresh(); }} />}
@@ -318,9 +404,9 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
   }
 
   return <>
-    {showGroup && <tr className="dispatch-group"><td colSpan={11}>{driver.driverType === "Agency" ? "AGENCY" : driver.driverType === "Casual" ? "CASUAL · ZERO-HOURS EMPLOYED" : "EMPLOYED"}</td></tr>}
+    {showGroup && <tr className="dispatch-group"><td colSpan={11}>{driver.driverType === "Agency" ? "AGENCY · CURRENT / RECENT / ROSTERED" : driver.driverType === "Casual" ? "CASUAL · ZERO-HOURS EMPLOYED" : "EMPLOYED"}</td></tr>}
     <tr className={driver.onLeave ? "on-leave" : ""}>
-      <td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}</td>
+      <td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}{driver.agencyBookedThrough && <small>Booked to {new Date(`${driver.agencyBookedThrough}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" })}</small>}</td>
       <td><div className="badge-line"><span className={`driver-type type-${driver.driverType.toLowerCase()}`} title={driver.agencyName || driver.driverType}>{typeLetter(driver.driverType)}</span>{skillBadges(driver.skills).map(skill => <span className="skill-badge" key={skill}>{skill}</span>)}</div><small title={driver.agencyName}>{driver.driverType === "Agency" ? driver.agencyName || "Agency" : driver.driverGroup || ""}</small></td>
       <td><span className={`code-badge code-${driver.coding || "x"}`} title={driver.coding === "1" ? "Can do anything" : driver.coding === "2" ? "Established driver" : driver.coding === "3" ? "Newer driver · straightforward work" : driver.coding === "4" ? "Agency" : "Allocation code not set"}>{driver.coding || "—"}</span></td>
       <td><span className={`day-bubble ${driver.dayNumber >= 6 ? "high" : driver.dayNumber >= 5 ? "watch" : ""}`}>{driver.dayNumber}</span></td>
