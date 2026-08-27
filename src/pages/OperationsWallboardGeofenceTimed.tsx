@@ -89,6 +89,12 @@ function mappedEtaSource(source?: string) {
   return source === "Geofence" ? "Live" : source === "GeofenceEstimated" ? "Estimated" : undefined;
 }
 
+function addMinutes(value: string | undefined, minutes?: number) {
+  if (!value || !minutes || minutes <= 0) return value;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp + minutes * 60_000).toISOString() : value;
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function syntheticTimingEtas(load: LoadSnapshot, anchor: TimingRecord): EtaRecord[] {
   if (!load.id) return [];
@@ -123,12 +129,12 @@ export function syntheticTimingEtas(load: LoadSnapshot, anchor: TimingRecord): E
       routeDrivingMinutes: 0,
       breakMinutesIncluded: 0,
       tachoStatus: "Unavailable",
-      tachoExplanation: "Geofence run-timing supplied the active ETA while the legacy delivery ETA feed was unavailable after reset/re-import.",
+      tachoExplanation: "Geofence run-timing supplied the active ETA while the primary delivery ETA feed was unavailable after reset/re-import.",
     };
   });
 }
 
-function relabelCollectionTiming() {
+function relabelOperationalEvidence() {
   const board = document.querySelector<HTMLElement>(".ops-wallboard");
   if (!board) return;
   const firstHeader = board.querySelector<HTMLElement>(".ops-board-head > span:first-child");
@@ -136,17 +142,30 @@ function relabelCollectionTiming() {
   board.querySelectorAll<HTMLElement>(".ops-board-row .time-cell > small").forEach(label => {
     if (label.textContent === "planned start") label.textContent = "first collection due";
   });
+
+  board.querySelectorAll<HTMLElement>(".ops-board-row > span:nth-child(4) > small").forEach(label => {
+    const text = (label.textContent || "").trim();
+    if (/^signed on\b/i.test(text)) label.textContent = text.replace(/^signed on\b/i, "SIGNED ON");
+    else if (/^card confirmed\b/i.test(text)) label.textContent = text.replace(/^card confirmed\b/i, "CARD CONFIRMED");
+    else if (/^sign-on evidence unavailable$/i.test(text)) label.textContent = "NOT SIGNED ON";
+    else if (/^tacho mismatch$/i.test(text)) label.textContent = "TACHO MISMATCH";
+    else if (/^TachoMaster unavailable$/i.test(text) || /^tacho unavailable$/i.test(text) || /^TachoMaster evidence missing$/i.test(text)) label.textContent = "TACHO UNAVAILABLE";
+    else if (/^no planned driver$/i.test(text)) label.textContent = "NO PLANNED DRIVER";
+    else if (/^no planned vehicle$/i.test(text)) label.textContent = "NO PLANNED VEHICLE";
+  });
 }
 
 /**
  * Wallboard-only adapter:
  * - current site dwell continues to come from run-progress and therefore starts at first geofence entry;
- * - between stops, the displayed next ETA is replaced with previous geofence departure + route time;
- * - the displayed final ETA comes from the cumulative geofence route, including intermediate dwell projection;
+ * - between stops, the displayed next ETA is replaced with previous geofence departure/live position + HGV traffic route time;
+ * - the displayed final ETA comes from the cumulative geofence/HGV route, including intermediate dwell projection;
+ * - TachoMaster break minutes from the primary ETA feed are added to the geofence-timed next/final ETA so legal driving constraints are not lost;
  * - the CSV/planner final delivery latest time is retained as the final ETA risk deadline;
- * - when reset/re-import leaves the legacy delivery ETA feed empty, missing rows are rebuilt from run-timing + imported stops;
+ * - when reset/re-import leaves the primary delivery ETA feed empty, missing rows are rebuilt from run-timing + imported stops;
  * - once all stops are geofence-departed, the run is removed from the wallboard/TV data feeds;
- * - the first time column is labelled as the first collection due time, not a driver start time.
+ * - the first time column is labelled as the first collection due time, not a driver start time;
+ * - the driver evidence line is explicit: SIGNED ON, NOT SIGNED ON, CARD CONFIRMED, TACHO MISMATCH or TACHO UNAVAILABLE.
  */
 export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: boolean }) {
   const [ready, setReady] = useState(false);
@@ -240,7 +259,7 @@ export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: 
                 const finalDeliveryLatestUtc = eta.deliveryWindowEndUtc || (eta.source === "Planned" ? eta.etaUtc : undefined);
                 return {
                   ...eta,
-                  etaUtc: anchor.finalEtaUtc,
+                  etaUtc: addMinutes(anchor.finalEtaUtc, eta.breakMinutesIncluded),
                   source: mappedEtaSource(anchor.finalEtaSource) || eta.source,
                   deliveryWindowEndUtc: finalDeliveryLatestUtc,
                 };
@@ -248,7 +267,7 @@ export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: 
               if (isNextStop && anchor.nextEtaUtc) {
                 return {
                   ...eta,
-                  etaUtc: anchor.nextEtaUtc,
+                  etaUtc: addMinutes(anchor.nextEtaUtc, eta.breakMinutesIncluded),
                   source: mappedEtaSource(anchor.etaSource) || eta.source,
                 };
               }
@@ -287,8 +306,8 @@ export function OperationsWallboardGeofenceTimed({ tvMode = false }: { tvMode?: 
 
   useEffect(() => {
     if (!ready) return;
-    relabelCollectionTiming();
-    const observer = new MutationObserver(relabelCollectionTiming);
+    relabelOperationalEvidence();
+    const observer = new MutationObserver(relabelOperationalEvidence);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     return () => observer.disconnect();
   }, [ready]);
