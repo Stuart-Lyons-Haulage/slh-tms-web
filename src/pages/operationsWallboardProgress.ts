@@ -36,6 +36,8 @@ export type RunProgressRecord = {
   geofenceOnSite?: boolean;
   trackingFresh?: boolean;
   trackingMoving?: boolean;
+  ignitionOn?: boolean;
+  driverCardPresent?: boolean;
   trackingAgeSeconds?: number;
   speedKph?: number;
   tacho?: RunTachoEvidence | null;
@@ -66,6 +68,8 @@ export type RouteProgressRun = {
   geofenceOnSite?: boolean;
   trackingFresh?: boolean;
   trackingMoving?: boolean;
+  ignitionOn?: boolean;
+  driverCardPresent?: boolean;
   trackingAgeSeconds?: number;
   speedKph?: number;
   tacho?: RunTachoEvidence | null;
@@ -215,6 +219,18 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
     };
   }
 
+  // A future/planned ETA must never make a parked vehicle look active. When Falcon
+  // positively reports ignition off and no driver card, and no geofence progression
+  // has proved departure, the run has not started and remains scheduled.
+  if (progress?.trackingFresh && progress.phase === "Next job" && progress.ignitionOn === false && progress.driverCardPresent === false) {
+    return {
+      status: "scheduled",
+      label: "SCHEDULED",
+      detail: `${progress.nextStop?.name || nextEta?.stopName || "Next job"} · ignition off · no driver card`,
+      priority: 35,
+    };
+  }
+
   const hoursRisk = etas.find((eta) => eta.tachoStatus === "InsufficientDriveTime");
   if (hoursRisk) {
     return {
@@ -296,6 +312,8 @@ function routeFields(route: RouteProgressRun) {
     geofenceOnSite: route.geofenceOnSite,
     trackingFresh: route.trackingFresh,
     trackingMoving: route.trackingMoving,
+    ignitionOn: route.ignitionOn,
+    driverCardPresent: route.driverCardPresent,
     trackingAgeSeconds: route.trackingAgeSeconds,
     speedKph: route.speedKph,
     tacho: route.tacho,
