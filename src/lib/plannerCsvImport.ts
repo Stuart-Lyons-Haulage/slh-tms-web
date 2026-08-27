@@ -216,7 +216,7 @@ export function parsePlannerCsv(text: string, fileName = "planner.csv"): Planner
     const planDayTimes = stops.filter((stop) => stop.collectionDate === planningDate).map((stop) => stop.collectFrom).filter((entry): entry is string => Boolean(entry)).sort();
     const allTimes = stops.map((stop) => stop.collectFrom).filter((entry): entry is string => Boolean(entry)).sort();
     const firstTime = (planDayTimes.length ? planDayTimes : allTimes)[0];
-    const period = firstTime ? (Number(firstTime.slice(0, 2)) >= 12 ? "PM" : "AM") : undefined;
+    const period: "AM" | "PM" | undefined = firstTime ? (Number(firstTime.slice(0, 2)) >= 12 ? "PM" : "AM") : undefined;
     const capacityResult = capacity(stops);
     const notes = [`CSV import from ${fileName}`, status ? `Source status: ${status}` : "", preCollections.length ? `Pre-collection(s): ${preCollections.join(", ")}` : ""].filter(Boolean);
 
