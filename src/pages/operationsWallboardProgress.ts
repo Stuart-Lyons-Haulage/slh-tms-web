@@ -149,8 +149,16 @@ function collectionAdvisory(progress: RunProgressRecord | undefined, eta: Delive
   return undefined;
 }
 
+function isFinalDestinationEta(eta: DeliveryEta) {
+  const marked = Boolean((eta as DeliveryEta & { isFinalDestination?: boolean }).isFinalDestination);
+  return marked
+    || /^deliver\b/i.test(String(eta.stopName || ""))
+    || Boolean(eta.orderReference || eta.customerCode || eta.deliveryWindowEndUtc);
+}
+
 export function finalEtaFor(etas: DeliveryEta[]) {
-  return [...etas].sort((a, b) => a.sequence - b.sequence).at(-1);
+  const sorted = [...etas].sort((a, b) => a.sequence - b.sequence);
+  return [...sorted].reverse().find(isFinalDestinationEta) || sorted.at(-1);
 }
 
 function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
