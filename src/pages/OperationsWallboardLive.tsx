@@ -141,10 +141,10 @@ function dwellLabel(progress?: RunProgressRecord) {
 }
 
 function mergeEtaSnapshots(previous: DeliveryEta[], incoming: DeliveryEta[]) {
-  if (!incoming.length) return previous;
-  const merged = new Map(previous.map(eta => [`${eta.loadId}|${eta.sequence}`, eta]));
-  for (const eta of incoming) merged.set(`${eta.loadId}|${eta.sequence}`, eta);
-  return [...merged.values()];
+  // A fulfilled ETA response is a complete canonical server snapshot for this
+  // operating date. Do not merge it with browser-local records from an older
+  // refresh, otherwise the TV and signed-in wallboard can retain different ETAs.
+  return incoming.length ? incoming : previous;
 }
 
 function mergeProgressSnapshots(previous: RunProgressRecord[], incoming: RunProgressRecord[]) {
@@ -279,7 +279,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       const etas = [...(etaByLoad.get(id) || [])].sort((a, b) => a.sequence - b.sequence);
       const nextEta = pickNextEta(etas, progress);
       const finalEta = finalEtaFor(etas);
-      const finalDeadlineUtc = finalEta?.deliveryWindowEndUtc || finalDestinationStop(load)?.plannedArrivalUtc;
+      const finalDeadlineUtc = finalEta?.deliveryWindowEndUtc;
       const status = statusFor(progress, nextEta, etas, Date.now(), finalDeadlineUtc);
       const complete = status.status === "complete";
       const finalArrivalUtc = isFinalCurrentVisit(progress) ? progress?.currentVisit?.enteredAtUtc : undefined;
@@ -350,7 +350,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       {loading && !data && <div className="ops-board-empty">Loading planned journeys and live progression...</div>}
       {!loading && rows.length === 0 && <div className="ops-board-empty">No runs are planned for today.</div>}
       {rows.map(row => {
-        const buffer = minutesToWindow(row.nextEta);
+        const buffer = minutesToWindow(row.finalEta);
         const completedStops = row.progress?.completedStops ?? 0;
         const totalStops = row.progress?.totalStops || row.load?.stops?.length || row.etas.length || 0;
         const percent = totalStops > 0 ? Math.min(100, Math.max(Math.round(completedStops / totalStops * 100), Math.round(row.progress?.progressPercent ?? 0))) : 0;
