@@ -330,7 +330,16 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
 
   useEffect(() => {
     if (!tvMode || !presentRowId || loading) return;
-    window.setTimeout(() => tableRef.current?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 350);
+    const timer = window.setTimeout(() => {
+      const table = tableRef.current;
+      const row = table?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`);
+      if (!table || !row) return;
+      const tableRect = table.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      if (rowRect.top >= tableRect.top && rowRect.bottom <= tableRect.bottom) return;
+      row.scrollIntoView({ block: "nearest", behavior: "auto" });
+    }, 350);
+    return () => window.clearTimeout(timer);
   }, [lastRefresh, loading, presentRowId, tvMode]);
 
   async function fullscreen() { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); }
@@ -346,7 +355,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       <article className="green"><span>Tracker live</span><strong>{formatAge(boardData?.latestTrackingUtc, clock)}</strong><small>{boardData?.geofenceLinkedRuns ?? 0} geofence-linked runs</small></article>
       <article className="amber"><span>On site</span><strong>{onSite}</strong><small>current site evidence retained</small></article>
       <article className="green"><span>Complete</span><strong>{completeJobs}</strong><small>departed geofenced stops</small></article>
-      <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} proved late · {risk} needs attention</small></article>
+      <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} red risk/late · {risk} amber tight</small></article>
       <article className="green"><span>Available</span><strong>{available}</strong><small>final stop completed</small></article>
     </div>
     {(error || boardData?.warning || boardData?.geofenceAvailable === false) && <div className="ops-wallboard-alert">{error || boardData?.warning || "Geofence progression is unavailable; planned journeys remain displayed."}</div>}
@@ -355,7 +364,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       {loading && !data && <div className="ops-board-empty">Loading planned journeys and live progression...</div>}
       {!loading && rows.length === 0 && <div className="ops-board-empty">No runs are planned for today.</div>}
       {rows.map(row => {
-        const buffer = minutesToWindow(row.nextEta);
+        const buffer = minutesToWindow(row.finalEta);
         const completedStops = row.progress?.completedStops ?? 0;
         const totalStops = row.progress?.totalStops || row.load?.stops?.length || row.etas.length || 0;
         const percent = totalStops > 0 ? Math.min(100, Math.max(Math.round(completedStops / totalStops * 100), Math.round(row.progress?.progressPercent ?? 0))) : 0;
@@ -384,6 +393,6 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
         </article>;
       })}
     </div>
-    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final ETA targets final customer destination · next stop drives risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
+    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final customer ETA/deadline drives run risk · intermediate stops are progress</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
   </section>;
 }
