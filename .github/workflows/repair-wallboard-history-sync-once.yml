@@ -1,0 +1,373 @@
+name: Repair wallboard history sync once
+
+on:
+  push:
+    branches: [ fix/wallboard-history-sync-20260828 ]
+    paths:
+      - '.github/workflows/repair-wallboard-history-sync-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/wallboard-history-sync-20260828
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply canonical wallboard progress repair
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          progress_path = Path('src/pages/operationsWallboardProgress.ts')
+          text = progress_path.read_text()
+
+          text = text.replace('const RISK_BUFFER_MINUTES = 15;\n\n', '')
+          text, count = re.subn(
+              r'function nextStopDeadline[\s\S]*?\nfunction isFinalDestinationEta',
+              'function isFinalDestinationEta',
+              text,
+              count=1,
+          )
+          assert count == 1, 'next-stop advisory block was not found'
+
+          text = text.replace(
+              'export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now(), finalDeadlineUtc?: string): WallboardStatusResult {',
+              'export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], _nowMs = Date.now(), finalDeadlineUtc?: string): WallboardStatusResult {',
+          )
+
+          text, count = re.subn(
+              r'  // The next stop is an execution milestone[\s\S]*?  const staleTracking',
+              '  // Intermediate collection/delivery timing variance is informational only.\\n'
+              '  // Whole-run ETA risk is governed exclusively by the cumulative final-customer ETA above.\\n'
+              '  const staleTracking',
+              text,
+              count=1,
+          )
+          assert count == 1, 'intermediate risk block was not found'
+
+          replacement = r'''type StopDwellEvidence = NonNullable<RunProgressRecord["stopDwell"]>[number];
+
+function stopStateWeight(state: StopDwellEvidence["state"]) {
+  return state === "Departed" ? 3 : state === "OnSite" ? 2 : 1;
+}
+
+export function stopEvidenceScore(stops?: RunProgressRecord["stopDwell"]) {
+  return (stops || []).reduce((score, stop) => score + stopStateWeight(stop.state), 0);
+}
+
+export function mergeStopDwellEvidence(
+  left?: RunProgressRecord["stopDwell"],
+  right?: RunProgressRecord["stopDwell"],
+) {
+  const merged = new Map<string, StopDwellEvidence>();
+  for (const stop of [...(left || []), ...(right || [])]) {
+    const existing = merged.get(stop.stopId);
+    if (!existing) {
+      merged.set(stop.stopId, stop);
+      continue;
+    }
+    const preferred = stopStateWeight(stop.state) >= stopStateWeight(existing.state) ? stop : existing;
+    const other = preferred === stop ? existing : stop;
+    merged.set(stop.stopId, {
+      ...other,
+      ...preferred,
+      siteArrivalUtc: preferred.siteArrivalUtc ?? other.siteArrivalUtc,
+      siteDepartureUtc: preferred.siteDepartureUtc ?? other.siteDepartureUtc,
+      liveDwellMinutes: preferred.liveDwellMinutes ?? other.liveDwellMinutes,
+      liveDwellSeconds: preferred.liveDwellSeconds ?? other.liveDwellSeconds,
+      finalDwellMinutes: preferred.finalDwellMinutes ?? other.finalDwellMinutes,
+      finalDwellSeconds: preferred.finalDwellSeconds ?? other.finalDwellSeconds,
+    });
+  }
+  return [...merged.values()].sort((a, b) => a.sequence - b.sequence);
+}
+
+export function progressEvidenceStrength(record?: Pick<RunProgressRecord, "completedStops" | "stopDwell" | "currentVisit" | "geofenceOnSite">) {
+  if (!record) return 0;
+  return Math.max(0, record.completedStops || 0) * 1000
+    + stopEvidenceScore(record.stopDwell) * 10
+    + (record.currentVisit ? 5 : 0)
+    + (record.geofenceOnSite ? 2 : 0);
+}
+
+function routeEvidenceStrength(route: RouteProgressRun) {
+  return Math.max(0, route.completedStops || 0) * 1000
+    + stopEvidenceScore(route.stopDwell) * 10
+    + (route.currentVisit ? 5 : 0)
+    + (route.geofenceOnSite ? 2 : 0);
+}
+
+function routeFields(route: RouteProgressRun, record?: RunProgressRecord) {
+  const preferRecordGeofence = progressEvidenceStrength(record) >= routeEvidenceStrength(route);
+  const preferRouteTracking = route.trackingFresh === true || record?.trackingFresh !== true;
+  const evidenceCurrentVisit = preferRecordGeofence ? record?.currentVisit : route.currentVisit;
+
+  return {
+    phase: preferRecordGeofence ? record?.phase ?? route.phase : route.phase || record?.phase,
+    focusStop: preferRecordGeofence ? record?.focusStop ?? route.focusStop : route.focusStop || record?.focusStop,
+    geofenceOnSite: Boolean(evidenceCurrentVisit || (preferRecordGeofence ? record?.geofenceOnSite : route.geofenceOnSite)),
+    trackingFresh: route.trackingFresh ?? record?.trackingFresh,
+    trackingMoving: Boolean(record?.trackingMoving || route.trackingMoving),
+    ignitionOn: preferRouteTracking ? route.ignitionOn ?? record?.ignitionOn : record?.ignitionOn ?? route.ignitionOn,
+    driverCardPresent: preferRouteTracking ? route.driverCardPresent ?? record?.driverCardPresent : record?.driverCardPresent ?? route.driverCardPresent,
+    trackingAgeSeconds: preferRouteTracking ? route.trackingAgeSeconds ?? record?.trackingAgeSeconds : record?.trackingAgeSeconds ?? route.trackingAgeSeconds,
+    speedKph: preferRouteTracking ? route.speedKph ?? record?.speedKph : record?.speedKph ?? route.speedKph,
+    tacho: route.tacho ?? record?.tacho,
+    currentVisit: evidenceCurrentVisit,
+    stopDwell: mergeStopDwellEvidence(record?.stopDwell, route.stopDwell),
+    linkageException: preferRecordGeofence ? record?.linkageException ?? route.linkageException : route.linkageException ?? record?.linkageException,
+  };
+}
+
+export function mergeRouteProgress'''
+          text, count = re.subn(
+              r'function stopEvidenceScore[\s\S]*?export function mergeRouteProgress',
+              replacement,
+              text,
+              count=1,
+          )
+          assert count == 1, 'route evidence helper block was not found'
+
+          old = '''    const routeNextStop = route.stops.find((stop) => stop.id === route.nextStopId)
+      || route.stops.find((stop) => stop.state === "heading" || stop.state === "upcoming");
+    const nextStop = (route.completedStops || 0) > (record.completedStops || 0)
+      ? routeNextStop || record.nextStop
+      : record.nextStop || routeNextStop;'''
+          new = '''    const routeNextStop = route.stops.find((stop) => stop.id === route.nextStopId)
+      || route.stops.find((stop) => stop.state === "heading" || stop.state === "upcoming");
+    const preferRouteEvidence = routeEvidenceStrength(route) > progressEvidenceStrength(record);
+    const nextStop = preferRouteEvidence
+      ? routeNextStop || record.nextStop
+      : record.nextStop || routeNextStop;'''
+          assert old in text, 'route next-stop merge block was not found'
+          text = text.replace(old, new)
+          progress_path.write_text(text)
+
+          live_path = Path('src/pages/OperationsWallboardLive.tsx')
+          live = live_path.read_text()
+          live = live.replace(
+              'import { completedJobCount, finalEtaFor, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";',
+              'import { completedJobCount, finalEtaFor, mergeRouteProgress, mergeStopDwellEvidence, progressEvidenceStrength, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";',
+          )
+
+          snapshot_replacement = r'''function mergeProgressSnapshots(previous: RunProgressRecord[], incoming: RunProgressRecord[]) {
+  if (!incoming.length) return previous;
+  const merged = new Map(previous.map(record => [record.loadId, record]));
+  for (const next of incoming) {
+    const current = merged.get(next.loadId);
+    if (!current) { merged.set(next.loadId, next); continue; }
+    const preferNextEvidence = progressEvidenceStrength(next) >= progressEvidenceStrength(current);
+    const completedStops = Math.max(current.completedStops, next.completedStops);
+    merged.set(next.loadId, {
+      ...current,
+      ...next,
+      completedStops,
+      progressPercent: Math.max(current.progressPercent, next.progressPercent),
+      runState: current.runState === "Completed" || next.runState === "Completed" ? "Completed" : (preferNextEvidence ? next.runState : current.runState),
+      currentVisit: preferNextEvidence ? next.currentVisit : current.currentVisit ?? next.currentVisit,
+      lastDeparture: preferNextEvidence ? next.lastDeparture ?? current.lastDeparture : current.lastDeparture ?? next.lastDeparture,
+      stopDwell: mergeStopDwellEvidence(current.stopDwell, next.stopDwell),
+      linkageException: preferNextEvidence ? next.linkageException ?? current.linkageException : current.linkageException ?? next.linkageException,
+      nextStop: preferNextEvidence ? next.nextStop ?? current.nextStop : current.nextStop ?? next.nextStop,
+      phase: preferNextEvidence ? next.phase ?? current.phase : current.phase ?? next.phase,
+      focusStop: preferNextEvidence ? next.focusStop ?? current.focusStop : current.focusStop ?? next.focusStop,
+      geofenceOnSite: preferNextEvidence
+        ? Boolean(next.geofenceOnSite || next.currentVisit)
+        : Boolean(current.geofenceOnSite || current.currentVisit),
+      trackingFresh: next.trackingFresh ?? current.trackingFresh,
+      trackingMoving: next.trackingMoving ?? current.trackingMoving,
+      ignitionOn: next.ignitionOn ?? current.ignitionOn,
+      driverCardPresent: next.driverCardPresent ?? current.driverCardPresent,
+      trackingAgeSeconds: next.trackingAgeSeconds ?? current.trackingAgeSeconds,
+      speedKph: next.speedKph ?? current.speedKph,
+      tacho: next.tacho ?? current.tacho,
+    });
+  }
+  return [...merged.values()];
+}
+
+export function OperationsWallboard'''
+          live, count = re.subn(
+              r'function stopEvidenceScore[\s\S]*?export function OperationsWallboard',
+              snapshot_replacement,
+              live,
+              count=1,
+          )
+          assert count == 1, 'snapshot merge block was not found'
+
+          old_footer = '    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final ETA targets final customer destination · next stop drives risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>'
+          new_footer = '    {!tvMode && <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final customer ETA controls run risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>}'
+          assert old_footer in live, 'wallboard footer was not found'
+          live = live.replace(old_footer, new_footer)
+          live_path.write_text(live)
+
+          css_path = Path('src/operations-wallboard.css')
+          css = css_path.read_text()
+          css = css.replace('  width: 100vw;\n  max-width: 100vw;', '  width: 100%;\n  max-width: 100%;')
+          if '.app-shell.tv-public-mode main.tv-main {' not in css:
+              css += '''\n\n/* Keep the paired TV inside the browser viewport even when a vertical scrollbar appears. */\n.app-shell.tv-public-mode,\n.app-shell.tv-public-mode main.tv-main {\n  width: 100%;\n  max-width: 100%;\n  min-width: 0;\n  overflow-x: hidden;\n}\n'''
+          css_path.write_text(css)
+
+          app_path = Path('src/App.tsx')
+          app = app_path.read_text()
+          app = app.replace(
+              "import { PublicTvBoardStability as PublicTvBoard } from './pages/PublicTvBoardStability';",
+              "import { PublicTvBoard } from './pages/PublicTvBoard';",
+          )
+          app_path.write_text(app)
+
+          test_path = Path('src/pages/operationsWallboardProgress.test.ts')
+          tests = test_path.read_text()
+          tests = tests.replace(
+              'import { finalEtaFor, statusFor, type RunProgressRecord } from "./operationsWallboardProgress";',
+              'import { finalEtaFor, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord } from "./operationsWallboardProgress";',
+          )
+
+          tests, count = re.subn(
+              r'  it\("uses delivery wording when the next milestone is an intermediate delivery", \(\) => \{[\s\S]*?\n  \}\);\n\n  it\("uses the final customer destination',
+              '''  it("does not make an intermediate delivery behind plan a whole-run risk when final ETA is not yet available", () => {
+    const current = progress();
+    current.nextStop = {
+      id: "aldi",
+      sequence: 3,
+      name: "Deliver · Aldi-Darlington",
+      plannedArrivalUtc: "2026-08-28T10:00:00Z",
+    };
+    const nextEta = eta({
+      stopId: "aldi",
+      sequence: 3,
+      stopName: "Deliver · Aldi-Darlington",
+      etaUtc: "2026-08-28T10:56:00Z",
+      deliveryWindowEndUtc: undefined,
+    });
+
+    const result = statusFor(current, nextEta, [], Date.parse("2026-08-28T09:45:00Z"));
+
+    expect(result.status).toBe("route");
+    expect(result.label).toBe("ON ROUTE");
+  });
+
+  it("uses the final customer destination''',
+              tests,
+              count=1,
+          )
+          assert count == 1, 'intermediate delivery test was not found'
+
+          tests += r'''
+
+describe("wallboard durable progress merge", () => {
+  it("preserves stronger departed-stop history when route progress is temporarily behind", () => {
+    const durable: RunProgressRecord = {
+      ...progress(),
+      completedStops: 2,
+      progressPercent: 55,
+      nextStop: { id: "stop-3", sequence: 3, name: "Deliver · Aldi-Bolton" },
+      phase: "Heading to",
+      focusStop: "Deliver · Aldi-Bolton",
+      stopDwell: [
+        { stopId: "stop-1", sequence: 1, stopName: "Collect · NWF-Selsey", state: "Departed", siteArrivalUtc: "2026-08-28T08:00:00Z", siteDepartureUtc: "2026-08-28T08:10:00Z" },
+        { stopId: "stop-2", sequence: 2, stopName: "Collect · NWF-Drayton", state: "Departed", siteArrivalUtc: "2026-08-28T09:00:00Z", siteDepartureUtc: "2026-08-28T09:10:00Z" },
+      ],
+    };
+    const route: RouteProgressRun = {
+      loadId: durable.loadId,
+      reference: durable.loadReference,
+      totalStops: 4,
+      completedStops: 1,
+      phase: "Heading to",
+      truckPositionPercent: 35,
+      focusStop: "Collect · NWF-Drayton",
+      nextStopId: "stop-2",
+      stops: [
+        { id: "stop-1", sequence: 1, name: "Collect · NWF-Selsey", state: "completed" },
+        { id: "stop-2", sequence: 2, name: "Collect · NWF-Drayton", state: "heading" },
+        { id: "stop-3", sequence: 3, name: "Deliver · Aldi-Bolton", state: "upcoming" },
+        { id: "stop-4", sequence: 4, name: "Deliver · Waitrose-Leyland", state: "upcoming" },
+      ],
+      stopDwell: [
+        { stopId: "stop-1", sequence: 1, stopName: "Collect · NWF-Selsey", state: "Departed" },
+        { stopId: "stop-2", sequence: 2, stopName: "Collect · NWF-Drayton", state: "EnRoute" },
+      ],
+    };
+
+    const [merged] = mergeRouteProgress([durable], [route]);
+
+    expect(merged.completedStops).toBe(2);
+    expect(merged.nextStop?.id).toBe("stop-3");
+    expect(merged.focusStop).toBe("Deliver · Aldi-Bolton");
+    expect(merged.stopDwell?.find(stop => stop.stopId === "stop-2")?.state).toBe("Departed");
+  });
+
+  it("adopts route progress when it contains stronger geofence evidence", () => {
+    const durable: RunProgressRecord = {
+      ...progress(),
+      completedStops: 1,
+      nextStop: { id: "stop-2", sequence: 2, name: "Collect · NWF-Drayton" },
+      stopDwell: [{ stopId: "stop-1", sequence: 1, stopName: "Collect · NWF-Selsey", state: "Departed" }],
+    };
+    const route: RouteProgressRun = {
+      loadId: durable.loadId,
+      reference: durable.loadReference,
+      totalStops: 4,
+      completedStops: 2,
+      phase: "Heading to",
+      truckPositionPercent: 60,
+      focusStop: "Deliver · Aldi-Bolton",
+      nextStopId: "stop-3",
+      stops: [
+        { id: "stop-1", sequence: 1, name: "Collect · NWF-Selsey", state: "completed" },
+        { id: "stop-2", sequence: 2, name: "Collect · NWF-Drayton", state: "completed" },
+        { id: "stop-3", sequence: 3, name: "Deliver · Aldi-Bolton", state: "heading" },
+        { id: "stop-4", sequence: 4, name: "Deliver · Waitrose-Leyland", state: "upcoming" },
+      ],
+      stopDwell: [
+        { stopId: "stop-1", sequence: 1, stopName: "Collect · NWF-Selsey", state: "Departed" },
+        { stopId: "stop-2", sequence: 2, stopName: "Collect · NWF-Drayton", state: "Departed" },
+      ],
+    };
+
+    const [merged] = mergeRouteProgress([durable], [route]);
+
+    expect(merged.completedStops).toBe(2);
+    expect(merged.nextStop?.id).toBe("stop-3");
+    expect(merged.focusStop).toBe("Deliver · Aldi-Bolton");
+  });
+});
+'''
+          test_path.write_text(tests)
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Commit repaired wallboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/repair-wallboard-history-sync-once.yml
+          git add src/pages/operationsWallboardProgress.ts src/pages/OperationsWallboardLive.tsx src/pages/operationsWallboardProgress.test.ts src/operations-wallboard.css src/App.tsx
+          git commit -m "Synchronise wallboard history and final ETA status"
+          git push origin HEAD:fix/wallboard-history-sync-20260828
