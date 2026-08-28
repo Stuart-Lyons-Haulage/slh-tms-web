@@ -9,27 +9,15 @@ const STORAGE_KEY = "slh-tv-display-key";
 const timeFormat = new Intl.DateTimeFormat("en-GB", { timeZone: UK_ZONE, hour: "2-digit", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("en-GB", { timeZone: UK_ZONE, weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
-function readStoredDisplayKey() {
-  try { return localStorage.getItem(STORAGE_KEY)?.trim() || ""; } catch { return ""; }
-}
-
-function storeDisplayKey(value: string) {
-  try { localStorage.setItem(STORAGE_KEY, value); } catch { /* TV browser storage can be restricted */ }
-}
-
-function clearDisplayKey() {
-  try { localStorage.removeItem(STORAGE_KEY); } catch { /* keep rendering even if storage is restricted */ }
-}
-
 function initialDisplayKey() {
   const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
   const legacy = new URLSearchParams(hash).get("key")?.trim() || new URLSearchParams(window.location.search).get("key")?.trim();
   if (legacy) {
-    storeDisplayKey(legacy);
-    try { window.history.replaceState(null, "", window.location.pathname); } catch { /* keep key in current URL if history is restricted */ }
+    localStorage.setItem(STORAGE_KEY, legacy);
+    window.history.replaceState(null, "", window.location.pathname);
     return legacy;
   }
-  return readStoredDisplayKey();
+  return localStorage.getItem(STORAGE_KEY)?.trim() || "";
 }
 
 function requestUrl(input: RequestInfo | URL) {
@@ -66,6 +54,9 @@ function TvOperationsBoard({ displayKey, onUnauthorized }: { displayKey: string;
 
   if (!ready) return <div className="tv-display-page"><div className="tv-display-empty">Connecting TV wallboard…</div></div>;
 
+  // The paired TV mounts the exact Operations wallboard used in the signed-in TMS.
+  // The explicit key avoids any Microsoft-token dependency on the public TV, while
+  // tvMode suppresses the TMS-only geofence detail UI.
   return <OperationsWallboard tvMode tvAccessKey={displayKey} />;
 }
 
@@ -104,7 +95,7 @@ export function PublicTvBoard() {
         throw new Error(detail);
       }
       const result = await response.json() as PairResponse;
-      storeDisplayKey(result.key);
+      localStorage.setItem(STORAGE_KEY, result.key);
       setDisplayKey(result.key);
       setPairCode("");
     } catch (exception) {
@@ -115,7 +106,7 @@ export function PublicTvBoard() {
   }
 
   const resetPairing = useCallback(() => {
-    clearDisplayKey();
+    localStorage.removeItem(STORAGE_KEY);
     setDisplayKey("");
     setError("This TV needs pairing again. Enter the current 6-digit code from TV display in the signed-in TMS.");
   }, []);

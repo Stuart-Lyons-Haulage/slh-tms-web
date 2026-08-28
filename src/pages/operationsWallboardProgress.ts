@@ -92,6 +92,8 @@ type FinalDeliveryAssessment = {
   bufferMinutes?: number;
 };
 
+const RISK_BUFFER_MINUTES = 15;
+
 function trackingAgeText(progress?: RunProgressRecord) {
   if (!progress || progress.trackingFresh !== false || progress.trackingAgeSeconds == null) return "";
   return `tracking ${Math.max(1, Math.round(progress.trackingAgeSeconds / 60))}m old`;
@@ -101,6 +103,57 @@ function timeMs(value?: string) {
   if (!value) return Number.NaN;
   const valueMs = Date.parse(value);
   return Number.isFinite(valueMs) ? valueMs : Number.NaN;
+}
+
+function nextStopDeadline(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined) {
+  return progress?.nextStop?.plannedArrivalUtc || eta?.deliveryWindowEndUtc;
+}
+
+function nextStopKind(stopName: string) {
+  if (/^deliver\b/i.test(stopName)) return { label: "DELIVERY", plan: "delivery plan" };
+  if (/^collect\b/i.test(stopName)) return { label: "COLLECTION", plan: "collection plan" };
+  return { label: "NEXT STOP", plan: "planned time" };
+}
+
+function nextStopAdvisory(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined, nowMs: number): WallboardStatusResult | undefined {
+  if (progress?.currentVisit || progress?.geofenceOnSite) return undefined;
+  const deadlineMs = timeMs(nextStopDeadline(progress, eta));
+  if (!Number.isFinite(deadlineMs)) return undefined;
+
+  const etaMs = timeMs(eta?.etaUtc);
+  const stopName = progress?.nextStop?.name || eta?.stopName || "Next stop";
+  const kind = nextStopKind(stopName);
+  if (Number.isFinite(etaMs)) {
+    const bufferMinutes = Math.floor((deadlineMs - etaMs) / 60000);
+    if (bufferMinutes < 0) {
+      return {
+        status: "risk",
+        label: `${kind.label} BEHIND`,
+        detail: `${stopName} is ${Math.abs(bufferMinutes)}m behind ${kind.plan} · final customer delivery ETA assessed separately`,
+        priority: 64,
+      };
+    }
+    if (bufferMinutes <= RISK_BUFFER_MINUTES) {
+      return {
+        status: "risk",
+        label: `${kind.label} TIGHT`,
+        detail: `${stopName} has ${bufferMinutes}m buffer to ${kind.plan}`,
+        priority: 63,
+      };
+    }
+    return undefined;
+  }
+
+  const overdueMinutes = Math.floor((nowMs - deadlineMs) / 60000);
+  if (overdueMinutes >= 0) {
+    return {
+      status: "risk",
+      label: "ETA UNCONFIRMED",
+      detail: `${stopName} planned time passed ${overdueMinutes}m ago · no live arrival/ETA evidence`,
+      priority: 62,
+    };
+  }
+  return undefined;
 }
 
 function isFinalDestinationEta(eta: DeliveryEta) {
@@ -115,20 +168,11 @@ export function finalEtaFor(etas: DeliveryEta[]) {
   return [...sorted].reverse().find(isFinalDestinationEta) || sorted.at(-1);
 }
 
-function finalDeliveryAssessment(etas: DeliveryEta[], finalDeadlineUtc?: string): FinalDeliveryAssessment {
+function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
   const finalEta = finalEtaFor(etas);
   const etaMs = timeMs(finalEta?.etaUtc);
-  if (!Number.isFinite(etaMs)) return { onTime: false };
-
-  // Customer risk is assessed only against the final customer promise. Prefer the
-  // order's latest delivery-window time; when the order has no explicit window,
-  // the final planned customer-stop time is the operational deadline.
-  const deadlineMs = timeMs(finalEta?.deliveryWindowEndUtc || finalDeadlineUtc);
-  if (!Number.isFinite(deadlineMs)) {
-    // A valid cumulative final ETA must not turn the whole run amber merely because
-    // an intermediate collection/delivery milestone is behind its planning time.
-    return { onTime: true };
-  }
+  const deadlineMs = timeMs(finalEta?.deliveryWindowEndUtc);
+  if (!Number.isFinite(etaMs) || !Number.isFinite(deadlineMs)) return { onTime: false };
 
   const bufferMinutes = Math.floor((deadlineMs - etaMs) / 60000);
   const stopName = finalEta?.stopName || "Final delivery";
@@ -145,13 +189,22 @@ function finalDeliveryAssessment(etas: DeliveryEta[], finalDeadlineUtc?: string)
       },
     };
   }
-
-  // The requested operating rule is binary at the final customer deadline: an ETA
-  // before/on the last accepted time remains on route; an ETA beyond it is risk/late.
+  if (bufferMinutes <= RISK_BUFFER_MINUTES) {
+    return {
+      onTime: false,
+      bufferMinutes,
+      result: {
+        status: "risk",
+        label: "FINAL ETA AT RISK",
+        detail: `${stopName} has ${bufferMinutes}m buffer to delivery latest time`,
+        priority: 88,
+      },
+    };
+  }
   return { onTime: true, bufferMinutes };
 }
 
-export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], _nowMs?: number, finalDeadlineUtc?: string): WallboardStatusResult {
+export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
   const complete = progress?.runState === "Completed" || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops;
   if (complete) {
     return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
@@ -203,11 +256,30 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
     };
   }
 
-  const finalAssessment = finalDeliveryAssessment(etas, finalDeadlineUtc);
+  const finalAssessment = finalDeliveryAssessment(etas);
   if (finalAssessment.result) return finalAssessment.result;
 
-  // Intermediate collection/delivery timing variance is informational only.
-  // Whole-run ETA risk is governed exclusively by the cumulative final-customer ETA above.
+  // The next stop is an execution milestone, not necessarily the final customer promise.
+  // Once a cumulative final ETA and final delivery latest time are both known and healthy,
+  // do not colour the whole run merely because an intermediate milestone is behind plan.
+  if (!finalAssessment.onTime) {
+    const nextTiming = nextStopAdvisory(progress, nextEta, nowMs);
+    if (nextTiming) return nextTiming;
+  }
+
+  const hardCustomerRisk = etas.find((eta) => eta.source === "Live" && eta.risk === "Late" && eta.deliveryWindowEndUtc);
+  if (hardCustomerRisk) {
+    return {
+      status: "late",
+      label: "LATE DELIVERY ETA",
+      detail: `${hardCustomerRisk.stopName} will miss its customer window`,
+      priority: 94,
+    };
+  }
+
+  if (!finalAssessment.onTime && nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
+    return { status: "risk", label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
+  }
   const staleTracking = trackingAgeText(progress);
   if (staleTracking) {
     return {
@@ -248,67 +320,24 @@ function routeRunState(route: RouteProgressRun, fallback?: string) {
   return fallback || route.phase;
 }
 
-type StopDwellEvidence = NonNullable<RunProgressRecord["stopDwell"]>[number];
-
-function stopStateWeight(state: StopDwellEvidence["state"]) {
-  return state === "Departed" ? 3 : state === "OnSite" ? 2 : 1;
-}
-
-export function stopEvidenceScore(stops?: RunProgressRecord["stopDwell"]) {
-  return (stops || []).reduce((score, stop) => score + stopStateWeight(stop.state), 0);
-}
-
-export function mergeStopDwellEvidence(
-  left?: RunProgressRecord["stopDwell"],
-  right?: RunProgressRecord["stopDwell"],
-) {
-  const merged = new Map<string, StopDwellEvidence>();
-  for (const stop of [...(left || []), ...(right || [])]) {
-    const existing = merged.get(stop.stopId);
-    if (!existing) {
-      merged.set(stop.stopId, stop);
-      continue;
-    }
-    const preferred = stopStateWeight(stop.state) >= stopStateWeight(existing.state) ? stop : existing;
-    const other = preferred === stop ? existing : stop;
-    merged.set(stop.stopId, {
-      ...other,
-      ...preferred,
-      siteArrivalUtc: preferred.siteArrivalUtc ?? other.siteArrivalUtc,
-      siteDepartureUtc: preferred.siteDepartureUtc ?? other.siteDepartureUtc,
-      liveDwellMinutes: preferred.liveDwellMinutes ?? other.liveDwellMinutes,
-      liveDwellSeconds: preferred.liveDwellSeconds ?? other.liveDwellSeconds,
-      finalDwellMinutes: preferred.finalDwellMinutes ?? other.finalDwellMinutes,
-      finalDwellSeconds: preferred.finalDwellSeconds ?? other.finalDwellSeconds,
-    });
-  }
-  return [...merged.values()].sort((a, b) => a.sequence - b.sequence);
-}
-
-export function progressEvidenceStrength(record?: Pick<RunProgressRecord, "completedStops" | "stopDwell" | "currentVisit" | "geofenceOnSite">) {
-  if (!record) return 0;
-  return Math.max(0, record.completedStops || 0) * 1000
-    + stopEvidenceScore(record.stopDwell) * 10
-    + (record.currentVisit ? 5 : 0)
-    + (record.geofenceOnSite ? 2 : 0);
-}
-
-function routeEvidenceStrength(route: RouteProgressRun) {
-  return Math.max(0, route.completedStops || 0) * 1000
-    + stopEvidenceScore(route.stopDwell) * 10
-    + (route.currentVisit ? 5 : 0)
-    + (route.geofenceOnSite ? 2 : 0);
+function stopEvidenceScore(stops?: RunProgressRecord["stopDwell"]) {
+  return (stops || []).reduce((score, stop) => score + (stop.state === "Departed" ? 3 : stop.state === "OnSite" ? 2 : 1), 0);
 }
 
 function routeFields(route: RouteProgressRun, record?: RunProgressRecord) {
-  const preferRecordGeofence = progressEvidenceStrength(record) >= routeEvidenceStrength(route);
+  const recordGeofenceAhead = Boolean(record?.currentVisit || record?.geofenceOnSite)
+    || (record?.completedStops || 0) > (route.completedStops || 0);
+  const routeGeofenceAhead = Boolean(route.currentVisit || route.geofenceOnSite)
+    || (route.completedStops || 0) > (record?.completedStops || 0);
+  const preferRecordGeofence = recordGeofenceAhead && !routeGeofenceAhead;
   const preferRouteTracking = route.trackingFresh === true || record?.trackingFresh !== true;
-  const evidenceCurrentVisit = preferRecordGeofence ? record?.currentVisit : route.currentVisit;
+  const routeStopScore = stopEvidenceScore(route.stopDwell);
+  const recordStopScore = stopEvidenceScore(record?.stopDwell);
 
   return {
-    phase: preferRecordGeofence ? record?.phase ?? route.phase : route.phase || record?.phase,
-    focusStop: preferRecordGeofence ? record?.focusStop ?? route.focusStop : route.focusStop || record?.focusStop,
-    geofenceOnSite: Boolean(evidenceCurrentVisit || (preferRecordGeofence ? record?.geofenceOnSite : route.geofenceOnSite)),
+    phase: preferRecordGeofence ? record?.phase : route.phase || record?.phase,
+    focusStop: preferRecordGeofence ? record?.focusStop : route.focusStop || record?.focusStop,
+    geofenceOnSite: Boolean(record?.geofenceOnSite || record?.currentVisit || route.geofenceOnSite || route.currentVisit),
     trackingFresh: route.trackingFresh ?? record?.trackingFresh,
     trackingMoving: Boolean(record?.trackingMoving || route.trackingMoving),
     ignitionOn: preferRouteTracking ? route.ignitionOn ?? record?.ignitionOn : record?.ignitionOn ?? route.ignitionOn,
@@ -316,9 +345,9 @@ function routeFields(route: RouteProgressRun, record?: RunProgressRecord) {
     trackingAgeSeconds: preferRouteTracking ? route.trackingAgeSeconds ?? record?.trackingAgeSeconds : record?.trackingAgeSeconds ?? route.trackingAgeSeconds,
     speedKph: preferRouteTracking ? route.speedKph ?? record?.speedKph : record?.speedKph ?? route.speedKph,
     tacho: route.tacho ?? record?.tacho,
-    currentVisit: evidenceCurrentVisit,
-    stopDwell: mergeStopDwellEvidence(record?.stopDwell, route.stopDwell),
-    linkageException: preferRecordGeofence ? record?.linkageException ?? route.linkageException : route.linkageException ?? record?.linkageException,
+    currentVisit: route.currentVisit ?? record?.currentVisit,
+    stopDwell: routeStopScore > recordStopScore ? route.stopDwell : record?.stopDwell ?? route.stopDwell,
+    linkageException: preferRecordGeofence ? record?.linkageException : route.linkageException ?? record?.linkageException,
   };
 }
 
@@ -330,8 +359,7 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
     routeByLoad.delete(record.loadId);
     const routeNextStop = route.stops.find((stop) => stop.id === route.nextStopId)
       || route.stops.find((stop) => stop.state === "heading" || stop.state === "upcoming");
-    const preferRouteEvidence = routeEvidenceStrength(route) > progressEvidenceStrength(record);
-    const nextStop = preferRouteEvidence
+    const nextStop = (route.completedStops || 0) > (record.completedStops || 0)
       ? routeNextStop || record.nextStop
       : record.nextStop || routeNextStop;
     const totalStops = Math.max(record.totalStops || 0, route.totalStops || 0);
