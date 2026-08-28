@@ -28,6 +28,9 @@ type TimingRecord = {
   finalDestinationName?: string;
 };
 type TimingResponse = { geofenceAvailable?: boolean; records?: TimingRecord[] };
+type RouteStop = { id?: string; sequence?: number; name?: string; state?: string };
+type RouteRecord = { loadId?: string; focusStop?: string; stops?: RouteStop[]; [key: string]: unknown };
+type RouteResponse = { runs?: RouteRecord[]; [key: string]: unknown };
 
 function requestUrl(input: RequestInfo | URL) {
   return typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -55,11 +58,28 @@ function isDeliveryDestination(eta: EtaRecord) {
   return /^deliver\b/i.test(String(eta.stopName || ""))
     || Boolean(eta.orderReference || eta.customerCode || eta.deliveryWindowEndUtc);
 }
+function cleanStopName(value?: string) {
+  return String(value || "").replace(/^Collect\s*[·:-]?\s*|^Deliver\s*[·:-]?\s*/i, "").trim();
+}
+function routeWithFinalDestination(response: Response, payload: RouteResponse) {
+  if (!Array.isArray(payload.runs)) return response;
+  const runs = payload.runs.map(run => {
+    const orderedStops = [...(run.stops || [])].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+    const finalDelivery = [...orderedStops].reverse().find(stop => /^Deliver\b/i.test(String(stop.name || "")));
+    const finalName = cleanStopName(finalDelivery?.name);
+    const currentName = cleanStopName(run.focusStop);
+    if (!finalName || !run.focusStop || currentName.toLowerCase() === finalName.toLowerCase()) return run;
+    return { ...run, focusStop: `${run.focusStop} · Final: ${finalName}` };
+  });
+  return jsonResponse(response, { ...payload, runs });
+}
 
 /**
  * Run Progress wrapper. A run-timing final ETA exists only after authoritative execution
  * evidence (geofence departure/current visit or a valid live-route anchor), so it is safe
- * to override the CSV Deliver By time only when this feed provides one.
+ * to override the CSV Deliver By time only when this feed provides one. Route progression
+ * also keeps the current stop distinct from the final customer delivery, which is critical
+ * for multi-drop and overnight continuation work.
  */
 export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: boolean; tvAccessKey?: string }) {
   useEffect(() => {
@@ -69,7 +89,18 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
     const patchedFetch: typeof window.fetch = async (input, init) => {
       const response = await originalFetch(input, init);
       const url = requestUrl(input);
-      if (!response.ok || !url.includes("/api/v1/operations/delivery-etas")) return response;
+      if (!response.ok) return response;
+
+      if (url.includes("/api/v1/tv-display/route-progress")) {
+        try {
+          const payload = await response.clone().json() as RouteResponse;
+          return routeWithFinalDestination(response, payload);
+        } catch {
+          return response;
+        }
+      }
+
+      if (!url.includes("/api/v1/operations/delivery-etas")) return response;
 
       try {
         const payload = await response.clone().json() as { records?: EtaRecord[]; [key: string]: unknown };

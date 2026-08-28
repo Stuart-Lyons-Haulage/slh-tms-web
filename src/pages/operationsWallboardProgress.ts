@@ -105,32 +105,39 @@ function timeMs(value?: string) {
   return Number.isFinite(valueMs) ? valueMs : Number.NaN;
 }
 
-function collectionDeadline(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined) {
+function nextStopDeadline(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined) {
   return progress?.nextStop?.plannedArrivalUtc || eta?.deliveryWindowEndUtc;
 }
 
-function collectionAdvisory(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined, nowMs: number): WallboardStatusResult | undefined {
+function nextStopKind(stopName: string) {
+  if (/^deliver\b/i.test(stopName)) return { label: "DELIVERY", plan: "delivery plan" };
+  if (/^collect\b/i.test(stopName)) return { label: "COLLECTION", plan: "collection plan" };
+  return { label: "NEXT STOP", plan: "planned time" };
+}
+
+function nextStopAdvisory(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined, nowMs: number): WallboardStatusResult | undefined {
   if (progress?.currentVisit || progress?.geofenceOnSite) return undefined;
-  const deadlineMs = timeMs(collectionDeadline(progress, eta));
+  const deadlineMs = timeMs(nextStopDeadline(progress, eta));
   if (!Number.isFinite(deadlineMs)) return undefined;
 
   const etaMs = timeMs(eta?.etaUtc);
-  const stopName = progress?.nextStop?.name || eta?.stopName || "Next collection";
+  const stopName = progress?.nextStop?.name || eta?.stopName || "Next stop";
+  const kind = nextStopKind(stopName);
   if (Number.isFinite(etaMs)) {
     const bufferMinutes = Math.floor((deadlineMs - etaMs) / 60000);
     if (bufferMinutes < 0) {
       return {
         status: "risk",
-        label: "COLLECTION BEHIND",
-        detail: `${stopName} is ${Math.abs(bufferMinutes)}m behind collection plan · final delivery ETA assessed separately`,
+        label: `${kind.label} BEHIND`,
+        detail: `${stopName} is ${Math.abs(bufferMinutes)}m behind ${kind.plan} · final customer delivery ETA assessed separately`,
         priority: 64,
       };
     }
     if (bufferMinutes <= RISK_BUFFER_MINUTES) {
       return {
         status: "risk",
-        label: "COLLECTION TIGHT",
-        detail: `${stopName} has ${bufferMinutes}m buffer to collection plan`,
+        label: `${kind.label} TIGHT`,
+        detail: `${stopName} has ${bufferMinutes}m buffer to ${kind.plan}`,
         priority: 63,
       };
     }
@@ -252,12 +259,12 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   const finalAssessment = finalDeliveryAssessment(etas);
   if (finalAssessment.result) return finalAssessment.result;
 
-  // A collection slot is an execution milestone, not the customer promise. Once a
-  // cumulative final ETA and final delivery latest time are both known and healthy,
-  // do not colour the whole run red/amber merely because a collection is behind plan.
+  // The next stop is an execution milestone, not necessarily the final customer promise.
+  // Once a cumulative final ETA and final delivery latest time are both known and healthy,
+  // do not colour the whole run merely because an intermediate milestone is behind plan.
   if (!finalAssessment.onTime) {
-    const collectionTiming = collectionAdvisory(progress, nextEta, nowMs);
-    if (collectionTiming) return collectionTiming;
+    const nextTiming = nextStopAdvisory(progress, nextEta, nowMs);
+    if (nextTiming) return nextTiming;
   }
 
   const hardCustomerRisk = etas.find((eta) => eta.source === "Live" && eta.risk === "Late" && eta.deliveryWindowEndUtc);

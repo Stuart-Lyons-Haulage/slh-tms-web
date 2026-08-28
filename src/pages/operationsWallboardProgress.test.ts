@@ -99,6 +99,29 @@ describe("wallboard final delivery risk", () => {
     expect(result.label).toBe("FINAL ETA AT RISK");
   });
 
+  it("uses delivery wording when the next milestone is an intermediate delivery", () => {
+    const current = progress();
+    current.nextStop = {
+      id: "aldi",
+      sequence: 3,
+      name: "Deliver · Aldi-Darlington",
+      plannedArrivalUtc: "2026-08-28T10:00:00Z",
+    };
+    const nextEta = eta({
+      stopId: "aldi",
+      sequence: 3,
+      stopName: "Deliver · Aldi-Darlington",
+      etaUtc: "2026-08-28T10:56:00Z",
+      deliveryWindowEndUtc: undefined,
+    });
+
+    const result = statusFor(current, nextEta, [], Date.parse("2026-08-28T09:45:00Z"));
+
+    expect(result.label).toBe("DELIVERY BEHIND");
+    expect(result.detail).toContain("final customer delivery ETA assessed separately");
+    expect(result.detail).not.toContain("collection plan");
+  });
+
   it("uses the final customer destination instead of a later depot/return stop", () => {
     const destination = eta({
       stopId: "delivery",
