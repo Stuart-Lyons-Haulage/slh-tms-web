@@ -64,7 +64,7 @@ function legacyOperationalRunNumber(source: string) {
 
 function formatChoice(source: string, period?: string) {
   const clean = source.trim();
-  const resolvedPeriod = explicitPeriod(clean) || period;
+  const resolvedPeriod = period || explicitPeriod(clean);
   const legacyNumber = legacyOperationalRunNumber(clean);
   if (legacyNumber != null) {
     return `Run ${legacyNumber}${resolvedPeriod ? ` ${resolvedPeriod}` : ""}`;
@@ -73,7 +73,7 @@ function formatChoice(source: string, period?: string) {
   const numeric = clean.match(NUMERIC_RUN);
   if (numeric) {
     const number = String(Number(numeric[1]));
-    const numericPeriod = explicitPeriod(numeric[2]) || resolvedPeriod;
+    const numericPeriod = period || explicitPeriod(numeric[2]) || resolvedPeriod;
     return `Run ${number}${numericPeriod ? ` ${numericPeriod}` : ""}`;
   }
 
@@ -83,16 +83,23 @@ function formatChoice(source: string, period?: string) {
   return `Run ${withoutPeriod}${resolvedPeriod ? ` ${resolvedPeriod}` : ""}`;
 }
 
+function operationalSource(source: string, plannedPeriod?: string) {
+  if (!plannedPeriod || !NUMERIC_RUN.test(source.trim())) return source;
+  return source.replace(PERIOD, "").trim();
+}
+
 export function displayRunReference(reference: string, plannerNotes?: string, firstPlannedUtc?: string) {
   const plannerRun = noteValue(plannerNotes, "Planner run");
   const runType = noteValue(plannerNotes, "Run type");
-  const source = plannerRun || stripInternalReference(reference);
-  const period = explicitPeriod(source) || explicitPeriod(runType) || periodFromPlannedUtc(firstPlannedUtc);
+  const plannedPeriod = periodFromPlannedUtc(firstPlannedUtc);
+  const source = operationalSource(plannerRun || stripInternalReference(reference), plannedPeriod);
+  const period = plannedPeriod || explicitPeriod(source) || explicitPeriod(runType);
   return formatChoice(source, period);
 }
 
 export function displayPlannerRunChoice(plannerRun?: string, runType?: string, fallbackReference?: string, firstPlannedUtc?: string) {
-  const source = plannerRun?.trim() || (fallbackReference ? stripInternalReference(fallbackReference) : "TBC");
-  const period = explicitPeriod(source) || explicitPeriod(runType) || periodFromPlannedUtc(firstPlannedUtc);
+  const plannedPeriod = periodFromPlannedUtc(firstPlannedUtc);
+  const source = operationalSource(plannerRun?.trim() || (fallbackReference ? stripInternalReference(fallbackReference) : "TBC"), plannedPeriod);
+  const period = plannedPeriod || explicitPeriod(source) || explicitPeriod(runType);
   return formatChoice(source, period);
 }
