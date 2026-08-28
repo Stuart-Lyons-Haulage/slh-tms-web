@@ -1,6 +1,7 @@
 name: Patch canonical wallboard run source
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - fix/canonical-wallboard-run-source
