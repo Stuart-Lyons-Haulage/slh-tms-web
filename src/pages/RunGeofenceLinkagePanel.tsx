@@ -68,11 +68,11 @@ function InlineRunLinkage({ run }: { run: RunLinkage }) {
 }
 
 /**
- * Signed-in TMS-only geofence detail. OperationsWallboard renders this component only
- * outside tvMode. The details are portalled into the matching wallboard run row so the
- * TV/Public wallboards continue to consume progression without exposing linkage detail.
+ * Per-run geofence linkage and hit evidence shared by the signed-in wallboard and a
+ * paired read-only TV. Both modes call the same API projection and portal the same strip
+ * into the matching run row, so progress cannot diverge just because the display is public.
  */
-export function RunGeofenceLinkagePanel() {
+export function RunGeofenceLinkagePanel({ tvAccessKey }: { tvAccessKey?: string } = {}) {
   const token = useAccessToken();
   const date = todayIsoDate();
   const [data, setData] = useState<LinkageResponse>();
@@ -81,14 +81,17 @@ export function RunGeofenceLinkagePanel() {
 
   const refresh = useCallback(async () => {
     try {
-      const access = await token();
-      const response = await request<LinkageResponse>(`/api/v1/planning/geofence-linkage?date=${encodeURIComponent(date)}`, access, { cache: "no-store" }, 90000);
+      const access = tvAccessKey ? undefined : await token();
+      const init = tvAccessKey
+        ? { cache: "no-store" as const, headers: { "X-TV-Display-Key": tvAccessKey, "X-TMS-TV-Key": tvAccessKey } }
+        : { cache: "no-store" as const };
+      const response = await request<LinkageResponse>(`/api/v1/planning/geofence-linkage?date=${encodeURIComponent(date)}`, access, init, 90000);
       setData(response);
       setError(undefined);
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : "Geofence linkage diagnostics unavailable.");
     }
-  }, [date, token]);
+  }, [date, token, tvAccessKey]);
 
   useEffect(() => {
     void refresh();

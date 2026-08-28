@@ -7,10 +7,14 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  box-sizing: border-box;
 }
 
 .ops-wallboard.tv {
-  min-height: 100vh;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
   margin: 0;
   padding: 14px;
   overflow: hidden;
@@ -70,7 +74,7 @@
 
 .ops-wallboard-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -316,7 +320,7 @@
 }
 
 @media (max-width: 1250px) {
-  .ops-wallboard-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ops-wallboard:not(.tv) .ops-wallboard-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ops-board-head,
   .ops-board-row {
     grid-template-columns: 92px minmax(140px, .9fr) minmax(90px, .55fr) minmax(130px, .75fr) minmax(190px, 1fr) 96px minmax(140px, .8fr);
@@ -324,7 +328,7 @@
 }
 
 @media (max-width: 760px) {
-  .ops-wallboard {
+  .ops-wallboard:not(.tv) {
     margin: -16px;
     padding: 12px;
   }
@@ -335,7 +339,7 @@
   .ops-wallboard-clock {
     align-items: flex-start;
   }
-  .ops-wallboard-summary {
+  .ops-wallboard:not(.tv) .ops-wallboard-summary {
     grid-template-columns: 1fr 1fr;
   }
   .ops-board-table {
@@ -348,4 +352,32 @@
   .ops-wallboard-footer {
     flex-wrap: wrap;
   }
+}
+
+/* A paired TV is a fixed viewport, not a responsive mobile page. These rules live
+   after the media queries so TV browser scaling cannot trigger the narrow-screen
+   min-width/margin rules and make the board jump or crop horizontally. */
+.ops-wallboard.tv .ops-wallboard-summary {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.ops-wallboard.tv .ops-board-table {
+  width: 100%;
+  overflow-x: hidden;
+  scroll-behavior: auto;
+}
+
+.ops-wallboard.tv .ops-board-head,
+.ops-wallboard.tv .ops-board-row {
+  width: 100%;
+  min-width: 0;
+}
+
+.ops-wallboard.tv .ops-wallboard-header {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+}
+
+.ops-wallboard.tv .ops-wallboard-clock {
+  align-items: flex-end;
 }

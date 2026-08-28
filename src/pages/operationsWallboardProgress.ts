@@ -92,7 +92,9 @@ type FinalDeliveryAssessment = {
   bufferMinutes?: number;
 };
 
-const RISK_BUFFER_MINUTES = 15;
+const NEXT_STOP_TIGHT_BUFFER_MINUTES = 15;
+const FINAL_DELIVERY_TIGHT_BUFFER_MINUTES = 60;
+const FINAL_DELIVERY_LATE_RISK_BUFFER_MINUTES = 30;
 
 function trackingAgeText(progress?: RunProgressRecord) {
   if (!progress || progress.trackingFresh !== false || progress.trackingAgeSeconds == null) return "";
@@ -133,7 +135,7 @@ function nextStopAdvisory(progress: RunProgressRecord | undefined, eta: Delivery
         priority: 64,
       };
     }
-    if (bufferMinutes <= RISK_BUFFER_MINUTES) {
+    if (bufferMinutes <= NEXT_STOP_TIGHT_BUFFER_MINUTES) {
       return {
         status: "risk",
         label: `${kind.label} TIGHT`,
@@ -182,20 +184,32 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
       onTime: false,
       bufferMinutes,
       result: {
-        status: estimated ? "risk" : "late",
-        label: estimated ? "FINAL ETA AT RISK" : "LATE FINAL ETA",
-        detail: `${stopName} final ETA is ${Math.abs(bufferMinutes)}m after delivery latest time`,
-        priority: estimated ? 89 : 96,
+        status: "late",
+        label: estimated ? "LATE RISK" : "LATE FINAL ETA",
+        detail: `${stopName} final ETA is ${Math.abs(bufferMinutes)}m after delivery latest time${estimated ? " · estimated ETA" : ""}`,
+        priority: estimated ? 95 : 96,
       },
     };
   }
-  if (bufferMinutes <= RISK_BUFFER_MINUTES) {
+  if (bufferMinutes <= FINAL_DELIVERY_LATE_RISK_BUFFER_MINUTES) {
+    return {
+      onTime: false,
+      bufferMinutes,
+      result: {
+        status: "late",
+        label: "LATE RISK",
+        detail: `${stopName} has ${bufferMinutes}m buffer to delivery latest time`,
+        priority: 92,
+      },
+    };
+  }
+  if (bufferMinutes <= FINAL_DELIVERY_TIGHT_BUFFER_MINUTES) {
     return {
       onTime: false,
       bufferMinutes,
       result: {
         status: "risk",
-        label: "FINAL ETA AT RISK",
+        label: "DELIVERY TIGHT",
         detail: `${stopName} has ${bufferMinutes}m buffer to delivery latest time`,
         priority: 88,
       },
@@ -259,27 +273,27 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   const finalAssessment = finalDeliveryAssessment(etas);
   if (finalAssessment.result) return finalAssessment.result;
 
-  // The next stop is an execution milestone, not necessarily the final customer promise.
-  // Once a cumulative final ETA and final delivery latest time are both known and healthy,
-  // do not colour the whole run merely because an intermediate milestone is behind plan.
+  // Intermediate milestones remain operational information. Once a healthy cumulative
+  // final-customer ETA and deadline are known they must not recolour the whole run.
   if (!finalAssessment.onTime) {
     const nextTiming = nextStopAdvisory(progress, nextEta, nowMs);
     if (nextTiming) return nextTiming;
+
+    const hardCustomerRisk = etas.find((eta) => eta.source === "Live" && eta.risk === "Late" && eta.deliveryWindowEndUtc);
+    if (hardCustomerRisk) {
+      return {
+        status: "late",
+        label: "LATE DELIVERY ETA",
+        detail: `${hardCustomerRisk.stopName} will miss its customer window`,
+        priority: 94,
+      };
+    }
+
+    if (nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
+      return { status: "risk", label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
+    }
   }
 
-  const hardCustomerRisk = etas.find((eta) => eta.source === "Live" && eta.risk === "Late" && eta.deliveryWindowEndUtc);
-  if (hardCustomerRisk) {
-    return {
-      status: "late",
-      label: "LATE DELIVERY ETA",
-      detail: `${hardCustomerRisk.stopName} will miss its customer window`,
-      priority: 94,
-    };
-  }
-
-  if (!finalAssessment.onTime && nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
-    return { status: "risk", label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
-  }
   const staleTracking = trackingAgeText(progress);
   if (staleTracking) {
     return {
