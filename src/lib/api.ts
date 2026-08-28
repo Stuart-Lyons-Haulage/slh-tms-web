@@ -258,6 +258,20 @@ export type MailboxEmailIntakeRequest = {
   webLink?: string;
   attachments?: MailboxAttachment[];
 };
+export type CustomerCommunication = {
+  id: string;
+  status: string;
+  idempotencyKey: string;
+  source?: string;
+  receivedAtUtc: string;
+  reviewedAtUtc?: string;
+  reviewedBy?: string;
+  reviewNote?: string;
+  payload: {
+    source: { messageId: string; senderAddress?: string; senderName?: string; subject?: string; bodyText?: string; mailbox?: string; attachments?: Array<{ name?: string; contentType?: string; size?: number }> };
+    extraction: { purpose: string; planVersion: string; customerHints: string[]; claims: Array<{ loadReference?: string; vehicleNumber?: string; pallets?: number; etaFromLocal: string; etaToLocal?: string; evidence: string }>; exceptionSignals: string[]; nextUpdateLocal?: string; acceptanceUntilLocal?: string; trackingLinks: string[]; attachments: Array<{ name?: string; contentType?: string; size?: number }>; warnings: string[] };
+  };
+};
 export type MailboxEmailPreviewResponse = {
   ignored: boolean;
   ignoredReason?: string;
@@ -920,6 +934,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  customerCommunications: (token?: string, status = "PendingReview", purpose?: string, take = 100) =>
+    request<CustomerCommunication[]>(`/api/v1/customer-communications?${new URLSearchParams({ ...(status ? { status } : {}), ...(purpose ? { purpose } : {}), take: String(take) })}`, token),
+  ingestCustomerCommunication: (payload: MailboxEmailIntakeRequest, token?: string) =>
+    request<{ id: string; status: string; purpose: string }>("/api/v1/customer-communications/ingest", token, { method: "POST", body: JSON.stringify(payload) }),
+  approveCustomerCommunication: (id: string, note: string, token?: string) =>
+    request(`/api/v1/customer-communications/${id}/approve`, token, { method: "POST", body: JSON.stringify({ note }) }),
+  rejectCustomerCommunication: (id: string, note: string, token?: string) =>
+    request(`/api/v1/customer-communications/${id}/reject`, token, { method: "POST", body: JSON.stringify({ note }) }),
   approveStaging: (id: string, note: string, token?: string) =>
     request<StagedImport>(`/api/v1/staging/${id}/approve`, token, {
       method: "POST",
