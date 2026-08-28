@@ -199,9 +199,8 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
   const { data, error, loading, refresh } = useApi(useCallback(async () => {
     const access = tvAccessKey ? undefined : await token();
     const tvInit = tvAccessKey ? { headers: { "X-TMS-TV-Key": tvAccessKey, "X-TV-Display-Key": tvAccessKey } } : undefined;
-    const getLoads = (date: string) => tvAccessKey
-      ? request<Load[]>(`/api/v1/loads?date=${encodeURIComponent(date)}`, undefined, tvInit)
-      : api.loads(date, access);
+    const getLoads = (date: string) =>
+      request<Load[]>(`/api/v1/tv-display/planned-runs?date=${encodeURIComponent(date)}`, access, tvInit);
     const getAssignments = (from: string, to: string) => tvAccessKey
       ? request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, undefined, tvInit)
       : api.driverAssignments(from, to, access);

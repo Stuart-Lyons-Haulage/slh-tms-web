@@ -488,7 +488,7 @@
         render();
       }
     }
-    request('/api/v1/loads?date=' + encodeURIComponent(date), function (e, d) { done('loads', e, d); });
+    request('/api/v1/tv-display/planned-runs?date=' + encodeURIComponent(date), function (e, d) { done('loads', e, d); });
     request('/api/v1/driver-assignments?from=' + encodeURIComponent(date) + '&to=' + encodeURIComponent(date), function (e, d) { done('assignments', e, d); });
     request('/api/v1/tv-display/route-progress?date=' + encodeURIComponent(date), function (e, d) { done('progress', e, d); });
     request('/api/v1/operations/delivery-etas?date=' + encodeURIComponent(date), function (e, d) { done('etas', e, d); });
