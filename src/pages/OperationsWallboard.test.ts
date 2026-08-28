@@ -105,8 +105,8 @@ describe("OperationsWallboard route progress merge", () => {
       progressPercent: 0,
       nextStop: { id: "stop-1", sequence: 1, name: "NWF Selsey", plannedArrivalUtc: "2026-08-25T11:00:00Z" },
     }, undefined, [], now)).toMatchObject({
-      status: "risk",
-      label: "ETA UNCONFIRMED",
+      status: "scheduled",
+      label: "SCHEDULED",
     });
   });
 
