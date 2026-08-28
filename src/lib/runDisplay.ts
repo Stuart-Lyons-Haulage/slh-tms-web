@@ -29,7 +29,9 @@ function periodFromLocalHour(hour: number) {
 
 function periodFromLocalTime(value?: string) {
   if (!value) return undefined;
-  const match = value.trim().match(/^(\d{1,2})(?::\d{2})?/);
+  // Only treat a value as a local clock when the whole value is a clock. Previously
+  // an ISO timestamp beginning "2026-..." was read as hour 20 and therefore PM.
+  const match = value.trim().match(/^(\d{1,2}):\d{2}(?::\d{2})?$/);
   if (!match) return undefined;
   const hour = Number(match[1]);
   return Number.isInteger(hour) && hour >= 0 && hour <= 23 ? periodFromLocalHour(hour) : undefined;
