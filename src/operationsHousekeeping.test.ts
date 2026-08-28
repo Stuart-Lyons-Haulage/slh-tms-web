@@ -29,10 +29,12 @@ describe("operations housekeeping contract", () => {
     expect(review).toContain("pendingOrderDates");
   });
 
-  it("keeps Pallet Control as stacked live To plan and Planned boards", () => {
+  it("keeps Pallet Control as three stacked live boards", () => {
     expect(app).toContain("['/pallet-control', 'Pallet Control']");
-    expect(palletControl).toContain('matrix("toPlan", "To plan"');
+    expect(palletControl).toContain('matrix("toPlan", "To Plan"');
     expect(palletControl).toContain('matrix("planned", "Planned"');
+    expect(palletControl).toContain('matrix("summary", "Pallet Summary"');
+    expect(palletControl).toContain("data.summary.ordered");
     expect(palletControl).toContain("pallet-control-stack");
     expect(palletControl).toContain("2000");
     expect(palletControl).toContain("Trays / Crates");
