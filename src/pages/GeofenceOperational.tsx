@@ -79,6 +79,49 @@ export function GeofenceOperational() {
     return (data?.records || []).filter(row => (includeArchived || row.active) && (!q || [row.name, row.siteNumber, row.siteCode, row.siteName, row.category, row.validationStatus].some(value => String(value || '').toLowerCase().includes(q))));
   }, [data, includeArchived, query]);
 
+  async function changeLinkedSite(siteCode: string) {
+    if (!selected) return;
+    const option = sites.find(site => site.siteCode === siteCode);
+    setDraft(current => ({
+      ...current,
+      siteNumber: siteCode,
+      siteCode,
+      siteId: option?.siteId,
+      siteName: option?.siteName,
+      locationOnly: false,
+    }));
+    if (!siteCode) return;
+
+    setSaving(true); setError(undefined); setNotice(undefined);
+    try {
+      const result = await request<SiteOption>(`/api/v1/site-geofence-sync/geofences/${selected.id}/link`, await token(), {
+        method: 'POST',
+        body: JSON.stringify({ siteCode }),
+      });
+      setSelected(current => current ? {
+        ...current,
+        siteNumber: result.siteCode,
+        siteCode: result.siteCode,
+        siteId: result.siteId,
+        siteName: result.siteName,
+        siteLinked: true,
+        manualOverride: true,
+        locationOnly: false,
+      } : current);
+      setDraft(current => ({
+        ...current,
+        siteNumber: result.siteCode,
+        siteCode: result.siteCode,
+        siteId: result.siteId,
+        siteName: result.siteName,
+        locationOnly: false,
+      }));
+      setNotice(`Geofence Site link saved: ${result.siteCode} · ${result.siteName}.`);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Site link could not be saved.'); }
+    finally { setSaving(false); }
+  }
+
   async function save() {
     if (!selected) return;
     setSaving(true); setError(undefined); setNotice(undefined);
@@ -92,13 +135,13 @@ export function GeofenceOperational() {
           maxWaitMinutes: draft.maxWaitMinutes ?? null,
           pendingEntryMinutes: Number(draft.pendingEntryMinutes || 0),
           pendingExitMinutes: Number(draft.pendingExitMinutes || 0),
-          siteNumber: selected.locationOnly ? undefined : selected.siteCode || selected.siteNumber,
-          siteId: selected.locationOnly ? null : selected.siteId || null,
-          locationOnly: Boolean(selected.locationOnly),
+          siteNumber: draft.locationOnly ? undefined : draft.siteCode || draft.siteNumber || selected.siteCode || selected.siteNumber,
+          siteId: draft.locationOnly ? null : draft.siteId || selected.siteId || null,
+          locationOnly: Boolean(draft.locationOnly),
           polygonJson: draft.polygonJson,
         }),
       });
-      setSelected(undefined); setNotice('Geofence details updated. Site linkage is only changed by Sync Site.'); await load();
+      setSelected(undefined); setNotice('Geofence details updated and the saved Site link was retained.'); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Geofence update failed.'); }
     finally { setSaving(false); }
   }
@@ -115,12 +158,12 @@ export function GeofenceOperational() {
         setNotice(result.locationOnly ? 'Geofence marked as location only.' : 'Location-only update completed.');
       } else {
         const siteCode = String(draft.siteNumber || draft.siteCode || '').trim();
-        if (!siteCode) throw new Error('Choose a canonical SITE### record before syncing this geofence.');
+        if (!siteCode) throw new Error('Choose a canonical SITE### record before saving this geofence link.');
         const result = await request<SiteOption>(`/api/v1/site-geofence-sync/geofences/${selected.id}/link`, await token(), {
           method: 'POST',
           body: JSON.stringify({ siteCode }),
         });
-        setNotice(`Geofence linked to ${result.siteCode} · ${result.siteName}. The link was accepted because the geofence name confirms this Site.`);
+        setNotice(`Geofence Site link re-saved: ${result.siteCode} · ${result.siteName}.`);
       }
       setSelected(undefined);
       await load();
@@ -174,7 +217,7 @@ export function GeofenceOperational() {
 
   return <section>
     <div className="title-row">
-      <div><p className="eyebrow">RoadTech → geofence → Live Runs</p><h2>Geofence integrity</h2><p className="hint">Geofence-to-Site links use canonical SITE### records and must be confirmed by the geofence name.</p></div>
+      <div><p className="eyebrow">RoadTech → geofence → Live Runs</p><h2>Geofence integrity</h2><p className="hint">Geofence-to-Site links use canonical SITE### records. Choosing a Linked Site saves that relationship immediately.</p></div>
       <div className="title-actions"><button onClick={() => void load()} disabled={loading}>Refresh status</button><button className="primary" onClick={() => void syncAllSites()} disabled={saving}>{saving ? 'Syncing…' : 'Sync Sites'}</button><button onClick={() => void reloadSeed()} disabled={saving}>Reload SLH geofences</button></div>
     </div>
 
@@ -196,17 +239,17 @@ export function GeofenceOperational() {
       <div className="title-row"><div><p className="eyebrow">Edit geofence</p><h3>{selected.name}</h3></div><button onClick={() => setSelected(undefined)}>Close</button></div>
       <div className="form-grid">
         <label>Name<input value={String(draft.name || '')} onChange={e => setDraft(v => ({ ...v, name: e.target.value }))}/></label>
-        <label>Linked Site<select disabled={Boolean(draft.locationOnly)} value={String(draft.siteNumber || draft.siteCode || '')} onChange={e => setDraft(v => ({ ...v, siteNumber: e.target.value, siteCode: e.target.value, locationOnly: false }))}><option value="">Choose SITE###…</option>{sites.map(site => <option key={site.siteId} value={site.siteCode}>{site.siteCode} · {site.siteName}</option>)}</select></label>
+        <label>Linked Site<select disabled={saving || Boolean(draft.locationOnly)} value={String(draft.siteNumber || draft.siteCode || '')} onChange={e => void changeLinkedSite(e.target.value)}><option value="">Choose SITE###…</option>{sites.map(site => <option key={site.siteId} value={site.siteCode}>{site.siteCode} · {site.siteName}</option>)}</select></label>
         <label>Category<input value={String(draft.category || '')} onChange={e => setDraft(v => ({ ...v, category: e.target.value }))}/></label>
         <label>Entry confirm (min)<input type="number" value={String(draft.pendingEntryMinutes ?? 0)} onChange={e => setDraft(v => ({ ...v, pendingEntryMinutes: Number(e.target.value) }))}/></label>
         <label>Exit confirm (min)<input type="number" value={String(draft.pendingExitMinutes ?? 0)} onChange={e => setDraft(v => ({ ...v, pendingExitMinutes: Number(e.target.value) }))}/></label>
         <label>Max wait (min)<input type="number" value={String(draft.maxWaitMinutes ?? '')} onChange={e => setDraft(v => ({ ...v, maxWaitMinutes: e.target.value === '' ? undefined : Number(e.target.value) }))}/></label>
         <label style={{ gridColumn: '1 / -1' }}>Polygon JSON<textarea rows={5} value={String(draft.polygonJson || '')} onChange={e => setDraft(v => ({ ...v, polygonJson: e.target.value }))}/></label>
       </div>
-      <div className="notice" style={{ marginTop: 12 }}><strong>Current registered Site:</strong> {draft.locationOnly ? 'Location only' : draft.siteName ? `${draft.siteCode || draft.siteNumber || 'Code pending'} · ${draft.siteName}` : draft.siteNumber ? `${draft.siteNumber} selected — press Sync Site to validate the name match` : 'No Site link'}</div>
-      <p className="hint">A Site link is accepted only when this geofence name has the strongest unique meaningful-name match to that Site. A generic brand-only match remains unlinked if it could refer to more than one Site.</p>
+      <div className="notice" style={{ marginTop: 12 }}><strong>Current registered Site:</strong> {draft.locationOnly ? 'Location only' : draft.siteName ? `${draft.siteCode || draft.siteNumber || 'Code pending'} · ${draft.siteName}` : draft.siteNumber ? `${draft.siteNumber} selected` : 'No Site link'}</div>
+      <p className="hint">The Linked Site dropdown autosaves to Site Master immediately. Save geofence details only changes the geofence settings and preserves the selected Site relationship.</p>
       <label className="check-label" style={{ marginTop: 12 }}><input type="checkbox" checked={Boolean(draft.locationOnly)} onChange={e => setDraft(v => ({ ...v, locationOnly: e.target.checked, siteNumber: e.target.checked ? '' : v.siteNumber, siteCode: e.target.checked ? '' : v.siteCode }))}/> Location only / do not link to a Site</label>
-      <div className="actions"><button className="primary" disabled={saving || Boolean(draft.locationOnly)} onClick={() => void syncSite(false)}>Sync Site</button><button disabled={saving} onClick={() => void syncSite(true)}>Mark location only</button><button disabled={saving} onClick={() => void save()}>Save geofence details</button><button onClick={() => setSelected(undefined)}>Cancel</button></div>
+      <div className="actions"><button className="primary" disabled={saving || Boolean(draft.locationOnly) || !String(draft.siteCode || draft.siteNumber || '').trim()} onClick={() => void syncSite(false)}>Re-save Site link</button><button disabled={saving} onClick={() => void syncSite(true)}>Mark location only</button><button disabled={saving} onClick={() => void save()}>Save geofence details</button><button onClick={() => setSelected(undefined)}>Cancel</button></div>
     </div>}
 
     <div className="panel">
