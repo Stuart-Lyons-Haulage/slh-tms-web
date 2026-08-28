@@ -26,6 +26,7 @@ type DispatchDriver = {
   previousVehicleRegistration?: string;
   previousFinalStop?: string;
   previousFinalLatitude?: number;
+  previousRoute?: string;
   assignedLoadId?: string;
   assignedRunCount: number;
   suggestedRunId?: string;
@@ -107,22 +108,22 @@ type DriverForm = {
   days: number;
 };
 type AddDriverResponse = { message?: string; created?: boolean; driverId?: string };
-type DispatchFilterKey = "driver" | "typeSkills" | "code" | "day" | "vehicle" | "trailer" | "run" | "start" | "assistant" | "compliance" | "dispatch";
+type DispatchFilterKey = "driver" | "typeSkills" | "code" | "day" | "previous" | "vehicle" | "trailer" | "run" | "firstCollection" | "assistant" | "dispatch";
 type DispatchFilters = Record<DispatchFilterKey, string>;
 type SearchOption = { id: string; label: string; search?: string };
 
-const dispatchFilterKeys: DispatchFilterKey[] = ["driver", "typeSkills", "code", "day", "vehicle", "trailer", "run", "start", "assistant", "compliance", "dispatch"];
+const dispatchFilterKeys: DispatchFilterKey[] = ["driver", "typeSkills", "code", "day", "previous", "vehicle", "trailer", "run", "firstCollection", "assistant", "dispatch"];
 const dispatchFilterPlaceholders: Record<DispatchFilterKey, string> = {
   driver: "Driver…",
   typeSkills: "Type / skill…",
   code: "Code…",
   day: "Day…",
+  previous: "Yesterday finish…",
   vehicle: "Vehicle…",
   trailer: "Trailer…",
   run: "Run…",
-  start: "Start…",
+  firstCollection: "1st collection…",
   assistant: "Assistant…",
-  compliance: "Compliance…",
   dispatch: "Status…",
 };
 
@@ -137,10 +138,11 @@ function addDays(value: string, days: number) {
   return isoDate(new Date(year, month - 1, day + days, 12));
 }
 function today() { return isoDate(new Date()); }
+const dispatchTimeFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 function localTime(value?: string) {
   if (!value) return "";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return Number.isNaN(date.getTime()) ? "" : dispatchTimeFormatter.format(date);
 }
 function compactRun(load?: DispatchLoad) {
   if (!load) return "—";
@@ -148,30 +150,61 @@ function compactRun(load?: DispatchLoad) {
   const core = match?.[1] || load.reference;
   return `${load.southbound ? "SB " : ""}${core}`;
 }
+function cleanStopName(value?: string) {
+  return (value || "").replace(/^(?:Collect|Deliver)\s*[·:-]\s*/i, "").replace(/-/g, " ").trim();
+}
+function orderedStops(load?: DispatchLoad) { return [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence); }
+// eslint-disable-next-line react-refresh/only-export-components
+export function firstCollectionStop(load?: DispatchLoad) {
+  const stops = orderedStops(load);
+  return stops.find(stop => /^Collect\b/i.test(stop.name || "")) || stops[0];
+}
+function finalDestinationStop(load?: DispatchLoad) {
+  const stops = orderedStops(load);
+  return [...stops].reverse().find(stop => /^Deliver\b/i.test(stop.name || "")) || stops.at(-1);
+}
+// eslint-disable-next-line react-refresh/only-export-components
+export function suggestionRunLabel(load: DispatchLoad) {
+  const match = `${load.reference} ${load.rawReference}`.match(/\b(?:run\s*)?(\d{1,3})\b/i);
+  const run = match?.[1] ? `Run ${Number(match[1])}` : load.reference;
+  const destination = cleanStopName(finalDestinationStop(load)?.name);
+  return destination ? `${run} ${destination}` : run;
+}
+// eslint-disable-next-line react-refresh/only-export-components
+export function runDirection(load: DispatchLoad) {
+  const stops = orderedStops(load).filter(stop => stop.latitude != null && stop.longitude != null);
+  const first = stops[0];
+  const final = finalDestinationStop(load);
+  if (first?.latitude != null && final?.latitude != null) {
+    const delta = final.latitude - first.latitude;
+    if (delta >= 0.35) return "Northern";
+    if (delta <= -0.35) return "Southern";
+  }
+  if (load.southbound) return "Southern";
+  return "Local / Other";
+}
+function firstCollectionTime(load?: DispatchLoad) { return localTime(firstCollectionStop(load)?.plannedArrivalUtc); }
+
 function runOptionLabel(load: DispatchLoad, drivers: DispatchDriver[]) {
   const allocatedDriver = load.driverId ? drivers.find(driver => driver.driverId === load.driverId) : undefined;
-  const allocation = load.driverId ? ` · allocated${allocatedDriver ? ` to ${allocatedDriver.displayName}` : ""}` : " · unallocated";
-  return `${compactRun(load)} · ${load.reference}${allocation}`;
+  const allocation = load.driverId ? ` · allocated${allocatedDriver ? ` to ${allocatedDriver.displayName}` : ""}` : "";
+  return `${suggestionRunLabel(load)}${allocation}`;
 }
 function typeLetter(type: string) { return type === "Agency" ? "A" : type === "Casual" ? "C" : "E"; }
 function skillBadges(value?: string) {
   return (value || "").split(/[,;|/]+/).map(item => item.trim()).filter(Boolean).slice(0, 5);
-}
-function dispatchState(driver: DispatchDriver) {
-  if (driver.onLeave) return { className: "leave", label: driver.partDayLeave ? "PART DAY" : "LEAVE", title: driver.leaveType || "Sage HR leave" };
-  if (!driver.tachoMasterDriverId && !driver.tachoCardNumber) return { className: "review", label: "REVIEW", title: "Canonical Tacho identity missing" };
-  return { className: "ready", label: "READY", title: "Canonical Tacho identity available; live Tacho/hours compliance is rechecked at dispatch. Driving licence automation is currently paused." };
 }
 function routeMinutes(route: Record<string, unknown>) {
   const routes = route.routes as Array<{ summary?: { travelTimeInSeconds?: number } }> | undefined;
   const seconds = routes?.[0]?.summary?.travelTimeInSeconds;
   return typeof seconds === "number" && seconds > 0 ? Math.max(1, Math.ceil(seconds / 60)) : undefined;
 }
-function buildDriverText(load: DispatchLoad, dispatch: LoadDispatch, startTime: string) {
+function buildDriverText(load: DispatchLoad, dispatch: LoadDispatch) {
+  const collectionTime = firstCollectionTime(load);
   const lines = [
     `SLH ${load.southbound ? "Southbound " : ""}${load.reference}`,
     dispatch.driver ? `Driver: ${dispatch.driver.displayName}` : "",
-    startTime ? `Start time: ${startTime}` : "",
+    collectionTime ? `Your first collection is at ${collectionTime}` : "Your first collection time is TBC",
     dispatch.vehicle ? `Vehicle: ${dispatch.vehicle.registration}` : "",
     dispatch.trailer ? `Trailer: ${dispatch.trailer.trailerNumber}` : "",
     load.palletSpacesUsed != null ? `Load: ${load.palletSpacesUsed}${load.totalPalletSpaces ? ` / ${load.totalPalletSpaces}` : ""} ${load.capacityType || "load units"}` : "",
@@ -315,18 +348,17 @@ export function DriverDispatch() {
       const assigned = data.loads.find(load => load.id === driver.assignedLoadId);
       const vehicle = assigned?.vehicleId ? data.vehicles.find(item => item.id === assigned.vehicleId) : undefined;
       const trailer = assigned?.trailerId ? data.trailers.find(item => item.id === assigned.trailerId) : undefined;
-      const compliance = dispatchState(driver);
       const values: Record<DispatchFilterKey, string> = {
         driver: `${driver.displayName} ${driver.employeeNumber}`,
         typeSkills: `${driver.driverType} ${driver.driverGroup || ""} ${driver.skills || ""} ${driver.agencyName || ""}`,
         code: driver.coding || "",
         day: String(driver.dayNumber),
+        previous: `${driver.previousFinalStop || ""} ${driver.previousRoute || ""} ${driver.previousRunReference || ""}`,
         vehicle: `${vehicle?.registration || ""} ${driver.previousVehicleRegistration || ""} ${driver.suggestedVehicleRegistration || ""}`,
         trailer: `${trailer?.trailerNumber || ""} ${trailer?.type || ""}`,
-        run: assigned ? `${compactRun(assigned)} ${assigned.reference} ${assigned.rawReference}` : `${driver.suggestedRunReference || ""} unallocated`,
-        start: localTime(assigned?.plannedStartUtc),
+        run: assigned ? `${suggestionRunLabel(assigned)} ${assigned.reference} ${assigned.rawReference}` : `${driver.suggestedRunReference || ""} unallocated`,
+        firstCollection: firstCollectionTime(assigned),
         assistant: `${driver.suggestion || ""} ${driver.previousFinalStop || ""} ${driver.assistantScore ?? ""}`,
-        compliance: `${compliance.label} ${compliance.title}`,
         dispatch: assigned ? `${assigned.status} allocated` : "unallocated",
       };
       return dispatchFilterKeys.every(key => {
@@ -381,7 +413,7 @@ export function DriverDispatch() {
       <div>
         <p className="eyebrow">Planning → allocation → route → driver text</p>
         <h1>{readOnly ? "Driver Dispatch · comparison" : "Driver Dispatch"}</h1>
-        <p className="hint">{readOnly ? "Read-only comparison screen. Keep this beside today's plan." : "Allocate the driver, regular vehicle and trailer, set the start time, preview the run and dispatch from one row."}</p>
+        <p className="hint">{readOnly ? "Read-only comparison screen. Keep this beside today's plan." : "Allocate the driver, vehicle, trailer and run from one row. Changes autosave immediately; the first collection time comes from the run plan."}</p>
       </div>
       <div className="title-actions dispatch-actions">
         <label>Planning date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
@@ -415,17 +447,19 @@ export function DriverDispatch() {
     {data && <>
       <div className="dispatch-summary">
         <span><strong>{filteredDrivers.length === data.drivers.length ? data.drivers.length : `${filteredDrivers.length} / ${data.drivers.length}`}</strong> planning drivers</span>
-        <span><strong>{data.loads.length}</strong> planned runs</span>
+        <span><strong>{data.loads.filter(load => !load.driverId).length}</strong> runs to plan</span>
+        <span><strong>{data.loads.length - data.loads.filter(load => !load.driverId).length}</strong> allocated runs</span>
         <span><strong>{data.drivers.filter(driver => Boolean(driver.suggestedRunId) && !driver.assignedLoadId).length}</strong> assistant matches</span>
         <span><strong>{data.drivers.filter(driver => driver.onLeave).length}</strong> away / leave</span>
         <span>Leave: <strong>{data.leaveSource}</strong></span>
         {data.weekStart && data.weekEnd && <span>Week: <strong>{new Date(`${data.weekStart}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" })} → {new Date(`${data.weekEnd}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" })}</strong></span>}
         {dispatchFilterKeys.some(key => filters[key]) && <button type="button" className="text-button clear-dispatch-filters" onClick={() => setFilters(emptyDispatchFilters())}>Clear filters</button>}
       </div>
+      <RunsToPlanSummary loads={data.loads} />
       <div className="dispatch-table-wrap">
         <table className="dispatch-table">
           <thead>
-            <tr><th>Driver</th><th>Type / skills</th><th>Code</th><th>Day</th><th>Vehicle</th><th>Trailer</th><th>Run</th><th>Start</th><th>Assistant</th><th>Compliance</th><th>Dispatch</th></tr>
+            <tr><th>Driver</th><th>Type / skills</th><th>Code</th><th>Day</th><th>Yesterday finish</th><th>Vehicle</th><th>Trailer</th><th>Run</th><th>1st collection</th><th>Assistant</th><th>Dispatch</th></tr>
             <tr className="dispatch-filter-row">{dispatchFilterKeys.map(key => <th key={key}><input aria-label={`Filter ${key}`} value={filters[key]} placeholder={dispatchFilterPlaceholders[key]} onChange={event => setFilters(current => ({ ...current, [key]: event.target.value }))} /></th>)}</tr>
           </thead>
           <tbody>{filteredDrivers.map((driver, index) => <DispatchRow
@@ -440,11 +474,49 @@ export function DriverDispatch() {
           />)}</tbody>
         </table>
       </div>
-      <p className="hint">Dispatch is a driver-only operational roster, not the full staff directory. The Assistant proposes one coherent Driver ↔ Run pairing at a time using live/last Falcon position, Day number, route direction, skills/code and learned regular/yesterday vehicle history. Suggestions never save automatically: use the suggestion, review it, then Save or Dispatch. Vehicle, trailer and run boxes use an in-app searchable dropdown so they work consistently on desktop, iPad and iPhone.</p>
+      <p className="hint">Dispatch is a driver-only operational roster. Compliance continues to run behind dispatch readiness but is no longer a planning column. Allocations autosave as the planner selects a run, vehicle or trailer. The Assistant uses yesterday's finishing position, Day number, route direction, skills/code and regular vehicle history; the Runs to Plan board only shows work that still needs a driver.</p>
     </>}
 
     {message && <MessageDialog state={message} token={token} close={() => setMessage(undefined)} sent={async () => { setMessage(undefined); await refresh(); }} />}
   </section>;
+}
+
+function PlanningRunChip({ load }: { load: DispatchLoad }) {
+  const collection = firstCollectionStop(load);
+  return <span className="plan-run-chip" tabIndex={0}>
+    <strong>{suggestionRunLabel(load)}</strong>
+    <small>{firstCollectionTime(load) ? `1st collect ${firstCollectionTime(load)}` : "1st collect TBC"}</small>
+    <span className="plan-run-popover">
+      <b>{load.reference}</b>
+      {orderedStops(load).map(stop => <span key={stop.id}>{stop.sequence}. {cleanStopName(stop.name)}{stop.plannedArrivalUtc ? ` · ${localTime(stop.plannedArrivalUtc)}` : ""}</span>)}
+      {collection && <em>First collection: {cleanStopName(collection.name)}</em>}
+    </span>
+  </span>;
+}
+
+function RunsToPlanSummary({ loads }: { loads: DispatchLoad[] }) {
+  const remaining = loads.filter(load => !load.driverId);
+  const groups = ["Northern", "Southern", "Local / Other"].map(direction => ({ direction, loads: remaining.filter(load => runDirection(load) === direction) }));
+  return <div className="runs-to-plan-board">
+    <div className="runs-to-plan-heading"><div><strong>Runs to Plan</strong><small>Only unallocated runs are shown. Autosaved allocations disappear from this board.</small></div><span>{remaining.length} remaining</span></div>
+    {remaining.length === 0 ? <div className="runs-to-plan-empty">All planned runs have a driver allocated.</div> : <div className="runs-to-plan-groups">
+      {groups.filter(group => group.loads.length > 0).map(group => <section key={group.direction} className={`runs-to-plan-group direction-${group.direction.toLowerCase().replace(/[^a-z]+/g, "-")}`}>
+        <header><strong>{group.direction === "Northern" ? "NORTHERN / NORTHBOUND" : group.direction === "Southern" ? "SOUTHERN / SOUTHBOUND" : "LOCAL / OTHER"}</strong><span>{group.loads.length}</span></header>
+        <div>{group.loads.sort((a, b) => compactRun(a).localeCompare(compactRun(b), undefined, { numeric: true })).map(load => <PlanningRunChip key={load.id} load={load} />)}</div>
+      </section>)}
+    </div>}
+  </div>;
+}
+
+function PreviousRouteHover({ driver }: { driver: DispatchDriver }) {
+  const finish = cleanStopName(driver.previousFinalStop);
+  const route = (driver.previousRoute || "").split(" → ").filter(Boolean);
+  if (!finish && route.length === 0) return <span className="previous-finish-empty">—</span>;
+  return <span className="previous-route-hover" tabIndex={0}>
+    <strong>{finish || route.at(-1)}</strong>
+    {driver.previousRunReference && <small>{driver.previousRunReference}</small>}
+    {route.length > 0 && <span className="previous-route-popover"><b>Previous day route</b>{route.map((stop, index) => <span key={`${stop}-${index}`}>{index + 1}. {stop}</span>)}</span>}
+  </span>;
 }
 
 function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMessage }: {
@@ -460,12 +532,12 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
   const [loadId, setLoadId] = useState(initial?.id || "");
   const [vehicleId, setVehicleId] = useState(initial?.vehicleId || driver.previousVehicleId || "");
   const [trailerId, setTrailerId] = useState(initial?.trailerId || "");
-  const [startTime, setStartTime] = useState(localTime(initial?.plannedStartUtc));
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
   const selected = data.loads.find(load => load.id === loadId);
-  const compliance = dispatchState(driver);
-  const availableLoads = [...data.loads].sort((left, right) => {
+  const suggestedLoad = driver.suggestedRunId ? data.loads.find(load => load.id === driver.suggestedRunId) : undefined;
+  const firstCollection = firstCollectionStop(selected);
+  const availableLoads = data.loads.filter(load => !load.driverId || load.driverId === driver.driverId || load.id === driver.assignedLoadId).sort((left, right) => {
     if (left.id === driver.suggestedRunId) return -1;
     if (right.id === driver.suggestedRunId) return 1;
     if (Boolean(left.driverId) !== Boolean(right.driverId)) return left.driverId ? 1 : -1;
@@ -496,46 +568,56 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
     setLoadId(load?.id || "");
     setVehicleId(load?.vehicleId || driver.previousVehicleId || "");
     setTrailerId(load?.trailerId || "");
-    setStartTime(localTime(load?.plannedStartUtc));
   }, [data.loads, driver.assignedLoadId, driver.previousVehicleId]);
 
-  function applySuggestion() {
-    if (readOnly || driver.onLeave) return;
-    const suggestedLoad = driver.suggestedRunId ? data.loads.find(load => load.id === driver.suggestedRunId) : undefined;
-    if (driver.suggestedRunId) setLoadId(driver.suggestedRunId);
-    if (driver.suggestedVehicleId) setVehicleId(driver.suggestedVehicleId);
-    if (suggestedLoad?.trailerId) setTrailerId(suggestedLoad.trailerId);
-    setNotice("Assistant suggestion loaded · review then Save or Dispatch.");
-  }
-
-  async function save() {
-    if (readOnly || driver.onLeave) return;
+  async function persistAllocation(nextLoadId: string, nextVehicleId: string, nextTrailerId: string, success = "Autosaved") {
+    if (readOnly || driver.onLeave || !nextLoadId) return;
     setBusy(true); setNotice(undefined);
     try {
       const access = await token();
       const previous = data.loads.find(load => load.id === driver.assignedLoadId);
-      if (previous && previous.id !== loadId) {
+      if (previous && previous.id !== nextLoadId)
         await allocateRun(previous.id, { vehicleId: previous.vehicleId, trailerId: previous.trailerId }, access);
-      }
-      if (loadId) {
-        await allocateRun(loadId, { driverId: driver.driverId, vehicleId: vehicleId || undefined, trailerId: trailerId || undefined }, access);
-        await request(`/api/v1/driver-dispatch/${encodeURIComponent(loadId)}/start-time`, access, { method: "PUT", body: JSON.stringify({ startTime: startTime || null }) });
-      }
-      setNotice("Saved");
+      await allocateRun(nextLoadId, { driverId: driver.driverId, vehicleId: nextVehicleId || undefined, trailerId: nextTrailerId || undefined }, access);
+      setNotice(success);
       await refresh();
-    } catch (exception) { setNotice(exception instanceof Error ? exception.message : "Allocation could not be saved."); }
-    finally { setBusy(false); }
+    } catch (exception) {
+      setNotice(exception instanceof Error ? exception.message : "Allocation autosave failed. Refresh Dispatch and try again.");
+    } finally { setBusy(false); }
+  }
+
+  async function applySuggestion() {
+    if (readOnly || driver.onLeave) return;
+    const nextLoadId = driver.suggestedRunId || loadId;
+    const nextVehicleId = driver.suggestedVehicleId || vehicleId;
+    const nextTrailerId = suggestedLoad?.trailerId || trailerId;
+    if (!nextLoadId) { setNotice("The Assistant has a vehicle suggestion but no unallocated run to apply."); return; }
+    setLoadId(nextLoadId);
+    setVehicleId(nextVehicleId);
+    setTrailerId(nextTrailerId);
+    await persistAllocation(nextLoadId, nextVehicleId, nextTrailerId, suggestedLoad ? `Autosaved · ${suggestionRunLabel(suggestedLoad)}` : "Assistant vehicle autosaved");
+  }
+
+  function chooseRun(value: string) {
+    setLoadId(value);
+    if (value) void persistAllocation(value, vehicleId, trailerId);
+  }
+  function chooseVehicle(value: string) {
+    setVehicleId(value);
+    if (loadId) void persistAllocation(loadId, value, trailerId);
+  }
+  function chooseTrailer(value: string) {
+    setTrailerId(value);
+    if (loadId) void persistAllocation(loadId, vehicleId, value);
   }
 
   async function prepareDispatch() {
     if (!loadId || !vehicleId) { setNotice("Choose a run and vehicle first."); return; }
-    if (!startTime) { setNotice("Enter the driver's start time first."); return; }
     if (driver.onLeave) { setNotice("Driver is marked away in Sage HR."); return; }
     setBusy(true); setNotice(undefined);
     try {
       const access = await token();
       await allocateRun(loadId, { driverId: driver.driverId, vehicleId, trailerId: trailerId || undefined }, access);
-      await request(`/api/v1/driver-dispatch/${encodeURIComponent(loadId)}/start-time`, access, { method: "PUT", body: JSON.stringify({ startTime }) });
       const route = await api.route(loadId, access);
       const minutes = routeMinutes(route);
       if (!minutes) throw new Error("The route did not return a driving time. Check the run's mapped stops before dispatch.");
@@ -557,7 +639,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
       const dispatch = await api.dispatch(loadId, access);
       const latest = data.loads.find(load => load.id === loadId) || selected;
       if (!latest) throw new Error("Run details could not be loaded for the text preview.");
-      openMessage({ load: latest, mode: "dispatch", text: buildDriverText(latest, dispatch, startTime), routeMinutes: minutes, acknowledgeUnverified: acknowledged });
+      openMessage({ load: latest, mode: "dispatch", text: buildDriverText(latest, dispatch), routeMinutes: minutes, acknowledgeUnverified: acknowledged });
     } catch (exception) { setNotice(exception instanceof Error ? exception.message : "Dispatch could not be prepared."); }
     finally { setBusy(false); }
   }
@@ -567,7 +649,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
     setBusy(true); setNotice(undefined);
     try {
       const dispatch = await api.dispatch(selected.id, await token());
-      openMessage({ load: selected, mode: "update", text: `Update for ${selected.reference}\n\n${buildDriverText(selected, dispatch, startTime)}\n\nUPDATE: ` });
+      openMessage({ load: selected, mode: "update", text: `Update for ${selected.reference}\n\n${buildDriverText(selected, dispatch)}\n\nUPDATE: ` });
     } catch (exception) { setNotice(exception instanceof Error ? exception.message : "Text update could not be prepared."); }
     finally { setBusy(false); }
   }
@@ -579,13 +661,13 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
       <td><div className="badge-line"><span className={`driver-type type-${driver.driverType.toLowerCase()}`} title={driver.agencyName || driver.driverType}>{typeLetter(driver.driverType)}</span>{skillBadges(driver.skills).map(skill => <span className="skill-badge" key={skill}>{skill}</span>)}</div><small title={driver.agencyName}>{driver.driverType === "Agency" ? driver.agencyName || "Agency" : driver.driverGroup || ""}</small></td>
       <td><span className={`code-badge code-${driver.coding || "x"}`} title={driver.coding === "1" ? "Can do anything" : driver.coding === "2" ? "Established driver" : driver.coding === "3" ? "Newer driver · straightforward work" : driver.coding === "4" ? "Agency" : "Allocation code not set"}>{driver.coding || "—"}</span></td>
       <td><span className={`day-bubble ${driver.dayNumber >= 6 ? "high" : driver.dayNumber >= 5 ? "watch" : ""}`}>{driver.dayNumber}</span></td>
-      <td><TypeaheadSelect disabled={readOnly || driver.onLeave} value={vehicleId} onChange={setVehicleId} options={vehicleOptions} placeholder="Type vehicle…" listId={`vehicle-${driver.driverId}`} />{driver.previousVehicleRegistration && <small>Yesterday: {driver.previousVehicleRegistration}</small>}</td>
-      <td><TypeaheadSelect disabled={readOnly || driver.onLeave} value={trailerId} onChange={setTrailerId} options={trailerOptions} placeholder="Type trailer…" listId={`trailer-${driver.driverId}`} /></td>
-      <td><div className="run-cell"><TypeaheadSelect disabled={readOnly || driver.onLeave} value={loadId} onChange={setLoadId} options={runOptions} placeholder="Type run…" listId={`run-${driver.driverId}`} />{selected && <RunHover load={selected} />}</div></td>
-      <td><input type="time" value={startTime} disabled={readOnly || driver.onLeave} onChange={event => setStartTime(event.target.value)} /></td>
-      <td className="assistant-cell"><span>{driver.suggestion || (driver.previousFinalStop ? `Yesterday finished ${driver.previousFinalStop}.` : "Available for allocation.")}</span>{driver.assistantScore != null && driver.assistantScore > 0 && <small>Match score: {driver.assistantScore}</small>}{!readOnly && !driver.onLeave && (driver.suggestedRunId || driver.suggestedVehicleId) && <button className="assistant-use" type="button" onClick={applySuggestion}>Use suggestion{driver.suggestedRunReference ? ` · ${driver.suggestedRunReference}` : ""}</button>}</td>
-      <td><span className={`compliance-pill ${compliance.className}`} title={compliance.title}>{compliance.label}</span></td>
-      <td><div className="dispatch-buttons">{readOnly ? <>{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</> : <><button type="button" onClick={() => void save()} disabled={busy || driver.onLeave}>{busy ? "Working…" : "Save"}</button><button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave}>Dispatch</button>{selected && ["Dispatched", "InProgress"].includes(selected.status) && <button type="button" onClick={() => void prepareUpdate()} disabled={busy}>Plain text update</button>}{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</>}</div>{notice && <small className="row-notice">{notice}</small>}</td>
+      <td><PreviousRouteHover driver={driver} /></td>
+      <td><TypeaheadSelect disabled={readOnly || driver.onLeave || busy} value={vehicleId} onChange={chooseVehicle} options={vehicleOptions} placeholder="Type vehicle…" listId={`vehicle-${driver.driverId}`} />{driver.previousVehicleRegistration && <small>Yesterday: {driver.previousVehicleRegistration}</small>}</td>
+      <td><TypeaheadSelect disabled={readOnly || driver.onLeave || busy} value={trailerId} onChange={chooseTrailer} options={trailerOptions} placeholder="Type trailer…" listId={`trailer-${driver.driverId}`} /></td>
+      <td><div className="run-cell"><TypeaheadSelect disabled={readOnly || driver.onLeave || busy} value={loadId} onChange={chooseRun} options={runOptions} placeholder="Type run…" listId={`run-${driver.driverId}`} />{selected && <RunHover load={selected} />}</div></td>
+      <td><span className="first-collection-time">{firstCollectionTime(selected) || "TBC"}</span>{firstCollection && <small>{cleanStopName(firstCollection.name)}</small>}</td>
+      <td className="assistant-cell"><span>{driver.suggestion || (driver.previousFinalStop ? `Yesterday finished ${cleanStopName(driver.previousFinalStop)}.` : "Available for allocation.")}</span>{driver.assistantScore != null && driver.assistantScore > 0 && <small>Match score: {driver.assistantScore}</small>}{!readOnly && !driver.onLeave && (driver.suggestedRunId || driver.suggestedVehicleId) && <button className="assistant-use" type="button" disabled={busy} onClick={() => void applySuggestion()}>Use {suggestedLoad ? suggestionRunLabel(suggestedLoad) : "suggested vehicle"}</button>}</td>
+      <td><div className="dispatch-buttons">{readOnly ? <>{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</> : <><span className="autosave-state">Autosave</span><button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave}>{busy ? "Working…" : "Dispatch"}</button>{selected && ["Dispatched", "InProgress"].includes(selected.status) && <button type="button" onClick={() => void prepareUpdate()} disabled={busy}>Plain text update</button>}{selected && <Link to={`/timeline/run/${selected.id}`}>Timeline</Link>}</>}</div>{notice && <small className="row-notice">{notice}</small>}</td>
     </tr>
   </>;
 }
