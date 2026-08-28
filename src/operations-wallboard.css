@@ -323,3 +323,36 @@
     flex-wrap: wrap;
   }
 }
+
+
+/* TV viewport stability: never let the seven-column board widen the physical display. */
+.ops-wallboard.tv {
+  width: 100vw;
+  max-width: 100vw;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.ops-wallboard.tv .ops-board-table {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.ops-wallboard.tv .ops-board-head,
+.ops-wallboard.tv .ops-board-row {
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0,.62fr) minmax(0,.95fr) minmax(0,.66fr) minmax(0,.88fr) minmax(0,1.72fr) minmax(0,.72fr) minmax(0,1.05fr);
+}
+
+.ops-wallboard.tv .ops-board-head > span,
+.ops-wallboard.tv .ops-board-row > span {
+  min-width: 0;
+}
+
+/* The TV is a live control surface, not a report: remove the decorative bottom strip. */
+.ops-wallboard.tv .ops-wallboard-footer,
+.tv-public-mode .tv-display-footer {
+  display: none !important;
+}

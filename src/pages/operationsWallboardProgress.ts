@@ -168,11 +168,20 @@ export function finalEtaFor(etas: DeliveryEta[]) {
   return [...sorted].reverse().find(isFinalDestinationEta) || sorted.at(-1);
 }
 
-function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
+function finalDeliveryAssessment(etas: DeliveryEta[], finalDeadlineUtc?: string): FinalDeliveryAssessment {
   const finalEta = finalEtaFor(etas);
   const etaMs = timeMs(finalEta?.etaUtc);
-  const deadlineMs = timeMs(finalEta?.deliveryWindowEndUtc);
-  if (!Number.isFinite(etaMs) || !Number.isFinite(deadlineMs)) return { onTime: false };
+  if (!Number.isFinite(etaMs)) return { onTime: false };
+
+  // Customer risk is assessed only against the final customer promise. Prefer the
+  // order's latest delivery-window time; when the order has no explicit window,
+  // the final planned customer-stop time is the operational deadline.
+  const deadlineMs = timeMs(finalEta?.deliveryWindowEndUtc || finalDeadlineUtc);
+  if (!Number.isFinite(deadlineMs)) {
+    // A valid cumulative final ETA must not turn the whole run amber merely because
+    // an intermediate collection/delivery milestone is behind its planning time.
+    return { onTime: true };
+  }
 
   const bufferMinutes = Math.floor((deadlineMs - etaMs) / 60000);
   const stopName = finalEta?.stopName || "Final delivery";
@@ -189,22 +198,13 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
       },
     };
   }
-  if (bufferMinutes <= RISK_BUFFER_MINUTES) {
-    return {
-      onTime: false,
-      bufferMinutes,
-      result: {
-        status: "risk",
-        label: "FINAL ETA AT RISK",
-        detail: `${stopName} has ${bufferMinutes}m buffer to delivery latest time`,
-        priority: 88,
-      },
-    };
-  }
+
+  // The requested operating rule is binary at the final customer deadline: an ETA
+  // before/on the last accepted time remains on route; an ETA beyond it is risk/late.
   return { onTime: true, bufferMinutes };
 }
 
-export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
+export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now(), finalDeadlineUtc?: string): WallboardStatusResult {
   const complete = progress?.runState === "Completed" || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops;
   if (complete) {
     return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
@@ -256,7 +256,7 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
     };
   }
 
-  const finalAssessment = finalDeliveryAssessment(etas);
+  const finalAssessment = finalDeliveryAssessment(etas, finalDeadlineUtc);
   if (finalAssessment.result) return finalAssessment.result;
 
   // The next stop is an execution milestone, not necessarily the final customer promise.
