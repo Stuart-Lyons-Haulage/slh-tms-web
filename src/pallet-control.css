@@ -201,22 +201,29 @@
   max-width: 36px;
 }
 
-.pallet-control-matrix .vertical-destination {
-  height: 64px;
-  padding: 0;
+.pallet-control-matrix .pallet-destination-heading {
+  height: auto;
+  min-height: 46px;
+  padding: 4px 2px 6px;
   vertical-align: bottom;
   overflow: visible;
 }
 
-.pallet-control-matrix .vertical-destination span {
-  display: inline-block;
-  max-width: 62px;
-  transform: rotate(-68deg);
-  transform-origin: 10px 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: 750;
+.pallet-control-matrix .pallet-destination-heading span {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  transform: none;
+  writing-mode: horizontal-tb;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: auto;
+  font-size: clamp(.46rem, .54vw, .63rem);
+  font-weight: 800;
+  line-height: 1.08;
+  text-align: center;
 }
 
 .pallet-cell-button {

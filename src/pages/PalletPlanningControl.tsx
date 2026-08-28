@@ -52,7 +52,14 @@ type PlanningControlData = {
   orders: PlanningOrder[];
   runs: PlanningRun[];
 };
-type RegionData = { date: string; destinations: string[]; destinationRegions: Record<string, string> };
+type RegionData = {
+  date: string;
+  destinations: string[];
+  destinationRegions: Record<string, string>;
+  destinationLabels?: Record<string, string>;
+  destinationSiteCodes?: Record<string, string | null>;
+  unmatchedDestinations?: number;
+};
 type ViewMode = "toPlan" | "planned" | "summary";
 type PalletTone = "standard" | "euro" | "traycrate" | "trolley" | "mixed" | "unknown";
 
@@ -154,6 +161,7 @@ export function PalletPlanningControl() {
     const ranked = (regions.data?.destinations || []).filter((destination) => live.has(destination));
     return [...ranked, ...data.destinations.filter((destination) => !ranked.includes(destination))];
   }, [data, regions.data]);
+  const destinationLabel = useCallback((destination: string) => regions.data?.destinationLabels?.[destination] || destination, [regions.data]);
   const regionGroups = useMemo(() => {
     const groups: Array<{ region: string; destinations: string[] }> = [];
     for (const destination of orderedDestinations) {
@@ -240,7 +248,11 @@ export function PalletPlanningControl() {
         <table className="pallet-control-matrix">
           <thead>
             <tr><th className="pallet-row-label">Region</th>{regionGroups.map((group) => <th key={group.region} colSpan={group.destinations.length}>{group.region}</th>)}<th className="pallet-total-col">Total</th></tr>
-            <tr><th className="pallet-row-label">Collection</th>{orderedDestinations.map((destination) => <th key={destination} className="vertical-destination" title={destination}><span>{destination}</span></th>)}<th className="pallet-total-col">Total</th></tr>
+            <tr><th className="pallet-row-label">Collection</th>{orderedDestinations.map((destination) => {
+              const label = destinationLabel(destination);
+              const siteCode = regions.data?.destinationSiteCodes?.[destination];
+              return <th key={destination} className="pallet-destination-heading" title={label === destination ? destination : `${label} · ${destination}${siteCode ? ` · ${siteCode}` : ""}`}><span>{label}</span></th>;
+            })}<th className="pallet-total-col">Total</th></tr>
           </thead>
           <tbody>
             {data?.planningGroups.map((group) => {
@@ -260,7 +272,7 @@ export function PalletPlanningControl() {
                       className="pallet-cell-button"
                       style={{ background: toneBackground(tone), borderColor: toneBorder(tone) }}
                       onClick={() => setSelectedCell({ group, destination })}
-                      title={`${group} → ${destination}: ${cell?.ordered || 0} ordered, ${cell?.planned || 0} planned, ${cell?.outstanding || 0} to plan`}
+                      title={`${group} → ${destinationLabel(destination)}: ${cell?.ordered || 0} ordered, ${cell?.planned || 0} planned, ${cell?.outstanding || 0} to plan`}
                     ><strong>{amount || "—"}</strong>{mode === "toPlan" && over > 0 ? <small>+{over}</small> : null}</button> : null}
                   </td>;
                 })}
@@ -286,7 +298,7 @@ export function PalletPlanningControl() {
       <div>
         <p className="eyebrow">Planner second screen · live quantity control</p>
         <h1>Pallet Control</h1>
-        <p className="intro">To Plan spans the full screen from left to right. Planned and Pallet Summary mirror the same matrix underneath. Split allocations move between To Plan and Planned automatically every 2 seconds while Pallet Summary retains the full ordered position.</p>
+        <p className="intro">Collections run down the left and Site Master delivery points run directly above their columns. Shorter planner aliases are used where configured, with all three boards sharing the same region and destination order.</p>
       </div>
       <div className="title-actions">
         <label>Planning date <input type="date" value={date} onChange={(event) => { setDate(event.target.value); setSelectedCell(undefined); }} /></label>
@@ -301,7 +313,7 @@ export function PalletPlanningControl() {
       <span><i style={{ background: toneBackground("traycrate"), borderColor: toneBorder("traycrate") }} />Trays / Crates</span>
       <span><i style={{ background: toneBackground("trolley"), borderColor: toneBorder("trolley") }} />Trolleys</span>
       <span><i style={{ background: toneBackground("mixed"), borderColor: toneBorder("mixed") }} />Mixed</span>
-      <small>{ukDate(date)} · {data?.summary.orders || 0} orders · {data?.summary.runs || 0} runs · 2s live refresh · updated {fmtTime(data?.generatedAtUtc)}</small>
+      <small>{ukDate(date)} · {data?.summary.orders || 0} orders · {data?.summary.runs || 0} runs{regions.data?.unmatchedDestinations ? ` · ${regions.data.unmatchedDestinations} destination${regions.data.unmatchedDestinations === 1 ? "" : "s"} need Site Master matching` : ""} · 2s live refresh · updated {fmtTime(data?.generatedAtUtc)}</small>
     </div>
 
     {message && <p className="notice inline-notice">{message}</p>}
@@ -321,13 +333,13 @@ export function PalletPlanningControl() {
 
     {selectedCell && data && <section className="panel pallet-control-detail">
       <div className="title-row">
-        <div><p className="eyebrow">Underlying orders</p><h2>{selectedCell.group} → {selectedCell.destination}</h2><p className="hint">Partial and split allocations remain in To plan until the outstanding balance reaches zero.</p></div>
+        <div><p className="eyebrow">Underlying orders</p><h2>{selectedCell.group} → {destinationLabel(selectedCell.destination)}</h2><p className="hint">Partial and split allocations remain in To plan until the outstanding balance reaches zero.</p></div>
         <button onClick={() => setSelectedCell(undefined)}>Close</button>
       </div>
       <div className="pallet-control-order-list">{selectedOrders.map((order) => {
         const draft = currentDraft(order);
         return <article key={order.id} className="pallet-control-order">
-          <div><strong>{order.reference}</strong><small>{order.customerCode} · {order.collection} → {order.destination}</small><small>{palletLabel(order)} · {order.temperature || "No temp"}{order.lateAddition ? " · NEW AFTER PLANNING STARTED" : ""}</small></div>
+          <div><strong>{order.reference}</strong><small>{order.customerCode} · {order.collection} → {destinationLabel(order.destination)}</small><small>{palletLabel(order)} · {order.temperature || "No temp"}{order.lateAddition ? " · NEW AFTER PLANNING STARTED" : ""}</small></div>
           <div className="pallet-control-order-quantities"><span><small>Ordered</small><strong>{order.orderedPallets}</strong></span><span><small>Planned</small><strong>{order.plannedPallets}</strong></span><span><small>To plan</small><strong>{order.outstandingPallets}</strong></span></div>
           <div className="pallet-control-allocation">
             <select value={draft.loadId} onChange={(event) => selectRun(order, event.target.value)}><option value="">Select run</option>{data.runs.map((run) => <option key={run.id} value={run.id}>{run.reference} · {run.status}{run.capacityType ? ` · ${run.capacityType}` : ""}</option>)}</select>
