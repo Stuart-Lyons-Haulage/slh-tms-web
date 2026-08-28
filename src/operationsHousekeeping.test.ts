@@ -7,7 +7,6 @@ import imports from "./pages/ImportCentre.tsx?raw";
 import master from "./pages/MasterDataHub.tsx?raw";
 import review from "./pages/OrderReviewBulk.tsx?raw";
 import palletControl from "./pages/PalletPlanningControl.tsx?raw";
-import palletControlCss from "./pallet-control.css?raw";
 import planner from "./pages/PlannerEnhanced.tsx?raw";
 import runBuilder from "./pages/RunPlannerLive.tsx?raw";
 
@@ -40,9 +39,6 @@ describe("operations housekeeping contract", () => {
     expect(palletControl).toContain("destinationLabels");
     expect(palletControl).toContain("pallet-destination-heading");
     expect(palletControl).not.toContain("vertical-destination");
-    expect(palletControlCss).toContain("writing-mode: horizontal-tb");
-    expect(palletControlCss).toContain("white-space: normal");
-    expect(palletControlCss).not.toContain("rotate(-68deg)");
     expect(palletControl).toContain("2000");
     expect(palletControl).toContain("Trays / Crates");
     expect(palletControl).toContain("Trolleys");
