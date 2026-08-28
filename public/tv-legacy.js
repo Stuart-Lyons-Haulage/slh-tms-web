@@ -3,6 +3,7 @@
 
   var root = document.getElementById('root');
   if (!root) { return; }
+  window.__SLH_LEGACY_TV__ = true;
 
   var MAX_ROWS = 10;
   var PINNED_EXCEPTIONS = 4;
@@ -300,7 +301,7 @@
   var state = { loads: [], assignments: [], progress: [], etas: [], dwell: [], trackingSource: '', error: '' };
 
   root.innerHTML = '<div id="legacy-tv">' +
-    '<div class="legacy-head"><div class="brand-wrap"><div class="brand-mark"><b>LYONS</b><span>HAULAGE</span></div><div class="head-divider"></div><h1>Live Operations</h1></div><div class="legacy-clock"><span id="legacy-date"></span><b id="legacy-clock"></b><small>● LIVE OFFICE WALLBOARD</small></div></div>' +
+    '<div class="legacy-head"><div class="brand-wrap"><div class="brand-mark"><b>SLH</b><span>OPERATIONS WALLBOARD</span></div><div class="head-divider"></div><h1>Arrivals &amp; Departures</h1></div><div class="legacy-clock"><span id="legacy-date"></span><b id="legacy-clock"></b><small>● LIVE OFFICE WALLBOARD</small></div></div>' +
     '<div id="legacy-message">Connecting to live TMS data…</div>' +
     '<div id="legacy-kpis"></div>' +
     '<div class="board-grid"><div class="runs-panel"><div id="legacy-board"></div></div><aside class="attention-panel"><h2>ATTENTION · NEEDS ACTION</h2><div id="legacy-attention"></div></aside></div>' +
@@ -427,10 +428,11 @@
     var riskCount = 0;
     var lateCount = 0;
     var dwellCount = 0;
+    var completeCount = 0;
     var i;
     for (i = 0; i < rows.length; i += 1) {
       var rowCount = rows[i];
-      if (rowCount.complete) { continue; }
+      if (rowCount.complete) { completeCount += 1; continue; }
       activeCount += 1;
       if (rowCount.prog && rowCount.prog.geofenceOnSite) { onSiteCount += 1; }
       if (rowCount.status.kind === 'risk') { riskCount += 1; }
@@ -438,19 +440,22 @@
       if (rowCount.dwell && Number(rowCount.dwell.dwellMinutes) >= 60) { dwellCount += 1; }
     }
 
-    kpis.innerHTML = kpi('STILL OUT', activeCount, 'active', '▣') +
+    kpis.innerHTML = kpi('RUNS ON BOARD', rows.length, 'active', '▣') +
+      kpi('TRACKER LIVE', state.trackingSource ? 'LIVE' : '—', 'onsite', '●') +
       kpi('ON SITE', onSiteCount, 'onsite', '●') +
-      kpi('AT RISK', riskCount, 'risk', '!') +
-      kpi('LATE ETA', lateCount, 'late', '◷') +
-      kpi('DWELL > 1 HOUR', dwellCount, 'dwell', '◴');
+      kpi('COMPLETE', completeCount, 'complete', '✓') +
+      kpi('AT RISK / LATE', riskCount + lateCount, (riskCount + lateCount) ? 'late' : 'active', '!') +
+      kpi('AVAILABLE', completeCount, 'complete', '↻');
 
-    var html = '<table><thead><tr><th>RUN</th><th>VEHICLE</th><th>DRIVER</th><th>JOURNEY PROGRESS</th><th>NEXT / ETA</th><th>STATUS</th></tr></thead><tbody>';
+    var html = '<table><thead><tr><th>TIME</th><th>RUN</th><th>VEHICLE</th><th>DRIVER</th><th>JOURNEY</th><th>FINAL DELIVERY / ETA</th><th>STATUS</th></tr></thead><tbody>';
     for (i = 0; i < shown.length; i += 1) {
       var row = shown[i];
       var vehicle = row.assignment.vehicle && row.assignment.vehicle.registration ? row.assignment.vehicle.registration : (row.eta && row.eta.vehicleRegistration ? row.eta.vehicleRegistration : 'TBC');
       var driver = row.assignment.driver && row.assignment.driver.displayName ? row.assignment.driver.displayName : (row.eta && row.eta.tachoDriverName ? row.eta.tachoDriverName : 'TBC');
       var etaTime = row.eta && row.eta.etaUtc ? formatTime(row.eta.etaUtc) : '--:--';
       var next = row.prog && row.prog.focusStop ? row.prog.focusStop : (row.eta ? row.eta.stopName : 'Next job TBC');
+      var plannedStop = firstStop(row.load);
+      var plannedTime = plannedStop && plannedStop.plannedArrivalUtc ? formatTime(plannedStop.plannedArrivalUtc) : '--:--';
       var rowClass = row.status.exception ? ' exception ' + row.status.cls : '';
       var detailBadge = '';
       if (row.status.kind === 'late') {
@@ -459,7 +464,8 @@
       } else if (row.status.kind === 'dwell') {
         detailBadge = '<small class="row-alert">DWELL ' + esc(formatDuration(row.dwell ? row.dwell.dwellMinutes : 0)) + '</small>';
       }
-      html += '<tr class="' + rowClass + '" data-load-id="' + esc(load.id) + '">' +
+      html += '<tr class="' + rowClass + '" data-load-id="' + esc(row.load.id) + '">' +
+        '<td><b class="time-value">' + esc(plannedTime) + '</b><small>planned start</small></td>' +
         '<td><b class="run-name">' + esc(row.runName) + '</b></td>' +
         '<td><b>' + esc(vehicle) + '</b></td>' +
         '<td><b>' + esc(driver) + '</b></td>' +

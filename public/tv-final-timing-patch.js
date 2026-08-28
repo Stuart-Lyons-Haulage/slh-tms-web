@@ -164,7 +164,7 @@
         if (loads[i].id) { loadById[String(loads[i].id)] = loads[i]; }
       }
 
-      var header = document.querySelector('#legacy-board thead th:nth-child(5)');
+      var header = document.querySelector('#legacy-board thead th:nth-child(6)');
       setText(header, 'FINAL DELIVERY / ETA');
 
       var rows = document.querySelectorAll('#legacy-board tbody tr');
@@ -182,7 +182,7 @@
         rows[i].style.display = '';
 
         var stop = finalStop(load);
-        var etaCell = rows[i].cells && rows[i].cells.length > 4 ? rows[i].cells[4] : null;
+        var etaCell = rows[i].cells && rows[i].cells.length > 5 ? rows[i].cells[5] : null;
         var nameNode = etaCell ? etaCell.querySelector('.next-name') : null;
         var timeNode = etaCell ? etaCell.querySelector('.eta-time') : null;
         setText(nameNode, stripPrefix(stop ? stop.name : 'Final job'));
