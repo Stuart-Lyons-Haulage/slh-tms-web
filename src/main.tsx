@@ -20,6 +20,7 @@ import './runsReadinessPatch';
 import './geofenceRecoveryPatch';
 import './geofenceRefreshPolicy';
 import './commercialRemovalPatch';
+import './driverDispatchComparisonRemovalPatch';
 import './routeGeocodeFallbackPatch';
 import './pollingLoadGuard';
 import './wallboardSnapshotFetchPatch';
