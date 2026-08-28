@@ -7,6 +7,7 @@ import imports from "./pages/ImportCentre.tsx?raw";
 import master from "./pages/MasterDataHub.tsx?raw";
 import review from "./pages/OrderReviewBulk.tsx?raw";
 import palletControl from "./pages/PalletPlanningControl.tsx?raw";
+import palletControlCss from "./pallet-control.css?raw";
 import planner from "./pages/PlannerEnhanced.tsx?raw";
 import runBuilder from "./pages/RunPlannerLive.tsx?raw";
 
@@ -29,13 +30,19 @@ describe("operations housekeeping contract", () => {
     expect(review).toContain("pendingOrderDates");
   });
 
-  it("keeps Pallet Control as three stacked live boards", () => {
+  it("keeps Pallet Control as three stacked live boards with Site Master delivery headings", () => {
     expect(app).toContain("['/pallet-control', 'Pallet Control']");
     expect(palletControl).toContain('matrix("toPlan", "To Plan"');
     expect(palletControl).toContain('matrix("planned", "Planned"');
     expect(palletControl).toContain('matrix("summary", "Pallet Summary"');
     expect(palletControl).toContain("data.summary.ordered");
     expect(palletControl).toContain("pallet-control-stack");
+    expect(palletControl).toContain("destinationLabels");
+    expect(palletControl).toContain("pallet-destination-heading");
+    expect(palletControl).not.toContain("vertical-destination");
+    expect(palletControlCss).toContain("writing-mode: horizontal-tb");
+    expect(palletControlCss).toContain("white-space: normal");
+    expect(palletControlCss).not.toContain("rotate(-68deg)");
     expect(palletControl).toContain("2000");
     expect(palletControl).toContain("Trays / Crates");
     expect(palletControl).toContain("Trolleys");
