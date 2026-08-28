@@ -75,7 +75,15 @@
   function finalStop(load) {
     var stops = load && load.stops ? load.stops.slice(0) : [];
     stops.sort(function (a, b) { return Number(a.sequence || 0) - Number(b.sequence || 0); });
-    return stops.length ? stops[stops.length - 1] : null;
+    var delivery = null;
+    var i;
+    for (i = stops.length - 1; i >= 0; i -= 1) {
+      if (/^Deliver\b/i.test(String(stops[i].name || '')) || stops[i].orderId) {
+        delivery = stops[i];
+        break;
+      }
+    }
+    return delivery || (stops.length ? stops[stops.length - 1] : null);
   }
 
   function request(path, callback) {
@@ -84,7 +92,10 @@
     try { xhr = new XMLHttpRequest(); } catch (e) { callback(e); return; }
     xhr.open('GET', '/tms-api' + path, true);
     xhr.setRequestHeader('Accept', 'application/json');
-    if (key) { xhr.setRequestHeader('X-TMS-TV-Key', key); }
+    if (key) {
+      xhr.setRequestHeader('X-TMS-TV-Key', key);
+      xhr.setRequestHeader('X-TV-Display-Key', key);
+    }
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) { return; }
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -138,12 +149,20 @@
     applying = true;
     try {
       var timingByKey = {};
+      var timingByLoadId = {};
       var loadByKey = {};
+      var loadById = {};
       var i;
       var records = latestTiming.records || [];
       var loads = latestLoads || [];
-      for (i = 0; i < records.length; i += 1) { timingByKey[runKey(records[i].loadReference)] = records[i]; }
-      for (i = 0; i < loads.length; i += 1) { loadByKey[runKey(loads[i].reference)] = loads[i]; }
+      for (i = 0; i < records.length; i += 1) {
+        timingByKey[runKey(records[i].loadReference)] = records[i];
+        if (records[i].loadId) { timingByLoadId[String(records[i].loadId)] = records[i]; }
+      }
+      for (i = 0; i < loads.length; i += 1) {
+        loadByKey[runKey(loads[i].reference)] = loads[i];
+        if (loads[i].id) { loadById[String(loads[i].id)] = loads[i]; }
+      }
 
       var header = document.querySelector('#legacy-board thead th:nth-child(5)');
       setText(header, 'FINAL DELIVERY / ETA');
@@ -152,8 +171,9 @@
       for (i = 0; i < rows.length; i += 1) {
         var runNode = rows[i].querySelector('.run-name');
         var key = runKey(runNode ? runNode.textContent : '');
-        var timing = timingByKey[key];
-        var load = loadByKey[key];
+        var rowLoadId = rows[i].getAttribute('data-load-id') || '';
+        var timing = timingByLoadId[rowLoadId] || timingByKey[key];
+        var load = loadById[rowLoadId] || loadByKey[key];
         if (!timing || !load) { continue; }
 
         // Completed runs remain on the board. The Operations Wallboard is an operating
@@ -233,7 +253,7 @@
       if (!error && data && data.records) { latestTiming = data; }
       complete();
     });
-    request('/api/v1/loads?date=' + encodeURIComponent(date), function (error, data) {
+    request('/api/v1/tv-display/planned-runs?date=' + encodeURIComponent(date), function (error, data) {
       if (!error && data) { latestLoads = data; }
       complete();
     });

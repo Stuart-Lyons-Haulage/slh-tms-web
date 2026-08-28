@@ -296,7 +296,10 @@
     xhr.setRequestHeader('Accept', 'application/json');
     if (key) {
       xhr.setRequestHeader('X-TMS-TV-Key', key);
-      if (isTvDisplay) { xhr.setRequestHeader('X-TV-Display-Key', key); }
+      // All compatibility feeds must carry the display key. Run Timing and
+      // driver assignments are public TV reads too, even though their paths do
+      // not include /tv-display/.
+      xhr.setRequestHeader('X-TV-Display-Key', key);
     }
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) { return; }
@@ -426,7 +429,7 @@
       } else if (row.status.kind === 'dwell') {
         detailBadge = '<small class="row-alert">DWELL ' + esc(formatDuration(row.dwell ? row.dwell.dwellMinutes : 0)) + '</small>';
       }
-      html += '<tr class="' + rowClass + '">' +
+      html += '<tr class="' + rowClass + '" data-load-id="' + esc(load.id) + '">' +
         '<td><b class="run-name">' + esc(row.runName) + '</b></td>' +
         '<td><b>' + esc(vehicle) + '</b></td>' +
         '<td><b>' + esc(driver) + '</b></td>' +
