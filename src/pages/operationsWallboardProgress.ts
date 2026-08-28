@@ -79,6 +79,21 @@ export type RouteProgressRun = {
   stops: Array<RunProgressStop & { state: string }>;
 };
 
+export type GeofenceProgressStop = { sequence?: number; state?: string };
+export type GeofenceProgressMarker = { state: "done" | "onsite" | "pending"; left: number };
+
+/** Build the wallboard progress line from confirmed geofence exits. */
+export function geofenceProgress(stops: GeofenceProgressStop[] | undefined, totalStops: number, completedStops: number): GeofenceProgressMarker[] {
+  const ordered = [...(stops || [])].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+  const count = Math.max(ordered.length, totalStops || 0, 1);
+  return Array.from({ length: count }, (_, index) => {
+    const state = String(ordered[index]?.state || "").toLowerCase();
+    const exited = state === "departed" || state === "completed" || state === "exited" || (!state && index < completedStops);
+    const onsite = !exited && state === "onsite";
+    return { state: exited ? "done" : onsite ? "onsite" : "pending", left: ((index + 1) / count) * 100 };
+  });
+}
+
 type WallboardStatusResult = {
   status: "late" | "risk" | "onsite" | "route" | "scheduled" | "complete";
   label: string;

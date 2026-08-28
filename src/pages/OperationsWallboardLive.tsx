@@ -4,7 +4,7 @@ import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
-import { completedJobCount, finalEtaFor, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
+import { completedJobCount, finalEtaFor, geofenceProgress, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
 import "../operations-wallboard.css";
 
 type RunProgressResponse = {
@@ -129,17 +129,6 @@ function tachoText(tacho?: RunTachoEvidence | null, eta?: DeliveryEta) {
   if (eta.tachoDriverName) return `matched ${eta.tachoDriverName}`;
   return "tacho unavailable";
 }
-function formatDwell(seconds?: number, minutes?: number) {
-  const totalMinutes = seconds != null ? Math.max(0, Math.floor(seconds / 60)) : Math.max(0, minutes ?? 0);
-  return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
-}
-function dwellLabel(progress?: RunProgressRecord) {
-  if (progress?.currentVisit) return `Time on site: ${formatDwell(progress.currentVisit.liveDwellSeconds, progress.currentVisit.liveDwellMinutes ?? progress.currentVisit.dwellMinutes)}`;
-  const departed = progress?.lastDeparture || [...(progress?.stopDwell || [])].reverse().find(stop => stop.state === "Departed");
-  if (departed) return `Dwell time: ${formatDwell(departed.finalDwellSeconds, departed.finalDwellMinutes ?? ("dwellMinutes" in departed ? departed.dwellMinutes : undefined))}`;
-  return progress?.linkageException ? "Geofence link needs review" : undefined;
-}
-
 function mergeEtaSnapshots(previous: DeliveryEta[], incoming: DeliveryEta[]) {
   if (!incoming.length) return previous;
   const merged = new Map(previous.map(eta => [`${eta.loadId}|${eta.sequence}`, eta]));
@@ -327,7 +316,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
 
   return <section className={`ops-wallboard ${tvMode ? "tv" : ""}`}>
     <header className="ops-wallboard-header">
-      <div><p>SLH OPERATIONS WALLBOARD</p><h1>Arrivals & Departures</h1></div>
+      <div className="ops-wallboard-brand"><img src="/lyons-logo.svg" alt="Lyons" /><div><p>SLH OPERATIONS WALLBOARD</p><h1>Arrivals & Departures</h1></div></div>
       <div className="ops-wallboard-clock"><strong>{timeFormatter.format(clock)}</strong><span>{dateFormatter.format(clock)}</span></div>
       <button type="button" onClick={() => void fullscreen()}>Full screen</button>
     </header>
@@ -341,28 +330,23 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
     </div>
     {(error || boardData?.warning || boardData?.geofenceAvailable === false) && <div className="ops-wallboard-alert">{error || boardData?.warning || "Geofence progression is unavailable; planned journeys remain displayed."}</div>}
     <div className="ops-board-table" ref={tableRef} role="table" aria-label="Operations arrivals and departures">
-      <div className="ops-board-head" role="row"><span>Time</span><span>Run</span><span>Vehicle</span><span>Driver</span><span>Journey</span><span>Final delivery / ETA</span><span>Status</span></div>
+      <div className="ops-board-head" role="row"><span>Time</span><span>Run</span><span>Vehicle</span><span>Driver</span><span>Progress</span><span>Final delivery / ETA</span><span>Status</span></div>
       {loading && !data && <div className="ops-board-empty">Loading planned journeys and live progression...</div>}
       {!loading && rows.length === 0 && <div className="ops-board-empty">No runs are planned for today.</div>}
       {rows.map(row => {
         const buffer = minutesToWindow(row.finalEta);
         const completedStops = row.progress?.completedStops ?? 0;
         const totalStops = row.progress?.totalStops || row.load?.stops?.length || row.etas.length || 0;
-        const percent = totalStops > 0 ? Math.min(100, Math.max(Math.round(completedStops / totalStops * 100), Math.round(row.progress?.progressPercent ?? 0))) : 0;
-        const progressLabel = row.progress?.currentVisit
-          ? `${row.progress.currentVisit.geofenceName || "On site"} · ${dwellLabel(row.progress)}`
-          : row.status === "complete"
-            ? dwellLabel(row.progress) || "Journey complete"
-            : row.progress?.focusStop
-              ? `${row.progress.phase || "Next"} · ${row.progress.focusStop}`
-              : `${completedStops} of ${totalStops || "?"} stops`;
+        const markers = geofenceProgress(row.progress?.stopDwell, totalStops, completedStops);
+        const filled = markers.filter(marker => marker.state === "done").length;
+        const percent = markers.length > 0 ? (filled / markers.length) * 100 : 0;
         const finalStopName = (row.finalEta?.stopName || finalDestinationStop(row.load)?.name || "Final delivery").replace(/^Collect · |^Deliver · /i, "");
         return <article className={`ops-board-row ${row.status} ${row.id === presentRowId ? "present" : ""}`} role="row" key={row.id} data-row-id={row.id}>
           <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.status === "complete" ? "completed" : "planned start"}</small></span>
           <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small></span>
           <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
           <span><strong>{row.driver}</strong><small title={row.tacho?.explanation}>{tachoText(row.tacho, row.finalEta || row.nextEta)}</small></span>
-          <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${percent}%` }} /></div><small>{row.progress?.linkageException?.message || row.route}</small></span>
+          <span className="progress-cell"><div className="ops-progress-bar" aria-label={`${filled} of ${markers.length} geofences exited`}><i style={{ width: `${percent}%` }} />{markers.map((marker, index) => <b className={`ops-progress-marker ${marker.state}`} key={`${row.id}-marker-${index}`} style={{ left: `${marker.left}%` }} />)}</div><small>{filled} of {markers.length} geofences exited</small></span>
           <span className="time-cell eta"><strong>{row.displayTimeLabel === "AVAILABLE" ? "AVAILABLE" : formatTime(row.displayTimeUtc)}</strong><small>{finalStopName} · {row.displayTimeLabel}{row.displayTimeLabel === "LIVE FINAL ETA" ? ` · ${formatAge(row.finalEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}` : ""}</small></span>
           <span className="status-cell"><strong>{row.statusLabel}</strong><small>{buffer == null || row.status === "onsite" || row.status === "complete" ? row.statusDetail : `${buffer >= 0 ? "+" : ""}${buffer}m · ${row.statusDetail}`}</small></span>
         </article>;

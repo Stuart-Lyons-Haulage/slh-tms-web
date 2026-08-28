@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeliveryEta } from "../lib/api";
-import { finalEtaFor, statusFor, type RunProgressRecord } from "./operationsWallboardProgress";
+import { finalEtaFor, geofenceProgress, statusFor, type RunProgressRecord } from "./operationsWallboardProgress";
 import { stableFinalEta } from "./stableFinalEta";
 
 function eta(overrides: Partial<DeliveryEta>): DeliveryEta {
@@ -43,6 +43,18 @@ function progress(): RunProgressRecord {
 }
 
 describe("wallboard final delivery risk", () => {
+  it("fills only geofences that have been exited", () => {
+    expect(geofenceProgress([
+      { sequence: 1, state: "Departed" },
+      { sequence: 2, state: "OnSite" },
+      { sequence: 3, state: "EnRoute" },
+    ], 3, 0)).toEqual([
+      { state: "done", left: 33.33333333333333 },
+      { state: "onsite", left: 66.66666666666666 },
+      { state: "pending", left: 100 },
+    ]);
+  });
+
   it("rejects an overnight timing replacement for a same-day delivery window", () => {
     expect(stableFinalEta(
       "2026-08-29T02:47:00Z",

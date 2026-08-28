@@ -217,21 +217,25 @@
     stops.sort(function (a, b) { return (a.sequence || 0) - (b.sequence || 0); });
     var count = Math.max(stops.length, progress ? progress.totalStops || 0 : 0, 1);
     var done = progress ? progress.completedStops || 0 : 0;
+    var dots = '';
+    var filled = 0;
+    var i;
+    for (i = 0; i < count; i += 1) {
+      var pct = ((i + 1) / count) * 100;
+      var stateName = stops[i] && stops[i].state ? String(stops[i].state).toLowerCase() : '';
+      var cls = '';
+      if (stateName === 'departed' || stateName === 'completed' || stateName === 'exited' || (!stateName && i < done)) { cls = ' done'; filled += 1; }
+      else if (stateName === 'onsite') { cls = ' onsite'; }
+      dots += '<span class="timeline-dot' + cls + '" style="left:' + pct + '%"></span>';
+    }
     var truckPct = progress && progress.truckPositionPercent != null ? Number(progress.truckPositionPercent) : null;
     if (truckPct == null || isNaN(truckPct)) { truckPct = Math.max(0, Math.min(100, (done / count) * 100)); }
     truckPct = Math.max(0, Math.min(100, truckPct));
-    var donePct = Math.max(0, Math.min(100, (done / count) * 100));
-    var fillPct = Math.max(donePct, truckPct);
-    var next = progress && progress.focusStop ? progress.focusStop : (eta ? eta.stopName : 'Route not started');
-    var helper;
-    if (dwell && Number(dwell.dwellMinutes) > 0) {
-      helper = 'On site: ' + shortName(dwell.geofenceName || next) + ' · ' + formatDuration(dwell.dwellMinutes);
-    } else {
-      helper = (progress && progress.geofenceOnSite ? 'On site: ' : 'Next: ') + shortName(next);
-      if (progress && progress.trackingMoving && progress.speedKph != null) { helper += ' · ' + Math.round(Number(progress.speedKph)) + ' km/h'; }
-      helper += trackingWarning(progress);
-    }
-    return '<div class="timeline"><span class="timeline-line"></span><span class="timeline-done" style="width:' + fillPct + '%"></span></div><div class="next-job">' + esc(helper) + '</div>';
+    var donePct = Math.max(0, Math.min(100, (filled / count) * 100));
+    var liveMarker = progress && progress.trackingFresh
+      ? '<span class="timeline-vehicle' + (progress.trackingMoving ? ' moving' : '') + '" style="left:' + truckPct + '%"></span>'
+      : '';
+    return '<div class="timeline" aria-label="' + filled + ' of ' + count + ' geofences exited"><span class="timeline-line"></span><span class="timeline-done" style="width:' + donePct + '%"></span>' + dots + liveMarker + '</div><small class="progress-count">' + filled + ' of ' + count + ' geofences exited</small>';
   }
 
   function isRunComplete(load, progress) {
@@ -336,7 +340,7 @@
   var state = { loads: [], assignments: [], progress: [], etas: [], dwell: [], trackingSource: '', error: '' };
 
   root.innerHTML = '<div id="legacy-tv">' +
-    '<div class="legacy-head"><div class="brand-wrap"><div class="brand-mark"><b>SLH</b><span>OPERATIONS WALLBOARD</span></div><div class="head-divider"></div><h1>Arrivals &amp; Departures</h1></div><div class="legacy-clock"><span id="legacy-date"></span><b id="legacy-clock"></b><small>● LIVE OFFICE WALLBOARD</small></div></div>' +
+    '<div class="legacy-head"><div class="brand-wrap"><img class="legacy-logo" src="/lyons-logo.svg" alt="Lyons"><div class="brand-mark"><b>LYONS</b><span>OPERATIONS WALLBOARD</span></div><div class="head-divider"></div><h1>Arrivals &amp; Departures</h1></div><div class="legacy-clock"><span id="legacy-date"></span><b id="legacy-clock"></b><small>● LIVE OFFICE WALLBOARD</small></div></div>' +
     '<div id="legacy-message">Connecting to live TMS data…</div>' +
     '<div id="legacy-kpis"></div>' +
     '<div class="board-grid"><div class="runs-panel"><div id="legacy-board"></div></div><aside class="attention-panel"><h2>ATTENTION · NEEDS ACTION</h2><div id="legacy-attention"></div></aside></div>' +
@@ -484,13 +488,13 @@
       kpi('AT RISK / LATE', riskCount + lateCount, (riskCount + lateCount) ? 'late' : 'active', '!') +
       kpi('AVAILABLE', completeCount, 'complete', '↻');
 
-    var html = '<table><thead><tr><th>TIME</th><th>RUN</th><th>VEHICLE</th><th>DRIVER</th><th>JOURNEY</th><th>FINAL DELIVERY / ETA</th><th>STATUS</th></tr></thead><tbody>';
+    var html = '<table><thead><tr><th>TIME</th><th>RUN</th><th>VEHICLE</th><th>DRIVER</th><th>PROGRESS</th><th>FINAL DELIVERY / ETA</th><th>STATUS</th></tr></thead><tbody>';
     for (i = 0; i < shown.length; i += 1) {
       var row = shown[i];
       var vehicle = row.assignment.vehicle && row.assignment.vehicle.registration ? row.assignment.vehicle.registration : (row.eta && row.eta.vehicleRegistration ? row.eta.vehicleRegistration : 'TBC');
       var driver = row.assignment.driver && row.assignment.driver.displayName ? row.assignment.driver.displayName : (row.eta && row.eta.tachoDriverName ? row.eta.tachoDriverName : 'TBC');
       var etaTime = row.eta && row.eta.etaUtc ? formatTime(row.eta.etaUtc) : '--:--';
-      var next = row.prog && row.prog.focusStop ? row.prog.focusStop : (row.eta ? row.eta.stopName : 'Next job TBC');
+      var finalName = row.eta ? row.eta.stopName : 'Final delivery TBC';
       var plannedStop = firstStop(row.load);
       var plannedTime = plannedStop && plannedStop.plannedArrivalUtc ? formatTime(plannedStop.plannedArrivalUtc) : '--:--';
       var rowClass = row.status.exception ? ' exception ' + row.status.cls : '';
@@ -507,7 +511,7 @@
         '<td><b>' + esc(vehicle) + '</b></td>' +
         '<td><b>' + esc(driver) + '</b></td>' +
         '<td>' + timelineMarkup(row.load, row.prog, row.nextEta || row.eta, row.dwell) + '</td>' +
-        '<td><b class="next-name">' + esc(shortName(next)) + '</b><span class="eta-time">' + esc(etaTime) + '</span>' + detailBadge + '</td>' +
+        '<td><b class="next-name">' + esc(shortName(finalName)) + '</b><span class="eta-time">' + esc(etaTime) + '</span>' + detailBadge + '</td>' +
         '<td><strong class="status ' + esc(row.status.cls) + '">' + esc(row.status.label) + '</strong></td></tr>';
     }
     html += '</tbody></table>';
