@@ -136,7 +136,7 @@ function addDays(value: string, days: number) {
   const [year, month, day] = value.split("-").map(Number);
   return isoDate(new Date(year, month - 1, day + days, 12));
 }
-function tomorrow() { const date = new Date(); date.setDate(date.getDate() + 1); return isoDate(date); }
+function today() { return isoDate(new Date()); }
 function localTime(value?: string) {
   if (!value) return "";
   const date = new Date(value);
@@ -272,7 +272,7 @@ function TypeaheadSelect({ value, options, onChange, placeholder, disabled, list
 export function DriverDispatch() {
   const token = useAccessToken();
   const initialParams = useMemo(() => new URLSearchParams(window.location.search), []);
-  const [date, setDate] = useState(initialParams.get("date") || tomorrow());
+  const [date, setDate] = useState(initialParams.get("date") || today());
   const readOnly = initialParams.get("compare") === "1";
   const [data, setData] = useState<Workbench>();
   const [loading, setLoading] = useState(true);
