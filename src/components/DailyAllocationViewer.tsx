@@ -20,7 +20,7 @@ export function DailyAllocationViewer({ initialDate }: { initialDate: string }) 
   const allocated = rows.filter(row=>row.driver).length;
 
   useEffect(() => {
-    const interval = window.setInterval(() => void refreshAssignments(), 60_000);
+    const interval = window.setInterval(() => void refreshAssignments(), 20_000);
     const onFocus = () => void refreshAssignments();
     const onVisibility = () => { if (document.visibilityState === "visible") void refreshAssignments(); };
     window.addEventListener("focus", onFocus);
