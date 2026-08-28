@@ -1,0 +1,88 @@
+name: Patch canonical wallboard run source
+
+on:
+  push:
+    branches:
+      - fix/canonical-wallboard-run-source
+    paths:
+      - '.github/workflows/patch-canonical-wallboard-run-source.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/canonical-wallboard-run-source
+          token: ${{ github.token }}
+      - name: Use canonical planned runs everywhere
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          wallboard = Path('src/pages/OperationsWallboardLive.tsx')
+          text = wallboard.read_text()
+          old = '''    const getLoads = (date: string) => tvAccessKey
+      ? request<Load[]>(`/api/v1/loads?date=${encodeURIComponent(date)}`, undefined, tvInit)
+      : api.loads(date, access);'''
+          new = '''    const getLoads = (date: string) =>
+      request<Load[]>(`/api/v1/tv-display/planned-runs?date=${encodeURIComponent(date)}`, access, tvInit);'''
+          if old not in text:
+              raise SystemExit('OperationsWallboardLive load source marker not found')
+          wallboard.write_text(text.replace(old, new, 1))
+
+          legacy = Path('public/tv-legacy.js')
+          text = legacy.read_text()
+          old = "    request('/api/v1/loads?date=' + encodeURIComponent(date), function (e, d) { done('loads', e, d); });"
+          new = "    request('/api/v1/tv-display/planned-runs?date=' + encodeURIComponent(date), function (e, d) { done('loads', e, d); });"
+          if old not in text:
+              raise SystemExit('legacy TV load source marker not found')
+          legacy.write_text(text.replace(old, new, 1))
+
+          dashboard = Path('src/pages/DashboardOperational.tsx')
+          text = dashboard.read_text()
+          old = '''  useEffect(() => {
+    const refreshFeeds = () => void refreshFreshness();
+    const interval = window.setInterval(refreshFeeds, 60_000);
+    const onFocus = () => refreshFeeds();
+    const onVisibility = () => { if (document.visibilityState === "visible") refreshFeeds(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refreshFreshness]);'''
+          new = '''  useEffect(() => {
+    const refreshOperational = () => void Promise.allSettled([refreshReadiness(), refreshAttention(), refreshFreshness()]);
+    const interval = window.setInterval(refreshOperational, 60_000);
+    const onFocus = () => refreshOperational();
+    const onVisibility = () => { if (document.visibilityState === "visible") refreshOperational(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refreshAttention, refreshFreshness, refreshReadiness]);'''
+          if old not in text:
+              raise SystemExit('Dashboard refresh marker not found')
+          dashboard.write_text(text.replace(old, new, 1))
+
+          Path('.github/workflows/patch-canonical-wallboard-run-source.yml').unlink()
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/OperationsWallboardLive.tsx public/tv-legacy.js src/pages/DashboardOperational.tsx .github/workflows/patch-canonical-wallboard-run-source.yml
+          git commit -m 'Use canonical runs across dashboard and wallboards'
+          git push origin HEAD:fix/canonical-wallboard-run-source
