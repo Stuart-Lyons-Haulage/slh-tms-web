@@ -53,7 +53,7 @@ type PlanningControlData = {
   runs: PlanningRun[];
 };
 type RegionData = { date: string; destinations: string[]; destinationRegions: Record<string, string> };
-type ViewMode = "toPlan" | "planned";
+type ViewMode = "toPlan" | "planned" | "summary";
 type PalletTone = "standard" | "euro" | "traycrate" | "trolley" | "mixed" | "unknown";
 
 const PLANNING_CHANNEL = "slh-planning-control";
@@ -167,9 +167,9 @@ export function PalletPlanningControl() {
   const cellMap = useMemo(() => new Map((data?.cells || []).map((cell) => [`${cell.planningGroup}|||${cell.destination}`, cell])), [data?.cells]);
   const selectedOrders = useMemo(() => !data || !selectedCell ? [] : data.orders.filter((order) => order.planningGroup === selectedCell.group && order.destination === selectedCell.destination), [data, selectedCell]);
 
-  const quantity = (mode: ViewMode, cell?: PlanningCell) => mode === "planned" ? cell?.planned || 0 : cell?.outstanding || 0;
-  const orderQuantity = (mode: ViewMode, order: PlanningOrder) => mode === "planned" ? order.plannedPallets : order.outstandingPallets;
-  const sourceLineQuantity = (mode: ViewMode, line: SourceLine) => mode === "planned" ? line.plannedPallets : line.outstandingPallets;
+  const quantity = (mode: ViewMode, cell?: PlanningCell) => mode === "planned" ? cell?.planned || 0 : mode === "summary" ? cell?.ordered || 0 : cell?.outstanding || 0;
+  const orderQuantity = (mode: ViewMode, order: PlanningOrder) => mode === "planned" ? order.plannedPallets : mode === "summary" ? order.orderedPallets : order.outstandingPallets;
+  const sourceLineQuantity = (mode: ViewMode, line: SourceLine) => mode === "planned" ? line.plannedPallets : mode === "summary" ? line.orderedPallets : line.outstandingPallets;
 
   function orderTones(mode: ViewMode, order: PlanningOrder): PalletTone[] {
     const lines = order.sourceLines || [];
@@ -229,9 +229,11 @@ export function PalletPlanningControl() {
   }
 
   function matrix(mode: ViewMode, title: string, total: number) {
-    return <section className={`panel pallet-control-board ${mode === "toPlan" ? "to-plan" : "planned"}`}>
+    const eyebrow = mode === "toPlan" ? "Work remaining" : mode === "planned" ? "Allocated work" : "All ordered work";
+    const boardClass = mode === "toPlan" ? "to-plan" : mode === "planned" ? "planned" : "summary";
+    return <section className={`panel pallet-control-board ${boardClass}`}>
       <div className="pallet-control-board-title">
-        <div><p className="eyebrow">{mode === "toPlan" ? "Work remaining" : "Allocated work"}</p><h2>{title}</h2></div>
+        <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div>
         <strong>{total}</strong>
       </div>
       <div className="pallet-control-matrix-wrap">
@@ -284,7 +286,7 @@ export function PalletPlanningControl() {
       <div>
         <p className="eyebrow">Planner second screen · live quantity control</p>
         <h1>Pallet Control</h1>
-        <p className="intro">To plan spans the full screen from left to right. Planned mirrors the same boxes underneath. Split allocations move between the two automatically every 2 seconds.</p>
+        <p className="intro">To Plan spans the full screen from left to right. Planned and Pallet Summary mirror the same matrix underneath. Split allocations move between To Plan and Planned automatically every 2 seconds while Pallet Summary retains the full ordered position.</p>
       </div>
       <div className="title-actions">
         <label>Planning date <input type="date" value={date} onChange={(event) => { setDate(event.target.value); setSelectedCell(undefined); }} /></label>
@@ -312,8 +314,9 @@ export function PalletPlanningControl() {
     </div>}
     {data && data.summary.orders === 0 && <div className="state">No approved load-unit orders are available for {ukDate(date)}.</div>}
     {data && <div className="pallet-control-stack">
-      {matrix("toPlan", "To plan", data.summary.outstanding)}
+      {matrix("toPlan", "To Plan", data.summary.outstanding)}
       {matrix("planned", "Planned", data.summary.planned)}
+      {matrix("summary", "Pallet Summary", data.summary.ordered)}
     </div>}
 
     {selectedCell && data && <section className="panel pallet-control-detail">
