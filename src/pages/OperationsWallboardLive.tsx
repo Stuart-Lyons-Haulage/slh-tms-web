@@ -69,7 +69,7 @@ function formatAge(value?: string | Date, now = new Date()) {
   if (!valueDate) return "no tracker fix";
   const minutes = Math.max(0, Math.round((now.getTime() - valueDate.getTime()) / 60000));
   if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${Math.round(minutes)}m ago`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
 function firstStop(load?: Load) { return [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence)[0]; }
@@ -271,7 +271,10 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       const list = etaByLoad.get(eta.loadId) || [];
       list.push(eta); etaByLoad.set(eta.loadId, list);
     }
-    const ids = new Set([...loadsById.keys(), ...progressByLoad.keys(), ...etaByLoad.keys()]);
+    // Current reconciled Loads are authoritative for which runs exist on the board.
+    // Progress/ETA snapshots may deliberately retain last-known evidence, but stale
+    // enrichment IDs must never manufacture a second/ghost operational row.
+    const ids = new Set(loadsById.keys());
     return [...ids].map(id => {
       const load = loadsById.get(id);
       const progress = progressByLoad.get(id);

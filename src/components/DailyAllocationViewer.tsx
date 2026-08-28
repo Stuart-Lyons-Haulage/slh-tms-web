@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type DriverAssignment } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
@@ -14,9 +14,23 @@ export function DailyAllocationViewer({ initialDate }: { initialDate: string }) 
   const token = useAccessToken();
   const [date,setDate] = useState(initialDate);
   const assignments = useApi(useCallback(async()=>api.driverAssignments(date,date,await token()),[date,token]));
+  const refreshAssignments = assignments.refresh;
   const days = useMemo(()=>[-3,-2,-1,0,1,2,3].map(offset=>addDays(date,offset)),[date]);
   const rows = [...(assignments.data || [])].sort((a,b)=>(a.driver?.displayName || "ZZZ").localeCompare(b.driver?.displayName || "ZZZ") || a.loadReference.localeCompare(b.loadReference));
   const allocated = rows.filter(row=>row.driver).length;
+
+  useEffect(() => {
+    const interval = window.setInterval(() => void refreshAssignments(), 60_000);
+    const onFocus = () => void refreshAssignments();
+    const onVisibility = () => { if (document.visibilityState === "visible") void refreshAssignments(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refreshAssignments]);
 
   return <section className="panel allocation-viewer">
     <div className="title-row"><div><p className="eyebrow">Read-only daily allocation</p><h2>Who was doing what?</h2><p className="hint">Choose a day to view the committed run record without opening the Planner or changing an allocation.</p></div><Link to={`/driver-dispatch?date=${encodeURIComponent(date)}`}>Open Driver Dispatch →</Link></div>
