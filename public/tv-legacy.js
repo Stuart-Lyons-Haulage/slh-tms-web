@@ -142,6 +142,9 @@
   }
 
   function statusInfo(progress, eta, dwell) {
+    if (eta && eta.tachoStatus === 'InsufficientDriveTime') {
+      return { label: 'HOURS RISK', detail: 'Tacho time is below remaining route need', cls: 'late', exception: true, priority: 980, kind: 'tacho' };
+    }
     if (eta && eta.source === 'Live' && eta.risk === 'Late') {
       return { label: 'LATE ETA', detail: eta.stopName || 'Delivery', cls: 'late', exception: true, priority: 1000, kind: 'late' };
     }
@@ -163,7 +166,7 @@
     if ((progress && progress.completedStops > 0) || (eta && (eta.source === 'Live' || eta.source === 'Estimated'))) {
       return { label: 'ON ROUTE', detail: progress && progress.focusStop ? progress.focusStop : (eta ? eta.stopName : ''), cls: 'route', exception: false, priority: 400, kind: 'route' };
     }
-    return { label: 'UPCOMING', detail: eta ? eta.stopName : 'Awaiting live evidence', cls: 'scheduled', exception: false, priority: 100, kind: 'upcoming' };
+    return { label: 'SCHEDULED', detail: eta ? eta.stopName : 'Awaiting live evidence', cls: 'scheduled', exception: false, priority: 100, kind: 'scheduled' };
   }
 
   function shortName(value) {
@@ -187,27 +190,12 @@
     stops.sort(function (a, b) { return (a.sequence || 0) - (b.sequence || 0); });
     var count = Math.max(stops.length, progress ? progress.totalStops || 0 : 0, 1);
     var done = progress ? progress.completedStops || 0 : 0;
-    var dots = '';
-    var i;
-    for (i = 0; i < count; i += 1) {
-      var pct = ((i + 1) / count) * 100;
-      var stateName = stops[i] && stops[i].state ? String(stops[i].state).toLowerCase() : '';
-      var cls = '';
-      if (stateName === 'completed' || (!stateName && i < done)) { cls = ' done'; }
-      else if (stateName === 'onsite') { cls = ' onsite'; }
-      else if (stateName === 'heading' || (!stateName && i === done)) { cls = ' next'; }
-      dots += '<span class="timeline-dot' + cls + '" style="left:' + pct + '%"></span>';
-    }
-
     var truckPct = progress && progress.truckPositionPercent != null ? Number(progress.truckPositionPercent) : null;
     if (truckPct == null || isNaN(truckPct)) { truckPct = Math.max(0, Math.min(100, (done / count) * 100)); }
     truckPct = Math.max(0, Math.min(100, truckPct));
     var donePct = Math.max(0, Math.min(100, (done / count) * 100));
     var fillPct = Math.max(donePct, truckPct);
-    var liveMarker = progress && progress.trackingFresh
-      ? '<span class="timeline-vehicle' + (progress.trackingMoving ? ' moving' : '') + '" style="left:' + truckPct + '%"></span>'
-      : '';
-    var next = progress && progress.focusStop ? progress.focusStop : (eta ? eta.stopName : 'Next job TBC');
+    var next = progress && progress.focusStop ? progress.focusStop : (eta ? eta.stopName : 'Route not started');
     var helper;
     if (dwell && Number(dwell.dwellMinutes) > 0) {
       helper = 'On site: ' + shortName(dwell.geofenceName || next) + ' · ' + formatDuration(dwell.dwellMinutes);
@@ -216,7 +204,7 @@
       if (progress && progress.trackingMoving && progress.speedKph != null) { helper += ' · ' + Math.round(Number(progress.speedKph)) + ' km/h'; }
       helper += trackingWarning(progress);
     }
-    return '<div class="timeline"><span class="timeline-line"></span><span class="timeline-done" style="width:' + fillPct + '%"></span>' + dots + liveMarker + '</div><div class="next-job">' + esc(helper) + '</div>';
+    return '<div class="timeline"><span class="timeline-line"></span><span class="timeline-done" style="width:' + fillPct + '%"></span></div><div class="next-job">' + esc(helper) + '</div>';
   }
 
   function isRunComplete(load, progress) {
@@ -226,7 +214,14 @@
     if (phase === 'completed' || phase === 'complete') { return true; }
     var total = progress && Number(progress.totalStops);
     var completed = progress && Number(progress.completedStops);
-    return total > 0 && completed >= total;
+    if (total > 0 && completed >= total) { return true; }
+    if (progress && progress.currentVisit && total > 0) {
+      var currentSequence = progress.stopDwell && progress.stopDwell.length ? progress.stopDwell.reduce(function (highest, stop) {
+        return stop.stopId === progress.currentVisit.loadStopId ? Math.max(highest, Number(stop.sequence || 0)) : highest;
+      }, 0) : 0;
+      if (currentSequence === total || completed === total - 1) { return true; }
+    }
+    return false;
   }
 
   function attentionMarkup(rows) {
@@ -243,20 +238,28 @@
       var detail = row.status.detail;
       var value = '';
       var sub = '';
+      var action = 'Review route';
       if (row.status.kind === 'late') {
         var late = etaLateMinutes(row.eta);
         value = late == null ? 'LATE' : '+' + late;
         sub = late == null ? '' : 'min';
+        action = 'Escalate delivery';
       } else if (row.status.kind === 'dwell') {
         value = formatDuration(row.dwell ? row.dwell.dwellMinutes : 0);
         sub = 'dwell';
+        action = 'Check site hold';
       } else if (row.status.kind === 'risk') {
         value = formatTime(row.eta ? row.eta.etaUtc : null);
         sub = 'ETA';
+        action = 'Review route';
+      } else if (row.status.kind === 'tacho') {
+        value = 'HOURS';
+        sub = 'risk';
+        action = 'Check tacho hours';
       }
       html += '<div class="attention-card ' + esc(row.status.cls) + '">' +
-        '<span class="attention-icon">' + (row.status.kind === 'late' ? '!' : row.status.kind === 'dwell' ? '◷' : '▲') + '</span>' +
-        '<div class="attention-copy"><b>' + esc(row.runName) + '</b><strong>' + esc(shortName(detail)) + '</strong><small>' + esc(row.status.label) + '</small></div>' +
+        '<span class="attention-icon">' + (row.status.kind === 'late' ? '!' : row.status.kind === 'dwell' ? '◷' : row.status.kind === 'tacho' ? '⌛' : '▲') + '</span>' +
+        '<div class="attention-copy"><b>' + esc(row.runName) + '</b><strong>' + esc(shortName(detail)) + '</strong><small>' + esc(row.status.label) + '</small><em>Action: ' + esc(action) + '</em></div>' +
         '<div class="attention-value"><b>' + esc(value) + '</b><small>' + esc(sub) + '</small></div></div>';
     }
     return html;
