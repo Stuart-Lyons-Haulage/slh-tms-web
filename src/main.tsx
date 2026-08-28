@@ -71,6 +71,9 @@ async function start() {
       // this module finishes loading. Do not let React take over that DOM.
       return;
     }
+    if (isTvRoutePath) {
+      (window as Window & { __SLH_TV_REACT_STARTED__?: boolean }).__SLH_TV_REACT_STARTED__ = true;
+    }
     if (publicTvLink) {
       renderApp();
       void msal.initialize().catch((error) => console.warn('MSAL unavailable in keyed TV mode; continuing with TV-key access.', error));

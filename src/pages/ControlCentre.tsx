@@ -1,6 +1,7 @@
 import { AdminIntegrationSyncControls } from '../components/AdminIntegrationSyncControls';
 import { Admin } from './Pages';
 import { OperationsControlClean } from './OperationsControlClean';
+import { TvDisplaySetup } from './TvDisplaySetup';
 
 export function ControlCentre() {
   return <section className="control-centre-one-page">
@@ -19,6 +20,7 @@ export function ControlCentre() {
       <h2>Platform controls</h2>
       <p className="hint">Use these only when an integration or platform control needs attention.</p>
     </div>
+    <TvDisplaySetup />
     <AdminIntegrationSyncControls />
     <Admin />
   </section>;

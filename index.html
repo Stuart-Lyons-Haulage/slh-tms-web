@@ -35,12 +35,12 @@
         window.__SLH_TV_COMPATIBILITY__ = true;
         var css = document.createElement('link');
         css.rel = 'stylesheet';
-        css.href = '/tv-legacy.css?v=20260828-compat';
+        css.href = '/tv-legacy.css?v=20260828-wallboard-v5';
         document.head.appendChild(css);
-        appendScript('/tv-timezone-patch.js?v=20260828-compat', function () {
-          appendScript('/tv-legacy.js?v=20260828-compat', function () {
-            appendScript('/tv-run-labels-patch.js?v=20260828-compat', function () {
-              appendScript('/tv-final-timing-patch.js?v=20260828-compat');
+        appendScript('/tv-timezone-patch.js?v=20260828-wallboard-v5', function () {
+          appendScript('/tv-legacy.js?v=20260828-wallboard-v5', function () {
+            appendScript('/tv-run-labels-patch.js?v=20260828-wallboard-v5', function () {
+              appendScript('/tv-final-timing-patch.js?v=20260828-wallboard-v5');
             });
           });
         });
@@ -48,9 +48,9 @@
 
       window.setTimeout(function () {
         var root = document.getElementById('root');
-        if (!root || String(root.textContent || '').replace(/\s+/g, '') !== '') return;
+        if (!root || String(root.textContent || '').replace(/\s+/g, '') !== '' || window.__SLH_TV_REACT_STARTED__) return;
         startCompatibilityWallboard();
-      }, 5000);
+      }, 20000);
     }());
   </script>
   <script>
