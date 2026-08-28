@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DeliveryEta } from "../lib/api";
 import { finalEtaFor, statusFor, type RunProgressRecord } from "./operationsWallboardProgress";
+import { stableFinalEta } from "./stableFinalEta";
 
 function eta(overrides: Partial<DeliveryEta>): DeliveryEta {
   return {
@@ -42,6 +43,47 @@ function progress(): RunProgressRecord {
 }
 
 describe("wallboard final delivery risk", () => {
+  it("rejects an overnight timing replacement for a same-day delivery window", () => {
+    expect(stableFinalEta(
+      "2026-08-29T02:47:00Z",
+      "2026-08-28T17:55:00Z",
+      "2026-08-28T18:00:00Z",
+      undefined,
+    )).toBe("2026-08-28T17:55:00Z");
+  });
+
+  it("stops showing a run as on route when the final geofence is already on site", () => {
+    const finalProgress = {
+      ...progress(),
+      completedStops: 3,
+      nextStop: { id: "stop-4", sequence: 4, name: "Deliver · Morrisons-Gadbrook" },
+      trackingMoving: true,
+      stopDwell: [{ stopId: "stop-4", sequence: 4, stopName: "Morrisons-Gadbrook", state: "OnSite" as const }],
+    };
+
+    expect(statusFor(finalProgress, undefined, [])).toMatchObject({
+      status: "complete",
+      label: "AVAILABLE",
+    });
+  });
+
+  it("marks an eight-minute final-delivery buffer as a deadline risk", () => {
+    const finalEta = eta({
+      stopId: "stop-4",
+      sequence: 4,
+      stopName: "Deliver · Aldi-Goldthorpe",
+      etaUtc: "2026-08-28T17:52:00Z",
+      deliveryWindowEndUtc: "2026-08-28T18:00:00Z",
+      source: "Live",
+      risk: "Pending",
+    });
+
+    expect(statusFor(progress(), finalEta, [finalEta])).toMatchObject({
+      status: "risk",
+      label: "FINAL ETA AT RISK",
+    });
+  });
+
   it("does not call the run late when collection is behind but final ETA is before the CSV delivery latest time", () => {
     const etas = [
       eta({ stopId: "stop-1", sequence: 1, etaUtc: "2026-08-26T06:00:00Z" }),

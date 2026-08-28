@@ -174,8 +174,8 @@
 }
 
 .ops-board-row.risk {
-  background: #30210c;
-  box-shadow: inset 8px 0 0 #ffc247;
+  background: #321113;
+  box-shadow: inset 8px 0 0 #ff4949;
 }
 
 .ops-board-row.onsite {
@@ -234,38 +234,12 @@
 
 .ops-board-row.risk .time-cell.eta,
 .ops-board-row.risk .status-cell strong {
-  color: #ffd27b;
+  color: #ff9999;
 }
 
 .run-cell strong,
 .route-cell strong {
   white-space: normal;
-}
-
-.run-cell .ops-live-location-link {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  margin-top: 5px;
-  color: #75d5ff;
-  font-size: 11px;
-  font-weight: 900;
-  line-height: 1.2;
-  text-decoration: none;
-}
-
-.run-cell .ops-live-location-link:hover,
-.run-cell .ops-live-location-link:focus-visible {
-  text-decoration: underline;
-}
-
-.run-cell .ops-live-location-link.stale {
-  color: #ffd27b;
-}
-
-.run-cell .ops-live-location-unavailable {
-  color: #718491;
-  font-style: italic;
 }
 
 .route-cell small {
@@ -293,7 +267,7 @@
   background: #30b566;
 }
 
-.ops-board-row.risk .ops-progress-bar i { background: #ffc247; }
+.ops-board-row.risk .ops-progress-bar i { background: #ff4949; }
 .ops-board-row.late .ops-progress-bar i { background: #ff4949; }
 .ops-board-row.onsite .ops-progress-bar i { background: #75d5ff; }
 

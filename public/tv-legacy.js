@@ -133,6 +133,26 @@
     return values.length ? values[values.length - 1] : null;
   }
 
+  function finalEta(list) {
+    var values = (list || []).slice(0);
+    values.sort(function (a, b) { return (a.sequence || 0) - (b.sequence || 0); });
+    var i;
+    for (i = values.length - 1; i >= 0; i -= 1) {
+      if (values[i].isFinalDestination || /^Deliver\b/i.test(String(values[i].stopName || '')) || values[i].orderReference || values[i].customerCode || values[i].deliveryWindowEndUtc) {
+        return values[i];
+      }
+    }
+    return values.length ? values[values.length - 1] : null;
+  }
+
+  function etaBufferMinutes(eta) {
+    if (!eta || !eta.etaUtc || !eta.deliveryWindowEndUtc) { return null; }
+    var etaMs = new Date(eta.etaUtc).getTime();
+    var deadlineMs = new Date(eta.deliveryWindowEndUtc).getTime();
+    if (isNaN(etaMs) || isNaN(deadlineMs)) { return null; }
+    return Math.floor((deadlineMs - etaMs) / 60000);
+  }
+
   function etaLateMinutes(eta) {
     if (!eta || !eta.etaUtc || !eta.deliveryWindowEndUtc) { return null; }
     var actual = new Date(eta.etaUtc).getTime();
@@ -147,6 +167,13 @@
     }
     if (eta && eta.source === 'Live' && eta.risk === 'Late') {
       return { label: 'LATE ETA', detail: eta.stopName || 'Delivery', cls: 'late', exception: true, priority: 1000, kind: 'late' };
+    }
+    var etaBuffer = etaBufferMinutes(eta);
+    if (etaBuffer != null && etaBuffer < 0) {
+      return { label: 'LATE ETA', detail: eta.stopName || 'Delivery', cls: 'late', exception: true, priority: 1000, kind: 'late' };
+    }
+    if (etaBuffer != null && etaBuffer <= 15) {
+      return { label: 'FINAL ETA AT RISK', detail: eta.stopName || 'Delivery', cls: 'risk', exception: true, priority: 990, kind: 'risk' };
     }
     if (dwell && Number(dwell.dwellMinutes) >= 60) {
       return { label: 'DWELL 1H+', detail: dwell.geofenceName || (progress ? progress.focusStop : 'On site'), cls: 'dwell', exception: true, priority: 950, kind: 'dwell' };
@@ -213,8 +240,13 @@
     var phase = String(progress && progress.phase ? progress.phase : '').toLowerCase();
     if (phase === 'completed' || phase === 'complete') { return true; }
     var total = progress && Number(progress.totalStops);
+    if (!(total > 0)) { total = load && load.stops ? load.stops.length : 0; }
     var completed = progress && Number(progress.completedStops);
     if (total > 0 && completed >= total) { return true; }
+    var stopDwell = progress && progress.stopDwell ? progress.stopDwell : [];
+    for (var i = 0; i < stopDwell.length; i += 1) {
+      if (Number(stopDwell[i].sequence) === total && (stopDwell[i].state === 'OnSite' || stopDwell[i].state === 'Departed')) { return true; }
+    }
     if (progress && progress.currentVisit && total > 0) {
       var currentSequence = progress.stopDwell && progress.stopDwell.length ? progress.stopDwell.reduce(function (highest, stop) {
         return stop.stopId === progress.currentVisit.loadStopId ? Math.max(highest, Number(stop.sequence || 0)) : highest;
@@ -360,7 +392,8 @@
       var prog = progress[String(load.id)];
       var complete = isRunComplete(load, prog);
       var assignment = assignments[String(load.id)] || {};
-      var eta = nextEta(etaGroups[String(load.id)], prog);
+      var next = nextEta(etaGroups[String(load.id)], prog);
+      var eta = finalEta(etaGroups[String(load.id)]) || next;
       var dwell = dwellByLoad[String(load.id)] || null;
       var status = complete ? { label: 'COMPLETE', detail: 'Run complete', cls: 'complete', exception: false, priority: 0, kind: 'complete' } : statusInfo(prog, eta, dwell);
       var stop = firstStop(load);
@@ -369,6 +402,7 @@
         prog: prog,
         assignment: assignment,
         eta: eta,
+        nextEta: next,
         dwell: dwell,
         status: status,
         complete: complete,
@@ -472,7 +506,7 @@
         '<td><b class="run-name">' + esc(row.runName) + '</b></td>' +
         '<td><b>' + esc(vehicle) + '</b></td>' +
         '<td><b>' + esc(driver) + '</b></td>' +
-        '<td>' + timelineMarkup(row.load, row.prog, row.eta, row.dwell) + '</td>' +
+        '<td>' + timelineMarkup(row.load, row.prog, row.nextEta || row.eta, row.dwell) + '</td>' +
         '<td><b class="next-name">' + esc(shortName(next)) + '</b><span class="eta-time">' + esc(etaTime) + '</span>' + detailBadge + '</td>' +
         '<td><strong class="status ' + esc(row.status.cls) + '">' + esc(row.status.label) + '</strong></td></tr>';
     }

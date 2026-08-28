@@ -205,7 +205,9 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
 }
 
 export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
-  const complete = progress?.runState === "Completed" || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops;
+  const complete = progress?.runState === "Completed"
+    || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops
+    || Boolean(progress && isFinalStopArrival(progress));
   if (complete) {
     return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
   }
@@ -394,7 +396,14 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
 }
 
 function isFinalStopArrival(record: RunProgressRecord) {
-  if (!record.currentVisit || record.totalStops <= 0) return false;
+  if (record.totalStops <= 0) return false;
+  const finalStop = record.stopDwell?.find(stop => stop.sequence === record.totalStops);
+  // The route-progress feed can lag behind the durable geofence feed: in that
+  // window the final stop is already OnSite/Departed while completedStops is
+  // still one short. Treat that as the same final-arrival evidence as a live
+  // currentVisit so the board cannot show the driver as moving past the finish.
+  if (finalStop?.state === "OnSite" || finalStop?.state === "Departed") return true;
+  if (!record.currentVisit) return false;
   const nextStop = record.nextStop;
   const currentStopSequence = record.stopDwell?.find(stop => stop.stopId === record.currentVisit?.loadStopId)?.sequence
     ?? (nextStop && nextStop.id === record.currentVisit.loadStopId ? nextStop.sequence : undefined);

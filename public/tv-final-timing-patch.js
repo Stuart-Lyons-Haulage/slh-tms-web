@@ -5,6 +5,7 @@
   var latestTiming = null;
   var latestLoads = null;
   var applying = false;
+  var acceptedFinalEtas = {};
 
   function queryValue(name) {
     var sources = [window.location.search || '', window.location.hash || ''];
@@ -127,6 +128,31 @@
     return { kind: 'ok', label: 'ON ROUTE', detail: buffer + 'm delivery buffer' };
   }
 
+  function dateKey(value) {
+    if (!value) { return ''; }
+    var timestamp = new Date(value).getTime();
+    return isNaN(timestamp) ? '' : new Date(timestamp).toISOString().slice(0, 10);
+  }
+
+  function stableFinalEta(loadId, candidate, fallback, deadline) {
+    var candidateMs = candidate ? new Date(candidate).getTime() : NaN;
+    if (isNaN(candidateMs)) { return acceptedFinalEtas[loadId] || fallback || ''; }
+    var deadlineDay = dateKey(deadline);
+    var candidateDay = dateKey(candidate);
+    var fallbackDay = dateKey(fallback);
+    var previous = acceptedFinalEtas[loadId] || '';
+    var previousDay = dateKey(previous);
+    var fallbackMs = fallback ? new Date(fallback).getTime() : NaN;
+    if (deadlineDay && candidateDay !== deadlineDay && (fallbackDay === deadlineDay || previousDay === deadlineDay)) {
+      return previous && previousDay === deadlineDay ? previous : fallback;
+    }
+    if (!isNaN(fallbackMs) && fallbackMs > Date.now() && candidateMs < Date.now() - 15 * 60 * 1000) {
+      return previous || fallback;
+    }
+    acceptedFinalEtas[loadId] = candidate;
+    return candidate;
+  }
+
   function setText(node, value) {
     if (node && node.textContent !== value) { node.textContent = value; }
   }
@@ -182,11 +208,20 @@
         rows[i].style.display = '';
 
         var stop = finalStop(load);
+        var acceptedEta = stableFinalEta(rowLoadId || key, timing.finalEtaUtc, stop && stop.plannedArrivalUtc, stop && stop.plannedArrivalUtc);
+        var effectiveTiming = timing;
+        if (acceptedEta && acceptedEta !== timing.finalEtaUtc) {
+          effectiveTiming = {};
+          for (var timingKey in timing) {
+            if (Object.prototype.hasOwnProperty.call(timing, timingKey)) { effectiveTiming[timingKey] = timing[timingKey]; }
+          }
+          effectiveTiming.finalEtaUtc = acceptedEta;
+        }
         var etaCell = rows[i].cells && rows[i].cells.length > 5 ? rows[i].cells[5] : null;
         var nameNode = etaCell ? etaCell.querySelector('.next-name') : null;
         var timeNode = etaCell ? etaCell.querySelector('.eta-time') : null;
         setText(nameNode, stripPrefix(stop ? stop.name : 'Final job'));
-        setText(timeNode, timing.finalEtaUtc ? formatTime(timing.finalEtaUtc) : '--:--');
+        setText(timeNode, effectiveTiming.finalEtaUtc ? formatTime(effectiveTiming.finalEtaUtc) : '--:--');
 
         var oldAlert = etaCell ? etaCell.querySelector('.row-alert') : null;
         if (oldAlert && oldAlert.parentNode) { oldAlert.parentNode.removeChild(oldAlert); }
@@ -197,7 +232,7 @@
           setText(statusNode, 'AVAILABLE');
           rows[i].className = '';
         } else {
-          var risk = riskFor(timing, stop);
+          var risk = riskFor(effectiveTiming, stop);
           if (risk && statusNode) {
             var current = normalise(statusNode.textContent);
             if (risk.kind === 'late') {
