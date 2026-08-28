@@ -75,16 +75,15 @@ function routeWithFinalDestination(response: Response, payload: RouteResponse) {
 }
 
 /**
- * Run Progress wrapper. A run-timing final ETA exists only after authoritative execution
- * evidence (geofence departure/current visit or a valid live-route anchor), so it is safe
- * to override the CSV Deliver By time only when this feed provides one. Route progression
- * also keeps the current stop distinct from the final customer delivery, which is critical
- * for multi-drop and overnight continuation work.
+ * Run Progress wrapper. The API delivery-ETA feed is the canonical customer-window
+ * source. Run Timing may replace only the current final-customer ETA when that same
+ * refresh returns authoritative geofence/live-route evidence. No browser-local ETA
+ * history is retained here: the signed-in wallboard and paired TV must therefore
+ * resolve the same server evidence rather than drifting onto different old snapshots.
  */
 export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: boolean; tvAccessKey?: string }) {
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
-    const lastTiming = new Map<string, TimingRecord>();
 
     const patchedFetch: typeof window.fetch = async (input, init) => {
       const response = await originalFetch(input, init);
@@ -113,11 +112,6 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
         }).then(async timingResponse => timingResponse.ok ? await timingResponse.json() as TimingResponse : undefined)
           .catch(() => undefined);
 
-        for (const record of timing?.records || []) {
-          if (record.completed) lastTiming.delete(record.loadId);
-          else lastTiming.set(record.loadId, { ...lastTiming.get(record.loadId), ...record });
-        }
-
         const latestTiming = new Map<string, TimingRecord>();
         for (const record of timing?.records || []) latestTiming.set(record.loadId, record);
 
@@ -135,7 +129,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
 
         const records = payload.records.map(eta => {
           if (!eta.loadId) return eta;
-          const authoritative = latestTiming.get(eta.loadId) || lastTiming.get(eta.loadId);
+          const authoritative = latestTiming.get(eta.loadId);
           const fallbackSequence = destinationSequenceByLoad.get(eta.loadId) ?? highestSequenceByLoad.get(eta.loadId);
           const finalDestination = authoritative?.finalDestinationStopId
             ? eta.stopId === authoritative.finalDestinationStopId
@@ -148,14 +142,14 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
             isFinalDestination: true,
             etaUtc: authoritative.finalEtaUtc,
             source: mappedEtaSource(authoritative.finalEtaSource) || eta.source,
+            // Keep the customer deadline supplied by the canonical delivery-ETA API.
             deliveryWindowEndUtc: eta.deliveryWindowEndUtc,
           };
         });
 
-        // On a fresh wallboard load the final customer destination may already be complete
-        // while a later return/depot leg is still active. The normal ETA feed then contains
-        // only the remaining operational work. Preserve Run Timing's actual customer-arrival
-        // evidence as a synthetic destination record so "final ETA" cannot jump to the return.
+        // If the final customer has already been reached while later operational work remains,
+        // retain that actual arrival only from this same Run Timing response. Never synthesise
+        // from a previous browser refresh, which was the cause of TV/TMS ETA divergence.
         for (const authoritative of latestTiming.values()) {
           if (authoritative.completed || !authoritative.finalDestinationStopId || !authoritative.finalEtaUtc) continue;
           if (records.some(eta => eta.loadId === authoritative.loadId && eta.stopId === authoritative.finalDestinationStopId)) continue;
@@ -173,7 +167,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
             routeDrivingMinutes: 0,
             breakMinutesIncluded: 0,
             tachoStatus: "Unavailable",
-            tachoExplanation: "Final customer destination timing retained from authoritative Run Timing evidence.",
+            tachoExplanation: "Final customer destination timing retained from the current authoritative Run Timing response.",
           });
         }
 
