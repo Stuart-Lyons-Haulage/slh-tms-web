@@ -267,15 +267,8 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
     if (nextTiming) return nextTiming;
   }
 
-  const hardCustomerRisk = etas.find((eta) => eta.source === "Live" && eta.risk === "Late" && eta.deliveryWindowEndUtc);
-  if (hardCustomerRisk) {
-    return {
-      status: "late",
-      label: "LATE DELIVERY ETA",
-      detail: `${hardCustomerRisk.stopName} will miss its customer window`,
-      priority: 94,
-    };
-  }
+  // Intermediate milestones can be behind plan without making the run late. The
+  // cumulative final-customer assessment above is the only delivery-promise risk.
 
   if (!finalAssessment.onTime && nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
     return { status: "risk", label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
