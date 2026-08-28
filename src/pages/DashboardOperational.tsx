@@ -35,10 +35,10 @@ export function DashboardOperational() {
   const refreshAll = () => void Promise.all([refreshReadiness(), refreshAttention(), refreshFreshness()]);
 
   useEffect(() => {
-    const refreshFeeds = () => void refreshFreshness();
-    const interval = window.setInterval(refreshFeeds, 60_000);
-    const onFocus = () => refreshFeeds();
-    const onVisibility = () => { if (document.visibilityState === "visible") refreshFeeds(); };
+    const refreshOperational = () => void Promise.allSettled([refreshReadiness(), refreshAttention(), refreshFreshness()]);
+    const interval = window.setInterval(refreshOperational, 60_000);
+    const onFocus = () => refreshOperational();
+    const onVisibility = () => { if (document.visibilityState === "visible") refreshOperational(); };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
@@ -46,7 +46,7 @@ export function DashboardOperational() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [refreshFreshness]);
+  }, [refreshAttention, refreshFreshness, refreshReadiness]);
 
   return <section className="dashboard-health-page">
     <div className="title-row dashboard-health-title">
