@@ -158,4 +158,59 @@ describe("wallboard final delivery risk", () => {
 
     expect(finalEtaFor([markedDestination, laterOperationalStop])?.stopId).toBe("destination");
   });
+
+  it("keeps a run on route when the cumulative final ETA is before the final planned customer deadline", () => {
+    const current = progress();
+    current.nextStop = {
+      id: "aldi",
+      sequence: 3,
+      name: "Deliver · Aldi-Darlington",
+      plannedArrivalUtc: "2026-08-28T10:00:00Z",
+    };
+    const etas = [
+      eta({ stopId: "aldi", sequence: 3, stopName: "Deliver · Aldi-Darlington", etaUtc: "2026-08-28T15:00:00Z" }),
+      eta({ stopId: "final", sequence: 5, stopName: "Deliver · Morrisons-Stockton", etaUtc: "2026-08-28T15:29:00Z", source: "Estimated" }),
+    ];
+
+    const result = statusFor(current, etas[0], etas, Date.parse("2026-08-28T11:20:00Z"), "2026-08-28T18:00:00Z");
+
+    expect(result.status).toBe("route");
+    expect(result.label).toBe("ON ROUTE");
+  });
+
+  it("flags an estimated final ETA only after it passes the final customer deadline", () => {
+    const etas = [
+      eta({ stopId: "final", sequence: 5, stopName: "Deliver · Morrisons-Stockton", etaUtc: "2026-08-28T18:05:00Z", source: "Estimated" }),
+    ];
+
+    const result = statusFor(progress(), etas[0], etas, Date.parse("2026-08-28T11:20:00Z"), "2026-08-28T18:00:00Z");
+
+    expect(result.status).toBe("risk");
+    expect(result.label).toBe("FINAL ETA AT RISK");
+  });
+
+  it("does not mark a final ETA at or before the deadline as risk just for having a small buffer", () => {
+    const etas = [
+      eta({ stopId: "final", sequence: 5, stopName: "Deliver · Morrisons-Stockton", etaUtc: "2026-08-28T17:59:00Z", source: "Live" }),
+    ];
+
+    const result = statusFor(progress(), etas[0], etas, Date.parse("2026-08-28T11:20:00Z"), "2026-08-28T18:00:00Z");
+
+    expect(result.status).toBe("route");
+    expect(result.label).toBe("ON ROUTE");
+  });
+
+
+  it("does not colour the run late when only an intermediate live milestone is late", () => {
+    const etas = [
+      eta({ stopId: "mid", sequence: 2, stopName: "Deliver · Aldi-Darlington", etaUtc: "2026-08-28T15:00:00Z", deliveryWindowEndUtc: "2026-08-28T10:00:00Z", risk: "Late", source: "Live" }),
+      eta({ stopId: "final", sequence: 5, stopName: "Deliver · Morrisons-Stockton", etaUtc: "2026-08-28T15:29:00Z", source: "Estimated" }),
+    ];
+
+    const result = statusFor(progress(), etas[0], etas, Date.parse("2026-08-28T11:20:00Z"), "2026-08-28T18:00:00Z");
+
+    expect(result.status).toBe("route");
+    expect(result.label).toBe("ON ROUTE");
+  });
+
 });

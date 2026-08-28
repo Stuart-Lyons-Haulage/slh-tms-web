@@ -281,7 +281,8 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       const etas = [...(etaByLoad.get(id) || [])].sort((a, b) => a.sequence - b.sequence);
       const nextEta = pickNextEta(etas, progress);
       const finalEta = finalEtaFor(etas);
-      const status = statusFor(progress, nextEta, etas);
+      const finalDeadlineUtc = finalEta?.deliveryWindowEndUtc || finalDestinationStop(load)?.plannedArrivalUtc;
+      const status = statusFor(progress, nextEta, etas, Date.now(), finalDeadlineUtc);
       const complete = status.status === "complete";
       const finalArrivalUtc = isFinalCurrentVisit(progress) ? progress?.currentVisit?.enteredAtUtc : undefined;
       const liveEtaUtc = finalEta?.source === "Live" ? finalEta.etaUtc : undefined;
@@ -320,7 +321,13 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
 
   useEffect(() => {
     if (!tvMode || !presentRowId || loading) return;
-    window.setTimeout(() => tableRef.current?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 350);
+    window.setTimeout(() => {
+      const table = tableRef.current;
+      const target = table?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`);
+      if (!table || !target) return;
+      const top = target.offsetTop - Math.max(0, (table.clientHeight - target.clientHeight) / 2);
+      table.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    }, 350);
   }, [lastRefresh, loading, presentRowId, tvMode]);
 
   async function fullscreen() { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); }
