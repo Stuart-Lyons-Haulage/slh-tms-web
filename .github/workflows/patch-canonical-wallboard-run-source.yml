@@ -1,89 +1,27 @@
 name: Patch canonical wallboard run source
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - fix/canonical-wallboard-run-source
-    paths:
-      - '.github/workflows/patch-canonical-wallboard-run-source.yml'
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/canonical-wallboard-run-source
-          token: ${{ github.token }}
-      - name: Use canonical planned runs everywhere
+      - name: Patch sources and remove temporary workflow
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          wallboard = Path('src/pages/OperationsWallboardLive.tsx')
-          text = wallboard.read_text()
-          old = '''    const getLoads = (date: string) => tvAccessKey
-      ? request<Load[]>(`/api/v1/loads?date=${encodeURIComponent(date)}`, undefined, tvInit)
-      : api.loads(date, access);'''
-          new = '''    const getLoads = (date: string) =>
-      request<Load[]>(`/api/v1/tv-display/planned-runs?date=${encodeURIComponent(date)}`, access, tvInit);'''
-          if old not in text:
-              raise SystemExit('OperationsWallboardLive load source marker not found')
-          wallboard.write_text(text.replace(old, new, 1))
-
-          legacy = Path('public/tv-legacy.js')
-          text = legacy.read_text()
-          old = "    request('/api/v1/loads?date=' + encodeURIComponent(date), function (e, d) { done('loads', e, d); });"
-          new = "    request('/api/v1/tv-display/planned-runs?date=' + encodeURIComponent(date), function (e, d) { done('loads', e, d); });"
-          if old not in text:
-              raise SystemExit('legacy TV load source marker not found')
-          legacy.write_text(text.replace(old, new, 1))
-
-          dashboard = Path('src/pages/DashboardOperational.tsx')
-          text = dashboard.read_text()
-          old = '''  useEffect(() => {
-    const refreshFeeds = () => void refreshFreshness();
-    const interval = window.setInterval(refreshFeeds, 60_000);
-    const onFocus = () => refreshFeeds();
-    const onVisibility = () => { if (document.visibilityState === "visible") refreshFeeds(); };
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [refreshFreshness]);'''
-          new = '''  useEffect(() => {
-    const refreshOperational = () => void Promise.allSettled([refreshReadiness(), refreshAttention(), refreshFreshness()]);
-    const interval = window.setInterval(refreshOperational, 60_000);
-    const onFocus = () => refreshOperational();
-    const onVisibility = () => { if (document.visibilityState === "visible") refreshOperational(); };
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [refreshAttention, refreshFreshness, refreshReadiness]);'''
-          if old not in text:
-              raise SystemExit('Dashboard refresh marker not found')
-          dashboard.write_text(text.replace(old, new, 1))
-
-          Path('.github/workflows/patch-canonical-wallboard-run-source.yml').unlink()
-          PY
-      - name: Commit patch
-        shell: bash
-        run: |
+          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgp3YWxsYm9hcmQgPSBQYXRoKCJzcmMvcGFnZXMvT3BlcmF0aW9uc1dhbGxib2FyZExpdmUudHN4IikKdGV4dCA9IHdhbGxib2FyZC5yZWFkX3RleHQoKQpvbGQgPSAiIiIgICAgY29uc3QgZ2V0TG9hZHMgPSAoZGF0ZTogc3RyaW5nKSA9PiB0dkFjY2Vzc0tleQogICAgICA/IHJlcXVlc3Q8TG9hZFtdPihgL2FwaS92MS9sb2Fkcz9kYXRlPSR7ZW5jb2RlVVJJQ29tcG9uZW50KGRhdGUpfWAsIHVuZGVmaW5lZCwgdHZJbml0KQogICAgICA6IGFwaS5sb2FkcyhkYXRlLCBhY2Nlc3MpOyIiIgpuZXcgPSAiIiIgICAgY29uc3QgZ2V0TG9hZHMgPSAoZGF0ZTogc3RyaW5nKSA9PgogICAgICByZXF1ZXN0PExvYWRbXT4oYC9hcGkvdjEvdHYtZGlzcGxheS9wbGFubmVkLXJ1bnM/ZGF0ZT0ke2VuY29kZVVSSUNvbXBvbmVudChkYXRlKX1gLCBhY2Nlc3MsIHR2SW5pdCk7IiIiCmlmIG9sZCBub3QgaW4gdGV4dDoKICAgIHJhaXNlIFN5c3RlbUV4aXQoIk9wZXJhdGlvbnNXYWxsYm9hcmRMaXZlIGxvYWQgc291cmNlIG1hcmtlciBub3QgZm91bmQiKQp3YWxsYm9hcmQud3JpdGVfdGV4dCh0ZXh0LnJlcGxhY2Uob2xkLCBuZXcsIDEpKQoKbGVnYWN5ID0gUGF0aCgicHVibGljL3R2LWxlZ2FjeS5qcyIpCnRleHQgPSBsZWdhY3kucmVhZF90ZXh0KCkKb2xkID0gIiAgICByZXF1ZXN0KCcvYXBpL3YxL2xvYWRzP2RhdGU9JyArIGVuY29kZVVSSUNvbXBvbmVudChkYXRlKSwgZnVuY3Rpb24gKGUsIGQpIHsgZG9uZSgnbG9hZHMnLCBlLCBkKTsgfSk7IgpuZXcgPSAiICAgIHJlcXVlc3QoJy9hcGkvdjEvdHYtZGlzcGxheS9wbGFubmVkLXJ1bnM/ZGF0ZT0nICsgZW5jb2RlVVJJQ29tcG9uZW50KGRhdGUpLCBmdW5jdGlvbiAoZSwgZCkgeyBkb25lKCdsb2FkcycsIGUsIGQpOyB9KTsiCmlmIG9sZCBub3QgaW4gdGV4dDoKICAgIHJhaXNlIFN5c3RlbUV4aXQoImxlZ2FjeSBUViBsb2FkIHNvdXJjZSBtYXJrZXIgbm90IGZvdW5kIikKbGVnYWN5LndyaXRlX3RleHQodGV4dC5yZXBsYWNlKG9sZCwgbmV3LCAxKSkKCmRhc2hib2FyZCA9IFBhdGgoInNyYy9wYWdlcy9EYXNoYm9hcmRPcGVyYXRpb25hbC50c3giKQp0ZXh0ID0gZGFzaGJvYXJkLnJlYWRfdGV4dCgpCm9sZCA9ICIiIiAgdXNlRWZmZWN0KCgpID0+IHsKICAgIGNvbnN0IHJlZnJlc2hGZWVkcyA9ICgpID0+IHZvaWQgcmVmcmVzaEZyZXNobmVzcygpOwogICAgY29uc3QgaW50ZXJ2YWwgPSB3aW5kb3cuc2V0SW50ZXJ2YWwocmVmcmVzaEZlZWRzLCA2MF8wMDApOwogICAgY29uc3Qgb25Gb2N1cyA9ICgpID0+IHJlZnJlc2hGZWVkcygpOwogICAgY29uc3Qgb25WaXNpYmlsaXR5ID0gKCkgPT4geyBpZiAoZG9jdW1lbnQudmlzaWJpbGl0eVN0YXRlID09PSAidmlzaWJsZSIpIHJlZnJlc2hGZWVkcygpOyB9OwogICAgd2luZG93LmFkZEV2ZW50TGlzdGVuZXIoImZvY3VzIiwgb25Gb2N1cyk7CiAgICBkb2N1bWVudC5hZGRFdmVudExpc3RlbmVyKCJ2aXNpYmlsaXR5Y2hhbmdlIiwgb25WaXNpYmlsaXR5KTsKICAgIHJldHVybiAoKSA9PiB7CiAgICAgIHdpbmRvdy5jbGVhckludGVydmFsKGludGVydmFsKTsKICAgICAgd2luZG93LnJlbW92ZUV2ZW50TGlzdGVuZXIoImZvY3VzIiwgb25Gb2N1cyk7CiAgICAgIGRvY3VtZW50LnJlbW92ZUV2ZW50TGlzdGVuZXIoInZpc2liaWxpdHljaGFuZ2UiLCBvblZpc2liaWxpdHkpOwogICAgfTsKICB9LCBbcmVmcmVzaEZyZXNobmVzc10pOyIiIgpuZXcgPSAiIiIgIHVzZUVmZmVjdCgoKSA9PiB7CiAgICBjb25zdCByZWZyZXNoT3BlcmF0aW9uYWwgPSAoKSA9PiB2b2lkIFByb21pc2UuYWxsU2V0dGxlZChbcmVmcmVzaFJlYWRpbmVzcygpLCByZWZyZXNoQXR0ZW50aW9uKCksIHJlZnJlc2hGcmVzaG5lc3MoKV0pOwogICAgY29uc3QgaW50ZXJ2YWwgPSB3aW5kb3cuc2V0SW50ZXJ2YWwocmVmcmVzaE9wZXJhdGlvbmFsLCA2MF8wMDApOwogICAgY29uc3Qgb25Gb2N1cyA9ICgpID0+IHJlZnJlc2hPcGVyYXRpb25hbCgpOwogICAgY29uc3Qgb25WaXNpYmlsaXR5ID0gKCkgPT4geyBpZiAoZG9jdW1lbnQudmlzaWJpbGl0eVN0YXRlID09PSAidmlzaWJsZSIpIHJlZnJlc2hPcGVyYXRpb25hbCgpOyB9OwogICAgd2luZG93LmFkZEV2ZW50TGlzdGVuZXIoImZvY3VzIiwgb25Gb2N1cyk7CiAgICBkb2N1bWVudC5hZGRFdmVudExpc3RlbmVyKCJ2aXNpYmlsaXR5Y2hhbmdlIiwgb25WaXNpYmlsaXR5KTsKICAgIHJldHVybiAoKSA9PiB7CiAgICAgIHdpbmRvdy5jbGVhckludGVydmFsKGludGVydmFsKTsKICAgICAgd2luZG93LnJlbW92ZUV2ZW50TGlzdGVuZXIoImZvY3VzIiwgb25Gb2N1cyk7CiAgICAgIGRvY3VtZW50LnJlbW92ZUV2ZW50TGlzdGVuZXIoInZpc2liaWxpdHljaGFuZ2UiLCBvblZpc2liaWxpdHkpOwogICAgfTsKICB9LCBbcmVmcmVzaEF0dGVudGlvbiwgcmVmcmVzaEZyZXNobmVzcywgcmVmcmVzaFJlYWRpbmVzc10pOyIiIgppZiBvbGQgbm90IGluIHRleHQ6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJEYXNoYm9hcmQgcmVmcmVzaCBtYXJrZXIgbm90IGZvdW5kIikKZGFzaGJvYXJkLndyaXRlX3RleHQodGV4dC5yZXBsYWNlKG9sZCwgbmV3LCAxKSkKClBhdGgoIi5naXRodWIvd29ya2Zsb3dzL3BhdGNoLWNhbm9uaWNhbC13YWxsYm9hcmQtcnVuLXNvdXJjZS55bWwiKS51bmxpbmsoKQo=' | base64 --decode > /tmp/patch.py
+          python3 /tmp/patch.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/pages/OperationsWallboardLive.tsx public/tv-legacy.js src/pages/DashboardOperational.tsx .github/workflows/patch-canonical-wallboard-run-source.yml
+          git add -A
           git commit -m 'Use canonical runs across dashboard and wallboards'
           git push origin HEAD:fix/canonical-wallboard-run-source
