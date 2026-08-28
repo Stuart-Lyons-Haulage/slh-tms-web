@@ -41,6 +41,17 @@ function progress(): RunProgressRecord {
   };
 }
 
+function finalDelivery(finalEtaUtc: string, deadlineUtc = "2026-08-28T18:00:00Z", source: DeliveryEta["source"] = "Live") {
+  return eta({
+    stopId: "final",
+    sequence: 4,
+    stopName: "Deliver · Aldi-Neston",
+    etaUtc: finalEtaUtc,
+    source,
+    deliveryWindowEndUtc: deadlineUtc,
+  });
+}
+
 describe("wallboard final delivery risk", () => {
   it("does not call the run late when collection is behind but final ETA is before the CSV delivery latest time", () => {
     const etas = [
@@ -60,7 +71,37 @@ describe("wallboard final delivery risk", () => {
     expect(result.label).toBe("ON ROUTE");
   });
 
-  it("marks the run late only when a live final ETA is after the final delivery latest time", () => {
+  it("keeps more than 60 minutes final-customer buffer on route", () => {
+    const finalEta = finalDelivery("2026-08-28T16:59:00Z");
+
+    const result = statusFor(progress(), finalEta, [finalEta]);
+
+    expect(result.status).toBe("route");
+    expect(result.label).toBe("ON ROUTE");
+  });
+
+  it("shows amber delivery tight from 60 down to 31 minutes final-customer buffer", () => {
+    for (const etaUtc of ["2026-08-28T17:00:00Z", "2026-08-28T17:29:00Z"]) {
+      const finalEta = finalDelivery(etaUtc);
+      const result = statusFor(progress(), finalEta, [finalEta]);
+
+      expect(result.status).toBe("risk");
+      expect(result.label).toBe("DELIVERY TIGHT");
+      expect(result.detail).toContain("buffer to delivery latest time");
+    }
+  });
+
+  it("shows red late risk at 30 minutes or less before the final customer deadline", () => {
+    for (const etaUtc of ["2026-08-28T17:30:00Z", "2026-08-28T17:59:00Z", "2026-08-28T18:00:00Z"]) {
+      const finalEta = finalDelivery(etaUtc);
+      const result = statusFor(progress(), finalEta, [finalEta]);
+
+      expect(result.status).toBe("late");
+      expect(result.label).toBe("LATE RISK");
+    }
+  });
+
+  it("marks the run late when a live final ETA is after the final delivery latest time", () => {
     const etas = [
       eta({ stopId: "stop-1", sequence: 1, etaUtc: "2026-08-26T06:00:00Z" }),
       eta({
@@ -80,7 +121,7 @@ describe("wallboard final delivery risk", () => {
     expect(result.detail).toContain("20m after delivery latest time");
   });
 
-  it("keeps an approximate final ETA as risk rather than a proved late delivery", () => {
+  it("keeps an approximate final ETA after deadline red but labels it as late risk rather than proved late", () => {
     const etas = [
       eta({ stopId: "stop-1", sequence: 1, etaUtc: "2026-08-26T06:00:00Z" }),
       eta({
@@ -95,8 +136,8 @@ describe("wallboard final delivery risk", () => {
 
     const result = statusFor(progress(), etas[0], etas, Date.parse("2026-08-26T07:00:00Z"));
 
-    expect(result.status).toBe("risk");
-    expect(result.label).toBe("FINAL ETA AT RISK");
+    expect(result.status).toBe("late");
+    expect(result.label).toBe("LATE RISK");
   });
 
   it("uses delivery wording when the next milestone is an intermediate delivery", () => {
