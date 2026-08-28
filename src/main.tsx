@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { MsalProvider } from '@azure/msal-react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { App } from './App';
+import { cacheLocationForRoute, isPublicTvLink, isTvRoute } from './tvBootstrap';
 import './runtimeGuards';
 import './orderPlanningSyncBridge';
 import './plannerEmptyStopsPatch';
@@ -45,11 +46,9 @@ import './pallet-control.css';
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
-const msal = new PublicClientApplication({ auth: { clientId: clientId || '00000000-0000-0000-0000-000000000000', authority: `https://login.microsoftonline.com/${tenantId || 'common'}`, redirectUri: window.location.origin }, cache: { cacheLocation: 'sessionStorage' } });
-
-const tvPaths = new Set(['/tv', '/operations-wallboard/tv', '/live-runs/tv']);
-const publicTvLink = tvPaths.has(window.location.pathname) && new URLSearchParams(window.location.search).has('key');
-const legacyTvRuntime = Boolean((window as Window & { __SLH_LEGACY_TV__?: boolean }).__SLH_LEGACY_TV__);
+const isTvRoutePath = isTvRoute(window.location.pathname);
+const publicTvLink = isPublicTvLink(window.location.pathname, window.location.search);
+const msal = new PublicClientApplication({ auth: { clientId: clientId || '00000000-0000-0000-0000-000000000000', authority: `https://login.microsoftonline.com/${tenantId || 'common'}`, redirectUri: window.location.origin }, cache: { cacheLocation: cacheLocationForRoute(window.location.pathname) } });
 
 function renderApp() {
   const root = document.getElementById('root');
@@ -67,9 +66,9 @@ function showStartupFailure(error: unknown) {
 
 async function start() {
   try {
-    if (legacyTvRuntime && tvPaths.has(window.location.pathname)) {
-      // The TV compatibility runtime is intentionally plain ES5/XHR so older
-      // Hisense/VIDAA browsers do not depend on modules, React, MSAL or fetch.
+    if (isTvRoutePath && (window as Window & { __SLH_TV_COMPATIBILITY__?: boolean }).__SLH_TV_COMPATIBILITY__) {
+      // A legacy office-TV browser may start the compatibility wallboard before
+      // this module finishes loading. Do not let React take over that DOM.
       return;
     }
     if (publicTvLink) {

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { OperationsWallboard } from "./OperationsWallboard";
+import { clearDisplayKey, readStoredDisplayKey, storeDisplayKey } from "./publicTvStorage";
 import "../tv-display.css";
 
 type PairResponse = { key: string; pairedAtUtc: string };
 
 const UK_ZONE = "Europe/London";
-const STORAGE_KEY = "slh-tv-display-key";
 const timeFormat = new Intl.DateTimeFormat("en-GB", { timeZone: UK_ZONE, hour: "2-digit", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("en-GB", { timeZone: UK_ZONE, weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
@@ -13,11 +13,11 @@ function initialDisplayKey() {
   const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
   const legacy = new URLSearchParams(hash).get("key")?.trim() || new URLSearchParams(window.location.search).get("key")?.trim();
   if (legacy) {
-    localStorage.setItem(STORAGE_KEY, legacy);
-    window.history.replaceState(null, "", window.location.pathname);
+    storeDisplayKey(legacy);
+    try { window.history.replaceState(null, "", window.location.pathname); } catch { /* keep key in current URL if history is restricted */ }
     return legacy;
   }
-  return localStorage.getItem(STORAGE_KEY)?.trim() || "";
+  return readStoredDisplayKey();
 }
 
 function requestUrl(input: RequestInfo | URL) {
@@ -95,7 +95,7 @@ export function PublicTvBoard() {
         throw new Error(detail);
       }
       const result = await response.json() as PairResponse;
-      localStorage.setItem(STORAGE_KEY, result.key);
+      storeDisplayKey(result.key);
       setDisplayKey(result.key);
       setPairCode("");
     } catch (exception) {
@@ -106,7 +106,7 @@ export function PublicTvBoard() {
   }
 
   const resetPairing = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    clearDisplayKey();
     setDisplayKey("");
     setError("This TV needs pairing again. Enter the current 6-digit code from TV display in the signed-in TMS.");
   }, []);
