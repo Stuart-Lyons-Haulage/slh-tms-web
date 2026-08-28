@@ -154,6 +154,7 @@ function cleanStopName(value?: string) {
   return (value || "").replace(/^(?:Collect|Deliver)\s*[·:-]\s*/i, "").replace(/-/g, " ").trim();
 }
 function orderedStops(load?: DispatchLoad) { return [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence); }
+// eslint-disable-next-line react-refresh/only-export-components
 export function firstCollectionStop(load?: DispatchLoad) {
   const stops = orderedStops(load);
   return stops.find(stop => /^Collect\b/i.test(stop.name || "")) || stops[0];
@@ -162,12 +163,14 @@ function finalDestinationStop(load?: DispatchLoad) {
   const stops = orderedStops(load);
   return [...stops].reverse().find(stop => /^Deliver\b/i.test(stop.name || "")) || stops.at(-1);
 }
+// eslint-disable-next-line react-refresh/only-export-components
 export function suggestionRunLabel(load: DispatchLoad) {
   const match = `${load.reference} ${load.rawReference}`.match(/\b(?:run\s*)?(\d{1,3})\b/i);
   const run = match?.[1] ? `Run ${Number(match[1])}` : load.reference;
   const destination = cleanStopName(finalDestinationStop(load)?.name);
   return destination ? `${run} ${destination}` : run;
 }
+// eslint-disable-next-line react-refresh/only-export-components
 export function runDirection(load: DispatchLoad) {
   const stops = orderedStops(load).filter(stop => stop.latitude != null && stop.longitude != null);
   const first = stops[0];

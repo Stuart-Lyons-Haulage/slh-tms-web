@@ -14,7 +14,7 @@ function load(overrides: Record<string, unknown> = {}) {
       { id: "d", sequence: 2, name: "Deliver · Aldi-Stockton", latitude: 54.57, longitude: -1.31, plannedArrivalUtc: "2026-08-28T10:00:00Z" },
     ],
     ...overrides,
-  } as any;
+  } as Parameters<typeof suggestionRunLabel>[0];
 }
 
 describe("Driver Dispatch planning helpers", () => {
