@@ -13,7 +13,6 @@ export function OperationsControlClean() {
   const fleetio = useApi(useCallback(async () => api.fleetioStatus(await token()), [token]));
   const fleet = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));
 
-  const exceptions = useApi(useCallback(async () => api.operationsExceptions(date, await token()), [date, token]));
   const reconciliation = useApi(useCallback(async () => api.operationsReconciliation(date, await token()), [date, token]));
 
   const refreshSage = sage.refresh;
@@ -21,7 +20,6 @@ export function OperationsControlClean() {
   const refreshRoad = road.refresh;
   const refreshFleetio = fleetio.refresh;
   const refreshFleet = fleet.refresh;
-  const refreshExceptions = exceptions.refresh;
   const refreshReconciliation = reconciliation.refresh;
 
   const refresh = useCallback(() => {
@@ -30,9 +28,8 @@ export function OperationsControlClean() {
     void refreshRoad();
     void refreshFleetio();
     void refreshFleet();
-    void refreshExceptions();
     void refreshReconciliation();
-  }, [refreshSage, refreshTacho, refreshRoad, refreshFleetio, refreshFleet, refreshFeedHealth, refreshLiveCoverage, refreshExceptions, refreshReconciliation]);
+  }, [refreshSage, refreshTacho, refreshRoad, refreshFleetio, refreshFleet, refreshReconciliation]);
 
   useEffect(() => {
     const interval = window.setInterval(refresh, 60_000);
@@ -48,7 +45,7 @@ export function OperationsControlClean() {
   }, [refresh]);
 
   return <section>
-    <div className="title-row"><div><p className="eyebrow">Control & insight</p><h1>Operations control</h1><p className="hint">Operational reconciliation refreshes every 60 seconds and whenever this screen regains focus, so today’s plan and actual coverage stay aligned.</p></div><button onClick={refresh}>Refresh live checks</button></div>
+    <div className="title-row"><div><p className="eyebrow">Control & insight</p><h1>Operations control</h1><p className="hint">Operational reconciliation refreshes every 60 seconds and whenever this screen regains focus, so today’s plan and actual coverage stay aligned.</p></div><button onClick={refresh}>Refresh reconciliation</button></div>
 
     <section className="panel">
       <div className="title-row"><div><p className="eyebrow">Today’s reconciliation</p><h2>Plan versus operational coverage</h2></div></div>
