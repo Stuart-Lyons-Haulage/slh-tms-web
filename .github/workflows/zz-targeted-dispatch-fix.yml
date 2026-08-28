@@ -1,0 +1,43 @@
+name: One-shot targeted Dispatch patch
+on:
+  push:
+    branches:
+      - fix/dispatch-run-allocation-source
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Apply Dispatch current-day run fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply targeted source edit
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/pages/DriverDispatch.tsx')
+          text = path.read_text()
+          old = 'function tomorrow() { const date = new Date(); date.setDate(date.getDate() + 1); return isoDate(date); }'
+          new = 'function today() { return isoDate(new Date()); }'
+          if old not in text:
+              raise SystemExit('Expected tomorrow() helper was not found')
+          text = text.replace(old, new, 1)
+          old_state = 'const [date, setDate] = useState(initialParams.get("date") || tomorrow());'
+          new_state = 'const [date, setDate] = useState(initialParams.get("date") || today());'
+          if old_state not in text:
+              raise SystemExit('Expected Dispatch date initialiser was not found')
+          text = text.replace(old_state, new_state, 1)
+          path.write_text(text)
+          Path('.github/workflows/zz-targeted-dispatch-fix.yml').unlink()
+          PY
+      - name: Commit targeted fix
+        shell: bash
+        run: |
+          git config user.name "danwilliams201302-max"
+          git config user.email "daniel@lyonshaulage.com"
+          git add src/pages/DriverDispatch.tsx .github/workflows/zz-targeted-dispatch-fix.yml
+          git commit -m "Apply Dispatch current-day run fix"
+          git push origin HEAD:fix/dispatch-run-allocation-source
