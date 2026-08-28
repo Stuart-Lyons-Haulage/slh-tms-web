@@ -245,6 +245,11 @@
   background: #101922;
 }
 
+.ops-board-row.late,
+.ops-board-row.risk {
+  min-height: 72px;
+}
+
 .ops-board-row:nth-child(odd) {
   background: #0d151d;
 }
