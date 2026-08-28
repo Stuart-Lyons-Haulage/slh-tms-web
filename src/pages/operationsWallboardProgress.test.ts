@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeliveryEta } from "../lib/api";
-import { finalEtaFor, statusFor, type RunProgressRecord } from "./operationsWallboardProgress";
+import { finalEtaFor, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord } from "./operationsWallboardProgress";
 
 function eta(overrides: Partial<DeliveryEta>): DeliveryEta {
   return {
@@ -99,7 +99,7 @@ describe("wallboard final delivery risk", () => {
     expect(result.label).toBe("FINAL ETA AT RISK");
   });
 
-  it("uses delivery wording when the next milestone is an intermediate delivery", () => {
+  it("does not make an intermediate delivery behind plan a whole-run risk when final ETA is not yet available", () => {
     const current = progress();
     current.nextStop = {
       id: "aldi",
@@ -117,9 +117,8 @@ describe("wallboard final delivery risk", () => {
 
     const result = statusFor(current, nextEta, [], Date.parse("2026-08-28T09:45:00Z"));
 
-    expect(result.label).toBe("DELIVERY BEHIND");
-    expect(result.detail).toContain("final customer delivery ETA assessed separately");
-    expect(result.detail).not.toContain("collection plan");
+    expect(result.status).toBe("route");
+    expect(result.label).toBe("ON ROUTE");
   });
 
   it("uses the final customer destination instead of a later depot/return stop", () => {
@@ -213,4 +212,84 @@ describe("wallboard final delivery risk", () => {
     expect(result.label).toBe("ON ROUTE");
   });
 
+});
+
+
+describe("wallboard durable progress merge", () => {
+  it("preserves stronger departed-stop history when route progress is temporarily behind", () => {
+    const durable: RunProgressRecord = {
+      ...progress(),
+      completedStops: 2,
+      progressPercent: 55,
+      nextStop: { id: "stop-3", sequence: 3, name: "Deliver · Aldi-Bolton" },
+      phase: "Heading to",
+      focusStop: "Deliver · Aldi-Bolton",
+      stopDwell: [
+        { stopId: "stop-1", sequence: 1, stopName: "Collect · NWF-Selsey", state: "Departed", siteArrivalUtc: "2026-08-28T08:00:00Z", siteDepartureUtc: "2026-08-28T08:10:00Z" },
+        { stopId: "stop-2", sequence: 2, stopName: "Collect · NWF-Drayton", state: "Departed", siteArrivalUtc: "2026-08-28T09:00:00Z", siteDepartureUtc: "2026-08-28T09:10:00Z" },
+      ],
+    };
+    const route: RouteProgressRun = {
+      loadId: durable.loadId,
+      reference: durable.loadReference,
+      totalStops: 4,
+      completedStops: 1,
+      phase: "Heading to",
+      truckPositionPercent: 35,
+      focusStop: "Collect · NWF-Drayton",
+      nextStopId: "stop-2",
+      stops: [
+        { id: "stop-1", sequence: 1, name: "Collect · NWF-Selsey", state: "completed" },
+        { id: "stop-2", sequence: 2, name: "Collect · NWF-Drayton", state: "heading" },
+        { id: "stop-3", sequence: 3, name: "Deliver · Aldi-Bolton", state: "upcoming" },
+        { id: "stop-4", sequence: 4, name: "Deliver · Waitrose-Leyland", state: "upcoming" },
+      ],
+      stopDwell: [
+        { stopId: "stop-1", sequence: 1, stopName: "Collect · NWF-Selsey", state: "Departed" },
+        { stopId: "stop-2", sequence: 2, stopName: "Collect · NWF-Drayton", state: "EnRoute" },
+      ],
+    };
+
+    const [merged] = mergeRouteProgress([durable], [route]);
+
+    expect(merged.completedStops).toBe(2);
+    expect(merged.nextStop?.id).toBe("stop-3");
+    expect(merged.focusStop).toBe("Deliver · Aldi-Bolton");
+    expect(merged.stopDwell?.find(stop => stop.stopId === "stop-2")?.state).toBe("Departed");
+  });
+
+  it("adopts route progress when it contains stronger geofence evidence", () => {
+    const durable: RunProgressRecord = {
+      ...progress(),
+      completedStops: 1,
+      nextStop: { id: "stop-2", sequence: 2, name: "Collect · NWF-Drayton" },
+      stopDwell: [{ stopId: "stop-1", sequence: 1, stopName: "Collect · NWF-Selsey", state: "Departed" }],
+    };
+    const route: RouteProgressRun = {
+      loadId: durable.loadId,
+      reference: durable.loadReference,
+      totalStops: 4,
+      completedStops: 2,
+      phase: "Heading to",
+      truckPositionPercent: 60,
+      focusStop: "Deliver · Aldi-Bolton",
+      nextStopId: "stop-3",
+      stops: [
+        { id: "stop-1", sequence: 1, name: "Collect · NWF-Selsey", state: "completed" },
+        { id: "stop-2", sequence: 2, name: "Collect · NWF-Drayton", state: "completed" },
+        { id: "stop-3", sequence: 3, name: "Deliver · Aldi-Bolton", state: "heading" },
+        { id: "stop-4", sequence: 4, name: "Deliver · Waitrose-Leyland", state: "upcoming" },
+      ],
+      stopDwell: [
+        { stopId: "stop-1", sequence: 1, stopName: "Collect · NWF-Selsey", state: "Departed" },
+        { stopId: "stop-2", sequence: 2, stopName: "Collect · NWF-Drayton", state: "Departed" },
+      ],
+    };
+
+    const [merged] = mergeRouteProgress([durable], [route]);
+
+    expect(merged.completedStops).toBe(2);
+    expect(merged.nextStop?.id).toBe("stop-3");
+    expect(merged.focusStop).toBe("Deliver · Aldi-Bolton");
+  });
 });

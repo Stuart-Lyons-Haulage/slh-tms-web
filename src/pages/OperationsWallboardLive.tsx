@@ -4,7 +4,7 @@ import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
-import { completedJobCount, finalEtaFor, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
+import { completedJobCount, finalEtaFor, mergeRouteProgress, mergeStopDwellEvidence, progressEvidenceStrength, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
 import "../operations-wallboard.css";
 
 type RunProgressResponse = {
@@ -147,32 +147,30 @@ function mergeEtaSnapshots(previous: DeliveryEta[], incoming: DeliveryEta[]) {
   return [...merged.values()];
 }
 
-function stopEvidenceScore(stops?: RunProgressRecord["stopDwell"]) {
-  return (stops || []).reduce((score, stop) => score + (stop.state === "Departed" ? 3 : stop.state === "OnSite" ? 2 : 1), 0);
-}
-
 function mergeProgressSnapshots(previous: RunProgressRecord[], incoming: RunProgressRecord[]) {
   if (!incoming.length) return previous;
   const merged = new Map(previous.map(record => [record.loadId, record]));
   for (const next of incoming) {
     const current = merged.get(next.loadId);
     if (!current) { merged.set(next.loadId, next); continue; }
-    const preserveCurrentProgress = current.completedStops > next.completedStops;
-    const currentStopScore = stopEvidenceScore(current.stopDwell);
-    const nextStopScore = stopEvidenceScore(next.stopDwell);
+    const preferNextEvidence = progressEvidenceStrength(next) >= progressEvidenceStrength(current);
+    const completedStops = Math.max(current.completedStops, next.completedStops);
     merged.set(next.loadId, {
+      ...current,
       ...next,
-      completedStops: Math.max(current.completedStops, next.completedStops),
+      completedStops,
       progressPercent: Math.max(current.progressPercent, next.progressPercent),
-      runState: current.runState === "Completed" ? current.runState : next.runState,
-      currentVisit: next.currentVisit ?? current.currentVisit,
-      lastDeparture: next.lastDeparture ?? current.lastDeparture,
-      stopDwell: nextStopScore >= currentStopScore ? next.stopDwell : current.stopDwell,
-      linkageException: next.linkageException ?? current.linkageException,
-      nextStop: preserveCurrentProgress ? current.nextStop ?? next.nextStop : next.nextStop ?? current.nextStop,
-      phase: preserveCurrentProgress ? current.phase ?? next.phase : next.phase ?? current.phase,
-      focusStop: preserveCurrentProgress ? current.focusStop ?? next.focusStop : next.focusStop ?? current.focusStop,
-      geofenceOnSite: Boolean(current.geofenceOnSite || current.currentVisit || next.geofenceOnSite || next.currentVisit),
+      runState: current.runState === "Completed" || next.runState === "Completed" ? "Completed" : (preferNextEvidence ? next.runState : current.runState),
+      currentVisit: preferNextEvidence ? next.currentVisit : current.currentVisit ?? next.currentVisit,
+      lastDeparture: preferNextEvidence ? next.lastDeparture ?? current.lastDeparture : current.lastDeparture ?? next.lastDeparture,
+      stopDwell: mergeStopDwellEvidence(current.stopDwell, next.stopDwell),
+      linkageException: preferNextEvidence ? next.linkageException ?? current.linkageException : current.linkageException ?? next.linkageException,
+      nextStop: preferNextEvidence ? next.nextStop ?? current.nextStop : current.nextStop ?? next.nextStop,
+      phase: preferNextEvidence ? next.phase ?? current.phase : current.phase ?? next.phase,
+      focusStop: preferNextEvidence ? next.focusStop ?? current.focusStop : current.focusStop ?? next.focusStop,
+      geofenceOnSite: preferNextEvidence
+        ? Boolean(next.geofenceOnSite || next.currentVisit)
+        : Boolean(current.geofenceOnSite || current.currentVisit),
       trackingFresh: next.trackingFresh ?? current.trackingFresh,
       trackingMoving: next.trackingMoving ?? current.trackingMoving,
       ignitionOn: next.ignitionOn ?? current.ignitionOn,
@@ -375,6 +373,6 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
         </article>;
       })}
     </div>
-    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final ETA targets final customer destination · next stop drives risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
+    {!tvMode && <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final customer ETA controls run risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>}
   </section>;
 }
