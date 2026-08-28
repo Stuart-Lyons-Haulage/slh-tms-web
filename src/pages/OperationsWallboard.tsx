@@ -188,7 +188,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
   }, []);
 
   return <>
-    {!tvMode && <RunGeofenceLinkagePanel />}
+    <RunGeofenceLinkagePanel tvAccessKey={tvMode ? tvAccessKey : undefined} />
     <ExistingOperationsWallboard tvMode={tvMode} tvAccessKey={tvAccessKey} />
   </>;
 }
