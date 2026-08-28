@@ -23,12 +23,37 @@ type TachoCanonicalSyncResult = {
   workersWithoutCard: number;
 };
 
+type TachoCanonicalSyncJob = {
+  jobId: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  requestedAtUtc: string;
+  startedAtUtc?: string;
+  completedAtUtc?: string;
+  message?: string;
+  result?: {
+    success: boolean;
+    canonical: TachoCanonicalSyncResult;
+    message: string;
+  };
+};
+
+type TachoIdentityDuplicate = {
+  identityValue: string;
+  drivers: Array<{
+    driverId: string;
+    employeeNumber: string;
+    displayName: string;
+  }>;
+};
+
 type TachoDriverMasterQuality = {
   activeDrivers: number;
   activeWithMember: number;
   activeWithCard: number;
   duplicateMemberGroups: number;
   duplicateCardGroups: number;
+  duplicateMembers?: TachoIdentityDuplicate[];
+  duplicateCards?: TachoIdentityDuplicate[];
   activeWithoutMember: number;
   activeWithoutCard: number;
   latestCanonicalSyncUtc?: string;
@@ -82,6 +107,10 @@ function sourceDate(input?: string) {
   if (!input) return '—';
   const parsed = new Date(input);
   return Number.isNaN(parsed.getTime()) ? input : parsed.toLocaleDateString('en-GB');
+}
+
+function wait(milliseconds: number) {
+  return new Promise(resolve => window.setTimeout(resolve, milliseconds));
 }
 
 export function DriversMasterCompact() {
@@ -175,13 +204,36 @@ export function DriversMasterCompact() {
     setError(undefined);
     setMessage(undefined);
     try {
-      const result = await request<TachoCanonicalSyncResult>(
+      const access = await token();
+      let job = await request<TachoCanonicalSyncJob>(
         '/api/v1/driver-master/tachomaster/sync',
-        await token(),
+        access,
         { method: 'POST' },
-        180000,
+        15000,
       );
-      setMessage(result.message);
+      setMessage(job.message || 'TachoMaster canonical sync queued.');
+
+      const pollDeadline = Date.now() + 12 * 60 * 1000;
+      while ((job.status === 'queued' || job.status === 'running') && Date.now() < pollDeadline) {
+        await wait(2000);
+        job = await request<TachoCanonicalSyncJob>(
+          `/api/v1/driver-master/tachomaster/sync/${job.jobId}`,
+          access,
+          undefined,
+          15000,
+        );
+        if (job.message) setMessage(job.message);
+      }
+
+      if (job.status === 'failed') {
+        throw new Error(job.message || 'TachoMaster canonical sync failed.');
+      }
+      if (job.status !== 'succeeded') {
+        setMessage('TachoMaster sync is still running in the background. Refresh Driver Master to check the latest canonical state.');
+        return;
+      }
+
+      setMessage(job.result?.message || job.result?.canonical?.message || job.message || 'TachoMaster canonical sync completed.');
       await Promise.all([drivers.refresh(), quality.refresh()]);
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : 'TachoMaster canonical sync failed.');
@@ -211,6 +263,10 @@ export function DriversMasterCompact() {
       <strong>{identityHealthy ? 'Canonical identity healthy.' : 'Driver identity needs attention.'}</strong>{' '}
       {q.activeDrivers} active · {q.activeWithMember} with Member Code · {q.activeWithCard} with card · {q.duplicateMemberGroups} duplicate member group(s) · {q.duplicateCardGroups} duplicate card group(s) · {q.activeWithoutCard} without card in the live source.
       {q.latestCanonicalSyncUtc ? ` Last canonical sync ${auditDate(q.latestCanonicalSyncUtc)}.` : ' Canonical sync has not completed yet.'}
+      {!identityHealthy && ((q.duplicateMembers?.length || 0) > 0 || (q.duplicateCards?.length || 0) > 0) && <div style={{ marginTop: 6 }}>
+        {(q.duplicateMembers || []).map(group => <div key={`member-${group.identityValue}`}><strong>Member {group.identityValue}:</strong> {group.drivers.map(driver => `${driver.displayName} (${driver.employeeNumber}, ${driver.driverId})`).join(' · ')}</div>)}
+        {(q.duplicateCards || []).map(group => <div key={`card-${group.identityValue}`}><strong>Card {group.identityValue}:</strong> {group.drivers.map(driver => `${driver.displayName} (${driver.employeeNumber}, ${driver.driverId})`).join(' · ')}</div>)}
+      </div>}
     </div>}
     {message && <p className="notice inline-notice">{message}</p>}
     {error && <p className="notice inline-notice" style={{ borderColor: '#b42318' }}>{error}</p>}
