@@ -59,7 +59,6 @@ function Shell() {
   const [reviewOrderCount, setReviewOrderCount] = useState<number>();
   const location = useLocation();
   const tvMode = location.pathname === '/operations-wallboard/tv' || location.pathname === '/live-runs/tv' || location.pathname === '/tv';
-  const hasTvAccessKey = tvMode && new URLSearchParams(location.search).has('key');
   const signIn = () => instance.loginRedirect({ scopes: apiScope ? [apiScope] : [] });
   const closeMobile = () => setOpen(false);
   useEffect(() => { setOpen(false); }, [location.pathname]);
@@ -86,11 +85,9 @@ function Shell() {
     };
   }, [authenticated, refreshReviewOrderCount, tvMode]);
 
-  const tvContent = location.pathname === '/tv'
-    ? <PublicTvBoard />
-    : authenticated || hasTvAccessKey
-      ? <RouteErrorBoundary key={location.pathname + location.search}><OperationsWallboard tvMode /></RouteErrorBoundary>
-      : <section className="sign-in-panel"><p className="eyebrow">Secure operations wallboard</p><h1>Open the office wallboard</h1><p>Use the dedicated TV access link, or sign in with a Lyons Microsoft account.</p><button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button></section>;
+  // All TV entry points use the paired public board so the office TV and the
+  // signed-in wallboard share one renderer, one status model and one ETA feed.
+  const tvContent = <PublicTvBoard />;
 
   return <div className={`app-shell ${authenticated && !tvMode ? 'with-system-strip' : ''} ${tvMode ? 'tv-public-mode' : ''}`}>
     {!tvMode && <header>

@@ -70,7 +70,7 @@
 
 .ops-wallboard-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -365,4 +365,41 @@
   max-width: 100%;
   min-width: 0;
   overflow-x: hidden;
+}
+
+
+/* Canonical TV wallboard repair 2026-08-28 */
+.ops-wallboard.tv {
+  height: 100vh;
+  min-height: 100vh;
+  max-height: 100vh;
+}
+
+.ops-wallboard.tv .ops-wallboard-summary {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.ops-wallboard.tv .ops-board-table {
+  scrollbar-gutter: stable;
+}
+
+.ops-wallboard-summary article:nth-child(3) {
+  border-left-color: #75d5ff;
+}
+
+.ops-board-row.onsite .status-cell strong {
+  color: #75d5ff;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.ops-board-row.onsite .status-cell strong::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #75d5ff;
+  box-shadow: 0 0 0 3px rgba(117, 213, 255, 0.16);
+  flex: 0 0 auto;
 }
