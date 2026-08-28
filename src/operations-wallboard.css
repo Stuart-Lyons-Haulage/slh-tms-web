@@ -327,8 +327,8 @@
 
 /* TV viewport stability: never let the seven-column board widen the physical display. */
 .ops-wallboard.tv {
-  width: 100vw;
-  max-width: 100vw;
+  width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   overflow-x: hidden;
 }
@@ -355,4 +355,14 @@
 .ops-wallboard.tv .ops-wallboard-footer,
 .tv-public-mode .tv-display-footer {
   display: none !important;
+}
+
+
+/* Keep the paired TV inside the browser viewport even when a vertical scrollbar appears. */
+.app-shell.tv-public-mode,
+.app-shell.tv-public-mode main.tv-main {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
