@@ -15,6 +15,43 @@
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
   <script>
+    (function () {
+      var path = window.location.pathname;
+      var tv = path === '/tv' || path === '/operations-wallboard/tv' || path === '/live-runs/tv';
+      if (!tv) return;
+
+      // Some office-TV browsers do not execute the modern Vite module bundle reliably.
+      // Keep React as the primary wallboard, but if it has not rendered anything useful
+      // after startup, fall back to the compatibility wallboard that consumes the same
+      // live TV/progress/delivery-ETA API feeds. This does not run on the normal TMS.
+      window.setTimeout(function () {
+        var root = document.getElementById('root');
+        if (!root || String(root.textContent || '').replace(/\s+/g, '') !== '') return;
+
+        try {
+          var params = new URLSearchParams(window.location.search || '');
+          if (!params.get('key')) {
+            var stored = window.localStorage && window.localStorage.getItem('slh-tv-display-key');
+            if (stored) {
+              params.set('key', stored);
+              window.history.replaceState(null, '', path + '?' + params.toString());
+            }
+          }
+        } catch (e) { /* compatibility mode must still render */ }
+
+        window.__SLH_TV_COMPATIBILITY__ = true;
+        var css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = '/tv-legacy.css?v=20260828-compat';
+        document.head.appendChild(css);
+
+        var script = document.createElement('script');
+        script.src = '/tv-legacy.js?v=20260828-compat';
+        script.async = false;
+        document.body.appendChild(script);
+      }, 5000);
+    }());
+
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
         navigator.serviceWorker.register('/sw.js').catch(function () {});
