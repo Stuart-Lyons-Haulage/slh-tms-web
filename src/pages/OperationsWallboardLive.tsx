@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, request, type DeliveryEta, type DeliveryEtas, type DriverAssignment, type Load } from "../lib/api";
+import { api, request, type DeliveryEta, type DeliveryEtas, type DriverAssignment, type FleetStatus, type Load } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
@@ -72,6 +72,7 @@ function formatAge(value?: string | Date, now = new Date()) {
   if (minutes < 60) return `${Math.round(minutes)}m ago`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
+function normaliseRegistration(value?: string) { return String(value || "").replace(/[^a-z0-9]/gi, "").toUpperCase(); }
 function firstStop(load?: Load) { return [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence)[0]; }
 function finalDestinationStop(load?: Load) {
   const stops = [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence);
@@ -194,6 +195,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
   const [liveData, setLiveData] = useState<Pick<WallboardData, "etas" | "progress" | "warning" | "geofenceAvailable" | "geofenceCount" | "geofenceLinkedRuns" | "latestTrackingUtc" | "calculatedAtUtc">>();
+  const [fleetLocations, setFleetLocations] = useState<FleetStatus["vehicles"]>([]);
   const tableRef = useRef<HTMLDivElement | null>(null);
 
   const { data, error, loading, refresh } = useApi(useCallback(async () => {
@@ -220,14 +222,17 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
   const refreshLiveData = useCallback(async () => {
     const access = tvAccessKey ? undefined : await token();
     const tvInit = tvAccessKey ? { headers: { "X-TMS-TV-Key": tvAccessKey, "X-TV-Display-Key": tvAccessKey } } : undefined;
-    const [etaResult, progressResult, routeResult] = await Promise.allSettled([
+    const fleetPromise: Promise<FleetStatus | undefined> = tvMode ? Promise.resolve(undefined) : api.fleetStatus(access);
+    const [etaResult, progressResult, routeResult, fleetResult] = await Promise.allSettled([
       request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
       request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
       request<RouteProgressResponse>(`/api/v1/tv-display/route-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+      fleetPromise,
     ]);
     const etas = etaResult.status === "fulfilled" ? etaResult.value : undefined;
     const progress = progressResult.status === "fulfilled" ? progressResult.value : undefined;
     const route = routeResult.status === "fulfilled" ? routeResult.value : undefined;
+    if (fleetResult.status === "fulfilled" && fleetResult.value) setFleetLocations(fleetResult.value.vehicles);
     setLiveData(previous => {
       const stableEtas = mergeEtaSnapshots(previous?.etas ?? [], etas?.records ?? []);
       const stableProgress = mergeProgressSnapshots(previous?.progress ?? [], progress?.records ?? []);
@@ -248,7 +253,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
         calculatedAtUtc: etas?.calculatedAtUtc ?? previous?.calculatedAtUtc,
       };
     });
-  }, [today, token, tvAccessKey]);
+  }, [today, token, tvAccessKey, tvMode]);
 
   useEffect(() => {
     const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
@@ -311,6 +316,11 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       });
   }, [boardData]);
 
+  const liveLocationByRegistration = useMemo(() => new Map(
+    fleetLocations
+      .filter(vehicle => normaliseRegistration(vehicle.registration))
+      .map(vehicle => [normaliseRegistration(vehicle.registration), vehicle]),
+  ), [fleetLocations]);
   const late = rows.filter(row => row.status === "late").length;
   const risk = rows.filter(row => row.status === "risk").length;
   const onSite = rows.filter(row => row.status === "onsite").length;
@@ -357,9 +367,15 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
               ? `${row.progress.phase || "Next"} · ${row.progress.focusStop}`
               : `${completedStops} of ${totalStops || "?"} stops`;
         const finalStopName = (row.finalEta?.stopName || finalDestinationStop(row.load)?.name || "Final delivery").replace(/^Collect · |^Deliver · /i, "");
+        const liveVehicle = liveLocationByRegistration.get(normaliseRegistration(row.vehicle));
+        const locationAvailable = liveVehicle?.latitude != null && liveVehicle.longitude != null;
+        const locationUrl = locationAvailable ? `https://www.google.com/maps/search/?api=1&query=${liveVehicle.latitude},${liveVehicle.longitude}` : undefined;
+        const locationStale = liveVehicle?.condition === "Stale" || (liveVehicle?.ageMinutes ?? 0) >= 15;
+        const locationAge = liveVehicle?.lastEventTimeUtc ? formatAge(liveVehicle.lastEventTimeUtc, clock) : liveVehicle?.ageMinutes != null ? `${Math.round(liveVehicle.ageMinutes)}m ago` : undefined;
+        const showLocationState = !tvMode && row.status !== "complete" && row.vehicle !== "VEHICLE TBC";
         return <article className={`ops-board-row ${row.status} ${row.id === presentRowId ? "present" : ""}`} role="row" key={row.id} data-row-id={row.id}>
           <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.status === "complete" ? "completed" : "planned start"}</small></span>
-          <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small></span>
+          <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small>{showLocationState && (locationUrl ? <a className={`ops-live-location-link ${locationStale ? "stale" : ""}`} href={locationUrl} target="_blank" rel="noreferrer">{locationStale ? "Last location" : "Live location"}{locationAge ? ` · ${locationAge}` : ""} ↗</a> : <small className="ops-live-location-unavailable">Live location unavailable</small>)}</span>
           <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
           <span><strong>{row.driver}</strong><small title={row.tacho?.explanation}>{tachoText(row.tacho, row.finalEta || row.nextEta)}</small></span>
           <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${percent}%` }} /></div><small>{row.progress?.linkageException?.message || row.route}</small></span>
