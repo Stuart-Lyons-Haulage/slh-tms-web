@@ -35,12 +35,12 @@
         window.__SLH_TV_COMPATIBILITY__ = true;
         var css = document.createElement('link');
         css.rel = 'stylesheet';
-        css.href = '/tv-legacy.css?v=20260828-wallboard-v5';
+        css.href = '/tv-legacy.css?v=20260828-wallboard-v6';
         document.head.appendChild(css);
-        appendScript('/tv-timezone-patch.js?v=20260828-wallboard-v5', function () {
-          appendScript('/tv-legacy.js?v=20260828-wallboard-v5', function () {
-            appendScript('/tv-run-labels-patch.js?v=20260828-wallboard-v5', function () {
-              appendScript('/tv-final-timing-patch.js?v=20260828-wallboard-v5');
+        appendScript('/tv-timezone-patch.js?v=20260828-wallboard-v6', function () {
+          appendScript('/tv-legacy.js?v=20260828-wallboard-v6', function () {
+            appendScript('/tv-run-labels-patch.js?v=20260828-wallboard-v6', function () {
+              appendScript('/tv-final-timing-patch.js?v=20260828-wallboard-v6');
             });
           });
         });
