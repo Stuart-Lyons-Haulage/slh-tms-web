@@ -428,7 +428,7 @@
     var normals = [];
     var i;
     for (i = 0; i < rows.length; i += 1) {
-      if (rows[i].complete) { continue; }
+      if (rows[i].complete || !isScheduledVisible(rows[i])) { continue; }
       active.push(rows[i]);
       if (rows[i].status.exception) { exceptions.push(rows[i]); } else { normals.push(rows[i]); }
     }
@@ -447,6 +447,12 @@
     return result;
   }
 
+  function isScheduledVisible(row) {
+    if (row.status.exception || row.status.kind === 'route' || row.status.kind === 'onsite' || row.status.kind === 'late' || row.status.kind === 'risk') { return true; }
+    if (!Number.isFinite(row.time) || row.time >= 9999999999999) { return true; }
+    return row.time <= Date.now() + (3 * 60 * 60 * 1000);
+  }
+
   function render() {
     var board = document.getElementById('legacy-board');
     var message = document.getElementById('legacy-message');
@@ -463,7 +469,8 @@
     }
 
     var rows = buildRows();
-    var shown = selectedRows(rows);
+    var visibleRows = rows.filter(isScheduledVisible);
+    var shown = selectedRows(visibleRows);
     var activeCount = 0;
     var onSiteCount = 0;
     var riskCount = 0;
@@ -471,8 +478,8 @@
     var dwellCount = 0;
     var completeCount = 0;
     var i;
-    for (i = 0; i < rows.length; i += 1) {
-      var rowCount = rows[i];
+    for (i = 0; i < visibleRows.length; i += 1) {
+      var rowCount = visibleRows[i];
       if (rowCount.complete) { completeCount += 1; continue; }
       activeCount += 1;
       if (rowCount.prog && rowCount.prog.geofenceOnSite) { onSiteCount += 1; }
@@ -481,7 +488,7 @@
       if (rowCount.dwell && Number(rowCount.dwell.dwellMinutes) >= 60) { dwellCount += 1; }
     }
 
-    kpis.innerHTML = kpi('RUNS ON BOARD', rows.length, 'active', '▣') +
+    kpis.innerHTML = kpi('RUNS ON BOARD', visibleRows.length, 'active', '▣') +
       kpi('TRACKER LIVE', state.trackingSource ? 'LIVE' : '—', 'onsite', '●') +
       kpi('ON SITE', onSiteCount, 'onsite', '●') +
       kpi('COMPLETE', completeCount, 'complete', '✓') +

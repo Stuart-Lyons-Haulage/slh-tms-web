@@ -94,12 +94,28 @@ export function geofenceProgress(stops: GeofenceProgressStop[] | undefined, tota
   });
 }
 
+export type WallboardStatus = "late" | "risk" | "onsite" | "route" | "scheduled" | "complete";
 type WallboardStatusResult = {
-  status: "late" | "risk" | "onsite" | "route" | "scheduled" | "complete";
+  status: WallboardStatus;
   label: string;
   detail: string;
   priority: number;
 };
+
+const SCHEDULE_REVEAL_AHEAD_MINUTES = 180;
+
+/** Keep the action rail driven by the same status classification as each run row. */
+export function isWallboardActionRequired(status: WallboardStatus) {
+  return status === "late" || status === "risk";
+}
+
+/** Reveal future scheduled work as it approaches, while never hiding active work. */
+export function isScheduleVisible(scheduledUtc: string | undefined, status: WallboardStatus, nowMs = Date.now(), revealAheadMinutes = SCHEDULE_REVEAL_AHEAD_MINUTES) {
+  if (status !== "scheduled") return true;
+  const scheduledMs = timeMs(scheduledUtc);
+  if (!Number.isFinite(scheduledMs)) return true;
+  return scheduledMs <= nowMs + revealAheadMinutes * 60000;
+}
 
 type FinalDeliveryAssessment = {
   result?: WallboardStatusResult;

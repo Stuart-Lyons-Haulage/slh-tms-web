@@ -84,7 +84,7 @@
 
 .ops-wallboard-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -92,8 +92,8 @@
   background: #121c26;
   border: 1px solid #283b4a;
   border-radius: 6px;
-  padding: 9px 11px;
-  min-height: 76px;
+  padding: 7px 9px;
+  min-height: 60px;
 }
 
 .ops-wallboard-summary article.green { border-left: 5px solid #30b566; }
@@ -112,9 +112,9 @@
 .ops-wallboard-summary strong {
   display: block;
   color: #fff;
-  font-size: 27px;
+  font-size: 23px;
   line-height: 1.05;
-  margin: 5px 0;
+  margin: 3px 0;
   white-space: nowrap;
 }
 
@@ -127,6 +127,13 @@
   font-weight: 850;
 }
 
+.ops-board-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 10px;
+}
+
 .ops-board-table {
   display: flex;
   flex-direction: column;
@@ -137,7 +144,67 @@
   overflow-y: auto;
   scroll-behavior: smooth;
   background: #0f1821;
+  width: 76%;
 }
+
+.ops-attention-panel {
+  width: 24%;
+  min-width: 230px;
+  min-height: 0;
+  overflow: hidden;
+  background: #121c26;
+  border: 1px solid #283b4a;
+  border-radius: 6px;
+}
+
+.ops-attention-panel h2 {
+  margin: 0;
+  padding: 11px;
+  background: #1c2a36;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.ops-attention-list {
+  padding: 8px;
+  overflow-y: auto;
+  max-height: 100%;
+}
+
+.ops-attention-card {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 74px;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: #101922;
+  border: 1px solid #283b4a;
+  border-left: 4px solid #ffc247;
+  border-radius: 4px;
+}
+
+.ops-attention-card.late,
+.ops-attention-card.risk { background: #321113; border-left-color: #ff4949; }
+.ops-attention-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #e2a421; color: #0b1117; font-weight: 950; }
+.ops-attention-card.late .ops-attention-icon,
+.ops-attention-card.risk .ops-attention-icon { background: #e04f4f; color: #fff; }
+.ops-attention-card div { min-width: 0; }
+.ops-attention-card b,
+.ops-attention-card strong,
+.ops-attention-card small,
+.ops-attention-card em { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-attention-card b { color: #fff; font-size: 12px; }
+.ops-attention-card strong { color: #fff; font-size: 12px; margin-top: 2px; }
+.ops-attention-card small { color: #ff9999; font-size: 10px; margin-top: 2px; }
+.ops-attention-card em { color: #75d5ff; font-size: 10px; font-style: normal; font-weight: 850; margin-top: 3px; }
+.ops-attention-value { text-align: right; }
+.ops-attention-value b { color: #ff7777; font-size: 15px; }
+.ops-attention-value small { color: #9eb3c2; font-size: 9px; }
+.ops-attention-clear { display: grid; gap: 6px; place-items: center; min-height: 130px; padding: 16px; border-radius: 4px; background: #12261d; color: #78d7a1; text-align: center; }
+.ops-attention-clear small { color: #9eb3c2; font-size: 11px; line-height: 1.35; }
 
 .ops-board-head,
 .ops-board-row {
@@ -160,7 +227,7 @@
 .ops-board-head span,
 .ops-board-row > span {
   min-width: 0;
-  padding: 7px 10px;
+  padding: 5px 8px;
   border-right: 1px solid #243643;
   display: flex;
   flex-direction: column;
@@ -173,7 +240,7 @@
 }
 
 .ops-board-row {
-  min-height: 68px;
+  min-height: 58px;
   border-top: 1px solid #243643;
   background: #101922;
 }
@@ -211,7 +278,7 @@
 
 .ops-board-row strong {
   color: #fff;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
@@ -222,7 +289,7 @@
   color: #9eb3c2;
   font-size: 11px;
   line-height: 1.25;
-  margin-top: 4px;
+  margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -234,7 +301,7 @@
 }
 
 .time-cell strong {
-  font-size: 24px;
+  font-size: 21px;
 }
 
 .time-cell.eta {
@@ -261,17 +328,17 @@
 }
 
 .status-cell strong {
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .ops-progress-bar {
   position: relative;
   width: 100%;
-  height: 12px;
+  height: 10px;
   border-radius: 999px;
   background: #283846;
   overflow: hidden;
-  margin: 7px 0 2px;
+  margin: 5px 0 2px;
 }
 
 .ops-progress-bar i {
@@ -332,6 +399,10 @@
   .ops-board-row {
     grid-template-columns: 92px minmax(140px, .9fr) minmax(90px, .55fr) minmax(130px, .75fr) minmax(190px, 1fr) 96px minmax(140px, .8fr);
   }
+  .ops-board-layout { display: block; overflow-y: auto; }
+  .ops-board-table,
+  .ops-attention-panel { width: 100%; }
+  .ops-attention-panel { margin-top: 10px; }
 }
 
 @media (max-width: 760px) {

@@ -1,6 +1,6 @@
 // SLH TMS Service Worker - network-first strategy
 // Does not cache authenticated API responses
-const CACHE_NAME = 'slh-tms-v7';
+const CACHE_NAME = 'slh-tms-v8';
 const STATIC_ASSETS = ['/', '/manifest.json'];
 
 self.addEventListener('install', (event) => {

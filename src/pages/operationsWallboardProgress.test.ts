@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeliveryEta } from "../lib/api";
-import { finalEtaFor, geofenceProgress, statusFor, type RunProgressRecord } from "./operationsWallboardProgress";
+import { finalEtaFor, geofenceProgress, isScheduleVisible, isWallboardActionRequired, statusFor, type RunProgressRecord } from "./operationsWallboardProgress";
 import { stableFinalEta } from "./stableFinalEta";
 
 function eta(overrides: Partial<DeliveryEta>): DeliveryEta {
@@ -43,6 +43,14 @@ function progress(): RunProgressRecord {
 }
 
 describe("wallboard final delivery risk", () => {
+  it("queues route risk for action and reveals scheduled runs three hours before start", () => {
+    expect(isWallboardActionRequired("risk")).toBe(true);
+    expect(isWallboardActionRequired("route")).toBe(false);
+    expect(isScheduleVisible("2026-08-28T17:00:00Z", "scheduled", Date.parse("2026-08-28T05:00:00Z"))).toBe(false);
+    expect(isScheduleVisible("2026-08-28T17:00:00Z", "scheduled", Date.parse("2026-08-28T14:00:00Z"))).toBe(true);
+    expect(isScheduleVisible("2026-08-28T17:00:00Z", "route", Date.parse("2026-08-28T05:00:00Z"))).toBe(true);
+  });
+
   it("fills only geofences that have been exited", () => {
     expect(geofenceProgress([
       { sequence: 1, state: "Departed" },
