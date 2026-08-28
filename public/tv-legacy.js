@@ -266,6 +266,36 @@
   }
 
   var key = queryValue('key');
+  if (!key) {
+    root.innerHTML = '<div class="legacy-pair-wrap"><div class="legacy-pair"><div class="legacy-pair-step">ONE-TIME SETUP</div><h1>Pair this TV</h1><p>Open TV display in the signed-in TMS and enter the 6-digit code shown there.</p><form id="legacy-pair-form"><input id="legacy-pair-code" type="tel" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="off"><button type="submit">Pair TV</button></form><div id="legacy-pair-error" class="legacy-error-box"></div></div></div>';
+    var pairForm = document.getElementById('legacy-pair-form');
+    var pairCode = document.getElementById('legacy-pair-code');
+    var pairError = document.getElementById('legacy-pair-error');
+    if (pairForm && pairCode) {
+      pairForm.onsubmit = function (event) {
+        if (event && event.preventDefault) { event.preventDefault(); }
+        var code = String(pairCode.value || '').replace(/\D/g, '').substr(0, 6);
+        if (code.length !== 6) { if (pairError) { pairError.innerHTML = 'Enter all 6 digits from the TMS TV display page.'; } return false; }
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/tms-api/api/v1/tv-display/pair', true);
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) { return; }
+          var data = null;
+          try { data = JSON.parse(xhr.responseText || 'null'); } catch (ignore) {}
+          if (xhr.status >= 200 && xhr.status < 300 && data && data.key) {
+            window.location.replace('/tv.html?key=' + encodeURIComponent(data.key));
+          } else if (pairError) {
+            pairError.innerHTML = (data && data.message) || 'That pairing code could not be accepted.';
+          }
+        };
+        xhr.send(JSON.stringify({ code: code }));
+        return false;
+      };
+    }
+    return;
+  }
   var date = todayIso();
   var state = { loads: [], assignments: [], progress: [], etas: [], dwell: [], trackingSource: '', error: '' };
 
