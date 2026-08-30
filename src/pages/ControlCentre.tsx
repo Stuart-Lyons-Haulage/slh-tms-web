@@ -9,7 +9,7 @@ export function ControlCentre() {
       <div>
         <p className="eyebrow">Control & administration</p>
         <h1>Control centre</h1>
-        <p className="intro">One continuous operational control page: live confidence first, then integration health and administration. No duplicated switchable views.</p>
+        <p className="intro">One continuous operational control page: operational reconciliation first, then integration health and administration. No duplicated switchable views.</p>
       </div>
     </div>
 
