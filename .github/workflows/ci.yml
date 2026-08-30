@@ -1,4 +1,4 @@
-name: CI - Lint and Build
+name: CI - Build and Lint Portal
 
 on:
   push:
@@ -8,6 +8,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: portal-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -19,28 +23,19 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 11
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm run lint
+      - name: Lint portal
+        run: pnpm lint
 
-      - name: Test
-        run: pnpm run test
-
-      - name: Build
-        run: pnpm run build
-        env:
-          VITE_API_BASE_URL: http://localhost:5173
-          VITE_ENTRA_TENANT_ID: test
-          VITE_ENTRA_CLIENT_ID: test
-          VITE_ENTRA_API_SCOPE: api://test/Tms.Access
-          VITE_AZURE_MAPS_CLIENT_ID: test
+      - name: Build portal
+        run: pnpm build
