@@ -73,6 +73,8 @@ export const api: Record<string, any> = {
   telemetry: (token?: string) => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
   fleetStatus: (token?: string) => request<FleetStatus>('/api/v1/tracking/dot/fleet-status', token),
   trackingHistory: (date: string, token?: string) => request<Telemetry>(`/api/v1/tracking/dot/history?date=${encodeURIComponent(date)}`, token),
+  operationsReconciliation: (date: string, token?: string) => request<Record<string, any>>(`/api/v1/operations/reconciliation?date=${encodeURIComponent(date)}`, token),
+  operationsExceptions: (date: string, token?: string) => request<Record<string, any>>(`/api/v1/operations/exceptions?date=${encodeURIComponent(date)}`, token),
   loads: (date?: string, token?: string) => request<Load[]>(`/api/v1/loads${date ? `?date=${date}` : ''}`, token),
   driverAssignments: (from: string, to: string, token?: string) => request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, token),
   returnLoadSuggestions: (date: string, token?: string) => request<ReturnLoadSuggestions>(`/api/v1/planning/return-load-suggestions?date=${encodeURIComponent(date)}`, token),
