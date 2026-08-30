@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export type Customer = { [key: string]: any; id: string; code: string; name: string; active: boolean };
 export type CustomerContact = { [key: string]: any; id: string; customerCode: string; name: string; email?: string; mobileNumber?: string; receivesEtaUpdates: boolean; active: boolean };
 // PINs and complete card numbers are deliberately not part of the portal contract.
@@ -38,6 +39,7 @@ const baseUrl = (import.meta.env.VITE_API_BASE_URL || '/tms-api').replace(/\/$/,
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
 
 export async function request<T>(path: string, token?: string, init?: RequestInit, ..._legacyArgs: unknown[]): Promise<T> {
+  void _legacyArgs;
   if (!baseUrl) throw new ApiError(0, 'Set VITE_API_BASE_URL to connect the TMS API.');
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } });
   if (!response.ok) {
