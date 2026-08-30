@@ -5,18 +5,14 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  workflow_run:
-    workflows: ["CI - Build and Lint Portal"]
-    types: [completed]
-    branches: [main]
 
 jobs:
   build-and-deploy:
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     environment: production
     env:
-      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      DEPLOY_SHA: ${{ github.sha }}
     permissions: 
       id-token: write #This is required for requesting the OIDC JWT Token
       contents: read #Required when GH token is used to authenticate with private repo
