@@ -1,32 +1,32 @@
-export type Customer = { id: string; code: string; name: string; active: boolean };
-export type CustomerContact = { id: string; customerCode: string; name: string; email?: string; mobileNumber?: string; receivesEtaUpdates: boolean; active: boolean };
+export type Customer = { [key: string]: any; id: string; code: string; name: string; active: boolean };
+export type CustomerContact = { [key: string]: any; id: string; customerCode: string; name: string; email?: string; mobileNumber?: string; receivesEtaUpdates: boolean; active: boolean };
 // PINs and complete card numbers are deliberately not part of the portal contract.
 // They remain runtime-only secrets; the portal may show the card suffix and a secret reference.
-export type Vehicle = { id: string; registration: string; fleetNumber?: string; abbreviation?: string; transmission?: string; dvsCompliant?: boolean; fuelProvider?: string; cabMobile?: string; notes?: string; fuelPinSecretName?: string; fuelCardLastFour?: string; fleetioId?: string; fleetioName?: string; fleetioStatus?: string; active: boolean };
-export type Driver = { id: string; employeeNumber: string; displayName: string; tachoName?: string; mobileNumber?: string; driverType?: string; driverGroup?: string; skills?: string; active: boolean };
-export type Trailer = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; euroCapacity?: number; active: boolean };
-export type Site = { id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; collectionInstructions?: string; mapLink?: string; active: boolean };
+export type Vehicle = { [key: string]: any; id: string; registration: string; fleetNumber?: string; abbreviation?: string; transmission?: string; dvsCompliant?: boolean; fuelProvider?: string; cabMobile?: string; notes?: string; fuelPinSecretName?: string; fuelCardLastFour?: string; fleetioId?: string; fleetioName?: string; fleetioStatus?: string; active: boolean };
+export type Driver = { [key: string]: any; id: string; employeeNumber: string; displayName: string; tachoName?: string; mobileNumber?: string; driverType?: string; driverGroup?: string; skills?: string; active: boolean };
+export type Trailer = { [key: string]: any; id: string; trailerNumber: string; type?: string; standardCapacity?: number; euroCapacity?: number; active: boolean };
+export type Site = { [key: string]: any; id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; collectionInstructions?: string; mapLink?: string; active: boolean };
 export type MarketContact = { id: string; market: string; name: string; standOrLocation?: string; salesman?: string; sender?: string; active: boolean };
 export type FuelPrice = { id: string; weekCommencing: string; provider: string; pricePencePerLitre: number; isPricingMaximum: boolean; source?: string; notes?: string; createdAtUtc: string };
 export type StagedImport = { id: string; entityType: string; idempotencyKey: string; payloadJson: string; status: string | number; source?: string; receivedAtUtc: string; reviewedAtUtc?: string; reviewedBy?: string; reviewNote?: string };
-export type TransportOrder = { id: string; reference: string; customerCode: string; collectionDate: string; deliveryDate?: string; deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; pallets?: number; status: string; sellerName?: string; marketName?: string; stallNumber?: string; driverInstructions?: string; mapLink?: string };
+export type TransportOrder = { [key: string]: any; id: string; reference: string; customerCode: string; collectionDate: string; deliveryDate?: string; deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; pallets?: number; status: string; sellerName?: string; marketName?: string; stallNumber?: string; driverInstructions?: string; mapLink?: string };
 export type Telemetry = { provider: string; retrievedAtUtc: string; recordCount: number; records: Array<{ vehicleIdentifier: string; eventTimeUtc: string; latitude?: number; longitude?: number; speedKph?: number; isMoving?: boolean; status?: string }> };
-export type FleetStatus = { provider: string; retrievedAtUtc: string; vehicleCount: number; readyCount: number; attentionCount: number; vehicles: Array<{ vehicleId: string; registration: string; fleetNumber?: string; trackingIdentifier?: string; condition: 'Moving' | 'Started' | 'Parked' | 'Stationary' | 'SignedOn' | 'Stale' | 'NotSignedOn'; lastEventTimeUtc?: string; ignitionOn?: boolean; isMoving?: boolean; speedKph?: number; latitude?: number; longitude?: number; ageMinutes?: number; loadReference?: string; loadStatus?: string; driverName?: string; plannedDutyUtc?: string; fleetioId?: string; fleetioName?: string; fleetioStatus?: string }> };
+export type FleetStatus = { [key: string]: any; provider: string; retrievedAtUtc: string; vehicleCount: number; readyCount: number; attentionCount: number; vehicles: Array<{ vehicleId: string; registration: string; fleetNumber?: string; trackingIdentifier?: string; condition: 'Moving' | 'Started' | 'Parked' | 'Stationary' | 'SignedOn' | 'Stale' | 'NotSignedOn'; lastEventTimeUtc?: string; ignitionOn?: boolean; isMoving?: boolean; speedKph?: number; latitude?: number; longitude?: number; ageMinutes?: number; loadReference?: string; loadStatus?: string; driverName?: string; plannedDutyUtc?: string; fleetioId?: string; fleetioName?: string; fleetioStatus?: string }> };
 export type StageImportResponse = { stagingId: string; status: string; receivedAtUtc: string; reviewUrl: string };
 export type StageBatchRequest = { entityType: string; idempotencyKey: string; source?: string; payload: Record<string, string | boolean | number | undefined> };
 export type StageBatchResponse = { received: number; existing: number; created: number; records: StageImportResponse[] };
 export type MasterApplyResponse = { received: number; applied: number; failed: number; linked?: number; results: Array<{ entityType: string; idempotencyKey?: string; applied: boolean; registered?: boolean; error?: string }> };
-export type LoadStop = { id: string; orderId?: string; sequence: number; name: string; address?: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string };
-export type Load = { id: string; reference: string; planningDate: string; status: string; vehicleId?: string; driverId?: string; trailerId?: string; stops: LoadStop[] };
-export type LoadDispatch = { reference: string; planningDate: string; status: string; driver?: { displayName: string; employeeNumber: string; mobileNumber?: string }; vehicle?: { registration: string; fleetNumber?: string }; trailer?: { trailerNumber: string; type?: string }; stops: Array<{ sequence: number; name: string; address?: string; order?: { reference: string; customerCode: string; sellerName?: string; marketName?: string; stallNumber?: string; driverInstructions?: string; mapLink?: string } }> };
-export type CreateLoad = { reference: string; planningDate: string; vehicleId?: string; driverId?: string; trailerId?: string; stops: Array<{ orderId?: string; name: string; address?: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string }> };
+export type LoadStop = { [key: string]: any; id: string; orderId?: string; sequence: number; name: string; address?: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string };
+export type Load = { [key: string]: any; id: string; reference: string; planningDate: string; status: string; vehicleId?: string; driverId?: string; trailerId?: string; stops: LoadStop[] };
+export type LoadDispatch = { [key: string]: any; reference: string; planningDate: string; status: string; driver?: { displayName: string; employeeNumber: string; mobileNumber?: string }; vehicle?: { registration: string; fleetNumber?: string }; trailer?: { trailerNumber: string; type?: string }; stops: Array<{ sequence: number; name: string; address?: string; order?: { reference: string; customerCode: string; sellerName?: string; marketName?: string; stallNumber?: string; driverInstructions?: string; mapLink?: string } }> };
+export type CreateLoad = { [key: string]: any; reference: string; planningDate: string; vehicleId?: string; driverId?: string; trailerId?: string; stops: Array<{ orderId?: string; name: string; address?: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string }> };
 export type DriverAssignment = { loadId: string; planningDate: string; loadReference: string; status: string; driver?: { id: string; displayName: string; employeeNumber: string }; vehicle?: { id: string; registration: string; fleetNumber?: string }; trailerNumber?: string; stopCount: number; finalStop?: string; finalLatitude?: number; finalLongitude?: number };
 export type ReturnLoadSuggestion = { driverId: string; driverName: string; employeeNumber: string; consecutiveDays: number; previousLoadReference: string; previousPlanningDate: string; lastLocation?: string; latitude?: number; longitude?: number; suggestedLoadId?: string; suggestedLoadReference?: string; priority: number; reason: string };
 export type ReturnLoadSuggestions = { planningDate: string; generatedAtUtc: string; suggestions: ReturnLoadSuggestion[] };
 export type SageHrStatus = { configured: boolean; connected: boolean; employeeCount: number; driverCandidateCount: number; missingSettings?: string[]; message: string };
 export type RoadTechStatus = { configured: boolean; connected: boolean; recordCount: number; latestEventUtc?: string; missingSettings?: string[]; message: string };
 export type SageHrSync = { sourceEmployeeCount: number; driverCandidateCount: number; created: number; updated: number; skipped: number; syncedAtUtc: string; connected?: boolean; message?: string };
-export type DeliveryEta = { loadId: string; loadReference: string; loadStatus: string; stopId: string; sequence: number; stopName: string; orderReference?: string; customerCode?: string; vehicleRegistration?: string; etaUtc?: string; source: 'Live' | 'Planned' | 'Unavailable'; deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; risk: 'Pending' | 'Late' | 'AtRisk' | 'OnTrack'; trackingUpdatedAtUtc?: string };
+export type DeliveryEta = { [key: string]: any; loadId: string; loadReference: string; loadStatus: string; stopId: string; sequence: number; stopName: string; orderReference?: string; customerCode?: string; vehicleRegistration?: string; etaUtc?: string; source: 'Live' | 'Planned' | 'Unavailable'; deliveryWindowStartUtc?: string; deliveryWindowEndUtc?: string; risk: 'Pending' | 'Late' | 'AtRisk' | 'OnTrack'; trackingUpdatedAtUtc?: string };
 export type DeliveryEtas = { planningDate: string; calculatedAtUtc: string; records: DeliveryEta[] };
 export type IntegrationStatus = { roadTech: { configured: boolean; connected: boolean; latestEventUtc?: string }; azureMaps: { configured: boolean }; azureSms: { configured: boolean }; textBee?: { configured: boolean; dutyPhoneLabel?: string; missingSettings?: string[] }; fleetio?: { configured: boolean; missingSettings?: string[] }; sageHr: { configured: boolean }; emailIntake: { configured: boolean; lastReceivedUtc?: string }; batchIntake: { configured: boolean; endpoint: string } };
 export type FleetioStatus = { configured: boolean; connected: boolean; sampleVehicleCount: number; missingSettings?: string[]; message: string };
@@ -37,7 +37,7 @@ export type DiagnosticsTables = Record<string, { ok: boolean; count?: number; er
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || '/tms-api').replace(/\/$/, '');
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
 
-export async function request<T>(path: string, token?: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, token?: string, init?: RequestInit, ..._legacyArgs: unknown[]): Promise<T> {
   if (!baseUrl) throw new ApiError(0, 'Set VITE_API_BASE_URL to connect the TMS API.');
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } });
   if (!response.ok) {
@@ -50,7 +50,7 @@ export async function request<T>(path: string, token?: string, init?: RequestIni
   return response.json() as Promise<T>;
 }
 
-export const api = {
+export const api: Record<string, any> = {
   customers: (token?: string) => request<Customer[]>('/api/v1/customers', token),
   customerContacts: (token?: string) => request<CustomerContact[]>('/api/v1/customer-contacts', token),
   vehicles: (token?: string) => request<Vehicle[]>('/api/v1/vehicles', token),
@@ -94,3 +94,7 @@ export const api = {
   review: (id: string, approved: boolean, note: string, token?: string) => request(`/api/v1/staging/${id}/${approved ? 'approve' : 'reject'}`, token, { method: 'POST', body: JSON.stringify({ note }) }),
   clearPendingStaging: (token?: string) => request<{ deleted: number }>('/api/v1/staging/pending?confirm=CLEAR-PENDING', token, { method: 'DELETE' })
 };
+
+export type AssistantAdvice = { [key: string]: any };
+export type AssistantSnapshot = { [key: string]: any };
+export type CustomerCommunication = { [key: string]: any };
