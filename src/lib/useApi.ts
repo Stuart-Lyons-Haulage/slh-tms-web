@@ -49,5 +49,5 @@ export function useApi<T>(load: () => Promise<T>) {
       mounted.current = false;
     };
   }, [refresh]);
-  return { data, error, loading, refresh };
+  return { data: data as any, error, loading, refresh };
 }
