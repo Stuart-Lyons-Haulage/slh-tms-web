@@ -1,37 +1,29 @@
 name: Trigger auto deployment for slh-tms-portal-prod
 
+# When this action will be executed
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
   workflow_dispatch:
-
-# Azure Container Apps serialises control-plane mutations. Newer main commits
-# supersede older queued releases; the deployment steps below still wait for any
-# Azure-side operation already accepted by Container Apps to finish safely.
-concurrency:
-  group: slh-tms-portal-prod
-  cancel-in-progress: true
-
-env:
-  AZURE_RESOURCE_GROUP: slh-tms-prod-rg
-  AZURE_CONTAINER_APP_NAME: slh-tms-portal-prod
-  AZURE_CONTAINER_REGISTRY: slhtmsacrprod
-  PORTAL_IMAGE: slhtmsacrprod.azurecr.io/slh-tms-portal-prod:${{ github.sha }}
+  workflow_run:
+    workflows: ["CI - Build and Lint Portal"]
+    types: [completed]
+    branches: [main]
 
 jobs:
   build-and-deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: production
-    permissions:
-      id-token: write
-      contents: read
+    env:
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+    permissions: 
+      id-token: write #This is required for requesting the OIDC JWT Token
+      contents: read #Required when GH token is used to authenticate with private repo
 
     steps:
       - name: Checkout to the branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Azure Login
         uses: azure/login@v2
@@ -40,164 +32,43 @@ jobs:
           tenant-id: 5aec48a1-c3c7-4cfd-a073-b38ae50041b1
           subscription-id: 29d5b52a-5b9f-4b5a-9495-892f1c2a30f3
 
-      - name: Sign in to the container registry
-        uses: docker/login-action@v3
-        with:
-          registry: slhtmsacrprod.azurecr.io
-          username: ${{ secrets.SLHTMSPORTALPROD_REGISTRY_USERNAME }}
-          password: ${{ secrets.SLHTMSPORTALPROD_REGISTRY_PASSWORD }}
-
-      - name: Build and push the portal image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ env.PORTAL_IMAGE }}
-          build-args: |
-            VITE_API_BASE_URL=/tms-api
-            VITE_ENTRA_TENANT_ID=${{ vars.VITE_ENTRA_TENANT_ID || '5aec48a1-c3c7-4cfd-a073-b38ae50041b1' }}
-            VITE_ENTRA_CLIENT_ID=${{ vars.VITE_ENTRA_CLIENT_ID || 'b4d086ae-6e9d-4578-8861-e61410127359' }}
-            VITE_ENTRA_API_SCOPE=${{ vars.VITE_ENTRA_API_SCOPE || 'api://497f6ea5-9753-43ee-8ccf-afaa0a3869c2/Tms.Access' }}
-            VITE_AZURE_MAPS_CLIENT_ID=${{ vars.VITE_AZURE_MAPS_CLIENT_ID || '58e0a4b4-b8e9-42e9-89cc-361ba0f33a5c' }}
-
-      - name: Wait for previous Container App operation
-        shell: bash
+      - name: Build and push the portal image in Azure Container Registry
+        env:
+          VITE_ENTRA_TENANT_ID: ${{ vars.VITE_ENTRA_TENANT_ID || '5aec48a1-c3c7-4cfd-a073-b38ae50041b1' }}
+          VITE_ENTRA_CLIENT_ID: ${{ vars.VITE_ENTRA_CLIENT_ID || 'b4d086ae-6e9d-4578-8861-e61410127359' }}
+          VITE_ENTRA_API_SCOPE: ${{ vars.VITE_ENTRA_API_SCOPE || 'api://497f6ea5-9753-43ee-8ccf-afaa0a3869c2/Tms.Access' }}
+          VITE_AZURE_MAPS_CLIENT_ID: ${{ vars.VITE_AZURE_MAPS_CLIENT_ID || '58e0a4b4-b8e9-42e9-89cc-361ba0f33a5c' }}
         run: |
           set -euo pipefail
-          for attempt in {1..90}; do
-            state="$(az containerapp show \
-              --name "$AZURE_CONTAINER_APP_NAME" \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --query properties.provisioningState \
-              --output tsv 2>/dev/null || true)"
-            if test "$state" = "Succeeded"; then
-              exit 0
-            fi
-            echo "Portal Container App is ${state:-unknown}; waiting ($attempt/90)..."
-            sleep 10
-          done
-          echo "Portal Container App did not become ready for deployment."
-          exit 1
+          az acr build \
+            --registry slhtmsacrprod \
+            --image "slh-tms-portal-prod:${DEPLOY_SHA}" \
+            --build-arg VITE_API_BASE_URL=/tms-api \
+            --build-arg "VITE_ENTRA_TENANT_ID=$VITE_ENTRA_TENANT_ID" \
+            --build-arg "VITE_ENTRA_CLIENT_ID=$VITE_ENTRA_CLIENT_ID" \
+            --build-arg "VITE_ENTRA_API_SCOPE=$VITE_ENTRA_API_SCOPE" \
+            --build-arg "VITE_AZURE_MAPS_CLIENT_ID=$VITE_AZURE_MAPS_CLIENT_ID" \
+            .
 
-      - name: Deploy exact image with retry
-        shell: bash
+      - name: Deploy the exact image revision
         run: |
           set -euo pipefail
-          expected="$PORTAL_IMAGE"
+          az containerapp update \
+            --name slh-tms-portal-prod \
+            --resource-group slh-tms-prod-rg \
+            --image "slhtmsacrprod.azurecr.io/slh-tms-portal-prod:${DEPLOY_SHA}"
 
-          for attempt in {1..18}; do
-            current="$(az containerapp show \
-              --name "$AZURE_CONTAINER_APP_NAME" \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --query 'properties.template.containers[0].image' \
-              --output tsv 2>/dev/null || true)"
-            state="$(az containerapp show \
-              --name "$AZURE_CONTAINER_APP_NAME" \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --query properties.provisioningState \
-              --output tsv 2>/dev/null || true)"
-
-            if test "$current" = "$expected" && test "$state" = "Succeeded"; then
-              echo "Target image is already applied."
-              exit 0
-            fi
-
-            if test -n "$state" && test "$state" != "Succeeded"; then
-              echo "Azure operation still ${state}; waiting before retry ($attempt/18)..."
-              sleep 10
-              continue
-            fi
-
-            if az containerapp update \
-              --name "$AZURE_CONTAINER_APP_NAME" \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --image "$expected" \
-              --only-show-errors; then
-              echo "Container App accepted the target image."
-              break
-            fi
-
-            # `az containerapp update` can return ServerTimeout even though Azure
-            # has accepted the asynchronous operation. Inspect state before retry.
-            current="$(az containerapp show \
-              --name "$AZURE_CONTAINER_APP_NAME" \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --query 'properties.template.containers[0].image' \
-              --output tsv 2>/dev/null || true)"
-            if test "$current" = "$expected"; then
-              echo "Azure recorded the target image despite the CLI timeout."
-              break
-            fi
-
-            echo "Portal update not applied yet; retrying ($attempt/18)..."
-            sleep 10
-          done
-
-          for attempt in {1..90}; do
-            state="$(az containerapp show \
-              --name "$AZURE_CONTAINER_APP_NAME" \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --query properties.provisioningState \
-              --output tsv 2>/dev/null || true)"
-            current="$(az containerapp show \
-              --name "$AZURE_CONTAINER_APP_NAME" \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --query 'properties.template.containers[0].image' \
-              --output tsv 2>/dev/null || true)"
-            if test "$state" = "Succeeded" && test "$current" = "$expected"; then
-              echo "Portal revision is ready with the expected image."
-              exit 0
-            fi
-            echo "Waiting for target portal revision: state=${state:-unknown} image=${current:-unknown} ($attempt/90)..."
-            sleep 10
-          done
-
-          echo "Expected portal image was not confirmed after deployment."
-          exit 1
-
-      - name: Verify production portal and API proxy
-        shell: bash
+      - name: Verify portal revision is serving
         run: |
           set -euo pipefail
-          fqdn="$(az containerapp show \
-            --name "$AZURE_CONTAINER_APP_NAME" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --query properties.configuration.ingress.fqdn \
-            --output tsv)"
-          test -n "$fqdn"
-
-          for attempt in {1..24}; do
-            if curl --fail --silent --show-error "https://$fqdn/" > /tmp/portal.html; then
-              break
-            fi
-            echo "Portal is not serving yet; retrying ($attempt/24)..."
-            sleep 10
-          done
-          test -s /tmp/portal.html
-
-          for attempt in {1..24}; do
-            health="$(curl --fail --silent --show-error "https://$fqdn/tms-api/api/v1/health" || true)"
-            if echo "$health" | grep --quiet 'healthy'; then
-              echo "$health"
-              exit 0
-            fi
-            echo "Portal API proxy is not healthy yet; retrying ($attempt/24)..."
+          for attempt in {1..36}; do
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --max-time 10 \
+              https://slh-tms-portal-prod.gentlepond-08dba66b.uksouth.azurecontainerapps.io/ || true)"
+            if test "$status" = "200"; then exit 0; fi
+            echo "Portal returned HTTP ${status}; retrying ($attempt/36)..."
             sleep 10
           done
           exit 1
 
-      - name: Report production geofence health
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          fqdn="$(az containerapp show \
-            --name "$AZURE_CONTAINER_APP_NAME" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --query properties.configuration.ingress.fqdn \
-            --output tsv)"
-          test -n "$fqdn"
-          echo "Production tracking/geofence health summary:"
-          curl --fail --silent --show-error "https://$fqdn/tms-api/api/v1/health/tracking/geofences"
-          echo
+
