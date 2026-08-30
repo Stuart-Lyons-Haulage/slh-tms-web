@@ -1,4 +1,5 @@
 name: CI - Build and Lint Portal
+# Validates the complete main branch after contract-alignment changes
 
 on:
   push:
