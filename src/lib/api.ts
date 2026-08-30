@@ -4,7 +4,7 @@ export type CustomerContact = { [key: string]: any; id: string; customerCode: st
 // PINs and complete card numbers are deliberately not part of the portal contract.
 // They remain runtime-only secrets; the portal may show the card suffix and a secret reference.
 export type Vehicle = { [key: string]: any; id: string; registration: string; fleetNumber?: string; abbreviation?: string; transmission?: string; dvsCompliant?: boolean; fuelProvider?: string; cabMobile?: string; notes?: string; fuelPinSecretName?: string; fuelCardLastFour?: string; fleetioId?: string; fleetioName?: string; fleetioStatus?: string; active: boolean };
-export type Driver = { [key: string]: any; id: string; employeeNumber: string; displayName: string; tachoName?: string; mobileNumber?: string; driverType?: string; driverGroup?: string; skills?: string; active: boolean };
+export type Driver = { [key: string]: any; id: string; employeeNumber: string; displayName: string; tachoName?: string; tachoMasterDriverId?: string; tachoCardNumber?: string; lastTachoSyncUtc?: string; mobileNumber?: string; driverType?: string; driverGroup?: string; skills?: string; active: boolean };
 export type Trailer = { [key: string]: any; id: string; trailerNumber: string; type?: string; standardCapacity?: number; euroCapacity?: number; active: boolean };
 export type Site = { [key: string]: any; id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; collectionInstructions?: string; mapLink?: string; active: boolean };
 export type MarketContact = { id: string; market: string; name: string; standOrLocation?: string; salesman?: string; sender?: string; active: boolean };
