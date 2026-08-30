@@ -10,6 +10,7 @@ import {
 } from "react";
 import * as XLSX from "xlsx";
 import * as atlas from "azure-maps-control";
+import { todayIsoDate, formatDateTime } from "../lib/dateUtils";
 import { useMsal } from "@azure/msal-react";
 import { Link } from "react-router-dom";
 import "azure-maps-control/dist/atlas.min.css";
@@ -79,17 +80,16 @@ function State({
     return <div className="state">No records are available for this view.</div>;
   return <>{children}</>;
 }
-const localDate = () => {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
-const formatDate = (value?: string) =>
+// localDate() is timezone-safe: uses Europe/London via dateUtils
+const localDate = todayIsoDate;
+// formatDateShort formats date + time (medium + short) — used for ETA display.
+// formatDateTime from dateUtils is timezone-safe and preferred for new code.
+const formatDateShort = (value?: string) =>
   value
-    ? new Intl.DateTimeFormat("en-GB", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(new Date(value))
+    ? formatDateTime(value)
     : "—";
+/** @deprecated Use formatDateShort (date+time) or formatDateTime from dateUtils */
+const formatDate = formatDateShort;
 const formatCurrency = (value?: number) =>
   new Intl.NumberFormat("en-GB", {
     style: "currency",
