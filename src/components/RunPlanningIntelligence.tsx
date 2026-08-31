@@ -12,7 +12,6 @@ type DriverSuggestion = {
 type VehicleSuggestion = {
   id: string; registration: string; fleetNumber?: string; abbreviation?: string; liveUpdatedAtUtc?: string;
   isMoving?: boolean; lastKnownStatus?: string; currentDriver?: string; tachoStatus?: "SignedOn" | "NotSignedOn" | string; tachoSignOnUtc?: string; previousRun?: string; previousEnd?: string;
-  estimatedEmptyMiles?: number; score: number; reason: string;
 };
 type Intelligence = {
   id: string; reference: string; planningDate: string;
@@ -91,7 +90,6 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
           const loc = row.lastLocation; const first = data?.firstStop;
           const empty = loc?.latitude != null && loc.longitude != null && first?.latitude != null && first.longitude != null ? roadMiles(loc.latitude, loc.longitude, first.latitude, first.longitude) : undefined;
           return { id: row.id, registration: row.registration, fleetNumber: row.fleetNumber, abbreviation: row.abbreviation, liveUpdatedAtUtc: loc?.lastEventTimeUtc,
-            isMoving: loc?.isMoving, lastKnownStatus: loc?.lastKnownStatus, estimatedEmptyMiles: empty, score: 0,
             reason: loc?.lastEventTimeUtc ? "Direct registration match using the latest DOT position." : "Direct registration match; no fresh DOT position is available." };
         }));
       } catch { setDirectVehicles([]); }
@@ -117,8 +115,6 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
     try {
       const access = await token();
       await request(`/api/v1/loads/${load.id}/allocation`, access, { method: "PUT", body: JSON.stringify({ driverId: driverId || null, vehicleId: vehicleId || null, trailerId: load.trailerId || null }) });
-      if (chosenVehicle?.estimatedEmptyMiles != null) await request(`/api/v1/loads/${load.id}/commercial`, access, { method: "PUT", body: JSON.stringify({ emptyMiles: chosenVehicle.estimatedEmptyMiles }) });
-      setMessage(chosenVehicle?.estimatedEmptyMiles != null ? `Allocation saved. Empty miles set to ${chosenVehicle.estimatedEmptyMiles.toFixed(1)} from the best available DOT / previous-job position.` : "Driver and vehicle allocation saved. Empty miles will populate once a positioning point is available.");
       await refresh(); await onChanged?.();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Allocation could not be saved."); }
     finally { setBusy(false); }
@@ -148,10 +144,8 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
         <div style={{ maxHeight: 250, overflow: "auto", marginTop: 6 }}>{drivers.slice(0, 10).map(item => <button key={item.id} type="button" onClick={() => { setDriverId(item.id); setDriverQuery(item.displayName); }} style={{ width: "100%", textAlign: "left", marginBottom: 5, border: driverId === item.id ? "2px solid #0b5f78" : undefined }}><strong>{riskSymbol(item.shiftRisk)} {item.displayName}</strong>{signOnText(item) ? ` · ${signOnText(item)}` : ""}<br/><small>Daily driving {minutes(item.dailyRemainingMinutes)} · Weekly driving {minutes(item.weeklyRemainingMinutes)}</small><br/><small>Weekly work {minutes(item.weeklyWorkRemainingMinutes)} · Risk <b>{item.shiftRisk}</b></small><br/><small>{item.reason}</small></button>)}</div>
       </div>
       <div><label><strong>Vehicle</strong><input value={vehicleQuery} onChange={e => setVehicleQuery(e.target.value)} placeholder="Type reg or last 3…" style={{ width: "100%" }} /></label>
-        <div style={{ maxHeight: 250, overflow: "auto", marginTop: 6 }}>{vehicles.slice(0, 10).map(item => <button key={item.id} type="button" onClick={() => { setVehicleId(item.id); setVehicleQuery(item.registration); }} style={{ width: "100%", textAlign: "left", marginBottom: 5, border: vehicleId === item.id ? "2px solid #0b5f78" : undefined }}><strong>{item.registration}</strong>{item.currentDriver ? ` · ${item.currentDriver}` : ""}{signOnText(item) ? ` · ${signOnText(item)}` : ""}<br/><small>{item.estimatedEmptyMiles == null ? "Empty miles not yet calculable" : `Estimated empty miles ${item.estimatedEmptyMiles.toFixed(1)}`}</small><br/><small>{item.reason}</small></button>)}</div>
       </div>
     </div>
-    {(chosenDriver || chosenVehicle) && <div style={{ marginTop: 10, padding: 9, background: "#f4f8fa", borderRadius: 7 }}>{chosenDriver && <div><strong>{riskSymbol(chosenDriver.shiftRisk)} {chosenDriver.displayName}</strong> · daily {minutes(chosenDriver.dailyRemainingMinutes)} · weekly {minutes(chosenDriver.weeklyRemainingMinutes)} · risk {chosenDriver.shiftRisk}</div>}{chosenVehicle && <div><strong>{chosenVehicle.registration}</strong>{chosenVehicle.estimatedEmptyMiles != null ? ` · ${chosenVehicle.estimatedEmptyMiles.toFixed(1)} estimated empty miles to first job` : ""}</div>}</div>}
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12, alignItems: "center" }}><button type="button" className="primary" disabled={busy || !driverId || !vehicleId} onClick={() => void allocate()}>Save allocation</button><span style={{ marginLeft: 8 }}><strong>Night out required?</strong></span><button type="button" disabled={busy} className={data?.nightOutRequired === true ? "primary" : ""} onClick={() => void setNightOut(true)}>Yes</button><button type="button" disabled={busy} className={data?.nightOutRequired === false ? "primary" : ""} onClick={() => void setNightOut(false)}>No</button>{data?.nightOutRequired == null && <small>Planner confirmation required</small>}</div>
     {message && <p className="notice inline-notice" style={{ marginTop: 8 }}>{message}</p>}
   </section>;

@@ -307,7 +307,7 @@ export function DriverDispatch() {
   const token = useAccessToken();
   const initialParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const [date, setDate] = useState(initialParams.get("date") || today());
-  const readOnly = initialParams.get("compare") === "1";
+  const readOnly = false;
   const [data, setData] = useState<Workbench>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -369,8 +369,6 @@ export function DriverDispatch() {
     });
   }, [data, filters]);
 
-  const yesterday = () => window.open(`/driver-dispatch?date=${encodeURIComponent(addDays(date, -1))}&compare=1`, "_blank", "noopener,noreferrer");
-
   async function syncDrivers() {
     if (readOnly) return;
     setDriverToolBusy(true); setDriverToolNotice(undefined);
@@ -418,7 +416,6 @@ export function DriverDispatch() {
       </div>
       <div className="title-actions dispatch-actions">
         <label>Planning date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
-        <button type="button" onClick={yesterday}>Open yesterday in new screen ↗</button>
         {!readOnly && <button type="button" onClick={() => void syncDrivers()} disabled={driverToolBusy}>{driverToolBusy ? "Working…" : "Sync Drivers"}</button>}
         {!readOnly && <button type="button" onClick={() => { setShowDriverTools(value => !value); setDriverToolNotice(undefined); }}>{showDriverTools ? "Close driver add" : "Add Driver"}</button>}
         <button type="button" onClick={() => void refresh()} disabled={loading}>Refresh</button>
