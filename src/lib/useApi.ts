@@ -1,9 +1,16 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DataIntegrityError } from '../api/apiClient';
 import { isDegradedProgressRefresh, type ProgressRefreshEnvelope } from '../liveProgressStabilityPatch';
 
-export function useApi<T>(load: () => Promise<T>) {
+export interface UseApiResult<T> {
+  data: T | undefined;
+  error: string | undefined;
+  dataProblem: DataIntegrityError | undefined;
+  loading: boolean;
+  refresh: () => Promise<void>;
+}
+
+export function useApi<T>(load: () => Promise<T>): UseApiResult<T> {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string>();
   const [dataProblem, setDataProblem] = useState<DataIntegrityError>();
@@ -29,7 +36,7 @@ export function useApi<T>(load: () => Promise<T>) {
             setData(result);
           }
         }
-      } catch (exception) {
+      } catch (exception: unknown) {
         if (mounted.current && request === requestNumber.current) {
           if (exception instanceof DataIntegrityError) {
             setDataProblem(exception);
@@ -49,9 +56,7 @@ export function useApi<T>(load: () => Promise<T>) {
   useEffect(() => {
     mounted.current = true;
     void refresh();
-    return () => {
-      mounted.current = false;
-    };
+    return () => { mounted.current = false; };
   }, [refresh]);
-  return { data: data as any, error, dataProblem, loading, refresh };
+  return { data, error, dataProblem, loading, refresh };
 }
