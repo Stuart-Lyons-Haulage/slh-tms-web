@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { request, type Load } from "../lib/api";
+import { allocateRun } from "../api/runs";
 import { useAccessToken } from "../lib/auth";
 
 type DriverSuggestion = {
@@ -12,6 +13,7 @@ type DriverSuggestion = {
 type VehicleSuggestion = {
   id: string; registration: string; fleetNumber?: string; abbreviation?: string; liveUpdatedAtUtc?: string;
   isMoving?: boolean; lastKnownStatus?: string; currentDriver?: string; tachoStatus?: "SignedOn" | "NotSignedOn" | string; tachoSignOnUtc?: string; previousRun?: string; previousEnd?: string;
+  reason?: string;
 };
 type Intelligence = {
   id: string; reference: string; planningDate: string;
@@ -38,12 +40,6 @@ const signOnText = (item: { tachoStatus?: string; tachoSignOnUtc?: string; tacho
 };
 const riskSymbol = (risk?: string) => risk === "Red" ? "⚠" : risk === "Amber" ? "△" : risk === "Green" ? "✓" : "?";
 const availabilityRisk = (today?: number, week?: number): DriverSuggestion["shiftRisk"] => today != null && today < 240 || week != null && week < 600 ? "Red" : today != null && today < 360 || week != null && week < 900 ? "Amber" : today == null && week == null ? "Unknown" : "Green";
-const roadMiles = (aLat: number, aLon: number, bLat: number, bLon: number) => {
-  const rad = (n: number) => n * Math.PI / 180; const r = 3958.7613;
-  const dLat = rad(bLat-aLat), dLon = rad(bLon-aLon), lat1 = rad(aLat), lat2 = rad(bLat);
-  const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
-  return Math.round((2*r*Math.asin(Math.min(1,Math.sqrt(h)))*1.18)*10)/10;
-};
 
 export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onChanged?: () => void | Promise<void> }) {
   const token = useAccessToken();
@@ -86,15 +82,20 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
     const handle = window.setTimeout(async () => {
       try {
         const rows = await request<VehicleLookup[]>(`/api/v1/operational-master-data/vehicles/search?q=${encodeURIComponent(q)}&includeInactive=false`, await token());
-        setDirectVehicles(rows.map(row => {
-          const loc = row.lastLocation; const first = data?.firstStop;
-          return { id: row.id, registration: row.registration, fleetNumber: row.fleetNumber, abbreviation: row.abbreviation, liveUpdatedAtUtc: loc?.lastEventTimeUtc,
-            reason: loc?.lastEventTimeUtc ? "Direct registration match using the latest DOT position." : "Direct registration match; no fresh DOT position is available." };
-        }));
+        setDirectVehicles(rows.map(row => ({
+          id: row.id,
+          registration: row.registration,
+          fleetNumber: row.fleetNumber,
+          abbreviation: row.abbreviation,
+          liveUpdatedAtUtc: row.lastLocation?.lastEventTimeUtc,
+          isMoving: row.lastLocation?.isMoving,
+          lastKnownStatus: row.lastLocation?.lastKnownStatus,
+          reason: row.lastLocation?.lastEventTimeUtc ? "Direct registration match using the latest DOT position." : "Direct registration match; no fresh DOT position is available.",
+        })));
       } catch { setDirectVehicles([]); }
     }, 180);
     return () => window.clearTimeout(handle);
-  }, [vehicleQuery, data?.firstStop, token]);
+  }, [vehicleQuery, token]);
 
   const drivers = useMemo(() => {
     const q = driverQuery.trim().toLowerCase();
@@ -102,11 +103,17 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
     return (data?.driverSuggestions || []).filter(x => !q || `${x.displayName} ${x.employeeNumber} ${x.tachoName || ""}`.toLowerCase().includes(q));
   }, [data, directDrivers, driverQuery]);
 
+  const vehicles = useMemo(() => {
+    const q = vehicleQuery.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    if (q.length >= 2 && directVehicles.length) return directVehicles;
+    return (data?.vehicleSuggestions || []).filter(x => !q || `${x.registration}${x.abbreviation || ""}${x.fleetNumber || ""}`.replace(/[^a-z0-9]/gi, "").toLowerCase().includes(q));
+  }, [data, directVehicles, vehicleQuery]);
+
   async function allocate() {
     setBusy(true); setMessage(undefined);
     try {
       const access = await token();
-      await request(`/api/v1/loads/${load.id}/allocation`, access, { method: "PUT", body: JSON.stringify({ driverId: driverId || null, vehicleId: vehicleId || null, trailerId: load.trailerId || null }) });
+      await allocateRun(load.id, { driverId: driverId || undefined, vehicleId: vehicleId || undefined, trailerId: load.trailerId || undefined }, access);
       await refresh(); await onChanged?.();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Allocation could not be saved."); }
     finally { setBusy(false); }
@@ -136,6 +143,7 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
         <div style={{ maxHeight: 250, overflow: "auto", marginTop: 6 }}>{drivers.slice(0, 10).map(item => <button key={item.id} type="button" onClick={() => { setDriverId(item.id); setDriverQuery(item.displayName); }} style={{ width: "100%", textAlign: "left", marginBottom: 5, border: driverId === item.id ? "2px solid #0b5f78" : undefined }}><strong>{riskSymbol(item.shiftRisk)} {item.displayName}</strong>{signOnText(item) ? ` · ${signOnText(item)}` : ""}<br/><small>Daily driving {minutes(item.dailyRemainingMinutes)} · Weekly driving {minutes(item.weeklyRemainingMinutes)}</small><br/><small>Weekly work {minutes(item.weeklyWorkRemainingMinutes)} · Risk <b>{item.shiftRisk}</b></small><br/><small>{item.reason}</small></button>)}</div>
       </div>
       <div><label><strong>Vehicle</strong><input value={vehicleQuery} onChange={e => setVehicleQuery(e.target.value)} placeholder="Type reg or last 3…" style={{ width: "100%" }} /></label>
+        <div style={{ maxHeight: 250, overflow: "auto", marginTop: 6 }}>{vehicles.slice(0, 10).map(item => <button key={item.id} type="button" onClick={() => { setVehicleId(item.id); setVehicleQuery(item.registration); }} style={{ width: "100%", textAlign: "left", marginBottom: 5, border: vehicleId === item.id ? "2px solid #0b5f78" : undefined }}><strong>{item.registration}</strong>{item.fleetNumber ? ` · ${item.fleetNumber}` : ""}{item.abbreviation ? ` · ${item.abbreviation}` : ""}<br/><small>{signOnText(item)}{item.isMoving ? " · Moving" : item.lastKnownStatus ? ` · ${item.lastKnownStatus}` : ""}</small>{item.reason && <><br/><small>{item.reason}</small></>}</button>)}</div>
       </div>
     </div>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12, alignItems: "center" }}><button type="button" className="primary" disabled={busy || !driverId || !vehicleId} onClick={() => void allocate()}>Save allocation</button><span style={{ marginLeft: 8 }}><strong>Night out required?</strong></span><button type="button" disabled={busy} className={data?.nightOutRequired === true ? "primary" : ""} onClick={() => void setNightOut(true)}>Yes</button><button type="button" disabled={busy} className={data?.nightOutRequired === false ? "primary" : ""} onClick={() => void setNightOut(false)}>No</button>{data?.nightOutRequired == null && <small>Planner confirmation required</small>}</div>
