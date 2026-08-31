@@ -4,30 +4,6 @@ import { MsalProvider } from '@azure/msal-react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { App } from './App';
 import { cacheLocationForRoute, isPublicTvLink, isTvRoute } from './tvBootstrap';
-import './runtimeGuards';
-import './orderPlanningSyncBridge';
-import './plannerEmptyStopsPatch';
-import './fleetioSyncPatch';
-import './masterDataCleanupFetchPatch';
-import './operationalPresentationPatch';
-import './typeaheadLookupPatch';
-import './automaticRefreshPresentationPatch';
-import './managementFallbackPatch';
-import './planLockFetchPatch';
-import './marketNormalizationPatch';
-import './preferredVehicleAllocationPatch';
-import './allocationResiliencePatch';
-import './runsReadinessPatch';
-import './geofenceRecoveryPatch';
-import './geofenceRefreshPolicy';
-import './commercialRemovalPatch';
-import './driverDispatchComparisonRemovalPatch';
-import './routeGeocodeFallbackPatch';
-import './pollingLoadGuard';
-import './wallboardSnapshotFetchPatch';
-import './overnightWallboardFetchPatch';
-import './liveVehiclePopupPatch';
-import './naturalRunOrderPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
@@ -67,8 +43,6 @@ function showStartupFailure(error: unknown) {
 async function start() {
   try {
     if (isTvRoutePath && (window as Window & { __SLH_TV_COMPATIBILITY__?: boolean }).__SLH_TV_COMPATIBILITY__) {
-      // A legacy office-TV browser may start the compatibility wallboard before
-      // this module finishes loading. Do not let React take over that DOM.
       return;
     }
     if (isTvRoutePath) {
