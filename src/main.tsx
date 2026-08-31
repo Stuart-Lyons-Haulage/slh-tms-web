@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { MsalProvider } from '@azure/msal-react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { App } from './App';
+import { DataIntegrityBoundary } from './components/DataIntegrityBoundary';
 import { cacheLocationForRoute, isPublicTvLink, isTvRoute } from './tvBootstrap';
 import './styles.css';
 import './orders.css';
@@ -29,7 +30,13 @@ const msal = new PublicClientApplication({ auth: { clientId: clientId || '000000
 function renderApp() {
   const root = document.getElementById('root');
   if (!root) throw new Error('TMS root element is missing.');
-  createRoot(root).render(<StrictMode><MsalProvider instance={msal}><App /></MsalProvider></StrictMode>);
+  createRoot(root).render(
+    <StrictMode>
+      <MsalProvider instance={msal}>
+        <DataIntegrityBoundary><App /></DataIntegrityBoundary>
+      </MsalProvider>
+    </StrictMode>,
+  );
 }
 
 function showStartupFailure(error: unknown) {
@@ -42,12 +49,8 @@ function showStartupFailure(error: unknown) {
 
 async function start() {
   try {
-    if (isTvRoutePath && (window as Window & { __SLH_TV_COMPATIBILITY__?: boolean }).__SLH_TV_COMPATIBILITY__) {
-      return;
-    }
-    if (isTvRoutePath) {
-      (window as Window & { __SLH_TV_REACT_STARTED__?: boolean }).__SLH_TV_REACT_STARTED__ = true;
-    }
+    if (isTvRoutePath && (window as Window & { __SLH_TV_COMPATIBILITY__?: boolean }).__SLH_TV_COMPATIBILITY__) return;
+    if (isTvRoutePath) (window as Window & { __SLH_TV_REACT_STARTED__?: boolean }).__SLH_TV_REACT_STARTED__ = true;
     if (publicTvLink) {
       renderApp();
       void msal.initialize().catch((error) => console.warn('MSAL unavailable in keyed TV mode; continuing with TV-key access.', error));
