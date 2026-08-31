@@ -1,0 +1,69 @@
+name: Migrate canonical run callers
+
+on:
+  push:
+    branches: ['feature/eliminate-runtime-patches']
+    paths:
+      - .github/workflows/migrate-run-callers.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/eliminate-runtime-patches
+          fetch-depth: 0
+      - name: Replace legacy api run methods
+        shell: python
+        run: |
+          from pathlib import Path
+          replacements = {
+              'api.loads(': 'listRuns(',
+              'api.createLoad(': 'createRun(',
+              'api.allocateLoad(': 'allocateRun(',
+              'api.updateLoadUtilisation(': 'updateRunOperational(',
+              'api.updateLoadStops(': 'updateRunStops(',
+              'api.updateLoadStatus(': 'updateRunStatus(',
+              'api.route(': 'getRunRoute(',
+              'api.dispatch(': 'getRunDispatch(',
+          }
+          names = {
+              'listRuns', 'createRun', 'allocateRun', 'updateRunOperational',
+              'updateRunStops', 'updateRunStatus', 'getRunRoute', 'getRunDispatch'
+          }
+          for path in Path('src').rglob('*'):
+              if path.suffix not in {'.ts', '.tsx'} or path.as_posix() == 'src/lib/api.ts' or 'Patch' in path.name:
+                  continue
+              text = path.read_text()
+              used = []
+              for old, new in replacements.items():
+                  if old in text:
+                      text = text.replace(old, new)
+                      used.append(new[:-1])
+              if not used:
+                  continue
+              if "from '../api/runs'" not in text and "from './api/runs'" not in text:
+                  depth = len(path.relative_to('src').parents) - 1
+                  prefix = './' if depth == 0 else '../' * depth
+                  line = f"import {{ {', '.join(sorted(set(used)))} }} from '{prefix}api/runs';\n"
+                  last_import = 0
+                  lines = text.splitlines(keepends=True)
+                  for i, existing in enumerate(lines):
+                      if existing.startswith('import '): last_import = i + 1
+                  lines.insert(last_import, line)
+                  text = ''.join(lines)
+              path.write_text(text)
+      - name: Commit migration
+        shell: bash
+        run: |
+          if git diff --quiet -- src; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git commit -m "Migrate run callsites to canonical client"
+          git pull --rebase origin feature/eliminate-runtime-patches
+          git push origin HEAD:feature/eliminate-runtime-patches
