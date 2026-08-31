@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, request, type LoadDispatch, type Trailer, type Vehicle } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import "../driver-dispatch.css";
+import { getRunDispatch, getRunRoute } from '../api/runs';
 
 type DispatchDriver = {
   driverId: string;
@@ -618,7 +619,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
     try {
       const access = await token();
       await allocateRun(loadId, { driverId: driver.driverId, vehicleId, trailerId: trailerId || undefined }, access);
-      const route = await api.route(loadId, access);
+      const route = await getRunRoute(loadId, access);
       const minutes = routeMinutes(route);
       if (!minutes) throw new Error("The route did not return a driving time. Check the run's mapped stops before dispatch.");
 
@@ -636,7 +637,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
       }
       if (!readiness.canDispatch) throw new Error(readiness.explanation || "Dispatch readiness did not pass.");
 
-      const dispatch = await api.dispatch(loadId, access);
+      const dispatch = await getRunDispatch(loadId, access);
       const latest = data.loads.find(load => load.id === loadId) || selected;
       if (!latest) throw new Error("Run details could not be loaded for the text preview.");
       openMessage({ load: latest, mode: "dispatch", text: buildDriverText(latest, dispatch), routeMinutes: minutes, acknowledgeUnverified: acknowledged });
@@ -648,7 +649,7 @@ function DispatchRow({ driver, data, readOnly, showGroup, token, refresh, openMe
     if (!selected) return;
     setBusy(true); setNotice(undefined);
     try {
-      const dispatch = await api.dispatch(selected.id, await token());
+      const dispatch = await getRunDispatch(selected.id, await token());
       openMessage({ load: selected, mode: "update", text: `Update for ${selected.reference}\n\n${buildDriverText(selected, dispatch)}\n\nUPDATE: ` });
     } catch (exception) { setNotice(exception instanceof Error ? exception.message : "Text update could not be prepared."); }
     finally { setBusy(false); }

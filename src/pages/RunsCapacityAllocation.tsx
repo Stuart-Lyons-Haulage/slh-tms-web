@@ -13,6 +13,7 @@ import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningE
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
 import "../runs-capacity-allocation.css";
+import { allocateRun, getRunDispatch, getRunRoute, listRuns, updateRunOperational, updateRunStops } from '../api/runs';
 
 const localDate = () => {
   const date = new Date();
@@ -238,8 +239,8 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     setSaving(true); setMessage(undefined);
     try {
       const access = await token();
-      await api.allocateLoad(load.id, { vehicleId: vehicleId || undefined, driverId: driverId || undefined, trailerId: trailerId || undefined }, access);
-      await api.updateLoadUtilisation(load.id, {
+      await allocateRun(load.id, { vehicleId: vehicleId || undefined, driverId: driverId || undefined, trailerId: trailerId || undefined }, access);
+      await updateRunOperational(load.id, {
         palletSpacesUsed: Number.isFinite(numericUsed) ? numericUsed : undefined,
         totalPalletSpaces: effectiveCapacity,
         capacityType,
@@ -356,8 +357,8 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
     setSaving(true); setMessage(undefined); setRouteSummary(undefined);
     try {
       const access = await token();
-      await api.allocateLoad(load.id, { vehicleId, driverId, trailerId: trailerId || undefined }, access);
-      await api.updateLoadUtilisation(load.id, {
+      await allocateRun(load.id, { vehicleId, driverId, trailerId: trailerId || undefined }, access);
+      await updateRunOperational(load.id, {
         palletSpacesUsed: Number.isFinite(numericUsed) ? numericUsed : undefined,
         totalPalletSpaces: effectiveCapacity,
         capacityType,
@@ -373,8 +374,8 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       if (routeStops.filter(stop => stop.latitude.trim() && stop.longitude.trim()).length < 2)
         throw new Error("At least two stops need a valid postcode or Site Master location before dispatch.");
 
-      await api.updateLoadStops(load.id, stopPayload(routeStops), access);
-      const result = await api.route(load.id, access) as {
+      await updateRunStops(load.id, stopPayload(routeStops), access);
+      const result = await getRunRoute(load.id, access) as {
         routes?: Array<{ summary?: { lengthInMeters?: number; travelTimeInSeconds?: number } }>;
         approximate?: boolean;
       };
@@ -389,8 +390,8 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
       const baseTime = Number.isFinite(firstTime) && firstTime > Date.now() ? firstTime : Date.now();
       const finalEta = new Date(baseTime + dispatchMinutes * 60_000).toISOString();
       const withEta = routeStops.map((stop, index) => index === routeStops.length - 1 ? { ...stop, plannedArrivalUtc: finalEta } : stop);
-      await api.updateLoadStops(load.id, stopPayload(withEta), access);
-      const driverText = buildDriverText(load, await api.dispatch(load.id, access));
+      await updateRunStops(load.id, stopPayload(withEta), access);
+      const driverText = buildDriverText(load, await getRunDispatch(load.id, access));
       const response = await fetch(`/tms-api/api/v1/loads/${encodeURIComponent(load.id)}/driver-message/sms`, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json", ...(access ? { Authorization: `Bearer ${access}` } : {}) },
@@ -415,7 +416,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
   async function prepareDriverText(openModal = true) {
     setSaving(true); setMessage(undefined);
     try {
-      const text = buildDriverText(load, await api.dispatch(load.id, await token()));
+      const text = buildDriverText(load, await getRunDispatch(load.id, await token()));
       setPreviewText(text); if (openModal) setPreviewOpen(true); return text;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The driver text could not be prepared."); return undefined;
@@ -503,7 +504,7 @@ function RunAllocationCard({ load, vehicles, drivers, trailers, sites, onSaved }
 export function RunsCapacityAllocation() {
   const token = useAccessToken();
   const [date, setDate] = useState(localDate());
-  const loads = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
+  const loads = useApi(useCallback(async () => listRuns(date, await token()), [date, token]));
   const vehicles = useApi(useCallback(async () => api.vehicles(await token()), [token]));
   const drivers = useApi(useCallback(async () => api.drivers(await token()), [token]));
   const trailers = useApi(useCallback(async () => api.trailers(await token()), [token]));

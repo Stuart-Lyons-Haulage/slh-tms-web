@@ -27,6 +27,7 @@ import { useAccessToken } from "../lib/auth";
 import { plannerV2Api, type PlannerDaySuggestion } from "../lib/plannerV2Api";
 import { useApi } from "../lib/useApi";
 import "../operational-planner.css";
+import { allocateRun, createRun, getRunRoute, listRuns, updateRunOperational, updateRunStops } from '../api/runs';
 
 type Coordinate = { latitude: number; longitude: number };
 type RouteLine = [number, number][];
@@ -454,7 +455,7 @@ function PlannerV3Content() {
 
   const ordersApi = useApi(useCallback(async () => api.orders(date, date, await token()), [date, token]));
   const palletControlApi = useApi(useCallback(async () => request<PalletControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, await token()), [date, token]));
-  const loadsApi = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
+  const loadsApi = useApi(useCallback(async () => listRuns(date, await token()), [date, token]));
   const vehiclesApi = useApi(useCallback(async () => api.vehicles(await token()), [token]));
   const driversApi = useApi(useCallback(async () => api.drivers(await token()), [token]));
   const trailersApi = useApi(useCallback(async () => api.trailers(await token()), [token]));
@@ -559,7 +560,7 @@ function PlannerV3Content() {
     let cancelled = false;
     void (async () => {
       try {
-        const result = await api.route(selectedLoadId, await token()) as { routes?: Array<{ legs?: RouteLeg[] }> };
+        const result = await getRunRoute(selectedLoadId, await token()) as { routes?: Array<{ legs?: RouteLeg[] }> };
         const legs = result.routes?.[0]?.legs ?? [];
         const line: RouteLine = legs.flatMap((leg) => (leg.points ?? []).flatMap((point) =>
           point.latitude != null && point.longitude != null
@@ -614,7 +615,7 @@ function PlannerV3Content() {
     try {
       const nextRunNumber = sortedLoads.length + 1;
       const uniqueSuffix = Date.now().toString().slice(-5);
-      const created = await api.createLoad({
+      const created = await createRun({
         reference: `RUN-${date.replaceAll("-", "")}-${String(nextRunNumber).padStart(2, "0")}-${uniqueSuffix}`,
         planningDate: date,
         driverId: suggestedDriverId,
@@ -659,8 +660,8 @@ function PlannerV3Content() {
         })),
         ...await stopsFor(item, current),
       ];
-      await api.updateLoadStops(load.id, stops, await token());
-      await api.updateLoadUtilisation(load.id, {
+      await updateRunStops(load.id, stops, await token());
+      await updateRunOperational(load.id, {
         palletSpacesUsed: (Number(load.palletSpacesUsed) || 0) + capacityUnits(item),
         totalPalletSpaces: Number(load.totalPalletSpaces) || 26,
         capacityType: load.capacityType || "Standard pallets",
@@ -682,10 +683,10 @@ function PlannerV3Content() {
     setBusy(true);
     setMessage(undefined);
     try {
-      await api.allocateLoad(load.id, { vehicleId, driverId, trailerId }, await token());
+      await allocateRun(load.id, { vehicleId, driverId, trailerId }, await token());
       if (trailerId) {
         const trailer = trailers.find((item) => item.id === trailerId);
-        await api.updateLoadUtilisation(load.id, {
+        await updateRunOperational(load.id, {
           palletSpacesUsed: Number(load.palletSpacesUsed) || 0,
           totalPalletSpaces: Number(trailer?.standardCapacity) || Number(load.totalPalletSpaces) || 26,
           capacityType: trailer?.type || load.capacityType || "Standard pallets",
@@ -725,7 +726,7 @@ function PlannerV3Content() {
         ordered.push(next);
         cursor = next.point || cursor;
       }
-      await api.updateLoadStops(load.id, ordered.map(({ stop, point }) => ({
+      await updateRunStops(load.id, ordered.map(({ stop, point }) => ({
         orderId: stop.orderId,
         name: text(stop.name) || "Stop",
         address: text(stop.address) || undefined,
