@@ -5,7 +5,7 @@ import { api, type CreateLoad, type Load, type LoadStop, type Site, type Transpo
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 import "../operational-planner.css";
-import { allocateRun, createRun, getRunRoute, listRuns, updateRunStops } from '../api/runs';
+import { allocateRun, getRunRoute, listRuns, updateRunStops } from '../api/runs';
 
 type Coordinate = { latitude: number; longitude: number };
 type PlannerStop = CreateLoad["stops"][number];

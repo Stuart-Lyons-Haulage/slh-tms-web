@@ -27,7 +27,7 @@ import { useAccessToken } from "../lib/auth";
 import { plannerV2Api, type PlannerDaySuggestion } from "../lib/plannerV2Api";
 import { useApi } from "../lib/useApi";
 import "../operational-planner.css";
-import { allocateRun, createRun, getRunRoute, listRuns, updateRunOperational, updateRunStops } from '../api/runs';
+import { allocateRun, getRunRoute, listRuns, updateRunOperational, updateRunStops } from '../api/runs';
 
 type Coordinate = { latitude: number; longitude: number };
 type RouteLine = [number, number][];

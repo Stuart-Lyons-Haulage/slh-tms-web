@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, request, type LoadDispatch, type Trailer, type Vehicle } from "../lib/api";
+import { request, type LoadDispatch, type Trailer, type Vehicle } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import "../driver-dispatch.css";
 import { getRunDispatch, getRunRoute } from '../api/runs';
@@ -134,7 +134,6 @@ function emptyDispatchFilters(): DispatchFilters {
 function isoDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
-function addDays(value: string, days: number) {
   const [year, month, day] = value.split("-").map(Number);
   return isoDate(new Date(year, month - 1, day + days, 12));
 }

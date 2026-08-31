@@ -88,7 +88,6 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
         const rows = await request<VehicleLookup[]>(`/api/v1/operational-master-data/vehicles/search?q=${encodeURIComponent(q)}&includeInactive=false`, await token());
         setDirectVehicles(rows.map(row => {
           const loc = row.lastLocation; const first = data?.firstStop;
-          const empty = loc?.latitude != null && loc.longitude != null && first?.latitude != null && first.longitude != null ? roadMiles(loc.latitude, loc.longitude, first.latitude, first.longitude) : undefined;
           return { id: row.id, registration: row.registration, fleetNumber: row.fleetNumber, abbreviation: row.abbreviation, liveUpdatedAtUtc: loc?.lastEventTimeUtc,
             reason: loc?.lastEventTimeUtc ? "Direct registration match using the latest DOT position." : "Direct registration match; no fresh DOT position is available." };
         }));
@@ -102,13 +101,6 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
     if (q.length >= 2 && directDrivers.length) return directDrivers;
     return (data?.driverSuggestions || []).filter(x => !q || `${x.displayName} ${x.employeeNumber} ${x.tachoName || ""}`.toLowerCase().includes(q));
   }, [data, directDrivers, driverQuery]);
-  const vehicles = useMemo(() => {
-    const q = vehicleQuery.replace(/[^a-z0-9]/gi, "").toLowerCase();
-    if (q.length >= 2 && directVehicles.length) return directVehicles;
-    return (data?.vehicleSuggestions || []).filter(x => !q || `${x.registration}${x.abbreviation || ""}${x.fleetNumber || ""}`.replace(/[^a-z0-9]/gi, "").toLowerCase().includes(q));
-  }, [data, directVehicles, vehicleQuery]);
-  const chosenDriver = [...directDrivers, ...(data?.driverSuggestions || [])].find(x => x.id === driverId);
-  const chosenVehicle = [...directVehicles, ...(data?.vehicleSuggestions || [])].find(x => x.id === vehicleId);
 
   async function allocate() {
     setBusy(true); setMessage(undefined);
