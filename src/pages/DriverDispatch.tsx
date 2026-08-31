@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { request, type LoadDispatch, type Trailer, type Vehicle } from "../lib/api";
+import { request, type Trailer, type Vehicle } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import "../driver-dispatch.css";
 import { getRunDispatch, getRunRoute } from '../api/runs';
