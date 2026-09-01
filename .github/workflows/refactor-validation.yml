@@ -29,6 +29,7 @@ jobs:
         run: |
           test ! -f src/runtimeGuards.ts
           test ! -f src/allocationResiliencePatch.ts
-          ! grep -RIn 'Response.prototype.json' src --include='*.ts' --include='*.tsx'
+          response_patch='Response'"\\.prototype\\.json"
+          ! grep -RInE "$response_patch" src --include='*.ts' --include='*.tsx'
           ! grep -RInE 'api\.(loads|createLoad|allocateLoad|updateLoadStatus|updateLoadStops|updateLoadUtilisation|route|dispatch)\(' src --include='*.ts' --include='*.tsx'
           ! find src -maxdepth 1 -type f -name '*Patch.ts' | grep .
