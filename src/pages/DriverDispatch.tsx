@@ -62,7 +62,7 @@ const dispatchFilterLabels: Record<DispatchFilterKey, string> = {
   previous: "Previous…",
   vehicle: "Vehicle…",
   trailer: "Trailer…",
-  run: "Run…",
+  run: "Filter runs…",
   firstCollection: "1st collection…",
   assistant: "Assistant…",
   dispatch: "Status…",
