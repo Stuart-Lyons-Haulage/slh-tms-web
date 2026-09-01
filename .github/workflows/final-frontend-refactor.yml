@@ -1,0 +1,129 @@
+name: Final frontend refactor
+
+on:
+  push:
+    branches: [feature/frontend-hardening-e2e]
+    paths:
+      - '.github/workflows/final-frontend-refactor.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/frontend-hardening-e2e
+      - name: Move wallboard timing into direct data flow and harden CI
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/pages/OperationsWallboardLive.tsx')
+          text = path.read_text()
+          import_line = 'import { completedJobCount, finalEtaFor, geofenceProgress, isScheduleVisible, isWallboardActionRequired, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";\n'
+          addition = import_line + 'import { enrichRouteFinalDestination, mergeWallboardTiming, type RunTimingRecord, type RunTimingResponse } from "./operationsWallboardTiming";\n'
+          if import_line not in text:
+              raise SystemExit('wallboard progress import marker missing')
+          text = text.replace(import_line, addition, 1)
+
+          marker = '  const tableRef = useRef<HTMLDivElement | null>(null);\n'
+          replacement = marker + '  const lastTimingRef = useRef(new Map<string, RunTimingRecord>());\n  const acceptedFinalEtasRef = useRef(new Map<string, string>());\n'
+          if marker not in text:
+              raise SystemExit('table ref marker missing')
+          text = text.replace(marker, replacement, 1)
+
+          old = '''    const [etaResult, progressResult, routeResult] = await Promise.allSettled([
+      request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+      request<RouteProgressResponse>(`/api/v1/tv-display/route-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+    ]);
+    const etas = etaResult.status === "fulfilled" ? etaResult.value : undefined;
+    const progress = progressResult.status === "fulfilled" ? progressResult.value : undefined;
+    const route = routeResult.status === "fulfilled" ? routeResult.value : undefined;
+'''
+          new = '''    const [etaResult, progressResult, routeResult, timingResult] = await Promise.allSettled([
+      request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+      request<RouteProgressResponse>(`/api/v1/tv-display/route-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+      request<RunTimingResponse>(`/api/v1/run-timing?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
+    ]);
+    const etas = etaResult.status === "fulfilled" ? etaResult.value : undefined;
+    const progress = progressResult.status === "fulfilled" ? progressResult.value : undefined;
+    const route = routeResult.status === "fulfilled" ? routeResult.value : undefined;
+    const timing = timingResult.status === "fulfilled" ? timingResult.value : undefined;
+'''
+          if old not in text:
+              raise SystemExit('refresh result block marker missing')
+          text = text.replace(old, new, 1)
+
+          old = '''      const stableEtas = mergeEtaSnapshots(previous?.etas ?? [], etas?.records ?? []);
+      const stableProgress = mergeProgressSnapshots(previous?.progress ?? [], progress?.records ?? []);
+      return {
+        etas: stableEtas,
+        progress: route ? mergeRouteProgress(stableProgress, route.runs) : stableProgress,
+'''
+          new = '''      const timedEtas = mergeWallboardTiming(
+        etas?.records ?? [],
+        timing?.records ?? [],
+        lastTimingRef.current,
+        acceptedFinalEtasRef.current,
+      );
+      const stableEtas = mergeEtaSnapshots(previous?.etas ?? [], timedEtas);
+      const stableProgress = mergeProgressSnapshots(previous?.progress ?? [], progress?.records ?? []);
+      const routeRuns = route ? enrichRouteFinalDestination(route.runs) : undefined;
+      return {
+        etas: stableEtas,
+        progress: routeRuns ? mergeRouteProgress(stableProgress, routeRuns) : stableProgress,
+'''
+          if old not in text:
+              raise SystemExit('stable snapshot block marker missing')
+          text = text.replace(old, new, 1)
+
+          marker = '          route ? undefined : "Live route position is catching up; planned journeys remain visible.",\n'
+          replacement = marker + '          timing ? undefined : "Run timing enrichment is catching up; the last accepted final customer ETA remains visible.",\n'
+          if marker not in text:
+              raise SystemExit('warning marker missing')
+          text = text.replace(marker, replacement, 1)
+          path.write_text(text)
+
+          ci = Path('.github/workflows/ci.yml')
+          ci_text = ci.read_text()
+          marker = '''      - name: Build portal
+        run: pnpm build
+'''
+          replacement = '''      - name: Typecheck portal
+        run: pnpm typecheck
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Build portal
+        run: pnpm build
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run workflow E2E test
+        run: pnpm test:e2e
+
+      - name: Enforce patch-free runtime
+        run: |
+          ! grep -R "Response.prototype.json" src
+          ! grep -R "window.fetch =" src
+          test ! -f src/runtimeGuards.ts
+          test ! -f src/allocationResiliencePatch.ts
+'''
+          if marker not in ci_text:
+              raise SystemExit('CI build marker missing')
+          ci.write_text(ci_text.replace(marker, replacement, 1))
+      - name: Commit refactor
+        run: |
+          git config user.name 'danwilliams201302-max'
+          git config user.email 'daniel@lyonshaulage.com'
+          git add src/pages/OperationsWallboardLive.tsx .github/workflows/ci.yml
+          git diff --cached --quiet && exit 0
+          git commit -m 'Finish patch-free wallboard data flow and E2E gate'
+          git push origin HEAD:feature/frontend-hardening-e2e
