@@ -312,7 +312,7 @@ async function loadFleetStatus(accessToken: string): Promise<FleetStatus> {
     const vehicles = vehiclesResult.status === 'fulfilled' ? vehiclesResult.value : [];
     const telemetry = telemetryResult.status === 'fulfilled' ? telemetryResult.value : undefined;
     if (telemetry?.records.length) return fleetStatusFromTelemetry(vehicles, telemetry);
-    if (vehicles.length) return { provider: 'Master data', retrievedAtUtc: new Date().toISOString(), vehicleCount: vehicles.length, readyCount: 0, attentionCount: vehicles.length, vehicles: vehicles.map(vehicle => ({ vehicleId: vehicle.id, registration: vehicle.registration, fleetNumber: vehicle.fleetNumber, condition: 'NotSignedOn' })) };
+    if (vehicles.length) return { provider: 'Master data', retrievedAtUtc: new Date().toISOString(), vehicleCount: vehicles.length, readyCount: 0, attentionCount: vehicles.length, vehicles: vehicles.map(vehicle => ({ vehicleId: vehicle.id, registration: vehicle.registration, fleetNumber: vehicle.fleetNumber, condition: 'NotSignedOn', driverMismatch: false })) };
     return { provider: 'Tracking unavailable', retrievedAtUtc: new Date().toISOString(), vehicleCount: 0, readyCount: 0, attentionCount: 0, vehicles: [] };
   }
 }
@@ -327,14 +327,14 @@ function fleetStatusFromTelemetry(vehicles: Vehicle[], telemetry: Telemetry): Fl
     const aliases = [vehicle.registration, vehicle.fleetNumber, vehicle.abbreviation].filter(Boolean).flatMap(value => trackingAliases(value || ''));
     const record = aliases.map(alias => latest.get(alias)).filter(Boolean).sort((left, right) => new Date(right!.eventTimeUtc).getTime() - new Date(left!.eventTimeUtc).getTime())[0];
     if (record) matched.add(record);
-    return record ? telemetryVehicle(vehicle.id, vehicle.registration, vehicle.fleetNumber, record) : { vehicleId: vehicle.id, registration: vehicle.registration, fleetNumber: vehicle.fleetNumber, condition: 'NotSignedOn' as const };
+    return record ? telemetryVehicle(vehicle.id, vehicle.registration, vehicle.fleetNumber, record) : { vehicleId: vehicle.id, registration: vehicle.registration, fleetNumber: vehicle.fleetNumber, condition: 'NotSignedOn' as const, driverMismatch: false };
   });
   rows.push(...telemetry.records.filter(record => !matched.has(record)).map(record => telemetryVehicle(`roadtech-${record.vehicleIdentifier}`, record.vehicleIdentifier, undefined, record)));
   const readyCount = rows.filter(row => row.condition !== 'NotSignedOn' && row.condition !== 'Stale').length;
   return { provider: 'RoadTech Falcon · direct telemetry', retrievedAtUtc: telemetry.retrievedAtUtc, vehicleCount: rows.length, readyCount, attentionCount: rows.length - readyCount, vehicles: rows };
 }
 function telemetryVehicle(vehicleId: string, registration: string, fleetNumber: string | undefined, record: Telemetry['records'][number]): FleetStatus['vehicles'][number] {
-  return { vehicleId, registration, fleetNumber, trackingIdentifier: record.vehicleIdentifier, condition: record.isMoving ? 'Moving' : 'SignedOn', lastEventTimeUtc: record.eventTimeUtc, isMoving: record.isMoving, speedKph: record.speedKph, latitude: record.latitude, longitude: record.longitude };
+  return { vehicleId, registration, fleetNumber, trackingIdentifier: record.vehicleIdentifier, condition: record.isMoving ? 'Moving' : 'SignedOn', lastEventTimeUtc: record.eventTimeUtc, isMoving: record.isMoving, speedKph: record.speedKph, latitude: record.latitude, longitude: record.longitude, driverMismatch: false };
 }
 function trackingAliases(value: string) {
   const normalised = value.replace(/[^a-z0-9]/gi, '').toUpperCase();

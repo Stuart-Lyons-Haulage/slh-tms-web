@@ -32,10 +32,11 @@ type DispatchLoad = {
   rawReference: string;
   planningDate: string;
   status: string;
+  southbound?: boolean;
   vehicleId?: string;
   driverId?: string;
   trailerId?: string;
-  stops: Array<{ id: string; sequence: number; name: string; plannedArrivalUtc?: string }>;
+  stops: Array<{ id: string; sequence: number; name: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string }>;
 };
 
 type Workbench = {
@@ -86,10 +87,42 @@ function compactRun(load?: DispatchLoad) {
   const core = match?.[1] || load.reference;
   return `Run ${core}`;
 }
-function suggestionRunLabel(load?: DispatchLoad) { return compactRun(load); }
+function cleanStopName(value?: string) {
+  return (value || "").replace(/^(?:Collect|Deliver)\s*[·:-]\s*/i, "").replace(/-/g, " ").trim();
+}
+function orderedStops(load?: DispatchLoad) { return [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence); }
+// eslint-disable-next-line react-refresh/only-export-components
+export function firstCollectionStop(load?: DispatchLoad) {
+  const stops = orderedStops(load);
+  return stops.find(stop => /^Collect\b/i.test(stop.name || "")) || stops[0];
+}
+function finalDestinationStop(load?: DispatchLoad) {
+  const stops = orderedStops(load);
+  return [...stops].reverse().find(stop => /^Deliver\b/i.test(stop.name || "")) || stops.at(-1);
+}
+// eslint-disable-next-line react-refresh/only-export-components
+export function suggestionRunLabel(load?: DispatchLoad) {
+  if (!load) return "—";
+  const match = `${load.reference} ${load.rawReference}`.match(/\b(?:run\s*)?(\d{1,3})\b/i);
+  const run = match?.[1] ? `Run ${Number(match[1])}` : load.reference;
+  const destination = cleanStopName(finalDestinationStop(load)?.name);
+  return destination ? `${run} ${destination}` : run;
+}
+// eslint-disable-next-line react-refresh/only-export-components
+export function runDirection(load: DispatchLoad) {
+  const stops = orderedStops(load).filter(stop => stop.latitude != null && stop.longitude != null);
+  const first = stops[0];
+  const final = finalDestinationStop(load);
+  if (first?.latitude != null && final?.latitude != null) {
+    const delta = final.latitude - first.latitude;
+    if (delta >= 0.35) return "Northern";
+    if (delta <= -0.35) return "Southern";
+  }
+  if (load.southbound) return "Southern";
+  return "Local / Other";
+}
 function firstCollectionTime(load?: DispatchLoad) {
-  if (!load?.stops?.length) return "";
-  return localTime([...load.stops].sort((a, b) => a.sequence - b.sequence)[0]?.plannedArrivalUtc);
+  return localTime(firstCollectionStop(load)?.plannedArrivalUtc);
 }
 
 function TypeaheadSelect({ value, options, placeholder, onChange, disabled }: { value?: string; options: Array<{ value: string; label: string }>; placeholder: string; onChange: (value: string) => void; disabled?: boolean }) {

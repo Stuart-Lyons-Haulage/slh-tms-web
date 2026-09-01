@@ -5,7 +5,7 @@ import { api, type CreateLoad, type Load, type LoadStop, type Site, type Transpo
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 import "../operational-planner.css";
-import { allocateRun, getRunRoute, listRuns, updateRunStops } from '../api/runs';
+import { allocateRun, createRun as createRunApi, getRunRoute, listRuns, updateRunStops } from '../api/runs';
 
 type Coordinate = { latitude: number; longitude: number };
 type PlannerStop = CreateLoad["stops"][number];
@@ -198,7 +198,7 @@ export function OperationalPlanner() {
     setBusy(true); setMessage(undefined);
     try {
       const stops = await stopsFor(item);
-      const load = await createRun({ reference: `RUN-${date.replaceAll("-", "")}-${String(loads.length + 1).padStart(2, "0")}`, planningDate: date, palletSpacesUsed: item.order.pallets || 0, capacityType: "Standard pallets", stops }, await token());
+      const load = await createRunApi({ reference: `RUN-${date.replaceAll("-", "")}-${String(loads.length + 1).padStart(2, "0")}`, planningDate: date, palletSpacesUsed: item.order.pallets || 0, capacityType: "Standard pallets", stops }, await token());
       setSelectedLoadId(load.id);
       await Promise.all([ordersApi.refresh(), loadsApi.refresh()]);
       setMessage(`New run created for ${item.customer}.`);

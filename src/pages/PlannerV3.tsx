@@ -27,7 +27,7 @@ import { useAccessToken } from "../lib/auth";
 import { plannerV2Api, type PlannerDaySuggestion } from "../lib/plannerV2Api";
 import { useApi } from "../lib/useApi";
 import "../operational-planner.css";
-import { allocateRun, getRunRoute, listRuns, updateRunOperational, updateRunStops } from '../api/runs';
+import { allocateRun, createRun as createRunApi, getRunRoute, listRuns, updateRunOperational, updateRunStops } from '../api/runs';
 
 type Coordinate = { latitude: number; longitude: number };
 type RouteLine = [number, number][];
@@ -615,7 +615,7 @@ function PlannerV3Content() {
     try {
       const nextRunNumber = sortedLoads.length + 1;
       const uniqueSuffix = Date.now().toString().slice(-5);
-      const created = await createRun({
+      const created = await createRunApi({
         reference: `RUN-${date.replaceAll("-", "")}-${String(nextRunNumber).padStart(2, "0")}-${uniqueSuffix}`,
         planningDate: date,
         driverId: suggestedDriverId,
