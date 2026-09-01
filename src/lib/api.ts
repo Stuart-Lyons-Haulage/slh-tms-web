@@ -10,8 +10,8 @@ export type Customer = { id: string; code: string; name: string; active: boolean
 export type CustomerContact = { id: string; customerCode: string; name: string; email?: string; mobileNumber?: string; receivesEtaUpdates: boolean; active: boolean };
 export type Vehicle = VehicleDto;
 export type Driver = DriverDto;
-export type Trailer = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; euroCapacity?: number; active: boolean };
-export type Site = { id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; collectionInstructions?: string; mapLink?: string; latitude?: number; longitude?: number; aliases?: string; active: boolean };
+export type Trailer = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; euroCapacity?: number; notes?: string; active: boolean };
+export type Site = { id: string; externalCode: string; name: string; driverTextName?: string; collectionAddress?: string; collectionInstructions?: string; mapLink?: string; latitude?: number; longitude?: number; aliases?: string; customField1?: string; customField2?: string; customField3?: string; operationalRegion?: string; active: boolean };
 export type MarketContact = { id: string; market: string; name: string; standOrLocation?: string; salesman?: string; sender?: string; active: boolean };
 export type FuelPrice = { id: string; weekCommencing: string; provider: string; pricePencePerLitre: number; isPricingMaximum: boolean; source?: string; notes?: string; createdAtUtc: string };
 export type StagedImport = { id: string; entityType: string; idempotencyKey: string; payloadJson: string; status: string | number; source?: string; receivedAtUtc: string; reviewedAtUtc?: string; reviewedBy?: string; reviewNote?: string };
@@ -32,9 +32,11 @@ export type ReturnLoadSuggestions = { planningDate: string; generatedAtUtc: stri
 export type SageHrStatus = { configured: boolean; connected: boolean; employeeCount: number; driverCandidateCount: number; missingSettings?: string[]; message: string };
 export type RoadTechStatus = { configured: boolean; connected: boolean; recordCount: number; latestEventUtc?: string; missingSettings?: string[]; message: string };
 export type SageHrSync = { sourceEmployeeCount: number; driverCandidateCount: number; created: number; updated: number; skipped: number; syncedAtUtc: string; connected?: boolean; message?: string };
+export type TachoMasterStatus = { configured: boolean; connected: boolean; sharedRoadTechCredentials?: boolean; matchedVehicleCount: number; missingSettings?: string[]; message: string };
+export type TachoMasterSync = { configured: boolean; connected?: boolean; sourceDrivers?: number; matched: number; unmatched?: number; syncedAtUtc?: string; missingSettings?: string[]; message: string };
 export type DeliveryEta = DeliveryEtaDto;
 export type DeliveryEtas = DeliveryEtasDto;
-export type IntegrationStatus = { roadTech: { configured: boolean; connected: boolean; latestEventUtc?: string }; azureMaps: { configured: boolean }; azureSms: { configured: boolean }; textBee?: { configured: boolean; dutyPhoneLabel?: string; missingSettings?: string[] }; fleetio?: { configured: boolean; missingSettings?: string[] }; sageHr: { configured: boolean }; emailIntake: { configured: boolean; lastReceivedUtc?: string }; batchIntake: { configured: boolean; endpoint: string } };
+export type IntegrationStatus = { roadTech: { configured: boolean; connected: boolean; latestEventUtc?: string }; azureMaps: { configured: boolean }; azureSms: { configured: boolean }; textBee?: { configured: boolean; dutyPhoneLabel?: string; missingSettings?: string[] }; fleetio?: { configured: boolean; missingSettings?: string[] }; tachoMaster?: { configured: boolean; missingSettings?: string[] }; sageHr: { configured: boolean }; emailIntake: { configured: boolean; lastReceivedUtc?: string }; batchIntake: { configured: boolean; endpoint: string } };
 export type FleetioStatus = { configured: boolean; connected: boolean; sampleVehicleCount: number; missingSettings?: string[]; message: string };
 export type FleetioSync = { sourceVehicleCount: number; tmsVehicleCount: number; updated: number; created?: number; missingInFleetio: number; syncedAtUtc: string; connected?: boolean; message?: string };
 export type FleetioVehicleAlignment = { configured: boolean; connected: boolean; matched: number; unmatchedFleetio: number; missingInFleetio: number; missingSettings?: string[]; message: string; records: Array<{ tmsVehicleId?: string; tmsRegistration?: string; tmsFleetNumber?: string; tmsAbbreviation?: string; fleetioId?: string; fleetioRegistration?: string; fleetioName?: string; fleetioFleetNumber?: string; fleetioStatus?: string; status: 'Matched' | 'MissingInFleetio' | 'UnmatchedFleetio' }> };
@@ -43,7 +45,70 @@ export type AssistantSuggestion = { id: string; severity: string; title: string;
 export type AssistantSnapshot = { source: string; aiConfigured: boolean; metrics: { unplannedOrders: number; unallocatedLoads: number; vehicleComplianceRisks: number; missingSiteMapPoints: number; duplicateSiteGroups: number }; suggestions: AssistantSuggestion[] };
 export type AssistantAdvice = { answer: string; source: string; suggestions: AssistantSuggestion[] };
 export type SafeFixResult = { applied: number; skipped: number; changes?: string[]; skippedReasons?: string[] };
-export type CustomerCommunication = { id?: string; loadId?: string; loadReference?: string; orderReference?: string; customerCode?: string; customerName?: string; recipient?: string; subject?: string; status?: string; sentAtUtc?: string; claims?: Array<{ label?: string; value?: string; status?: string }>; [key: string]: unknown };
+
+export type CustomerCommunicationClaim = { vehicleNumber?: string; loadReference?: string; etaFromLocal?: string; etaToLocal?: string; pallets?: number; evidence?: string };
+export type CustomerCommunicationAttachment = { name?: string };
+export type CustomerCommunication = {
+  id: string;
+  status: string;
+  idempotencyKey?: string;
+  source?: string;
+  receivedAtUtc: string;
+  reviewedAtUtc?: string;
+  reviewedBy?: string;
+  reviewNote?: string;
+  payload: {
+    source: { subject?: string; senderName?: string; senderAddress?: string };
+    extraction: {
+      purpose: string;
+      planVersion: string;
+      exceptionSignals: string[];
+      customerHints: string[];
+      claims: CustomerCommunicationClaim[];
+      nextUpdateLocal?: string;
+      acceptanceUntilLocal?: string;
+      attachments: CustomerCommunicationAttachment[];
+      warnings: string[];
+    };
+  };
+};
+
+export type OperationsReconciliation = {
+  planningDate: string;
+  generatedAtUtc: string;
+  orders: { total: number; readyToPlan: number; planned: number; inTransit: number; delivered: number };
+  loads: { total: number; planned: number; dispatched: number; completed: number; unallocated: number };
+  fleet: { activeDrivers: number; assignedDrivers: number; unassignedDrivers: number; activeVehicles: number; assignedVehicles: number; vehiclesSeenToday: number; vehiclesNoSignal: number };
+  staging: { pendingReview: number };
+};
+
+export type OperationalException = { type: string; severity: string; reference: string; description: string; loadId?: string };
+export type OperationsExceptions = { planningDate: string; generatedAtUtc: string; summary: { total: number; high: number; medium: number; low: number }; byType: Record<string, number>; exceptions: OperationalException[] };
+
+export type DuplicateCheckRequest = { customer?: string; po?: string; purchaseOrder?: string; orderReference?: string; collectionDate?: string; deliveryDate?: string; collectionLocation?: string; deliveryLocation?: string; pallets?: number; sourceMessageId?: string; sourceAttachmentName?: string };
+export type DuplicateCheckMatch = { recordId?: string; classification?: string; reference?: string; status?: string; collectionDate?: string; deliveryDate?: string };
+export type DuplicateCheckResponse = { classification: 'New order' | 'Exact duplicate' | 'Possible duplicate' | 'Amendment/update'; confidence?: string; primaryIdentifier?: string; matchCount: number; matches: DuplicateCheckMatch[]; rule?: string };
+
+export type DriverUpdate = {
+  employeeNumber?: string;
+  displayName?: string;
+  tachoName?: string;
+  mobileNumber?: string;
+  driverType?: string;
+  driverGroup?: string;
+  skills?: string;
+  coding?: string;
+  agencyName?: string;
+  northEligible?: boolean;
+  preloadEligible?: boolean;
+  notes?: string;
+  tachoMasterDriverId?: string;
+  drivingLicenceNumber?: string;
+  licenceExpiry?: string;
+  licenceStatus?: string;
+  active: boolean;
+};
+export type SiteUpdate = Omit<Site, 'id'>;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -75,8 +140,10 @@ export interface TmsApi {
   vehicles(token?: string): Promise<Vehicle[]>;
   updateVehicle(id: string, payload: Omit<Vehicle, 'id'>, token?: string): Promise<Vehicle>;
   drivers(token?: string): Promise<Driver[]>;
+  updateDriver(id: string, payload: DriverUpdate, token?: string): Promise<Driver>;
   trailers(token?: string): Promise<Trailer[]>;
   sites(token?: string): Promise<Site[]>;
+  updateSite(id: string, payload: SiteUpdate, token?: string): Promise<Site>;
   marketContacts(token?: string): Promise<MarketContact[]>;
   fuelPrices(token?: string): Promise<FuelPrice[]>;
   saveFuelPrice(payload: { weekCommencing: string; provider: string; pricePencePerLitre: number; isPricingMaximum: boolean; source?: string; notes?: string }, token?: string): Promise<FuelPrice>;
@@ -90,14 +157,16 @@ export interface TmsApi {
   telemetry(token?: string): Promise<Telemetry>;
   fleetStatus(token?: string): Promise<FleetStatus>;
   trackingHistory(date: string, token?: string): Promise<Telemetry>;
-  operationsReconciliation(date: string, token?: string): Promise<UnknownRecord>;
-  operationsExceptions(date: string, token?: string): Promise<UnknownRecord>;
+  operationsReconciliation(date: string, token?: string): Promise<OperationsReconciliation>;
+  operationsExceptions(date: string, token?: string): Promise<OperationsExceptions>;
   driverAssignments(from: string, to: string, token?: string): Promise<DriverAssignment[]>;
   returnLoadSuggestions(date: string, token?: string): Promise<ReturnLoadSuggestions>;
   deliveryEtas(date: string, token?: string): Promise<DeliveryEtas>;
   sendDispatchSms(loadId: string, token?: string): Promise<DispatchSmsResponseDto>;
-  geocode(address: string, token?: string): Promise<Record<string, unknown>>;
+  geocode(address: string, token?: string): Promise<UnknownRecord>;
   sageHrStatus(token?: string): Promise<SageHrStatus>;
+  tachoMasterStatus(token?: string): Promise<TachoMasterStatus>;
+  syncTachoMasterDrivers(token?: string): Promise<TachoMasterSync>;
   roadTechStatus(token?: string): Promise<RoadTechStatus>;
   fleetioStatus(token?: string): Promise<FleetioStatus>;
   fleetioVehicleAlignment(token?: string): Promise<FleetioVehicleAlignment>;
@@ -105,6 +174,10 @@ export interface TmsApi {
   integrationStatus(token?: string): Promise<IntegrationStatus>;
   diagnosticsTables(token?: string): Promise<DiagnosticsTables>;
   syncSageHrDrivers(token?: string): Promise<SageHrSync>;
+  customerCommunications(token?: string, status?: string, purpose?: string, take?: number): Promise<CustomerCommunication[]>;
+  approveCustomerCommunication(id: string, note: string, token?: string): Promise<unknown>;
+  rejectCustomerCommunication(id: string, note: string, token?: string): Promise<unknown>;
+  duplicateCheck(payload: DuplicateCheckRequest, token?: string): Promise<DuplicateCheckResponse>;
   review(id: string, approved: boolean, note: string, token?: string): Promise<unknown>;
   clearPendingStaging(token?: string): Promise<{ deleted: number }>;
   assistantSnapshot(date: string, token?: string): Promise<AssistantSnapshot>;
@@ -118,8 +191,10 @@ export const api: TmsApi = {
   vehicles: token => request<Vehicle[]>('/api/v1/vehicles', token),
   updateVehicle: (id, payload, token) => request<Vehicle>(`/api/v1/vehicles/${id}`, token, { method: 'PUT', body: JSON.stringify(payload) }),
   drivers: token => request<Driver[]>('/api/v1/drivers', token),
+  updateDriver: (id, payload, token) => request<Driver>(`/api/v1/drivers/${id}`, token, { method: 'PUT', body: JSON.stringify(payload) }),
   trailers: token => request<Trailer[]>('/api/v1/trailers', token),
   sites: token => request<Site[]>('/api/v1/sites', token),
+  updateSite: (id, payload, token) => request<Site>(`/api/v1/sites/${id}`, token, { method: 'PUT', body: JSON.stringify(payload) }),
   marketContacts: async token => normaliseMarketContacts(await request<MarketContact[]>('/api/v1/market-contacts', token)),
   fuelPrices: token => request<FuelPrice[]>('/api/v1/fuel-prices', token),
   saveFuelPrice: (payload, token) => request<FuelPrice>('/api/v1/fuel-prices', token, { method: 'POST', body: JSON.stringify(payload) }),
@@ -133,14 +208,16 @@ export const api: TmsApi = {
   telemetry: token => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
   fleetStatus: token => request<FleetStatus>('/api/v1/tracking/dot/fleet-status', token),
   trackingHistory: (date, token) => request<Telemetry>(`/api/v1/tracking/dot/history?date=${encodeURIComponent(date)}`, token),
-  operationsReconciliation: (date, token) => request<UnknownRecord>(`/api/v1/operations/reconciliation?date=${encodeURIComponent(date)}`, token),
-  operationsExceptions: (date, token) => request<UnknownRecord>(`/api/v1/operations/exceptions?date=${encodeURIComponent(date)}`, token),
+  operationsReconciliation: (date, token) => request<OperationsReconciliation>(`/api/v1/operations/reconciliation?date=${encodeURIComponent(date)}`, token),
+  operationsExceptions: (date, token) => request<OperationsExceptions>(`/api/v1/operations/exceptions?date=${encodeURIComponent(date)}`, token),
   driverAssignments: (from, to, token) => request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, token),
   returnLoadSuggestions: (date, token) => request<ReturnLoadSuggestions>(`/api/v1/planning/return-load-suggestions?date=${encodeURIComponent(date)}`, token),
   deliveryEtas: (date, token) => request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(date)}`, token),
   sendDispatchSms: (loadId, token) => request<DispatchSmsResponseDto>(`/api/v1/loads/${loadId}/dispatch/sms`, token, { method: 'POST' }),
   geocode: (address, token) => geocodeAddress(address, token),
   sageHrStatus: token => request<SageHrStatus>('/api/v1/integrations/sage-hr/status', token),
+  tachoMasterStatus: token => request<TachoMasterStatus>('/api/v1/integrations/tachomaster/status', token),
+  syncTachoMasterDrivers: token => request<TachoMasterSync>('/api/v1/integrations/tachomaster/sync-drivers', token, { method: 'POST' }),
   roadTechStatus: token => request<RoadTechStatus>('/api/v1/integrations/roadtech/status', token),
   fleetioStatus: token => request<FleetioStatus>('/api/v1/integrations/fleetio/status', token),
   fleetioVehicleAlignment: token => request<FleetioVehicleAlignment>('/api/v1/integrations/fleetio/vehicle-alignment', token),
@@ -148,6 +225,10 @@ export const api: TmsApi = {
   integrationStatus: token => request<IntegrationStatus>('/api/v1/integrations/status', token),
   diagnosticsTables: token => request<DiagnosticsTables>('/api/v1/diagnostics/tables', token),
   syncSageHrDrivers: token => request<SageHrSync>('/api/v1/integrations/sage-hr/sync-drivers', token, { method: 'POST' }),
+  customerCommunications: (token, status = 'PendingReview', purpose, take = 100) => request<CustomerCommunication[]>(`/api/v1/customer-communications?${new URLSearchParams({ ...(status ? { status } : {}), ...(purpose ? { purpose } : {}), take: String(take) })}`, token),
+  approveCustomerCommunication: (id, note, token) => request(`/api/v1/customer-communications/${id}/approve`, token, { method: 'POST', body: JSON.stringify({ note }) }),
+  rejectCustomerCommunication: (id, note, token) => request(`/api/v1/customer-communications/${id}/reject`, token, { method: 'POST', body: JSON.stringify({ note }) }),
+  duplicateCheck: (payload, token) => request<DuplicateCheckResponse>('/api/v1/order-intake/duplicate-check', token, { method: 'POST', body: JSON.stringify(payload) }),
   review: (id, approved, note, token) => request(`/api/v1/staging/${id}/${approved ? 'approve' : 'reject'}`, token, { method: 'POST', body: JSON.stringify({ note }) }),
   clearPendingStaging: token => request<{ deleted: number }>('/api/v1/staging/pending?confirm=CLEAR-PENDING', token, { method: 'DELETE' }),
   assistantSnapshot: (date, token) => request<AssistantSnapshot>(`/api/v1/assistant/snapshot?date=${encodeURIComponent(date)}`, token),
