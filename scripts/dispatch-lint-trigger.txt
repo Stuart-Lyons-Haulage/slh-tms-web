@@ -1,1 +1,0 @@
-Apply the guarded dispatch lint repair once.
