@@ -53,9 +53,15 @@ jobs:
         run: pnpm test:e2e
 
       - name: Enforce strict patch-free runtime
+        shell: bash
         run: |
           set -euo pipefail
-          if git grep -n -E 'as any|@ts-ignore|Response\.prototype\.json|window\.fetch[[:space:]]*=' -- ':!pnpm-lock.yaml'; then
+          any_cast='as'" any"
+          ignore_directive='@ts-'"ignore"
+          response_patch='Response'"\\.prototype\\.json"
+          fetch_patch='window'"\\.fetch[[:space:]]*="
+          forbidden="${any_cast}|${ignore_directive}|${response_patch}|${fetch_patch}"
+          if git grep -n -E "$forbidden" -- ':!pnpm-lock.yaml'; then
             echo 'Forbidden type suppression or global runtime patch found.' >&2
             exit 1
           fi
