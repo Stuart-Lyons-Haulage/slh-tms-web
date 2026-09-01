@@ -6,6 +6,7 @@ import { apiRequest, unknownObjectSchema } from './apiClient';
 
 export const runStopSchema: z.ZodType<RunStopDto> = z.object({
   id: z.string().min(1),
+  loadId: z.string().optional(),
   orderId: z.string().optional().nullable().transform(value => value ?? undefined),
   sequence: z.number().int(),
   name: z.string().min(1),
@@ -23,6 +24,7 @@ export const runStopSchema: z.ZodType<RunStopDto> = z.object({
   cases: z.number().optional(),
   trays: z.number().optional(),
   trolleys: z.number().optional(),
+  plannerNote: z.string().optional().nullable().transform(value => value ?? undefined),
   notes: z.string().optional(),
 });
 
@@ -41,11 +43,15 @@ export const runSchema: z.ZodType<RunDto> = z.object({
   signOnTime: z.string().optional(),
   overnight: z.boolean().optional(),
   nightOutRequired: z.boolean().optional(),
-  palletSpacesUsed: z.number().optional(),
-  totalPalletSpaces: z.number().optional(),
-  capacityType: z.string().optional(),
-  plannerNotes: z.string().optional(),
+  palletSpacesUsed: z.number().optional().nullable().transform(value => value ?? undefined),
+  totalPalletSpaces: z.number().optional().nullable().transform(value => value ?? undefined),
+  capacityType: z.string().optional().nullable().transform(value => value ?? undefined),
+  depotSplits: z.string().optional().nullable().transform(value => value ?? undefined),
+  temperatureC: z.number().optional().nullable().transform(value => value ?? undefined),
+  plannerNotes: z.string().optional().nullable().transform(value => value ?? undefined),
+  utilisationPercent: z.number().optional().nullable().transform(value => value ?? undefined),
   notes: z.string().optional(),
+  createdAtUtc: z.string().optional(),
   stops: z.array(runStopSchema),
 });
 
