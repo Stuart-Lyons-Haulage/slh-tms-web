@@ -16,6 +16,25 @@ export interface TelemetryDto {
   records: TelemetryPointDto[];
 }
 
+export interface TachoVehicleDriverStatusDto {
+  vehicleCode: string;
+  memberCode: number;
+  driverName: string;
+  cardNumber?: string;
+  employeeNumber?: string;
+  dutyStartUtc: string;
+  dutyEndUtc?: string;
+  driveMinutes?: number;
+  workMinutes?: number;
+  breakMinutes?: number;
+  dailyDriverPeriodsAvailable?: number;
+  driveAvailableTodayMinutes?: number;
+  driveAvailableTomorrowMinutes?: number;
+  driveAvailableWeekMinutes?: number;
+  workAvailableWeekMinutes?: number;
+  evidenceSource?: string;
+}
+
 export type FleetTrackingCondition = 'Moving' | 'Started' | 'Parked' | 'Stationary' | 'SignedOn' | 'Stale' | 'NotSignedOn';
 
 export interface FleetVehicleTrackingDto {
@@ -31,13 +50,25 @@ export interface FleetVehicleTrackingDto {
   latitude?: number;
   longitude?: number;
   ageMinutes?: number;
+  loadId?: string;
   loadReference?: string;
   loadStatus?: string;
+  driverId?: string;
   driverName?: string;
+  tachoName?: string;
+  driverSource?: string;
+  allocatedDriverName?: string;
+  driverMismatch: boolean;
   plannedDutyUtc?: string;
+  tacho?: TachoVehicleDriverStatusDto;
   fleetioId?: string;
   fleetioName?: string;
   fleetioStatus?: string;
+  fleetioVor?: boolean;
+  fleetioPmiDueUtc?: string;
+  fleetioMotDueUtc?: string;
+  fleetioServiceStatus?: string;
+  driverMatchReason?: string;
 }
 
 export interface FleetStatusDto {
@@ -68,6 +99,12 @@ export interface DeliveryEtaDto {
   deliveryWindowEndUtc?: string;
   risk: EtaRisk;
   trackingUpdatedAtUtc?: string;
+  tachoDriverName?: string;
+  driveAvailableTodayMinutes?: number;
+  routeDrivingMinutes?: number;
+  breakMinutesIncluded?: number;
+  tachoStatus?: string;
+  tachoExplanation?: string;
 }
 
 export interface DeliveryEtasDto {
