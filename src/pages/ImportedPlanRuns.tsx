@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
-import { api, request, type Load, type LoadStop } from "../lib/api";
+import { request, type Load, type LoadStop } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 import { displayRunReference } from "../lib/runDisplay";
+import { listRuns, updateRunStops } from '../api/runs';
 
 function localDate() {
   const date = new Date();
@@ -89,7 +90,7 @@ export function ImportedPlanRuns() {
   const [drafts, setDrafts] = useState<Record<string, ReturnType<typeof stopDraft>[]>>({});
   const [busy, setBusy] = useState<string>();
   const [message, setMessage] = useState<string>();
-  const loadsApi = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
+  const loadsApi = useApi(useCallback(async () => listRuns(date, await token()), [date, token]));
 
   const loads = useMemo(() => [...(loadsApi.data || [])].sort((left, right) => {
     const numeric = runNumber(left.reference) - runNumber(right.reference);
@@ -127,7 +128,7 @@ export function ImportedPlanRuns() {
     if (!draft?.length) return;
     setBusy(load.id); setMessage(undefined);
     try {
-      await api.updateLoadStops(load.id, draft, await token());
+      await updateRunStops(load.id, draft, await token());
       setMessage(`${displayRunReference(load.reference, load.plannerNotes, load.stops?.[0]?.plannedArrivalUtc)} route updated.`);
       await loadsApi.refresh();
       setExpanded(undefined);

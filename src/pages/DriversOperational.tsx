@@ -284,7 +284,7 @@ export function DriversOperational() {
     setMessage(undefined);
     try {
       const result = await api.syncTachoMasterDrivers(await token());
-      setMessage(result.message || `${result.changed} drivers updated from TachoMaster.`);
+      setMessage(result.message || `${result.matched} drivers updated from TachoMaster.`);
       await drivers.refresh();
     } catch (exception) {
       setMessage(exception instanceof Error ? exception.message : "TachoMaster sync failed.");

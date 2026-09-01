@@ -4,6 +4,7 @@ import { useAccessToken } from "../lib/auth";
 import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
 import { RunPlanningIntelligence } from "../components/RunPlanningIntelligence";
 import "../simple-planner.css";
+import { createRun, listRuns, updateRunStops } from '../api/runs';
 
 type Period = "" | "AM" | "PM";
 type Allocation = { loadId: string; loadReference?: string; pallets: number };
@@ -155,7 +156,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
     const access = await token();
     const nextControl = await request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, access);
     const [loadsResult, sitesResult] = await Promise.allSettled([
-      api.loads(date, access),
+      listRuns(date, access),
       api.sites(access),
     ]);
     const safeLoads = loadsResult.status === "fulfilled" && Array.isArray(loadsResult.value) ? loadsResult.value : [];
@@ -281,10 +282,10 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
     if (!stops.length) {
       // The paired API change allows a Draft run to be completely cleared. Keeping this
       // compatibility catch prevents an older API revision from blocking the allocation reset.
-      try { await api.updateLoadStops(loadId, [], access); } catch { /* allocation zero remains authoritative */ }
+      try { await updateRunStops(loadId, [], access); } catch { /* allocation zero remains authoritative */ }
       return;
     }
-    await api.updateLoadStops(loadId, stops, access);
+    await updateRunStops(loadId, stops, access);
   }
 
   function notesForRun(run: RunDraft, period = run.period) {
@@ -411,7 +412,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
         let number = index + 1;
         while (existingReferences.has(runRef(date, number).toUpperCase())) number += 1;
 
-        const created = await api.createLoad({
+        const created = await createRun({
           reference: runRef(date, number),
           planningDate: date,
           palletSpacesUsed: order.outstandingPallets,

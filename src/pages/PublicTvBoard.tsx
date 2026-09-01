@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { ApiError, request } from "../lib/api";
+import { todayIsoDate } from "../lib/dateUtils";
 import { OperationsWallboard } from "./OperationsWallboard";
 import { clearDisplayKey, readStoredDisplayKey, storeDisplayKey } from "./publicTvStorage";
 import "../tv-display.css";
@@ -20,43 +22,44 @@ function initialDisplayKey() {
   return readStoredDisplayKey();
 }
 
-function requestUrl(input: RequestInfo | URL) {
-  return typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-}
-
-function requestHeaders(input: RequestInfo | URL, init?: RequestInit) {
-  return new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+function tvHeaders(displayKey: string): HeadersInit {
+  return {
+    "X-TV-Display-Key": displayKey,
+    "X-TMS-TV-Key": displayKey,
+  };
 }
 
 function TvOperationsBoard({ displayKey, onUnauthorized }: { displayKey: string; onUnauthorized: () => void }) {
-  const [ready, setReady] = useState(false);
+  const [connection, setConnection] = useState<"checking" | "ready" | "error">("checking");
+  const [connectionError, setConnectionError] = useState<string>();
 
   useEffect(() => {
-    const originalFetch = window.fetch.bind(window);
-    const patchedFetch: typeof window.fetch = async (input, init) => {
-      const url = requestUrl(input);
-      if (!url.includes("/api/v1/")) return originalFetch(input, init);
-
-      const headers = requestHeaders(input, init);
-      headers.set("X-TV-Display-Key", displayKey);
-      headers.set("X-TMS-TV-Key", displayKey);
-      const response = await originalFetch(input, { ...init, headers });
-      if (response.status === 401) onUnauthorized();
-      return response;
-    };
-
-    window.fetch = patchedFetch;
-    setReady(true);
-    return () => {
-      if (window.fetch === patchedFetch) window.fetch = originalFetch;
-    };
+    let cancelled = false;
+    setConnection("checking");
+    setConnectionError(undefined);
+    void request<unknown>(
+      `/api/v1/tv-display/planned-runs?date=${encodeURIComponent(todayIsoDate())}`,
+      undefined,
+      { headers: tvHeaders(displayKey), cache: "no-store" },
+    ).then(() => {
+      if (!cancelled) setConnection("ready");
+    }).catch((exception: unknown) => {
+      if (cancelled) return;
+      if (exception instanceof ApiError && exception.status === 401) {
+        onUnauthorized();
+        return;
+      }
+      setConnectionError(exception instanceof Error ? exception.message : "The TV wallboard could not connect to the TMS API.");
+      setConnection("error");
+    });
+    return () => { cancelled = true; };
   }, [displayKey, onUnauthorized]);
 
-  if (!ready) return <div className="tv-display-page"><div className="tv-display-empty">Connecting TV wallboard…</div></div>;
+  if (connection === "checking") return <div className="tv-display-page"><div className="tv-display-empty">Connecting TV wallboard…</div></div>;
+  if (connection === "error") return <div className="tv-display-page"><div className="tv-display-error"><strong>TV wallboard unavailable</strong><span>{connectionError}</span></div></div>;
 
-  // The paired TV mounts the exact Operations wallboard used in the signed-in TMS.
-  // The explicit key avoids any Microsoft-token dependency on the public TV, while
-  // tvMode suppresses the TMS-only geofence detail UI.
+  // OperationsWallboard owns its requests and receives the paired key explicitly.
+  // This avoids any browser-global request interception while retaining TV-only auth.
   return <OperationsWallboard tvMode tvAccessKey={displayKey} />;
 }
 

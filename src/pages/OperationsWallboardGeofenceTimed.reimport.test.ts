@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { syntheticTimingEtas } from "./OperationsWallboardGeofenceTimed";
+import { syntheticTimingEtas } from "./operationsWallboardReimport";
 
 describe("Operations wallboard ETA reconstruction after reset/re-import", () => {
   it("builds next and final ETA rows from run-timing when the legacy ETA feed has no rows", () => {

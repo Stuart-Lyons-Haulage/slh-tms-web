@@ -1,5 +1,4 @@
-name: CI - Build and Lint Portal
-# Validates the complete main branch after contract-alignment changes
+name: CI - Build, Test and E2E Portal
 
 on:
   push:
@@ -38,5 +37,33 @@ jobs:
       - name: Lint portal
         run: pnpm lint
 
+      - name: Typecheck portal
+        run: pnpm typecheck
+
+      - name: Run unit tests
+        run: pnpm test
+
       - name: Build portal
         run: pnpm build
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run workflow E2E test
+        run: pnpm test:e2e
+
+      - name: Enforce strict patch-free runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          any_cast='as'" any"
+          ignore_directive='@ts-'"ignore"
+          response_patch='Response'"\\.prototype\\.json"
+          fetch_patch='window'"\\.fetch[[:space:]]*="
+          forbidden="${any_cast}|${ignore_directive}|${response_patch}|${fetch_patch}"
+          if git grep -n -E "$forbidden" -- ':!pnpm-lock.yaml'; then
+            echo 'Forbidden type suppression or global runtime patch found.' >&2
+            exit 1
+          fi
+          test ! -f src/runtimeGuards.ts
+          test ! -f src/allocationResiliencePatch.ts

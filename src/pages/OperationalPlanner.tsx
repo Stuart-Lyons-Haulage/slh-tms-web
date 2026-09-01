@@ -5,6 +5,7 @@ import { api, type CreateLoad, type Load, type LoadStop, type Site, type Transpo
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 import "../operational-planner.css";
+import { allocateRun, createRun as createRunApi, getRunRoute, listRuns, updateRunStops } from '../api/runs';
 
 type Coordinate = { latitude: number; longitude: number };
 type PlannerStop = CreateLoad["stops"][number];
@@ -133,7 +134,7 @@ export function OperationalPlanner() {
   const [route, setRoute] = useState<RouteLine>([]);
 
   const ordersApi = useApi(useCallback(async () => api.orders(date, date, await token()), [date, token]));
-  const loadsApi = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
+  const loadsApi = useApi(useCallback(async () => listRuns(date, await token()), [date, token]));
   const vehiclesApi = useApi(useCallback(async () => api.vehicles(await token()), [token]));
   const driversApi = useApi(useCallback(async () => api.drivers(await token()), [token]));
   const trailersApi = useApi(useCallback(async () => api.trailers(await token()), [token]));
@@ -166,7 +167,7 @@ export function OperationalPlanner() {
     let cancelled = false;
     void (async () => {
       try {
-        const result = await api.route(selectedLoadId, await token()) as { routes?: Array<{ legs?: Array<{ points?: Array<{ latitude?: number; longitude?: number }> }> }> };
+        const result = await getRunRoute(selectedLoadId, await token()) as { routes?: Array<{ legs?: Array<{ points?: Array<{ latitude?: number; longitude?: number }> }> }> };
         const line = result.routes?.[0]?.legs?.flatMap((leg) => (leg.points || []).flatMap((point) => point.latitude != null && point.longitude != null ? [[point.longitude, point.latitude] as [number, number]] : [])) || [];
         if (!cancelled) setRoute(line);
       } catch { if (!cancelled) setRoute([]); }
@@ -197,7 +198,7 @@ export function OperationalPlanner() {
     setBusy(true); setMessage(undefined);
     try {
       const stops = await stopsFor(item);
-      const load = await api.createLoad({ reference: `RUN-${date.replaceAll("-", "")}-${String(loads.length + 1).padStart(2, "0")}`, planningDate: date, palletSpacesUsed: item.order.pallets || 0, capacityType: "Standard pallets", stops }, await token());
+      const load = await createRunApi({ reference: `RUN-${date.replaceAll("-", "")}-${String(loads.length + 1).padStart(2, "0")}`, planningDate: date, palletSpacesUsed: item.order.pallets || 0, capacityType: "Standard pallets", stops }, await token());
       setSelectedLoadId(load.id);
       await Promise.all([ordersApi.refresh(), loadsApi.refresh()]);
       setMessage(`New run created for ${item.customer}.`);
@@ -213,7 +214,7 @@ export function OperationalPlanner() {
       const current = load.stops || [];
       const additions = await stopsFor(item, current);
       const stops: PlannerStop[] = [...current.map((stop) => ({ orderId: stop.orderId, name: stop.name, address: stop.address, latitude: stop.latitude, longitude: stop.longitude, plannedArrivalUtc: stop.plannedArrivalUtc })), ...additions];
-      await api.updateLoadStops(load.id, stops, await token());
+      await updateRunStops(load.id, stops, await token());
       await Promise.all([ordersApi.refresh(), loadsApi.refresh()]);
       setMessage(`${item.customer} added to ${load.reference}.`);
     } catch (exception) { setMessage(exception instanceof Error ? exception.message : "Job could not be added to the run."); }
@@ -223,7 +224,7 @@ export function OperationalPlanner() {
   async function allocate(load: Load, vehicleId?: string, driverId?: string, trailerId?: string) {
     if (busy) return;
     setBusy(true); setMessage(undefined);
-    try { await api.allocateLoad(load.id, { vehicleId, driverId, trailerId }, await token()); await loadsApi.refresh(); }
+    try { await allocateRun(load.id, { vehicleId, driverId, trailerId }, await token()); await loadsApi.refresh(); }
     catch (exception) { setMessage(exception instanceof Error ? exception.message : "Allocation could not be saved."); }
     finally { setBusy(false); }
   }
@@ -237,7 +238,7 @@ export function OperationalPlanner() {
       const collection = enriched.filter((item) => item.stop.name.toLowerCase().startsWith("collect"));
       const deliveries = enriched.filter((item) => !item.stop.name.toLowerCase().startsWith("collect"));
       const ordered = [...collection, ...deliveries.sort((a, b) => (a.point?.longitude || 0) - (b.point?.longitude || 0))];
-      await api.updateLoadStops(load.id, ordered.map(({ stop, point }) => ({ orderId: stop.orderId, name: stop.name, address: stop.address, latitude: point?.latitude ?? stop.latitude, longitude: point?.longitude ?? stop.longitude, plannedArrivalUtc: stop.plannedArrivalUtc })), accessToken);
+      await updateRunStops(load.id, ordered.map(({ stop, point }) => ({ orderId: stop.orderId, name: stop.name, address: stop.address, latitude: point?.latitude ?? stop.latitude, longitude: point?.longitude ?? stop.longitude, plannedArrivalUtc: stop.plannedArrivalUtc })), accessToken);
       await loadsApi.refresh(); setSelectedLoadId(load.id); setMessage(`${load.reference} stop order updated using the available map points.`);
     } catch (exception) { setMessage(exception instanceof Error ? exception.message : "Route suggestion could not be saved."); }
     finally { setBusy(false); }

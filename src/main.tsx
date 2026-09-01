@@ -3,31 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { MsalProvider } from '@azure/msal-react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { App } from './App';
+import { E2eHarness } from './E2eHarness';
+import { DataIntegrityBoundary } from './components/DataIntegrityBoundary';
 import { cacheLocationForRoute, isPublicTvLink, isTvRoute } from './tvBootstrap';
-import './runtimeGuards';
-import './orderPlanningSyncBridge';
-import './plannerEmptyStopsPatch';
-import './fleetioSyncPatch';
-import './masterDataCleanupFetchPatch';
-import './operationalPresentationPatch';
-import './typeaheadLookupPatch';
-import './automaticRefreshPresentationPatch';
-import './managementFallbackPatch';
-import './planLockFetchPatch';
-import './marketNormalizationPatch';
-import './preferredVehicleAllocationPatch';
-import './allocationResiliencePatch';
-import './runsReadinessPatch';
-import './geofenceRecoveryPatch';
-import './geofenceRefreshPolicy';
-import './commercialRemovalPatch';
-import './driverDispatchComparisonRemovalPatch';
-import './routeGeocodeFallbackPatch';
-import './pollingLoadGuard';
-import './wallboardSnapshotFetchPatch';
-import './overnightWallboardFetchPatch';
-import './liveVehiclePopupPatch';
-import './naturalRunOrderPatch';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
@@ -46,6 +24,7 @@ import './pallet-control.css';
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
+const e2eAuth = import.meta.env.VITE_E2E_AUTH === 'true';
 const isTvRoutePath = isTvRoute(window.location.pathname);
 const publicTvLink = isPublicTvLink(window.location.pathname, window.location.search);
 const msal = new PublicClientApplication({ auth: { clientId: clientId || '00000000-0000-0000-0000-000000000000', authority: `https://login.microsoftonline.com/${tenantId || 'common'}`, redirectUri: window.location.origin }, cache: { cacheLocation: cacheLocationForRoute(window.location.pathname) } });
@@ -53,7 +32,14 @@ const msal = new PublicClientApplication({ auth: { clientId: clientId || '000000
 function renderApp() {
   const root = document.getElementById('root');
   if (!root) throw new Error('TMS root element is missing.');
-  createRoot(root).render(<StrictMode><MsalProvider instance={msal}><App /></MsalProvider></StrictMode>);
+  const content = e2eAuth ? <E2eHarness /> : <App />;
+  createRoot(root).render(
+    <StrictMode>
+      <MsalProvider instance={msal}>
+        <DataIntegrityBoundary>{content}</DataIntegrityBoundary>
+      </MsalProvider>
+    </StrictMode>,
+  );
 }
 
 function showStartupFailure(error: unknown) {
@@ -66,14 +52,12 @@ function showStartupFailure(error: unknown) {
 
 async function start() {
   try {
-    if (isTvRoutePath && (window as Window & { __SLH_TV_COMPATIBILITY__?: boolean }).__SLH_TV_COMPATIBILITY__) {
-      // A legacy office-TV browser may start the compatibility wallboard before
-      // this module finishes loading. Do not let React take over that DOM.
+    if (e2eAuth) {
+      renderApp();
       return;
     }
-    if (isTvRoutePath) {
-      (window as Window & { __SLH_TV_REACT_STARTED__?: boolean }).__SLH_TV_REACT_STARTED__ = true;
-    }
+    if (isTvRoutePath && (window as Window & { __SLH_TV_COMPATIBILITY__?: boolean }).__SLH_TV_COMPATIBILITY__) return;
+    if (isTvRoutePath) (window as Window & { __SLH_TV_REACT_STARTED__?: boolean }).__SLH_TV_REACT_STARTED__ = true;
     if (publicTvLink) {
       renderApp();
       void msal.initialize().catch((error) => console.warn('MSAL unavailable in keyed TV mode; continuing with TV-key access.', error));
