@@ -1,0 +1,34 @@
+name: Refresh Playwright lockfile
+
+on:
+  push:
+    branches: [feature/frontend-hardening-e2e]
+    paths:
+      - '.github/workflows/e2e-lock-refresh.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/frontend-hardening-e2e
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --lockfile-only --no-frozen-lockfile
+      - name: Commit lockfile
+        run: |
+          git config user.name 'danwilliams201302-max'
+          git config user.email 'daniel@lyonshaulage.com'
+          git add pnpm-lock.yaml
+          git diff --cached --quiet && exit 0
+          git commit -m 'Refresh lockfile for Playwright'
+          git push origin HEAD:feature/frontend-hardening-e2e
