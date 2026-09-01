@@ -1,5 +1,6 @@
 export interface RunStopDto {
   id: string;
+  loadId?: string;
   orderId?: string;
   sequence: number;
   name: string;
@@ -17,6 +18,7 @@ export interface RunStopDto {
   cases?: number;
   trays?: number;
   trolleys?: number;
+  plannerNote?: string;
   notes?: string;
 }
 
@@ -38,8 +40,12 @@ export interface RunDto {
   palletSpacesUsed?: number;
   totalPalletSpaces?: number;
   capacityType?: string;
+  depotSplits?: string;
+  temperatureC?: number;
   plannerNotes?: string;
+  utilisationPercent?: number;
   notes?: string;
+  createdAtUtc?: string;
   stops: RunStopDto[];
 }
 
@@ -50,6 +56,7 @@ export interface CreateRunStopDto {
   latitude?: number;
   longitude?: number;
   plannedArrivalUtc?: string;
+  plannerNote?: string;
 }
 
 export interface CreateRunDto {
@@ -61,6 +68,8 @@ export interface CreateRunDto {
   palletSpacesUsed?: number;
   totalPalletSpaces?: number;
   capacityType?: string;
+  depotSplits?: string;
+  temperatureC?: number;
   plannerNotes?: string;
   overnight?: boolean;
   notes?: string;
@@ -74,6 +83,8 @@ export interface RunOperationalUpdateDto {
   palletSpacesUsed?: number;
   totalPalletSpaces?: number;
   capacityType?: string;
+  depotSplits?: string;
+  temperatureC?: number;
   plannerNotes?: string;
   overnight?: boolean;
   nightOutRequired?: boolean;
