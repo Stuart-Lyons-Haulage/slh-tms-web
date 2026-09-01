@@ -10,6 +10,14 @@ export interface DriverDto {
   driverType?: string;
   driverGroup?: string;
   skills?: string;
+  coding?: string;
+  agencyName?: string;
+  northEligible?: boolean;
+  preloadEligible?: boolean;
+  notes?: string;
+  drivingLicenceNumber?: string;
+  licenceExpiry?: string;
+  licenceStatus?: string;
   tachoDriveAvailableTodayMinutes?: number;
   tachoDriveAvailableWeekMinutes?: number;
   tachoWorkAvailableWeekMinutes?: number;
@@ -25,6 +33,10 @@ export interface VehicleDto {
   dvsCompliant?: boolean;
   fuelProvider?: string;
   cabMobile?: string;
+  fuelPin?: string;
+  shellCard?: string;
+  bpRedCard?: string;
+  bpPlainCard?: string;
   notes?: string;
   fuelPinSecretName?: string;
   fuelCardLastFour?: string;
