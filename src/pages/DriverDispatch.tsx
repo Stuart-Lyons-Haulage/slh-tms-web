@@ -81,12 +81,6 @@ function localTime(value?: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : dispatchTimeFormatter.format(date);
 }
-function compactRun(load?: DispatchLoad) {
-  if (!load) return "—";
-  const match = `${load.reference} ${load.rawReference}`.match(/\b(?:run\s*)?(\d{1,3})\b/i);
-  const core = match?.[1] || load.reference;
-  return `Run ${core}`;
-}
 function cleanStopName(value?: string) {
   return (value || "").replace(/^(?:Collect|Deliver)\s*[·:-]\s*/i, "").replace(/-/g, " ").trim();
 }
