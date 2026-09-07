@@ -31,6 +31,24 @@ describe('Approved Orders Site Master coverage', () => {
     });
   });
 
+  it('resolves order wording through the geofence already linked to Site Master', () => {
+    const sites: CoverageSite[] = [{ id: 'bridgwater', externalCode: 'SITE718', name: 'Morrisons Bridgwater', active: true }];
+    const statuses: CoverageStatus[] = [{
+      siteId: 'bridgwater',
+      siteCode: 'SITE718',
+      siteName: 'Morrisons Bridgwater',
+      linkedGeofences: ['Morrisons FRUITBRIDGWATER 718'],
+      geofenceLinked: true,
+      needsReview: false,
+    }];
+
+    expect(resolveSiteCoverage('Morrisons FRUITBRIDGWATER 718', sites, statuses)).toMatchObject({
+      state: 'linked',
+      siteCode: 'SITE718',
+      geofenceName: 'Morrisons FRUITBRIDGWATER 718',
+    });
+  });
+
   it('never chooses automatically when a variant matches multiple Sites', () => {
     const sites: CoverageSite[] = [
       { id: 'one', externalCode: 'SITE1', name: 'Morrisons - Sittingbourne', active: true },
