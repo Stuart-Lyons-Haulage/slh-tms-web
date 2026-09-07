@@ -144,7 +144,7 @@ export function OptimiserProposalReview({ planningDate, onApplied }: { planningD
         <small>Generation is read-only. Applying is an explicit planner action and creates draft runs only.</small>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        {(["AM", "PM"] as const).map((value) => <button key={value} type="button" className={period === value ? "primary" : ""} onClick={() => setPeriod(value)} disabled={busy}>{value}</button>)}
+        {(["AM", "PM", "FULL_DAY"] as const).map((value) => <button key={value} type="button" className={period === value ? "primary" : ""} onClick={() => setPeriod(value)} disabled={busy}>{value === "FULL_DAY" ? "Full day" : value}</button>)}
         <button type="button" className="primary" onClick={() => void generate()} disabled={busy || !planningDate}>{busy ? "Working…" : "Generate proposal"}</button>
       </div>
     </div>
