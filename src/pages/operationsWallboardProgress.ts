@@ -42,6 +42,26 @@ export type RunProgressRecord = {
   speedKph?: number;
   tacho?: RunTachoEvidence | null;
 };
+export type LiveRunSnapshot = {
+  id: string;
+  reference: string;
+  status: string;
+  nextStop?: string;
+  finalStop?: string;
+  etaTarget?: string;
+  finalPlannedUtc?: string;
+  etaUtc?: string;
+  etaSource?: string;
+  tracking?: string;
+  trackingUpdatedAtUtc?: string;
+  speedKph?: number;
+  state?: string;
+  stateDetail?: string;
+  siteArrivalUtc?: string;
+  siteDepartureUtc?: string;
+  liveDwellMinutes?: number;
+  liveDwellSeconds?: number;
+};
 export type RunTachoEvidence = {
   status: "Matched" | "CardConfirmed" | "Mismatch" | "NoTachoDuty" | "NoPlannedDriver" | "NoPlannedVehicle" | "Unavailable" | string;
   driverName?: string;
@@ -124,6 +144,66 @@ type FinalDeliveryAssessment = {
 };
 
 const RISK_BUFFER_MINUTES = 15;
+
+/**
+ * The API's bounded live-runs snapshot is a recovery source for a slow ETA or
+ * geofence calculation. It is intentionally weaker than the authoritative
+ * enrichment feeds: it can prove movement and expose the planned final time,
+ * but it must not invent a live ETA, geofence exit, or Tacho evidence.
+ */
+export function fallbackLiveRun(run: LiveRunSnapshot, nowMs = Date.now()) {
+  const trackingMs = run.trackingUpdatedAtUtc ? Date.parse(run.trackingUpdatedAtUtc) : Number.NaN;
+  const trackingAgeSeconds = Number.isFinite(trackingMs)
+    ? Math.max(0, Math.floor((nowMs - trackingMs) / 1000))
+    : undefined;
+  const trackingFresh = trackingAgeSeconds != null && trackingAgeSeconds <= 5 * 60;
+  const trackingMoving = trackingFresh && ((run.speedKph ?? 0) > 2 || /moving|in progress/i.test(run.tracking || run.state || ""));
+  const onSite = Boolean(run.siteArrivalUtc && !run.siteDepartureUtc) || /on site|site delay/i.test(run.state || "");
+  const nextStopName = run.nextStop || run.etaTarget || run.finalStop;
+  const progress: RunProgressRecord = {
+    loadId: run.id,
+    loadReference: run.reference,
+    loadStatus: run.status,
+    runState: onSite ? "OnSiteConfirmed" : trackingMoving ? "InProgress" : run.status,
+    totalStops: 0,
+    completedStops: 0,
+    progressPercent: 0,
+    nextStop: nextStopName ? { id: `fallback-${run.id}`, sequence: 1, name: nextStopName } : undefined,
+    currentVisit: onSite && run.siteArrivalUtc ? {
+      geofenceName: run.stateDetail?.split(" · ")[0] || nextStopName,
+      enteredAtUtc: run.siteArrivalUtc,
+      liveDwellMinutes: run.liveDwellMinutes,
+      liveDwellSeconds: run.liveDwellSeconds,
+      dwellMinutes: run.liveDwellMinutes,
+      isDelayed: /site delay/i.test(run.state || ""),
+      status: /site delay/i.test(run.state || "") ? "Delayed" : "OnSite",
+    } : undefined,
+    phase: onSite ? "On site" : trackingMoving ? "Heading to" : "Next job",
+    focusStop: nextStopName,
+    geofenceOnSite: onSite,
+    trackingFresh,
+    trackingMoving,
+    trackingAgeSeconds,
+    speedKph: run.speedKph,
+  };
+  const etaUtc = run.etaUtc || run.finalPlannedUtc;
+  const eta: DeliveryEta | undefined = etaUtc ? {
+    loadId: run.id,
+    loadReference: run.reference,
+    loadStatus: run.status,
+    stopId: `fallback-final-${run.id}`,
+    sequence: Number.MAX_SAFE_INTEGER,
+    stopName: run.etaTarget || run.finalStop || "Final delivery",
+    etaUtc,
+    source: run.etaSource === "Live" || run.etaSource === "Estimated" ? run.etaSource : "Planned",
+    risk: "Pending",
+    routeDrivingMinutes: 0,
+    breakMinutesIncluded: 0,
+    tachoStatus: "Unavailable",
+    tachoExplanation: "Live ETA enrichment is unavailable; the final planned time is retained.",
+  } : undefined;
+  return { progress, eta };
+}
 
 function trackingAgeText(progress?: RunProgressRecord) {
   if (!progress || progress.trackingFresh !== false || progress.trackingAgeSeconds == null) return "";
