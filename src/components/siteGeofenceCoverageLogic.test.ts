@@ -52,9 +52,22 @@ describe('Approved Orders Site Master coverage', () => {
   it('never chooses automatically when a variant matches multiple Sites', () => {
     const sites: CoverageSite[] = [
       { id: 'one', externalCode: 'SITE1', name: 'Morrisons - Sittingbourne', active: true },
-      { id: 'two', externalCode: 'SITE2', name: 'Sittingbourne', active: true },
+      { id: 'two', externalCode: 'SITE2', name: 'Sittingbourne', aliases: 'Morrisons - Sittingbourne', active: true },
     ];
 
     expect(resolveSiteCoverage('Morrisons - Sittingbourne 389', sites, [])).toMatchObject({ state: 'unresolved' });
+  });
+
+  it('prefers one exact full Site name over a shorter derived variant', () => {
+    const sites: CoverageSite[] = [
+      { id: 'one', externalCode: 'SITE389', name: 'Morrisons - Sittingbourne', active: true },
+      { id: 'two', externalCode: 'SITE2', name: 'Sittingbourne', active: true },
+    ];
+    const statuses: CoverageStatus[] = [{ siteId: 'one', siteCode: 'SITE389', siteName: 'Morrisons - Sittingbourne', linkedGeofences: [], geofenceLinked: false, needsReview: true }];
+
+    expect(resolveSiteCoverage('Morrisons - Sittingbourne', sites, statuses)).toMatchObject({
+      state: 'unlinked',
+      siteCode: 'SITE389',
+    });
   });
 });
