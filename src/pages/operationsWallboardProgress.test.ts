@@ -151,13 +151,12 @@ describe("wallboard final delivery risk", () => {
     }
   });
 
-  it("keeps final-customer buffers through the delivery window on route", () => {
-    for (const etaUtc of ["2026-08-28T17:30:00Z", "2026-08-28T17:59:00Z", "2026-08-28T18:00:00Z"]) {
+  it("marks final-customer buffers at or below fifteen minutes as risk", () => {
+    for (const [etaUtc, expected] of [["2026-08-28T17:30:00Z", "route"], ["2026-08-28T17:59:00Z", "risk"], ["2026-08-28T18:00:00Z", "risk"]] as const) {
       const finalEta = finalDelivery(etaUtc);
       const result = statusFor(progress(), finalEta, [finalEta]);
 
-      expect(result.status).toBe("route");
-      expect(result.label).toBe("ON ROUTE");
+      expect(result.status).toBe(expected);
     }
   });
 
