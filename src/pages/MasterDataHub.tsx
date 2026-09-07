@@ -5,7 +5,7 @@ import { FleetMasterUnified } from './FleetMasterUnified';
 import { FuelCardsOperational } from './FuelCardsOperational';
 import { MarketsMasterClean } from './MarketsMasterClean';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
-import { GeofenceOperational } from './GeofenceOperational';
+import { SiteMasterUnified } from './SiteMasterUnified';
 import { MasterDataAddPanel, type AddableMasterSection } from './MasterDataAddPanel';
 
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
@@ -15,7 +15,7 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
   { key: 'vehicles', label: 'Vehicles', detail: 'One canonical vehicle master: TMS planning identity plus joined Fleetio status, specification, maintenance, defects and work orders' },
   { key: 'trailers', label: 'Trailers', detail: 'One canonical trailer master: SLH trailer identity and capacity plus joined Fleetio C-number, specification, maintenance, defects and work orders' },
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Vehicle fuel cards, PINs and fuel register' },
-  { key: 'sites', label: 'Sites', detail: 'One canonical operational location register: site code, planner/driver wording, address, instructions, planning profile and all linked RoadTech geofences' },
+  { key: 'sites', label: 'Sites', detail: 'One row per canonical Site: planner/driver wording, aliases, notes, address, instructions, planning profile, documents and linked geofences in the same record' },
   { key: 'markets', label: 'Markets', detail: 'Market master records and contacts' },
   { key: 'fuel-prices', label: 'Fuel prices', detail: 'Fuel pricing reference data' },
 ];
@@ -47,7 +47,6 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       <span className="status approved">Live TMS Master Database</span>
     </div>
 
-
     <div className="panel master-section-panel" style={{ marginBottom: 18 }}>
       <div className="master-section-tabs horizontal-tabs" role="tablist" aria-label="Master data sections">
         {sections.map(item => <button key={item.key} role="tab" aria-selected={section === item.key} className={section === item.key ? 'primary' : ''} onClick={() => { setSection(item.key); setCleanupOpen(false); }}>{item.label}</button>)}
@@ -61,15 +60,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       {section === 'drivers' && <DriversMasterCompact />}
       {section === 'vehicles' && <FleetMasterUnified kind="vehicles" />}
       {section === 'trailers' && <FleetMasterUnified kind="trailers" />}
-      {section === 'sites' && <>
-        <MasterDataOperational initialTab="sites" showCategoryButtons={false} showHeading={false} />
-        <div className="panel" style={{ marginTop: 18, marginBottom: 18 }}>
-          <p className="eyebrow">Site execution evidence</p>
-          <h2>Geofences attached to Site Master</h2>
-          <p className="hint">RoadTech polygons are execution children of the canonical Site record. A geofence may be linked to a Site, deliberately marked location-only, or left unassigned for reconciliation; it must never create a second competing site identity.</p>
-        </div>
-        <GeofenceOperational />
-      </>}
+      {section === 'sites' && <SiteMasterUnified />}
       {section === 'fuel-cards' && <FuelCardsOperational />}
       {section === 'markets' && <MarketsMasterClean />}
       {section === 'fuel-prices' && <FuelMaster />}
