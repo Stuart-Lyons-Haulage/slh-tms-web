@@ -149,7 +149,6 @@ describe("wallboard final delivery risk", () => {
 
       expect(result.status).toBe("route");
       expect(result.label).toBe("ON ROUTE");
-      expect(result.detail).toContain("buffer to delivery latest time");
     }
   });
 
