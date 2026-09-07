@@ -202,27 +202,34 @@
 }
 
 .pallet-control-matrix .pallet-destination-heading {
-  height: auto;
-  min-height: 46px;
-  padding: 4px 2px 6px;
-  vertical-align: bottom;
-  overflow: visible;
+  width: 34px;
+  min-width: 34px;
+  max-width: 34px;
+  height: 98px;
+  min-height: 98px;
+  padding: 3px 1px;
+  vertical-align: middle;
+  overflow: hidden;
 }
 
 .pallet-control-matrix .pallet-destination-heading span {
-  display: block;
+  display: flex;
   width: 100%;
-  max-width: 100%;
-  transform: none;
-  writing-mode: horizontal-tb;
-  white-space: normal;
-  overflow: visible;
-  overflow-wrap: anywhere;
+  height: 90px;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(180deg);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
   word-break: normal;
-  hyphens: auto;
-  font-size: clamp(.46rem, .54vw, .63rem);
+  hyphens: none;
+  font-size: clamp(.5rem, .56vw, .64rem);
   font-weight: 800;
-  line-height: 1.08;
+  line-height: 1;
   text-align: center;
 }
 
