@@ -162,6 +162,7 @@ export function OptimiserProposalReview({ planningDate, onApplied }: { planningD
       </div>
 
       {proposal.warnings.length > 0 && <div style={{ marginTop: 10 }}>
+        <button type="button" onClick={() => window.alert(proposal.warnings.map((warning) => `${warning.severity}: ${warning.message}`).join("\n\n"))}>Review suggestions</button>
         {proposal.warnings.map((warning) => <p key={`${warning.code}-${warning.message}`} className="notice inline-notice"><strong>{warning.severity}: {warning.code}</strong> · {warning.message}</p>)}
       </div>}
 
