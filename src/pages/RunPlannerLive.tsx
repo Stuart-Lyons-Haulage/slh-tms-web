@@ -17,6 +17,7 @@ type PlanningOrder = {
   outstandingPallets: number;
   collection: string;
   destination: string;
+  source?: string;
   allocations: Allocation[];
 };
 type PlanningControlData = {
@@ -142,6 +143,18 @@ function clusterForOrder(order: PlanningOrder, sites: Site[], marketNames: strin
   if (destinationRegion === "EAST") return "east";
   if (destinationRegion === "WESTWALES") return "west-wales";
   return "other";
+}
+
+function orderTypeLabel(order: PlanningOrder, sites: Site[], marketNames: string[]) {
+  const evidence = `${order.source || ""} ${order.collection} ${order.destination}`;
+  if (/\bback\s*load\b/i.test(evidence)) return "Backload";
+  if (clusterForOrder(order, sites, marketNames) === "markets" || /\bmarket\b/i.test(evidence)) return "Market";
+  if (/\btransfer\b/i.test(evidence)) return "Transfer";
+  if (/\breturn(?:s)?\b/i.test(evidence)) return "Return";
+  if (/\bpre[-\s]?load\b/i.test(evidence)) return "Preload";
+  const source = String(order.source || "").trim();
+  if (source && source.length <= 24 && !/mail|email|import|parser|workbook|csv/i.test(source)) return source;
+  return "Delivery";
 }
 
 const CLUSTER_DEFINITIONS: Array<{ key: OrderClusterKey; label: string; note: string }> = [
@@ -327,8 +340,8 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
 
   const visible = useMemo(() => effectiveOrders
     .filter((order) => order.outstandingPallets > 0)
-    .filter((order) => !query.trim() || [order.reference, order.customerCode, order.collection, order.destination]
-      .some((value) => String(value).toLowerCase().includes(query.toLowerCase())))
+    .filter((order) => !query.trim() || [order.reference, order.customerCode, order.collection, order.destination, order.source]
+      .some((value) => String(value || "").toLowerCase().includes(query.toLowerCase())))
     .sort((left, right) => left.collection.localeCompare(right.collection)
       || left.destination.localeCompare(right.destination)
       || left.reference.localeCompare(right.reference)), [effectiveOrders, query]);
@@ -709,7 +722,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
               <div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: "1.15rem" }}>{cluster.pallets}</strong><small>pallets remaining</small></div>
             </div>
             {cluster.orders.map((order) => <button key={order.id} className="simple-order-card" type="button" disabled={Boolean(busyKey)} onClick={() => void addOrder(order)}>
-              <span><small>Collection</small><strong>{plannerSiteName(sites, order.collection)}</strong></span>
+              <span><small>{orderTypeLabel(order, sites, marketNames)} · Collection</small><strong>{plannerSiteName(sites, order.collection)}</strong></span>
               <span className="simple-order-pallets"><strong>{order.outstandingPallets}</strong><small>of {order.orderedPallets}</small></span>
               <span><small>Delivery</small><strong>{plannerSiteName(sites, order.destination)}</strong></span>
             </button>)}
