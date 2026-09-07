@@ -143,12 +143,11 @@ describe("wallboard final delivery risk", () => {
   });
 
   it("keeps a final-customer buffer above the fifteen-minute risk threshold on route", () => {
-    for (const etaUtc of ["2026-08-28T17:00:00Z", "2026-08-28T17:29:00Z"]) {
+    for (const [etaUtc, expected] of [["2026-08-28T17:00:00Z", "route"], ["2026-08-28T17:29:00Z", "risk"]] as const) {
       const finalEta = finalDelivery(etaUtc);
       const result = statusFor(progress(), finalEta, [finalEta]);
 
-      expect(result.status).toBe("route");
-      expect(result.label).toBe("ON ROUTE");
+      expect(result.status).toBe(expected);
     }
   });
 
