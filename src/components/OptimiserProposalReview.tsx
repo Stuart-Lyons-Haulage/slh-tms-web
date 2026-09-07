@@ -77,7 +77,7 @@ const classificationRank = (value: string) => value === "Blocked" ? 3 : value ==
 
 export function OptimiserProposalReview({ planningDate, onApplied }: { planningDate: string; onApplied?: () => void | Promise<void> }) {
   const token = useAccessToken();
-  const [period, setPeriod] = useState<"AM" | "PM">("AM");
+  const [period, setPeriod] = useState<"AM" | "PM" | "FULL_DAY">("AM");
   const [proposal, setProposal] = useState<Proposal>();
   const [acknowledgeUnverified, setAcknowledgeUnverified] = useState(false);
   const [busy, setBusy] = useState(false);
