@@ -1,5 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
-
 export type DotImportRow = {
   clientKey: string;
   name: string;
@@ -16,10 +14,12 @@ export type DotImportDecision = {
 
 export type SiteOption = { id: string; externalCode: string; name: string; active: boolean };
 
-export function filterImportSites(_sites: SiteOption[], _query: string): SiteOption[] {
+export function filterImportSites(sites: SiteOption[], query: string): SiteOption[] {
+  void sites; void query;
   return [];
 }
 
-export function importRowsReady(_rows: DotImportRow[], _decisions: Record<string, DotImportDecision>): boolean {
+export function importRowsReady(rows: DotImportRow[], decisions: Record<string, DotImportDecision>): boolean {
+  void rows; void decisions;
   return false;
 }
