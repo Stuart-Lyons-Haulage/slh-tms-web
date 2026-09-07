@@ -65,24 +65,45 @@ export function GeofenceStatusBadge({ result }: { result?: SiteCoverage }) {
   return <small title={result.action} style={{ display: "block", marginTop: 4, color: "#b42318", fontWeight: 900 }}>⚠ {unresolved ? "SITE NAME NOT RECOGNISED" : "GEOFENCE MISSING"}</small>;
 }
 
-export function SiteCoverageWarningPanel({ issues, title = "Geofence coverage needs attention" }: { issues: SiteCoverage[]; title?: string }) {
+type SiteCoverageWarningPanelProps = {
+  issues: SiteCoverage[];
+  title?: string;
+  onApplySuggestedAlias?: (issue: SiteCoverage) => void;
+  onApplyAllSuggestedAliases?: () => void;
+  aliasBusy?: boolean;
+};
+
+export function SiteCoverageWarningPanel({
+  issues,
+  title = "Geofence coverage needs attention",
+  onApplySuggestedAlias,
+  onApplyAllSuggestedAliases,
+  aliasBusy = false,
+}: SiteCoverageWarningPanelProps) {
   if (!issues.length) return null;
   const unresolved = issues.filter(item => item.state === "unresolved").length;
   const unlinked = issues.filter(item => item.state === "unlinked").length;
+  const suggestions = issues.filter(item => item.state === "unresolved" && item.suggestedSiteId);
   return <div className="notice" style={{ border: "2px solid #b42318", background: "#fff1f0", marginBottom: 14 }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
       <div>
         <strong style={{ color: "#b42318" }}>⚠ {title}</strong>
         <div style={{ marginTop: 5 }}>{unresolved} site name{unresolved === 1 ? "" : "s"} need an alias · {unlinked} recognised Site{unlinked === 1 ? "" : "s"} need a geofence link.</div>
+        {suggestions.length > 0 && <small style={{ display: "block", marginTop: 5, color: "#365b42" }}>{suggestions.length} warning{suggestions.length === 1 ? " has" : "s have"} one clear Site Master suggestion and can be fixed here without opening Site CRM.</small>}
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {suggestions.length > 0 && onApplyAllSuggestedAliases && <button className="primary" type="button" disabled={aliasBusy} onClick={onApplyAllSuggestedAliases}>{aliasBusy ? "Applying aliases…" : `Apply ${suggestions.length} clear alias${suggestions.length === 1 ? "" : "es"}`}</button>}
         <Link className="button-like" to="/sites">Open Site CRM</Link>
         <Link className="button-like" to="/geofences">Geofence Integrity</Link>
       </div>
     </div>
-    <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
-      {issues.slice(0, 10).map((item, index) => <div key={`${item.sourceLabel}-${index}`}>
-        <strong>{item.sourceLabel}</strong> — {item.state === "unresolved" ? "Site name not recognised" : `${item.siteCode || "Site"} · ${item.siteName || "Site recognised"} has no linked geofence`}. <span>{item.action}</span>
+    <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
+      {issues.slice(0, 10).map((item, index) => <div key={`${item.sourceLabel}-${index}`} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span><strong>{item.sourceLabel}</strong> — {item.state === "unresolved" ? "Site name not recognised" : `${item.siteCode || "Site"} · ${item.siteName || "Site recognised"} has no linked geofence`}. <span>{item.action}</span></span>
+        {item.state === "unresolved" && item.suggestedSiteId && onApplySuggestedAlias && <button type="button" disabled={aliasBusy} onClick={() => onApplySuggestedAlias(item)} title={item.suggestionReason || "Add this exact incoming wording as an alias to the suggested Site Master record"} style={{ minHeight: 30, padding: "4px 9px" }}>
+          Use {item.suggestedSiteCode ? `${item.suggestedSiteCode} · ` : ""}{item.suggestedSiteName || "suggested Site"}
+        </button>}
+        {item.state === "unlinked" && <Link className="button-like" to="/geofences" style={{ minHeight: 30, padding: "4px 9px" }}>Link geofence</Link>}
       </div>)}
       {issues.length > 10 && <small>+ {issues.length - 10} more location warning{issues.length - 10 === 1 ? "" : "s"}.</small>}
     </div>
