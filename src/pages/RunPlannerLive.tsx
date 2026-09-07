@@ -566,12 +566,12 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
           <strong>{visible.length}</strong>
         </div>
         <input className="simple-order-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order, site or customer…" />
-        <p className="simple-order-help">Click to add the current balance to the selected run. If you reduce the pallets on the run, the remainder appears here immediately.</p>
+        <p className="simple-order-help">Click an order to add its current pallet balance to the selected run. PO and customer references remain attached to the order.</p>
         <div className="simple-order-list">
           {visible.map((order) => <button key={order.id} className="simple-order-card" type="button" disabled={Boolean(busyKey)} onClick={() => void addOrder(order)}>
-            <span><small>Collection</small><strong>{order.collection}</strong><small>{order.reference}</small></span>
+            <span><small>Collection</small><strong>{order.collection}</strong></span>
             <span className="simple-order-pallets"><strong>{order.outstandingPallets}</strong><small>of {order.orderedPallets}</small></span>
-            <span><small>Delivery</small><strong>{order.destination}</strong><small>{order.customerCode}</small></span>
+            <span><small>Delivery</small><strong>{order.destination}</strong></span>
           </button>)}
           {!visible.length && <p>All current orders are fully planned.</p>}
         </div>
