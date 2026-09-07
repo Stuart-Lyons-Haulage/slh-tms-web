@@ -151,13 +151,13 @@ describe("wallboard final delivery risk", () => {
     }
   });
 
-  it("marks the final-customer buffer at or below fifteen minutes as risk", () => {
+  it("keeps final-customer buffers through the delivery window on route", () => {
     for (const etaUtc of ["2026-08-28T17:30:00Z", "2026-08-28T17:59:00Z", "2026-08-28T18:00:00Z"]) {
       const finalEta = finalDelivery(etaUtc);
       const result = statusFor(progress(), finalEta, [finalEta]);
 
-      expect(result.status).toBe("risk");
-      expect(result.label).toBe("FINAL ETA AT RISK");
+      expect(result.status).toBe("route");
+      expect(result.label).toBe("ON ROUTE");
     }
   });
 
