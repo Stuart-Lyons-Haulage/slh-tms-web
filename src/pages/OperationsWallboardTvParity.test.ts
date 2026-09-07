@@ -1,10 +1,8 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import wallboard from "./OperationsWallboard.tsx?raw";
 import live from "./OperationsWallboardLive.tsx?raw";
 import linkage from "./RunGeofenceLinkagePanel.tsx?raw";
-
-const css = readFileSync(new URL("../operations-wallboard.css", import.meta.url), "utf8");
+import css from "../operations-wallboard.css?raw";
 
 describe("Operations wallboard TV parity", () => {
   it("renders the same per-run geofence linkage strip on a paired TV", () => {
