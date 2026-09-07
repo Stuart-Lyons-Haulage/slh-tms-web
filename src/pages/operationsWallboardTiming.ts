@@ -137,3 +137,17 @@ export function mergeWallboardTiming(
 
   return records;
 }
+
+
+export function enrichWallboardLiveFeeds(
+  incomingEtas: DeliveryEta[],
+  timingRecords: RunTimingRecord[],
+  routeRuns: RouteProgressRun[],
+  lastTiming: Map<string, RunTimingRecord>,
+  acceptedFinalEtas: Map<string, string>,
+) {
+  return {
+    etas: mergeWallboardTiming(incomingEtas, timingRecords, lastTiming, acceptedFinalEtas),
+    routeRuns: enrichRouteFinalDestination(routeRuns),
+  };
+}
