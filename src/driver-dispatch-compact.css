@@ -50,5 +50,18 @@
 .driver-dispatch-page .dispatch-group td{padding:3px 7px!important;font-size:.64rem}
 .driver-dispatch-page .dispatch-footer-note{flex:0 0 auto;margin:4px 0 0;font-size:.64rem;line-height:1.2}
 .driver-dispatch-page>.hint:last-child{flex:0 0 auto;margin:3px 0 0;font-size:.65rem}
+.driver-dispatch-page .dispatch-status-cell{min-width:155px;max-width:190px}
+.driver-dispatch-page .dispatch-status-pill{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:5px 8px;font-size:.64rem;font-weight:900;line-height:1.1;white-space:nowrap}
+.driver-dispatch-page .dispatch-status-pill.empty{background:#eef2f5;color:#5c6c79}
+.driver-dispatch-page .dispatch-status-pill.ready{background:#eaf3f8;color:#174e70}
+.driver-dispatch-page .dispatch-status-pill.awaiting{background:#fff0bd;color:#735700}
+.driver-dispatch-page .dispatch-status-pill.confirmed{background:#d9f0df;color:#17633a}
+.driver-dispatch-page .dispatch-status-cell small{display:block;max-width:185px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#647484}
+.driver-dispatch-page .dispatch-blocked-note{display:inline-flex;border-radius:999px;padding:5px 7px;background:#f9d7d7;color:#8d2020;font-size:.61rem;font-weight:900}
+.driver-dispatch-page .dispatch-table tr.weekly-rest-blocked td{background:#fff1f1}
+.driver-dispatch-page .dispatch-table tr.weekly-rest-blocked .day-bubble{box-shadow:0 0 0 2px #b42318 inset}
+.driver-dispatch-page .dispatch-table th:nth-child(8),.driver-dispatch-page .dispatch-table td:nth-child(8){width:220px;min-width:210px}
+.driver-dispatch-page .dispatch-table th:nth-child(9),.driver-dispatch-page .dispatch-table td:nth-child(9){width:165px;min-width:155px}
+.driver-dispatch-page .dispatch-table th:nth-child(10),.driver-dispatch-page .dispatch-table td:nth-child(10){width:170px;min-width:150px}
 @media(max-width:1100px){.driver-dispatch-page{height:auto;min-height:calc(100vh - 100px);overflow:visible}.driver-dispatch-page .dispatch-table-wrap{min-height:420px}.driver-dispatch-page .dispatch-title{align-items:flex-start}.driver-dispatch-page .dispatch-actions{width:100%}}
 @media(max-width:800px){.driver-dispatch-page{padding:0 4px 6px}.driver-dispatch-page .dispatch-table-wrap{min-height:360px}.driver-dispatch-page .run-popover{position:fixed;left:5vw;top:20vh;width:90vw;max-width:none}.driver-dispatch-page .dispatch-table{font-size:.7rem}}
