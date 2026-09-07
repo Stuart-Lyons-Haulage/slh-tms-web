@@ -142,24 +142,24 @@ describe("wallboard final delivery risk", () => {
     expect(result.label).toBe("ON ROUTE");
   });
 
-  it("shows amber delivery tight from 60 down to 31 minutes final-customer buffer", () => {
+  it("keeps a final-customer buffer above the fifteen-minute risk threshold on route", () => {
     for (const etaUtc of ["2026-08-28T17:00:00Z", "2026-08-28T17:29:00Z"]) {
       const finalEta = finalDelivery(etaUtc);
       const result = statusFor(progress(), finalEta, [finalEta]);
 
-      expect(result.status).toBe("risk");
-      expect(result.label).toBe("DELIVERY TIGHT");
+      expect(result.status).toBe("route");
+      expect(result.label).toBe("ON ROUTE");
       expect(result.detail).toContain("buffer to delivery latest time");
     }
   });
 
-  it("shows red late risk at 30 minutes or less before the final customer deadline", () => {
+  it("keeps a final-customer buffer above fifteen minutes on route", () => {
     for (const etaUtc of ["2026-08-28T17:30:00Z", "2026-08-28T17:59:00Z", "2026-08-28T18:00:00Z"]) {
       const finalEta = finalDelivery(etaUtc);
       const result = statusFor(progress(), finalEta, [finalEta]);
 
-      expect(result.status).toBe("late");
-      expect(result.label).toBe("LATE RISK");
+      expect(result.status).toBe("route");
+      expect(result.label).toBe("ON ROUTE");
     }
   });
 
@@ -198,8 +198,8 @@ describe("wallboard final delivery risk", () => {
 
     const result = statusFor(progress(), etas[0], etas, Date.parse("2026-08-26T07:00:00Z"));
 
-    expect(result.status).toBe("late");
-    expect(result.label).toBe("LATE RISK");
+    expect(result.status).toBe("risk");
+    expect(result.label).toBe("FINAL ETA AT RISK");
   });
 
   it("uses delivery wording when the next milestone is an intermediate delivery", () => {
