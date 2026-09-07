@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, request, type Load, type Site } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
-import { RunPlanningIntelligence } from "../components/RunPlanningIntelligence";
+import { RunJobSuggestions } from "../components/RunJobSuggestions";
 import "../simple-planner.css";
 import { createRun, listRuns, updateRunStops } from '../api/runs';
 
@@ -448,6 +448,24 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
     }, 450);
   }
 
+  async function persistLineNote(run: RunDraft, line: RunLine, note: string) {
+    const linesAfterEdit = run.lines.map((item) => item.key === line.key ? { ...item, note } : item);
+    updateRun(run.key, (current) => ({ ...current, lines: linesAfterEdit }));
+    if (!run.loadId || !line.orderId) return;
+
+    const key = `${run.key}:${line.key}:note`;
+    setBusyKey(key);
+    try {
+      await syncStops(run.loadId, linesAfterEdit, await token());
+      signalPlanningChange();
+      setMessage("Line note auto-saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Line note could not be saved.");
+    } finally {
+      setBusyKey((current) => current === key ? undefined : current);
+    }
+  }
+
   async function addOrder(order: PlanningOrder) {
     if (!active || order.outstandingPallets <= 0 || busyKey) return;
     if (active.lines.some((line) => line.orderId === order.id)) {
@@ -605,7 +623,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
                 <input value={line.collectionSite} readOnly={Boolean(line.orderId)} onChange={(event) => updateLine(run.key, line.key, { collectionSite: event.target.value })} placeholder="Collection" />
                 <input className="simple-pallet-input" type="number" min="0" inputMode="numeric" value={line.pallets} onChange={(event) => scheduleQuantity(run, line, event.target.value)} placeholder="0" />
                 <input value={line.deliverySite} readOnly={Boolean(line.orderId)} onChange={(event) => updateLine(run.key, line.key, { deliverySite: event.target.value })} placeholder="Delivery" />
-                <input value={line.note} onChange={(event) => updateLine(run.key, line.key, { note: event.target.value })} onBlur={() => { if (run.loadId) void (async () => { try { await syncStops(run.loadId!, run.lines, await token()); setMessage("Line note auto-saved."); } catch (error) { setMessage(error instanceof Error ? error.message : "Line note could not be saved."); } })(); }} placeholder="Facility / load-line note" />
+                <input value={line.note} onChange={(event) => updateLine(run.key, line.key, { note: event.target.value })} onBlur={(event) => void persistLineNote(run, line, event.currentTarget.value)} placeholder="Facility / load-line note" />
                 <button type="button" className="simple-clear-line" aria-label={`Clear line ${lineIndex + 1}`} disabled={busyKey === `${run.key}:${line.key}`} onClick={(event) => {
                   event.stopPropagation();
                   void clearLine(run, line);
@@ -620,7 +638,17 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
               }}>+ Add line</button></div>
               <small>{saving ? "Saving…" : run.loadId ? "✓ Auto-saved" : "Choose an order to start this run"}</small>
             </div>
-            {load && activeKey === run.key && <RunPlanningIntelligence load={load} onChanged={refreshAll} />}
+            {load && activeKey === run.key && <RunJobSuggestions
+              lines={run.lines}
+              orders={effectiveOrders}
+              sites={sites}
+              remainingCapacity={Math.max((load.totalPalletSpaces ?? 26) - runTotal(run), 0)}
+              busy={Boolean(busyKey)}
+              onAdd={(orderId) => {
+                const order = effectiveOrders.find((item) => item.id === orderId);
+                if (order) void addOrder(order);
+              }}
+            />}
           </article>;
         })}
 
