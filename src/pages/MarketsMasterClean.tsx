@@ -2,9 +2,7 @@ import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { api, type MarketContact } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
-
-const ALL_MARKETS = "__all__";
-const preferredMarkets = ["Covent", "Spit", "Western", "Sender"];
+import { ALL_MARKETS, marketRowsForTab, marketTabs } from "./MarketsMasterLogic";
 
 function clean(value?: string) { return String(value || "").trim(); }
 function normal(value?: string) { return clean(value).toLowerCase().replace(/[^a-z0-9]/g, ""); }
@@ -15,24 +13,13 @@ function inferredStand(contact: MarketContact) {
   return name.match(/\(([^)]+)\)\s*$/)?.[1]?.trim() || name.match(/\b(?:stall|stand)\s*#?\s*([a-z]?\d{1,4}[a-z]?)\s*$/i)?.[1]?.trim() || name.match(/\s((?:s)?\d{1,3}[a-z]?|[a-z]\d{1,3})\s*$/i)?.[1]?.trim() || "";
 }
 
-export function marketTabs(rows: MarketContact[]) {
-  const discovered = Array.from(new Set(rows.map(row => clean(row.market)).filter(Boolean)));
-  const extras = discovered.filter(market => !preferredMarkets.some(preferred => normal(preferred) === normal(market))).sort((left, right) => left.localeCompare(right));
-  return [...preferredMarkets, ...extras];
-}
-
-export function marketRowsForTab(rows: MarketContact[], activeMarket: string) {
-  if (activeMarket === ALL_MARKETS) return rows;
-  return rows.filter(row => normal(row.market) === normal(activeMarket));
-}
-
 function marketTabLabel(market: string) { return market === "Sender" ? "Senders" : market; }
 
 export function MarketsMasterClean() {
   const token = useAccessToken();
   const contacts = useApi(useCallback(async () => api.marketContacts(await token()), [token]));
   const [activeMarket, setActiveMarket] = useState(ALL_MARKETS);
-  const rows = contacts.data || [];
+  const rows = useMemo(() => contacts.data || [], [contacts.data]);
   const tabs = useMemo(() => marketTabs(rows), [rows]);
   const visibleRows = useMemo(() => marketRowsForTab(rows, activeMarket), [rows, activeMarket]);
   const summary = useMemo(() => {
