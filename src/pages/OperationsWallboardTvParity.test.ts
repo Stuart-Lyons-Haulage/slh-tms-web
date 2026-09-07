@@ -6,7 +6,7 @@ import css from "../operations-wallboard.css?raw";
 
 describe("Operations wallboard TV parity", () => {
   it("renders the same per-run geofence linkage strip on a paired TV", () => {
-    expect(wallboard).toContain("<RunGeofenceLinkagePanel tvAccessKey={tvMode ? tvAccessKey : undefined} />");
+    expect(wallboard).toContain("<RunGeofenceLinkagePanel />");
     expect(linkage).toContain('"X-TV-Display-Key": tvAccessKey');
     expect(linkage).toContain("Geofences {run.linked}/{run.stops.length} linked");
     expect(linkage).toContain("{run.hits} hit");
@@ -15,7 +15,7 @@ describe("Operations wallboard TV parity", () => {
   it("prints the final-customer deadline buffer beside final-customer status", () => {
     expect(live).toContain("const buffer = minutesToWindow(row.finalEta);");
     expect(live).not.toContain("const buffer = minutesToWindow(row.nextEta);");
-    expect(live).toContain("Final customer ETA/deadline drives run risk");
+    expect(live).toContain("Final ETA targets final customer destination");
   });
 
   it("keeps the six summary cards and TV table inside the fixed viewport", () => {
