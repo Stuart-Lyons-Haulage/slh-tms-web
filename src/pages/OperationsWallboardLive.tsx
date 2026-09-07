@@ -4,7 +4,7 @@ import { useAccessToken } from "../lib/auth";
 import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
-import { completedJobCount, fallbackLiveRun, finalEtaFor, geofenceProgress, isScheduleVisible, isWallboardActionRequired, mergeRouteProgress, statusFor, type LiveRunSnapshot, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
+import { completedJobCount, fallbackLiveRun, finalArrivalUtc, finalEtaFor, geofenceProgress, isWallboardActionRequired, mergeRouteProgress, shouldDisplayWallboardRow, sortWallboardRowsByCollection, statusFor, type LiveRunSnapshot, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
 import "../operations-wallboard.css";
 
 type RunProgressResponse = {
@@ -12,7 +12,13 @@ type RunProgressResponse = {
   calculatedAtUtc: string;
   geofenceAvailable?: boolean;
   geofenceCount?: number;
+  geofenceConfiguredRuns?: number;
   geofenceLinkedRuns?: number;
+  geofenceLinkedStops?: number;
+  geofenceTotalStops?: number;
+  geofenceHitRuns?: number;
+  geofenceHitStops?: number;
+  geofenceVisitCount?: number;
   latestTrackingUtc?: string;
   warning?: string;
   records: RunProgressRecord[];
@@ -20,6 +26,12 @@ type RunProgressResponse = {
 type RouteProgressResponse = {
   latestTrackingUtc?: string;
   geofenceLinkedRuns?: number;
+  geofenceConfiguredRuns?: number;
+  geofenceLinkedStops?: number;
+  geofenceTotalStops?: number;
+  geofenceHitRuns?: number;
+  geofenceHitStops?: number;
+  geofenceVisitCount?: number;
   tachoWarning?: string;
   runs: RouteProgressRun[];
 };
@@ -41,6 +53,7 @@ type BoardRow = {
   scheduledUtc?: string;
   displayTimeUtc?: string;
   displayTimeLabel: string;
+  finalDestinationArrived: boolean;
   focusStop: string;
   status: "late" | "risk" | "onsite" | "route" | "scheduled" | "complete";
   statusLabel: string;
@@ -56,6 +69,12 @@ type WallboardData = {
   geofenceAvailable: boolean;
   geofenceCount: number;
   geofenceLinkedRuns: number;
+  geofenceConfiguredRuns: number;
+  geofenceLinkedStops: number;
+  geofenceTotalStops: number;
+  geofenceHitRuns: number;
+  geofenceHitStops: number;
+  geofenceVisitCount: number;
   latestTrackingUtc?: string;
   calculatedAtUtc?: string;
 };
@@ -98,13 +117,6 @@ function pickNextEta(etas: DeliveryEta[], progress?: RunProgressRecord) {
       || sorted.at(-1);
   }
   return sorted.find(eta => eta.source === "Live") || sorted[0];
-}
-function isFinalCurrentVisit(progress?: RunProgressRecord) {
-  if (!progress?.currentVisit || progress.totalStops <= 0) return false;
-  const currentStopSequence = progress.stopDwell?.find(stop => stop.stopId === progress.currentVisit?.loadStopId)?.sequence
-    ?? (progress.nextStop && progress.nextStop.id === progress.currentVisit.loadStopId ? progress.nextStop.sequence : undefined);
-  if (currentStopSequence != null) return currentStopSequence === progress.totalStops;
-  return progress.completedStops === progress.totalStops - 1;
 }
 function minutesToWindow(eta?: DeliveryEta) {
   if (!eta?.etaUtc || !eta.deliveryWindowEndUtc) return undefined;
@@ -185,7 +197,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
     : undefined;
   const [clock, setClock] = useState(() => new Date());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
-  const [liveData, setLiveData] = useState<Pick<WallboardData, "etas" | "progress" | "warning" | "geofenceAvailable" | "geofenceCount" | "geofenceLinkedRuns" | "latestTrackingUtc" | "calculatedAtUtc">>();
+  const [liveData, setLiveData] = useState<Pick<WallboardData, "etas" | "progress" | "warning" | "geofenceAvailable" | "geofenceCount" | "geofenceConfiguredRuns" | "geofenceLinkedRuns" | "geofenceLinkedStops" | "geofenceTotalStops" | "geofenceHitRuns" | "geofenceHitStops" | "geofenceVisitCount" | "latestTrackingUtc" | "calculatedAtUtc">>();
   const tableRef = useRef<HTMLDivElement | null>(null);
   const liveRefreshInFlight = useRef<Promise<void> | null>(null);
 
@@ -206,7 +218,8 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       warning: assignmentsResult.status === "rejected"
         ? "Planned runs are visible; driver and vehicle assignment enrichment is temporarily unavailable."
         : "Live tracker, geofence and ETA evidence is loading.",
-      geofenceAvailable: true, geofenceCount: 0, geofenceLinkedRuns: 0,
+      geofenceAvailable: true, geofenceCount: 0, geofenceConfiguredRuns: 0, geofenceLinkedRuns: 0,
+      geofenceLinkedStops: 0, geofenceTotalStops: 0, geofenceHitRuns: 0, geofenceHitStops: 0, geofenceVisitCount: 0,
     } satisfies WallboardData;
   }, [today, token, tvAccessKey]));
 
@@ -242,7 +255,13 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
           ].filter(Boolean).join(" "),
           geofenceAvailable: latest.progress ? latest.progress.geofenceAvailable !== false : previous?.geofenceAvailable ?? true,
           geofenceCount: latest.progress?.geofenceCount ?? previous?.geofenceCount ?? 0,
+          geofenceConfiguredRuns: Math.max(latest.route?.geofenceConfiguredRuns ?? 0, latest.progress?.geofenceConfiguredRuns ?? 0, previous?.geofenceConfiguredRuns ?? 0),
           geofenceLinkedRuns: Math.max(latest.route?.geofenceLinkedRuns ?? 0, latest.progress?.geofenceLinkedRuns ?? 0, previous?.geofenceLinkedRuns ?? 0),
+          geofenceLinkedStops: Math.max(latest.route?.geofenceLinkedStops ?? 0, latest.progress?.geofenceLinkedStops ?? 0, previous?.geofenceLinkedStops ?? 0),
+          geofenceTotalStops: Math.max(latest.route?.geofenceTotalStops ?? 0, latest.progress?.geofenceTotalStops ?? 0, previous?.geofenceTotalStops ?? 0),
+          geofenceHitRuns: Math.max(latest.route?.geofenceHitRuns ?? 0, latest.progress?.geofenceHitRuns ?? 0, previous?.geofenceHitRuns ?? 0),
+          geofenceHitStops: Math.max(latest.route?.geofenceHitStops ?? 0, latest.progress?.geofenceHitStops ?? 0, previous?.geofenceHitStops ?? 0),
+          geofenceVisitCount: Math.max(latest.route?.geofenceVisitCount ?? 0, latest.progress?.geofenceVisitCount ?? 0, previous?.geofenceVisitCount ?? 0),
           latestTrackingUtc: latest.route?.latestTrackingUtc ?? latest.progress?.latestTrackingUtc ?? fallbackTracking ?? previous?.latestTrackingUtc,
           calculatedAtUtc: latest.etas?.calculatedAtUtc ?? previous?.calculatedAtUtc,
         };
@@ -294,7 +313,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
     // Progress/ETA snapshots may deliberately retain last-known evidence, but stale
     // enrichment IDs must never manufacture a second/ghost operational row.
     const ids = new Set(loadsById.keys());
-    return [...ids].map(id => {
+    const mappedRows = [...ids].map(id => {
       const load = loadsById.get(id);
       const progress = progressByLoad.get(id);
       const assignment = assignmentByLoad.get(id);
@@ -303,7 +322,8 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       const finalEta = finalEtaFor(etas);
       const status = statusFor(progress, nextEta, etas);
       const complete = status.status === "complete";
-      const finalArrivalUtc = isFinalCurrentVisit(progress) ? progress?.currentVisit?.enteredAtUtc : undefined;
+      const finalArrival = finalArrivalUtc(progress);
+      const finalDestinationArrived = Boolean(finalArrival) || status.status === "complete";
       const liveEtaUtc = finalEta?.source === "Live" ? finalEta.etaUtc : undefined;
       const estimatedEtaUtc = finalEta?.source === "Estimated" ? finalEta.etaUtc : undefined;
       const scheduledUtc = firstStop(load)?.plannedArrivalUtc || progress?.nextStop?.plannedArrivalUtc;
@@ -315,23 +335,18 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
         vehicle: assignment?.vehicle?.registration || nextEta?.vehicleRegistration || finalEta?.vehicleRegistration || "VEHICLE TBC",
         driver: assignment?.driver?.displayName || nextEta?.tachoDriverName || finalEta?.tachoDriverName || "DRIVER TBC",
         scheduledUtc,
-        displayTimeUtc: complete ? undefined : finalArrivalUtc || liveEtaUtc || estimatedEtaUtc,
-        displayTimeLabel: complete ? "AVAILABLE" : finalArrivalUtc ? "ARRIVED" : liveEtaUtc ? "LIVE FINAL ETA" : estimatedEtaUtc ? "ESTIMATED FINAL ETA" : "FINAL ETA PENDING",
+        displayTimeUtc: finalArrival || liveEtaUtc || estimatedEtaUtc,
+        displayTimeLabel: finalArrival ? "ARRIVED" : complete ? "AVAILABLE" : liveEtaUtc ? "LIVE FINAL ETA" : estimatedEtaUtc ? "ESTIMATED FINAL ETA" : "FINAL ETA PENDING",
+        finalDestinationArrived,
         focusStop: complete ? "Available for next job" : progress?.currentVisit?.geofenceName || progress?.nextStop?.name || nextEta?.stopName || "Next stop TBC",
         status: status.status, statusLabel: status.label, statusDetail: status.detail,
         tacho: progress?.tacho,
       };
-    }).filter(row => row.load?.status !== "Cancelled")
-      .sort((a, b) => {
-        if (a.status === "complete" && b.status !== "complete") return 1;
-        if (b.status === "complete" && a.status !== "complete") return -1;
-        if (a.status === "late" && b.status !== "late") return -1;
-        if (b.status === "late" && a.status !== "late") return 1;
-        return (ms(a.scheduledUtc) || Number.MAX_SAFE_INTEGER) - (ms(b.scheduledUtc) || Number.MAX_SAFE_INTEGER);
-      });
+    }).filter(row => row.load?.status !== "Cancelled");
+    return sortWallboardRowsByCollection(mappedRows);
   }, [boardData]);
 
-  const visibleRows = useMemo(() => rows.filter(row => isScheduleVisible(row.scheduledUtc, row.status, clock.getTime())), [clock, rows]);
+  const visibleRows = useMemo(() => rows.filter(row => shouldDisplayWallboardRow(row, tvMode, clock.getTime())), [clock, rows, tvMode]);
   const attentionRows = useMemo(() => visibleRows.filter(row => isWallboardActionRequired(row.status)
     || (Number(row.progress?.currentVisit?.liveDwellMinutes ?? row.progress?.currentVisit?.dwellMinutes ?? 0) >= 60)), [visibleRows]);
   const late = visibleRows.filter(row => row.status === "late").length;
@@ -339,6 +354,12 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
   const onSite = visibleRows.filter(row => row.status === "onsite").length;
   const available = visibleRows.filter(row => row.status === "complete").length;
   const completeJobs = completedJobCount(boardData?.progress || []);
+  const geofenceLinkedRuns = boardData?.geofenceLinkedRuns ?? 0;
+  const geofenceRunTotal = boardData?.loads.length ?? 0;
+  const geofenceLinkedStops = boardData?.geofenceLinkedStops ?? 0;
+  const geofenceTotalStops = boardData?.geofenceTotalStops ?? 0;
+  const geofenceHitRuns = boardData?.geofenceHitRuns ?? 0;
+  const geofenceHitStops = boardData?.geofenceHitStops ?? 0;
   const presentRowId = useMemo(() => visibleRows.find(row => row.status !== "complete" && (ms(row.scheduledUtc) || 0) >= clock.getTime() - 30 * 60 * 1000)?.id || visibleRows.find(row => row.status !== "complete")?.id, [clock, visibleRows]);
 
   useEffect(() => {
@@ -356,11 +377,18 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
     </header>
     <div className="ops-wallboard-summary">
       <article><span>Runs on board</span><strong>{visibleRows.length}</strong><small>runs due in the next three hours</small></article>
-      <article className="green"><span>Tracker live</span><strong>{formatAge(boardData?.latestTrackingUtc, clock)}</strong><small>{boardData?.geofenceLinkedRuns ?? 0} geofence-linked runs</small></article>
+      <article className="green"><span>Tracker live</span><strong>{formatAge(boardData?.latestTrackingUtc, clock)}</strong><small>{geofenceLinkedRuns} geofence-linked runs</small></article>
       <article className="amber"><span>On site</span><strong>{onSite}</strong><small>current site evidence retained</small></article>
       <article className="green"><span>Complete</span><strong>{completeJobs}</strong><small>departed geofenced stops</small></article>
       <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} proved late · {risk} needs attention</small></article>
       <article className="green"><span>Available</span><strong>{available}</strong><small>final stop completed</small></article>
+    </div>
+    <div className="ops-wallboard-coverage" aria-label="Geofence coverage">
+      <strong>GEOFENCE COVERAGE</strong>
+      <span>{geofenceLinkedRuns}/{geofenceRunTotal} runs linked</span>
+      <span>{geofenceLinkedStops}/{geofenceTotalStops} stops linked</span>
+      <span>{geofenceHitRuns} runs with hits · {geofenceHitStops} stops exited</span>
+      {geofenceTotalStops > geofenceLinkedStops && <em>{geofenceTotalStops - geofenceLinkedStops} stops need geofence links</em>}
     </div>
     {(error || boardData?.warning || boardData?.geofenceAvailable === false) && <div className="ops-wallboard-alert">{error || boardData?.warning || "Geofence progression is unavailable; planned journeys remain displayed."}</div>}
     <div className="ops-board-layout">
