@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MarketContact } from "../lib/api";
-import { marketRowsForTab, marketTabs } from "./MarketsMasterClean";
+import { marketRowsForTab, marketTabs } from "./MarketsMasterLogic";
 
 function contact(id: string, market: string, name: string): MarketContact {
   return { id, market, name, active: true } as MarketContact;
