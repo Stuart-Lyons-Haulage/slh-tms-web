@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
 import { useApi } from "../lib/useApi";
 
 type Allocation = { loadId: string; loadReference?: string; pallets: number; updatedAtUtc: string; updatedBy?: string };
@@ -63,9 +64,6 @@ type RegionData = {
 type ViewMode = "toPlan" | "planned" | "summary";
 type PalletTone = "standard" | "euro" | "traycrate" | "trolley" | "mixed" | "unknown";
 
-const PLANNING_CHANNEL = "slh-planning-control";
-const PLANNING_STORAGE_KEY = "slh:planning-control-changed";
-
 function planningDate() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -108,15 +106,6 @@ function toneBorder(tone: PalletTone) {
   if (tone === "mixed") return "#7c3aed";
   return "#9ca3af";
 }
-function notifyPlanningChanged() {
-  window.dispatchEvent(new Event("slh:orders-changed"));
-  try { window.localStorage.setItem(PLANNING_STORAGE_KEY, String(Date.now())); } catch { /* ignore */ }
-  if ("BroadcastChannel" in window) {
-    const channel = new BroadcastChannel(PLANNING_CHANNEL);
-    channel.postMessage({ type: "planning-changed", at: Date.now() });
-    channel.close();
-  }
-}
 
 export function PalletPlanningControl() {
   const token = useAccessToken();
@@ -131,27 +120,19 @@ export function PalletPlanningControl() {
   const refreshRegions = regions.refresh;
 
   useEffect(() => {
-    const refresh = () => { void refreshControl(); void refreshRegions(); };
-    const id = window.setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 2000);
-    const onFocus = () => refresh();
-    const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
-    const onOrderChanged = () => refresh();
-    const onStorage = (event: StorageEvent) => { if (event.key === PLANNING_STORAGE_KEY) refresh(); };
-    const channel = "BroadcastChannel" in window ? new BroadcastChannel(PLANNING_CHANNEL) : undefined;
-    if (channel) channel.onmessage = refresh;
+    const id = window.setInterval(() => { if (document.visibilityState === "visible") void refreshControl(); }, 2000);
+    const onFocus = () => void refreshControl();
+    const onVisibility = () => { if (document.visibilityState === "visible") void refreshControl(); };
+    const unsubscribe = subscribePlanningChanges(refreshControl);
     window.addEventListener("focus", onFocus);
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("slh:orders-changed", onOrderChanged);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.clearInterval(id);
-      channel?.close();
+      unsubscribe();
       window.removeEventListener("focus", onFocus);
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("slh:orders-changed", onOrderChanged);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [refreshControl, refreshRegions]);
+  }, [refreshControl]);
 
   const data = control.data;
   const orderById = useMemo(() => new Map((data?.orders || []).map((order) => [order.id, order])), [data?.orders]);
@@ -227,8 +208,7 @@ export function PalletPlanningControl() {
       const capacity = result.runCapacityStatus ? ` · trailer ${result.runCapacityStatus}${result.runUtilisationPercent != null ? ` ${result.runUtilisationPercent.toFixed(1)}%` : ""}` : "";
       setMessage(`${order.reference}: ${pallets} allocated · ${result.outstandingPallets} remaining${result.overplannedPallets > 0 ? ` · ${result.overplannedPallets} over-planned` : ""}${capacity}.`);
       setAllocationDrafts((current) => { const next = { ...current }; delete next[order.id]; return next; });
-      notifyPlanningChanged();
-      await Promise.all([refreshControl(), refreshRegions()]);
+      signalPlanningChange();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The load-unit allocation could not be saved.");
     } finally {
