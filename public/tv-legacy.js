@@ -161,6 +161,52 @@
     return Math.max(1, Math.round((actual - end) / 60000));
   }
 
+  // The bounded live-runs snapshot is the compatibility route's recovery source
+  // when the heavier ETA/geofence feeds are slow. It proves movement and keeps
+  // the planned final time visible, but never invents geofence or Tacho evidence.
+  function fallbackLiveRun(run) {
+    if (!run) { return null; }
+    var trackingMs = run.trackingUpdatedAtUtc ? new Date(run.trackingUpdatedAtUtc).getTime() : NaN;
+    var ageSeconds = isNaN(trackingMs) ? null : Math.max(0, Math.floor((Date.now() - trackingMs) / 1000));
+    var fresh = ageSeconds != null && ageSeconds <= 300;
+    var moving = fresh && ((Number(run.speedKph) || 0) > 2 || /moving|in progress/i.test(String(run.tracking || run.state || '')));
+    var onSite = Boolean(run.siteArrivalUtc && !run.siteDepartureUtc) || /on site|site delay/i.test(String(run.state || ''));
+    var nextName = run.nextStop || run.etaTarget || run.finalStop;
+    return {
+      progress: {
+        loadId: run.id,
+        loadReference: run.reference,
+        runState: onSite ? 'OnSiteConfirmed' : moving ? 'InProgress' : run.status,
+        totalStops: 0,
+        completedStops: 0,
+        progressPercent: 0,
+        nextStop: nextName ? { id: 'fallback-' + run.id, sequence: 1, name: nextName } : null,
+        phase: onSite ? 'On site' : moving ? 'Heading to' : 'Next job',
+        focusStop: nextName,
+        geofenceOnSite: onSite,
+        trackingFresh: fresh,
+        trackingMoving: moving,
+        trackingAgeSeconds: ageSeconds,
+        speedKph: run.speedKph
+      },
+      eta: run.etaUtc || run.finalPlannedUtc ? {
+        loadId: run.id,
+        loadReference: run.reference,
+        loadStatus: run.status,
+        stopId: 'fallback-final-' + run.id,
+        sequence: 999999,
+        stopName: run.etaTarget || run.finalStop || 'Final delivery',
+        etaUtc: run.etaUtc || run.finalPlannedUtc,
+        source: run.etaSource === 'Live' || run.etaSource === 'Estimated' ? run.etaSource : 'Planned',
+        risk: 'Pending',
+        routeDrivingMinutes: 0,
+        breakMinutesIncluded: 0,
+        tachoStatus: 'Unavailable',
+        tachoExplanation: 'Live ETA enrichment is unavailable; the final planned time is retained.'
+      } : null
+    };
+  }
+
   function statusInfo(progress, eta, dwell) {
     if (eta && eta.tachoStatus === 'InsufficientDriveTime') {
       return { label: 'HOURS RISK', detail: 'Tacho time is below remaining route need', cls: 'late', exception: true, priority: 980, kind: 'tacho' };
@@ -337,7 +383,7 @@
     return;
   }
   var date = todayIso();
-  var state = { loads: [], assignments: [], progress: [], etas: [], dwell: [], trackingSource: '', error: '' };
+  var state = { loads: [], assignments: [], progress: [], etas: [], dwell: [], liveRuns: {}, trackingSource: '', error: '' };
 
   root.innerHTML = '<div id="legacy-tv">' +
     '<div class="legacy-head"><div class="brand-wrap"><img class="legacy-logo" src="/lyons-logo.svg" alt="Lyons"><div class="brand-mark"><b>LYONS</b><span>OPERATIONS WALLBOARD</span></div><div class="head-divider"></div><h1>Arrivals &amp; Departures</h1></div><div class="legacy-clock"><span id="legacy-date"></span><b id="legacy-clock"></b><small>● LIVE OFFICE WALLBOARD</small></div></div>' +
@@ -401,11 +447,12 @@
     for (i = 0; i < state.loads.length; i += 1) {
       var load = state.loads[i];
       if (load.status === 'Cancelled') { continue; }
-      var prog = progress[String(load.id)];
+      var snapshot = fallbackLiveRun(state.liveRuns[String(load.id)]);
+      var prog = progress[String(load.id)] || (snapshot && snapshot.progress);
       var complete = isRunComplete(load, prog);
       var assignment = assignments[String(load.id)] || {};
       var next = nextEta(etaGroups[String(load.id)], prog);
-      var eta = finalEta(etaGroups[String(load.id)]) || next;
+      var eta = finalEta(etaGroups[String(load.id)]) || next || (snapshot && snapshot.eta);
       var dwell = dwellByLoad[String(load.id)] || null;
       var status = complete ? { label: 'COMPLETE', detail: 'Run complete', cls: 'complete', exception: false, priority: 0, kind: 'complete' } : statusInfo(prog, eta, dwell);
       var stop = firstStop(load);
@@ -563,11 +610,11 @@
       render();
       return;
     }
-    var pending = 5;
+    var pending = 6;
     var errors = [];
     function done(name, err, data) {
       if (err) {
-        if (name !== 'progress' && name !== 'dwell' && name !== 'etas') { errors.push(name + ': ' + err.message); }
+        if (name !== 'progress' && name !== 'dwell' && name !== 'etas' && name !== 'liveRuns') { errors.push(name + ': ' + err.message); }
       } else if (name === 'loads') { state.loads = data || []; }
       else if (name === 'assignments') { state.assignments = data || []; }
       else if (name === 'progress') {
@@ -576,6 +623,10 @@
       }
       else if (name === 'etas') { state.etas = data && data.records ? data.records : []; }
       else if (name === 'dwell') { state.dwell = data && data.runs ? data.runs : []; }
+      else if (name === 'liveRuns') {
+        state.liveRuns = indexBy(data && data.runs ? data.runs : [], 'id');
+        if (data && data.runs && data.runs.length) { state.trackingSource = 'RoadTech snapshot'; }
+      }
       pending -= 1;
       if (pending === 0) {
         state.error = errors.join(' ');
@@ -588,6 +639,7 @@
     request('/api/v1/tv-display/route-progress?date=' + encodeURIComponent(date), function (e, d) { done('progress', e, d); });
     request('/api/v1/operations/delivery-etas?date=' + encodeURIComponent(date), function (e, d) { done('etas', e, d); });
     request('/api/v1/tv-display/dwell?date=' + encodeURIComponent(date), function (e, d) { done('dwell', e, d); });
+    request('/api/v1/tv-display/live-runs?date=' + encodeURIComponent(date), function (e, d) { done('liveRuns', e, d); });
   }
 
   updateClock();
