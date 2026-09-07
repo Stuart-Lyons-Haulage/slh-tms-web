@@ -46,6 +46,9 @@ type ProposalRun = {
   explanations: string[];
   allocations: ProposalAllocation[];
   candidates: ProposalCandidate[];
+  driverName?: string;
+  vehicleRegistration?: string;
+  trailerNumber?: string;
 };
 type Proposal = {
   id: string;
@@ -181,7 +184,7 @@ export function OptimiserProposalReview({ planningDate, onApplied }: { planningD
             {expandedRun === run.id && <div style={{ marginTop: 10 }}>
               {run.isLocked ? <p>Existing live run <strong>{shortId(run.liveLoadId)}</strong> is fixed work and will not be recreated or amended.</p> : <>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 8 }}>
-                  <div><strong>Selected resources</strong><p style={{ margin: "4px 0" }}>Driver {shortId(run.driverId)} · Vehicle {shortId(run.vehicleId)} · Trailer {shortId(run.trailerId)}</p></div>
+                  <div><strong>Selected resources</strong><p style={{ margin: "4px 0" }}>Driver {run.driverName || shortId(run.driverId)} · Vehicle {run.vehicleRegistration || shortId(run.vehicleId)} · Trailer {run.trailerNumber || shortId(run.trailerId)}</p></div>
                   <div><strong>Selected candidate</strong><p style={{ margin: "4px 0" }}>{selected ? `${selected.classification} · ${selected.positionSource} · score ${selected.score}` : "No candidate selected"}</p></div>
                   <div><strong>Constraint state</strong><p style={{ margin: "4px 0" }}>{worstConstraint ? worstConstraint.explanation : "No constraint evidence recorded"}</p></div>
                 </div>
