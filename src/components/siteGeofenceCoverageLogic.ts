@@ -34,11 +34,16 @@ function splitAliases(value?: string) {
 }
 
 function variants(value: string) {
-  const values = new Set<string>();
-  const add = (candidate?: string) => { if (candidate?.trim()) values.add(candidate.trim()); };
+  const values: string[] = [];
+  const seen = new Set<string>();
+  const add = (candidate?: string) => {
+    const clean = candidate?.trim();
+    if (clean && !seen.has(clean)) { seen.add(clean); values.push(clean); }
+  };
   add(value);
   add(value.replace(/^\s*(collect|deliver)\s*[·:-]\s*/i, ''));
-  for (const candidate of [...values]) {
+  for (let index = 0; index < values.length; index += 1) {
+    const candidate = values[index];
     add(candidate.replace(/\(\s*[+-]?\d+(?:\.\d+)?\s*°?\s*C\s*\)/gi, '').trim());
     add(candidate.replace(/\s+(CHILL|FRV)$/i, '').trim());
     // DOT/order names often append a store/location number that is not part of Site Master.
@@ -58,7 +63,7 @@ function variants(value: string) {
       if (inside && !inside.includes('°')) add(inside);
     }
   }
-  return [...values].map(normaliseCoverageKey).filter(Boolean);
+  return values.map(normaliseCoverageKey).filter(Boolean);
 }
 
 function siteCandidates(site: CoverageSite) {
