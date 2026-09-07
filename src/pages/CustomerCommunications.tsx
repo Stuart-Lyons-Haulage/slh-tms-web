@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type CustomerCommunication } from "../lib/api";
+import { api, type CustomerCommunication, type DeliveryEta } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 
@@ -11,7 +11,15 @@ export function CustomerCommunications() {
   const [status, setStatus] = useState("PendingReview");
   const [purpose, setPurpose] = useState("");
   const [message, setMessage] = useState<string>();
+  const [liveEtas, setLiveEtas] = useState<DeliveryEta[]>([]);
   const communications = useApi(useCallback(async () => api.customerCommunications(await token(), status, purpose || undefined, 200), [purpose, status, token]));
+
+  const refreshLiveEtas = useCallback(async () => {
+    const result = await api.deliveryEtas(new Date().toISOString().slice(0, 10), await token());
+    setLiveEtas(result.records || []);
+  }, [token]);
+
+  useEffect(() => { void refreshLiveEtas().catch(() => setLiveEtas([])); }, [refreshLiveEtas]);
 
   async function review(item: CustomerCommunication, approve: boolean) {
     try {
@@ -32,7 +40,9 @@ export function CustomerCommunications() {
       <label>Status <select value={status} onChange={event => setStatus(event.target.value)}><option value="PendingReview">Pending review</option><option value="Promoted">Reviewed</option><option value="Rejected">Rejected</option><option value="">All</option></select></label>
       <label>Type <select value={purpose} onChange={event => setPurpose(event.target.value)}><option value="">All communications</option><option value="EtaUpdate">ETA updates</option><option value="LoadPlan">Load plans</option><option value="Exception">Exceptions</option></select></label>
       <button type="button" onClick={() => void communications.refresh()} disabled={communications.loading}>Refresh</button>
+      <button type="button" onClick={() => void refreshLiveEtas()} disabled={communications.loading}>Refresh live ETAs</button>
     </div>
+    {liveEtas.length > 0 && <div className="notice inline-notice"><strong>Live DOT/geofence ETA feed:</strong> {liveEtas.filter(item => item.source === "Live").length} live · {liveEtas.filter(item => item.source !== "Live").length} planned or pending. Geofence-confirmed stops are excluded from the remaining ETA calculation.</div>}
     {message && <p className="notice inline-notice">{message}</p>}
     {communications.error && <p className="notice inline-notice">Communications could not refresh: {communications.error}</p>}
     {communications.loading && <p className="hint">Loading communication evidence…</p>}
