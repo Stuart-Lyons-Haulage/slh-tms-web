@@ -49,13 +49,46 @@ describe('Approved Orders Site Master coverage', () => {
     });
   });
 
+  it('suggests the unique canonical Stockton Site for the Morrisons fruit-feed wording', () => {
+    const sites: CoverageSite[] = [
+      { id: 'stockton', externalCode: 'SITE993', name: 'Morrisons Stockton', aliases: 'Morrisons STOCKTON 994', active: true },
+      { id: 'wakefield', externalCode: 'SITE990', name: 'Morrisons Wakefield', active: true },
+    ];
+
+    expect(resolveSiteCoverage('Morrisons FRUITSTOCKTON 993', sites, [])).toMatchObject({
+      state: 'unresolved',
+      suggestedSiteId: 'stockton',
+      suggestedSiteName: 'Morrisons Stockton',
+      suggestionConfidence: 'high',
+    });
+  });
+
+  it('suggests Wakefield and Bridgwater fruit-feed aliases when each locality is unique', () => {
+    const sites: CoverageSite[] = [
+      { id: 'wakefield', externalCode: 'SITE990', name: 'Morrisons Wakefield', active: true },
+      { id: 'bridgwater', externalCode: 'SITE718', name: 'Morrisons Bridgwater', active: true },
+    ];
+
+    expect(resolveSiteCoverage('Morrisons FRUITWAKEFIELD 990', sites, [])).toMatchObject({ suggestedSiteId: 'wakefield', suggestionConfidence: 'high' });
+    expect(resolveSiteCoverage('Morrisons FRUITBRIDGWATER 718', sites, [])).toMatchObject({ suggestedSiteId: 'bridgwater', suggestionConfidence: 'high' });
+  });
+
+  it('never suggests a generic supermarket brand as an automatic alias', () => {
+    const sites: CoverageSite[] = [
+      { id: 'one', externalCode: 'SITE1', name: 'Morrisons Stockton', active: true },
+      { id: 'two', externalCode: 'SITE2', name: 'Morrisons Wakefield', active: true },
+    ];
+
+    expect(resolveSiteCoverage('Morrisons', sites, [])).toMatchObject({ state: 'unresolved', suggestedSiteId: undefined });
+  });
+
   it('never chooses automatically when a variant matches multiple Sites', () => {
     const sites: CoverageSite[] = [
       { id: 'one', externalCode: 'SITE1', name: 'Morrisons - Sittingbourne', active: true },
       { id: 'two', externalCode: 'SITE2', name: 'Sittingbourne', aliases: 'Morrisons - Sittingbourne', active: true },
     ];
 
-    expect(resolveSiteCoverage('Morrisons - Sittingbourne 389', sites, [])).toMatchObject({ state: 'unresolved' });
+    expect(resolveSiteCoverage('Morrisons - Sittingbourne 389', sites, [])).toMatchObject({ state: 'unresolved', suggestedSiteId: undefined });
   });
 
   it('prefers one exact full Site name over a shorter derived variant', () => {

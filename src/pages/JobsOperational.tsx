@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { GeofenceStatusBadge, SiteCoverageWarningPanel, useSiteGeofenceCoverage } from "../components/GeofenceCoverageWarnings";
+import type { SiteCoverage } from "../components/siteGeofenceCoverageLogic";
 import { api, request, type TransportOrder } from "../lib/api";
 import { orderMaintenance, type OrderUpdatePayload } from "../lib/orderMaintenance";
 import { useAccessToken } from "../lib/auth";
@@ -36,6 +37,10 @@ function editable(order: TransportOrder): OrderUpdatePayload {
   };
 }
 
+function aliases(value?: string) {
+  return String(value || "").split(/[,;|\n\r]+/).map(item => item.trim()).filter(Boolean);
+}
+
 export function JobsOperational() {
   const token = useAccessToken();
   const [date, setDate] = useState(localDate());
@@ -44,6 +49,7 @@ export function JobsOperational() {
   const [form, setForm] = useState<OrderUpdatePayload>();
   const [message, setMessage] = useState<string>();
   const [saving, setSaving] = useState(false);
+  const [aliasBusy, setAliasBusy] = useState(false);
   const orders = useApi(useCallback(async () => api.orders(date, date, await token()), [date, token]));
 
   const rows = useMemo(() => (orders.data || []).filter((order) => {
@@ -78,6 +84,45 @@ export function JobsOperational() {
       setMessage(error instanceof Error ? error.message : "The job could not be amended.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function applySuggestedAliases(items: SiteCoverage[]) {
+    const applicable = items.filter(item => item.state === "unresolved" && item.suggestedSiteId);
+    if (!applicable.length || aliasBusy) return;
+    setAliasBusy(true);
+    setMessage(undefined);
+    try {
+      const access = await token();
+      const grouped = new Map<string, { existing: string[]; labels: string[]; siteName: string }>();
+      for (const item of applicable) {
+        const siteId = item.suggestedSiteId!;
+        const current = grouped.get(siteId) || {
+          existing: aliases(item.suggestedSiteAliases),
+          labels: [],
+          siteName: item.suggestedSiteName || item.suggestedSiteCode || "Site",
+        };
+        current.labels.push(item.sourceLabel);
+        grouped.set(siteId, current);
+      }
+
+      let added = 0;
+      for (const [siteId, group] of grouped) {
+        const combined = Array.from(new Set([...group.existing, ...group.labels].map(value => value.trim()).filter(Boolean)));
+        await request(`/api/v1/sites/${encodeURIComponent(siteId)}/aliases`, access, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ aliases: combined.join("; ") }),
+        });
+        added += group.labels.length;
+      }
+
+      await geofenceCoverage.refresh();
+      setMessage(`${added} Site alias${added === 1 ? "" : "es"} saved to Site Master. Matching orders now reuse the canonical Site/geofence instead of creating another daily warning.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The suggested Site alias could not be saved.");
+    } finally {
+      setAliasBusy(false);
     }
   }
 
@@ -120,8 +165,8 @@ export function JobsOperational() {
     <div className="title-row">
       <div><p className="eyebrow">Order control</p><h1>Manage imported jobs</h1><p className="intro">Amend imported work or remove it from planning without destroying the audit record.</p></div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => void Promise.all([orders.refresh(), geofenceCoverage.refresh()])} disabled={orders.loading || saving}>Refresh jobs</button>
-        <button onClick={() => void clearAllOpenJobs()} disabled={saving}>Clear all open jobs</button>
+        <button onClick={() => void Promise.all([orders.refresh(), geofenceCoverage.refresh()])} disabled={orders.loading || saving || aliasBusy}>Refresh jobs</button>
+        <button onClick={() => void clearAllOpenJobs()} disabled={saving || aliasBusy}>Clear all open jobs</button>
       </div>
     </div>
     <div className="planner-toolbar">
@@ -132,7 +177,13 @@ export function JobsOperational() {
     {message && <p className="notice inline-notice">{message}</p>}
     {orders.error && <p className="notice inline-notice">{orders.error}</p>}
     {geofenceCoverage.error && <p className="notice inline-notice" style={{ borderColor: "#b42318" }}>⚠ Site/geofence coverage could not be checked. Orders remain available, but location linkage is unconfirmed.</p>}
-    <SiteCoverageWarningPanel issues={geofenceCoverage.issues} title="ORDER SITE / GEOFENCE COVERAGE" />
+    <SiteCoverageWarningPanel
+      issues={geofenceCoverage.issues}
+      title="ORDER SITE / GEOFENCE COVERAGE"
+      aliasBusy={aliasBusy}
+      onApplySuggestedAlias={(issue) => void applySuggestedAliases([issue])}
+      onApplyAllSuggestedAliases={() => void applySuggestedAliases(geofenceCoverage.issues)}
+    />
     <div className="master-table-wrap" style={{ overflowX: "auto" }}>
       <table className="master-table" style={{ minWidth: 1250 }}>
         <thead><tr><th>Order</th><th>Customer</th><th>Collection</th><th>Depot</th><th>Destination</th><th>Delivery address</th><th>Quantity</th><th>Unit</th><th>Status</th><th>Actions</th></tr></thead>
@@ -144,7 +195,7 @@ export function JobsOperational() {
           <td>{order.stallNumber || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.stallNumber)} /></td>
           <td>{tagged(order.driverInstructions, "Delivery address") || "—"}</td>
           <td>{order.pallets ?? "—"}</td><td>{tagged(order.driverInstructions, "Unit type") || "Pallets"}</td><td>{order.status}</td>
-          <td><div style={{ display: "flex", gap: 8 }}><button onClick={() => begin(order)}>Edit</button><button onClick={() => void cancel(order)} disabled={saving}>Delete</button></div></td>
+          <td><div style={{ display: "flex", gap: 8 }}><button onClick={() => begin(order)}>Edit</button><button onClick={() => void cancel(order)} disabled={saving || aliasBusy}>Delete</button></div></td>
         </tr>)}</tbody>
       </table>
     </div>
