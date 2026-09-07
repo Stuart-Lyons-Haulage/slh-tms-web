@@ -1,4 +1,4 @@
-export type PlanningStop = { id: string; sequence: number; name: string; latitude?: number; longitude?: number };
+export type PlanningStop = { id: string; sequence: number; name: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string };
 export type PlanningLoad = { reference?: string; rawReference?: string; southbound?: boolean; stops: PlanningStop[] };
 function orderedStops(load?: PlanningLoad) { return [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence); }
 function compactRun(load?: PlanningLoad) { if (!load) return "—"; const match = `${load.reference || ""} ${load.rawReference || ""}`.match(/\b(?:run\s*)?(\d{1,3})\b/i); return `${load.southbound ? "SB " : ""}${match?.[1] || load.reference || "—"}`; }

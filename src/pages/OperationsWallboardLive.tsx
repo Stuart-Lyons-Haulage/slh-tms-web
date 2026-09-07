@@ -5,6 +5,7 @@ import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
 import { completedJobCount, fallbackLiveRun, finalArrivalUtc, finalEtaFor, geofenceProgress, isWallboardActionRequired, mergeRouteProgress, shouldDisplayWallboardRow, sortWallboardRowsByCollection, statusFor, type LiveRunSnapshot, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
+import { mergeWallboardTiming, type RunTimingResponse } from "./operationsWallboardTiming";
 import "../operations-wallboard.css";
 
 type RunProgressResponse = {
@@ -200,6 +201,8 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
   const [liveData, setLiveData] = useState<Pick<WallboardData, "etas" | "progress" | "warning" | "geofenceAvailable" | "geofenceCount" | "geofenceConfiguredRuns" | "geofenceLinkedRuns" | "geofenceLinkedStops" | "geofenceTotalStops" | "geofenceHitRuns" | "geofenceHitStops" | "geofenceVisitCount" | "latestTrackingUtc" | "calculatedAtUtc">>();
   const tableRef = useRef<HTMLDivElement | null>(null);
   const liveRefreshInFlight = useRef<Promise<void> | null>(null);
+  const lastTiming = useRef(new Map<string, { loadId: string; loadReference?: string; completed: boolean; finalEtaUtc?: string; finalEtaSource?: string; finalDestinationStopId?: string; finalDestinationName?: string }>());
+  const acceptedFinalEtas = useRef(new Map<string, string>());
 
   const { data, error, loading, refresh } = useApi(useCallback(async () => {
     const access = tvAccessKey ? undefined : await token();
@@ -228,13 +231,33 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
     const operation = (async () => {
       const access = tvAccessKey ? undefined : await token();
       const tvInit = tvAccessKey ? { headers: { "X-TMS-TV-Key": tvAccessKey, "X-TV-Display-Key": tvAccessKey } } : undefined;
-      const latest: { etas?: DeliveryEtas; progress?: RunProgressResponse; route?: RouteProgressResponse; liveRuns?: LiveRunsResponse } = {};
+      const latest: { etas?: DeliveryEtas; progress?: RunProgressResponse; route?: RouteProgressResponse; liveRuns?: LiveRunsResponse; timing?: RunTimingResponse } = {};
       const feedState: Record<"eta" | "progress" | "route" | "snapshot", "pending" | "ready" | "failed"> = { eta: "pending", progress: "pending", route: "pending", snapshot: "pending" };
       const commit = () => setLiveData(previous => {
         const fallbacks = (latest.liveRuns?.runs || []).map(run => fallbackLiveRun(run, Date.now()));
         const fallbackEtas = latest.etas ? [] : fallbacks.map(item => item.eta).filter((item): item is DeliveryEta => Boolean(item));
         const fallbackProgress = latest.progress ? [] : fallbacks.map(item => item.progress);
-        const stableEtas = mergeEtaSnapshots(previous?.etas ?? [], latest.etas?.records ?? fallbackEtas);
+        const baseEtas = latest.etas?.records ?? fallbackEtas;
+        const timingEtas = latest.timing
+          ? (latest.timing.records || [])
+            .filter(record => Boolean(record.finalEtaUtc))
+            .map(record => ({
+              loadId: record.loadId,
+              loadReference: record.loadReference || "RUN TBC",
+              loadStatus: record.completed ? "Completed" : "InProgress",
+              stopId: record.finalDestinationStopId || `timing-final-${record.loadId}`,
+              sequence: Number.MAX_SAFE_INTEGER,
+              stopName: record.finalDestinationName || "Final delivery",
+              etaUtc: record.finalEtaUtc,
+              source: record.finalEtaSource === "Geofence" ? "Live" : "Estimated",
+              risk: "Pending",
+              isFinalDestination: true,
+            } as DeliveryEta & { isFinalDestination: boolean }))
+          : [];
+        const enrichedEtas = latest.timing
+          ? mergeWallboardTiming([...baseEtas, ...timingEtas], latest.timing.records || [], lastTiming.current, acceptedFinalEtas.current)
+          : baseEtas;
+        const stableEtas = mergeEtaSnapshots(previous?.etas ?? [], enrichedEtas);
         const stableProgress = mergeProgressSnapshots(previous?.progress ?? [], latest.progress?.records ?? fallbackProgress);
         const routeProgress = latest.route ? mergeRouteProgress(stableProgress, latest.route.runs) : stableProgress;
         const fallbackTracking = (latest.liveRuns?.runs || [])
@@ -276,10 +299,13 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       const routeRequest = request<RouteProgressResponse>(`/api/v1/tv-display/route-progress?date=${encodeURIComponent(today)}`, access, tvInit, 30000)
         .then(value => { latest.route = value; feedState.route = "ready"; commit(); })
         .catch(() => { feedState.route = "failed"; commit(); });
+      const timingRequest = request<RunTimingResponse>(`/api/v1/run-timing?date=${encodeURIComponent(today)}`, access, tvInit, 30000)
+        .then(value => { latest.timing = value; commit(); })
+        .catch(() => { /* the bounded live snapshot remains a valid fallback */ });
       const snapshotRequest = request<LiveRunsResponse>(`/api/v1/tv-display/live-runs?date=${encodeURIComponent(today)}`, access, tvInit, 15000)
         .then(value => { latest.liveRuns = value; feedState.snapshot = "ready"; commit(); })
         .catch(() => { feedState.snapshot = "failed"; commit(); });
-      await Promise.allSettled([etaRequest, progressRequest, routeRequest, snapshotRequest]);
+      await Promise.allSettled([etaRequest, progressRequest, routeRequest, timingRequest, snapshotRequest]);
     })();
     liveRefreshInFlight.current = operation;
     try {
@@ -364,7 +390,16 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
 
   useEffect(() => {
     if (!tvMode || !presentRowId || loading) return;
-    window.setTimeout(() => tableRef.current?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 350);
+    const timer = window.setTimeout(() => {
+      const table = tableRef.current;
+      const row = table?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`);
+      if (!table || !row) return;
+      const tableRect = table.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      if (rowRect.top >= tableRect.top && rowRect.bottom <= tableRect.bottom) return;
+      row.scrollIntoView({ block: "nearest", behavior: "auto" });
+    }, 350);
+    return () => window.clearTimeout(timer);
   }, [lastRefresh, loading, presentRowId, tvMode]);
 
   async function fullscreen() { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); }
@@ -380,7 +415,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       <article className="green"><span>Tracker live</span><strong>{formatAge(boardData?.latestTrackingUtc, clock)}</strong><small>{geofenceLinkedRuns} geofence-linked runs</small></article>
       <article className="amber"><span>On site</span><strong>{onSite}</strong><small>current site evidence retained</small></article>
       <article className="green"><span>Complete</span><strong>{completeJobs}</strong><small>departed geofenced stops</small></article>
-      <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} proved late · {risk} needs attention</small></article>
+      <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} red risk/late · {risk} amber tight</small></article>
       <article className="green"><span>Available</span><strong>{available}</strong><small>final stop completed</small></article>
     </div>
     <div className="ops-wallboard-coverage" aria-label="Geofence coverage">
@@ -434,6 +469,6 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
         </div>
       </aside>
     </div>
-    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final ETA targets final customer destination · next stop drives risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
+    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final customer ETA/deadline drives run risk · intermediate stops are progress</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
   </section>;
 }

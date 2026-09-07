@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
+import { normaliseCoverageKey, resolveSiteCoverage, type CoverageSite, type CoverageStatus, type SiteCoverage } from "./siteGeofenceCoverageLogic";
 
 type RunLinkageIssue = {
   loadId: string;
@@ -33,106 +34,6 @@ type RunLinkageResponse = {
   records: RunLinkageIssue[];
 };
 
-type Site = {
-  id: string;
-  externalCode?: string;
-  name?: string;
-  driverTextName?: string;
-  aliases?: string;
-  active?: boolean;
-};
-
-type SiteGeofenceStatus = {
-  siteId: string;
-  siteCode: string;
-  siteName: string;
-  linkedGeofences: string[];
-  geofenceLinked: boolean;
-  needsReview: boolean;
-};
-
-export type SiteCoverage = {
-  sourceLabel: string;
-  state: "linked" | "unlinked" | "unresolved";
-  siteCode?: string;
-  siteName?: string;
-  geofenceName?: string;
-  action?: string;
-};
-
-function normalise(value?: string) {
-  return String(value || "").replace(/[^a-z0-9]/gi, "").toUpperCase();
-}
-
-function splitAliases(value?: string) {
-  return String(value || "").split(/[,;|\n\r]+/).map(item => item.trim()).filter(Boolean);
-}
-
-function variants(value: string) {
-  const values = new Set<string>();
-  const add = (candidate?: string) => { if (candidate?.trim()) values.add(candidate.trim()); };
-  add(value);
-  add(value.replace(/^\s*(collect|deliver)\s*[·:-]\s*/i, ""));
-  for (const candidate of [...values]) {
-    add(candidate.replace(/\(\s*[+-]?\d+(?:\.\d+)?\s*°?\s*C\s*\)/gi, "").trim());
-    add(candidate.replace(/\s+(CHILL|FRV)$/i, "").trim());
-    const separator = candidate.indexOf("-");
-    if (separator > 0) {
-      const prefix = candidate.slice(0, separator).trim().toUpperCase();
-      if (["BAR", "BARFOOTS", "LAN", "LANGMEADS", "SB", "GHS", "SLH", "NWF", "WAITROSE", "MORRISONS", "ALDI"].includes(prefix)) {
-        add(candidate.slice(separator + 1));
-      }
-    }
-    const open = candidate.lastIndexOf("(");
-    if (open > 0 && candidate.endsWith(")")) {
-      const before = candidate.slice(0, open).trim();
-      const inside = candidate.slice(open + 1, -1).trim();
-      add(before);
-      if (inside && !inside.includes("°")) add(inside);
-    }
-  }
-  return [...values].map(normalise).filter(Boolean);
-}
-
-function siteCandidates(site: Site) {
-  return [site.externalCode, site.name, site.driverTextName, ...splitAliases(site.aliases)]
-    .map(normalise)
-    .filter(Boolean);
-}
-
-function resolveLabel(label: string, sites: Site[], statuses: SiteGeofenceStatus[]): SiteCoverage {
-  const keys = variants(label);
-  const directMatches = sites.filter(site => site.active !== false && siteCandidates(site).some(candidate => keys.includes(candidate)));
-  const unique = Array.from(new Map(directMatches.map(site => [site.id, site])).values());
-  if (unique.length !== 1) {
-    return {
-      sourceLabel: label,
-      state: "unresolved",
-      action: unique.length > 1
-        ? "More than one Site matches this wording. Remove duplicate/ambiguous aliases in Site CRM."
-        : "Add this wording as an alias to the correct Site CRM record.",
-    };
-  }
-  const site = unique[0];
-  const status = statuses.find(item => item.siteId === site.id);
-  if (!status?.geofenceLinked) {
-    return {
-      sourceLabel: label,
-      state: "unlinked",
-      siteCode: status?.siteCode || site.externalCode,
-      siteName: status?.siteName || site.driverTextName || site.name,
-      action: "Site is recognised but has no active geofence. Link the correct geofence in Site CRM / Geofence Integrity.",
-    };
-  }
-  return {
-    sourceLabel: label,
-    state: "linked",
-    siteCode: status.siteCode || site.externalCode,
-    siteName: status.siteName || site.driverTextName || site.name,
-    geofenceName: status.linkedGeofences.join(", "),
-  };
-}
-
 export function useSiteGeofenceCoverage(labels: string[]) {
   const token = useAccessToken();
   const cleanLabels = useMemo(() => Array.from(new Set(labels.map(value => String(value || "").trim()).filter(Boolean))), [labels]);
@@ -141,16 +42,16 @@ export function useSiteGeofenceCoverage(labels: string[]) {
     if (!cleanLabels.length) return [] as SiteCoverage[];
     const access = await token();
     const [sites, statuses] = await Promise.all([
-      request<Site[]>("/api/v1/sites", access),
-      request<SiteGeofenceStatus[]>("/api/v1/site-geofence-sync/sites", access, { cache: "no-store" }),
+      request<CoverageSite[]>("/api/v1/sites", access),
+      request<CoverageStatus[]>("/api/v1/site-geofence-sync/sites", access, { cache: "no-store" }),
     ]);
-    return cleanLabels.map(label => resolveLabel(label, sites, statuses));
+    return cleanLabels.map(label => resolveSiteCoverage(label, sites, statuses));
   // key intentionally represents the complete label set so edits/additions rerun the check.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, token]));
 
-  const byLabel = useMemo(() => new Map((lookup.data || []).map(item => [normalise(item.sourceLabel), item])), [lookup.data]);
-  const resultFor = useCallback((label?: string) => label ? byLabel.get(normalise(label)) : undefined, [byLabel]);
+  const byLabel = useMemo(() => new Map((lookup.data || []).map(item => [normaliseCoverageKey(item.sourceLabel), item])), [lookup.data]);
+  const resultFor = useCallback((label?: string) => label ? byLabel.get(normaliseCoverageKey(label)) : undefined, [byLabel]);
   const issues = useMemo(() => (lookup.data || []).filter(item => item.state !== "linked"), [lookup.data]);
   return { ...lookup, resultFor, issues };
 }
