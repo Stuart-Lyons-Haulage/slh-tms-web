@@ -207,10 +207,10 @@ test('planner → dispatch → geofence arrival/departure → completion stays c
   await runInput.fill('RUN-');
   await page.getByRole('button', { name: new RegExp(runReference(state.planningDate), 'i') }).click();
 
-  const vehicleInput = page.getByPlaceholder('Vehicle…');
+  const vehicleInput = page.getByRole('combobox', { name: 'Vehicle…' });
   await vehicleInput.fill('AB12');
   await page.getByRole('button', { name: /AB12 CDE/ }).click();
-  const trailerInput = page.getByPlaceholder('Trailer…');
+  const trailerInput = page.getByRole('combobox', { name: 'Trailer…' });
   await trailerInput.fill('TRL');
   await page.getByRole('button', { name: /TRL-101/ }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
