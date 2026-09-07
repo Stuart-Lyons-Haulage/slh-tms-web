@@ -52,6 +52,7 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
   const [vehicleId, setVehicleId] = useState(load.vehicleId || "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [expanded, setExpanded] = useState(false);
 
   const refresh = useCallback(async () => {
     try { setData(await request<Intelligence>(`/api/v1/planning-intelligence/loads/${load.id}`, await token(), undefined, 40000)); }
@@ -129,7 +130,11 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
     finally { setBusy(false); }
   }
 
-  return <section className="run-intelligence-panel" style={{ marginTop: 12, padding: 12, border: "1px solid #d7e2e7", borderRadius: 10, background: "#fff" }}>
+  return <section className="run-intelligence-panel" style={{ marginTop: 12, padding: 10, border: "1px solid #d7e2e7", borderRadius: 10, background: "#fff" }}>
+    <button type="button" onClick={() => setExpanded(value => !value)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", border: 0, background: "transparent", padding: 0, textAlign: "left" }}>
+      <span><strong>Planning intelligence</strong><br /><small>{data ? `${drivers.length} driver and ${vehicles.length} vehicle suggestions available` : "Loading suggestions…"}</small></span><strong>{expanded ? "Hide ▴" : "Show suggestions ▾"}</strong>
+    </button>
+    {expanded && <>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
       <div><p className="eyebrow">Planning intelligence</p><h3 style={{ margin: 0 }}>{load.reference}</h3><small>{data?.firstStop?.name ? `First stop: ${data.firstStop.name}` : "First stop location not yet mapped"}</small></div>
       <button type="button" onClick={() => void refresh()} disabled={busy}>Refresh suggestions</button>
@@ -148,5 +153,6 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
     </div>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12, alignItems: "center" }}><button type="button" className="primary" disabled={busy || !driverId || !vehicleId} onClick={() => void allocate()}>Save allocation</button><span style={{ marginLeft: 8 }}><strong>Night out required?</strong></span><button type="button" disabled={busy} className={data?.nightOutRequired === true ? "primary" : ""} onClick={() => void setNightOut(true)}>Yes</button><button type="button" disabled={busy} className={data?.nightOutRequired === false ? "primary" : ""} onClick={() => void setNightOut(false)}>No</button>{data?.nightOutRequired == null && <small>Planner confirmation required</small>}</div>
     {message && <p className="notice inline-notice" style={{ marginTop: 8 }}>{message}</p>}
+    </>}
   </section>;
 }

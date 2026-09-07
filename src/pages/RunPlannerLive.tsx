@@ -426,8 +426,12 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
         updateRun(active.key, (run) => ({ ...run, loadId }));
       }
 
-      await allocate(order.id, loadId, order.outstandingPallets, access);
-      await syncStops(loadId, nextLines, access);
+      // These writes affect separate server resources. Run them together so adding an
+      // order does not make the planner wait for two full round trips in sequence.
+      await Promise.all([
+        allocate(order.id, loadId, order.outstandingPallets, access),
+        syncStops(loadId, nextLines, access),
+      ]);
       signalPlanningChange();
       setMessage(`${order.outstandingPallets} pallet${order.outstandingPallets === 1 ? "" : "s"} added and auto-saved. Any remaining balance stays in Orders to Plan.`);
       void refreshControl().catch(() => undefined);
