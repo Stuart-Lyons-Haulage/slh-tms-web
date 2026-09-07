@@ -43,6 +43,8 @@ type RunLine = {
   note: string;
 };
 type RunDraft = { key: string; loadId?: string; period: Period; nightOut: boolean; routeJob: string; operationalAmendment: string; lines: RunLine[] };
+type OrderClusterKey = "markets" | "south-to-north" | "southbound" | "northbound" | "south-local" | "midlands" | "east" | "west-wales" | "other";
+type OrderCluster = { key: OrderClusterKey; label: string; note: string; orders: PlanningOrder[]; pallets: number };
 
 const blankLine = (): RunLine => ({ key: crypto.randomUUID(), collectionSite: "", deliverySite: "", pallets: "", note: "" });
 const blankRun = (key: string): RunDraft => ({
@@ -96,6 +98,54 @@ const stopFromSite = (sites: Site[], value: string) => {
 };
 const runRef = (date: string, number: number) => `RUN-${date.replaceAll("-", "")}-${String(number).padStart(2, "0")}`;
 
+const canonicalRegion = (value?: string) => normalise(value);
+const SOUTH_REGIONS = new Set(["LONDON", "SOUTHEAST", "SOUTHWEST"]);
+const NORTH_REGIONS = new Set(["NORTH"]);
+
+function regionForSite(sites: Site[], value: string) {
+  return canonicalRegion(siteFor(sites, value)?.operationalRegion);
+}
+
+function matchesMarket(value: string, marketNames: string[]) {
+  if (/\bmarket\b/i.test(value)) return true;
+  const key = normalise(value);
+  return Boolean(key) && marketNames.some((market) => {
+    const marketKey = normalise(market);
+    return marketKey.length >= 3 && (key === marketKey || key.includes(marketKey) || marketKey.includes(key));
+  });
+}
+
+function clusterForOrder(order: PlanningOrder, sites: Site[], marketNames: string[]): OrderClusterKey {
+  if (matchesMarket(order.collection, marketNames) || matchesMarket(order.destination, marketNames)) return "markets";
+
+  const collectionRegion = regionForSite(sites, order.collection);
+  const destinationRegion = regionForSite(sites, order.destination);
+  const collectionSouth = SOUTH_REGIONS.has(collectionRegion);
+  const destinationSouth = SOUTH_REGIONS.has(destinationRegion);
+  const destinationNorth = NORTH_REGIONS.has(destinationRegion);
+
+  if (collectionSouth && destinationNorth) return "south-to-north";
+  if (!collectionSouth && destinationSouth) return "southbound";
+  if (destinationNorth) return "northbound";
+  if (collectionSouth && destinationSouth) return "south-local";
+  if (destinationRegion === "MIDLANDS") return "midlands";
+  if (destinationRegion === "EAST") return "east";
+  if (destinationRegion === "WESTWALES") return "west-wales";
+  return "other";
+}
+
+const CLUSTER_DEFINITIONS: Array<{ key: OrderClusterKey; label: string; note: string }> = [
+  { key: "south-to-north", label: "South → North", note: "Northbound work originating in London, South East or South West" },
+  { key: "northbound", label: "Northbound", note: "Other work whose destination is in the North" },
+  { key: "southbound", label: "Southbound", note: "Work heading into London, South East or South West" },
+  { key: "markets", label: "Markets", note: "Market work kept together regardless of direction" },
+  { key: "south-local", label: "South / Local", note: "South-origin work remaining within the southern regions" },
+  { key: "midlands", label: "Midlands", note: "Work whose destination is in the Midlands" },
+  { key: "east", label: "East", note: "Work whose destination is in the East" },
+  { key: "west-wales", label: "West / Wales", note: "Work whose destination is in West / Wales" },
+  { key: "other", label: "Other / Region not mapped", note: "Orders needing Site Master region or market mapping" },
+];
+
 function validPallets(value: string) {
   const pallets = Number(value);
   return Number.isInteger(pallets) && pallets >= 0 ? pallets : undefined;
@@ -108,6 +158,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
   const [control, setControl] = useState<PlanningControlData>();
   const [loads, setLoads] = useState<Load[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
+  const [marketNames, setMarketNames] = useState<string[]>([]);
   const [runs, setRuns] = useState<RunDraft[]>(() => [blankRun(`shell-${localDate()}-1`)]);
   const [activeKey, setActiveKey] = useState(runs[0].key);
   const [busyKey, setBusyKey] = useState<string>();
@@ -155,17 +206,20 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
   const refreshAll = useCallback(async () => {
     const access = await token();
     const nextControl = await request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, access);
-    const [loadsResult, sitesResult] = await Promise.allSettled([
+    const [loadsResult, sitesResult, marketsResult] = await Promise.allSettled([
       listRuns(date, access),
       api.sites(access),
+      api.marketContacts(access),
     ]);
     const safeLoads = loadsResult.status === "fulfilled" && Array.isArray(loadsResult.value) ? loadsResult.value : [];
     const safeSites = sitesResult.status === "fulfilled" && Array.isArray(sitesResult.value) ? sitesResult.value : [];
+    const safeMarkets = marketsResult.status === "fulfilled" && Array.isArray(marketsResult.value) ? marketsResult.value : [];
     setControl(nextControl);
     setLoads(safeLoads);
     setSites(safeSites);
-    if (loadsResult.status === "rejected" || sitesResult.status === "rejected") {
-      setMessage("Planner loaded the approved pallet balance. Run or site lookup is temporarily unavailable, so new run stop details may be limited until refresh.");
+    setMarketNames([...new Set(safeMarkets.map((item) => String(item.market || "").trim()).filter(Boolean))]);
+    if (loadsResult.status === "rejected" || sitesResult.status === "rejected" || marketsResult.status === "rejected") {
+      setMessage("Planner loaded the approved pallet balance. Some run, site or market master data is temporarily unavailable, so grouping or new run stop details may be limited until refresh.");
     }
     hydrate(nextControl, safeLoads);
   }, [date, hydrate, token]);
@@ -242,6 +296,19 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
     .sort((left, right) => left.collection.localeCompare(right.collection)
       || left.destination.localeCompare(right.destination)
       || left.reference.localeCompare(right.reference)), [effectiveOrders, query]);
+
+  const orderClusters = useMemo<OrderCluster[]>(() => CLUSTER_DEFINITIONS.map((definition) => {
+    const clusterOrders = visible
+      .filter((order) => clusterForOrder(order, sites, marketNames) === definition.key)
+      .sort((left, right) => left.destination.localeCompare(right.destination)
+        || left.collection.localeCompare(right.collection)
+        || left.reference.localeCompare(right.reference));
+    return {
+      ...definition,
+      orders: clusterOrders,
+      pallets: clusterOrders.reduce((total, order) => total + order.outstandingPallets, 0),
+    };
+  }).filter((cluster) => cluster.orders.length > 0), [marketNames, sites, visible]);
 
   const active = runs.find((run) => run.key === activeKey) || runs[0];
   const updateRun = (key: string, updater: (run: RunDraft) => RunDraft) => setRuns((current) =>
@@ -570,13 +637,19 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
           <strong>{visible.length}</strong>
         </div>
         <input className="simple-order-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order, site or customer…" />
-        <p className="simple-order-help">Click an order to add its current pallet balance to the selected run. PO and customer references remain attached to the order.</p>
+        <p className="simple-order-help">Orders are clustered by planning direction. Each heading shows the remaining order and pallet count; click an order to add its current balance to the selected run.</p>
         <div className="simple-order-list">
-          {visible.map((order) => <button key={order.id} className="simple-order-card" type="button" disabled={Boolean(busyKey)} onClick={() => void addOrder(order)}>
-            <span><small>Collection</small><strong>{order.collection}</strong></span>
-            <span className="simple-order-pallets"><strong>{order.outstandingPallets}</strong><small>of {order.orderedPallets}</small></span>
-            <span><small>Delivery</small><strong>{order.destination}</strong></span>
-          </button>)}
+          {orderClusters.map((cluster) => <section key={cluster.key} style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-end", padding: "8px 2px 4px", borderBottom: "1px solid var(--border, #d0d7de)" }}>
+              <div><strong style={{ display: "block" }}>{cluster.label}</strong><small title={cluster.note}>{cluster.orders.length} order{cluster.orders.length === 1 ? "" : "s"}</small></div>
+              <div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: "1.15rem" }}>{cluster.pallets}</strong><small>pallets remaining</small></div>
+            </div>
+            {cluster.orders.map((order) => <button key={order.id} className="simple-order-card" type="button" disabled={Boolean(busyKey)} onClick={() => void addOrder(order)}>
+              <span><small>Collection</small><strong>{order.collection}</strong></span>
+              <span className="simple-order-pallets"><strong>{order.outstandingPallets}</strong><small>of {order.orderedPallets}</small></span>
+              <span><small>Delivery</small><strong>{order.destination}</strong></span>
+            </button>)}
+          </section>)}
           {!visible.length && <p>All current orders are fully planned.</p>}
         </div>
       </aside>
