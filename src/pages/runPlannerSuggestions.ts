@@ -35,6 +35,7 @@ export type RunHistoryRecord = {
 };
 
 export type RunHistoryAffinity = Map<string, number>;
+export type RemainingCapacity = number | { standard: number; euro: number };
 
 export type RunJobSuggestion<TOrder extends RunSuggestionOrder = RunSuggestionOrder> = {
   order: TOrder;
@@ -59,7 +60,6 @@ function canonicalSiteKey(sites: RunSuggestionSite[], value: string) {
   const site = siteFor(sites, value);
   if (site) return normalise(site.name || site.driverTextName || site.externalCode);
   const key = normalise(value);
-  // Legacy source labels used several Morrisons Stockton spellings before Site Master aliases were complete.
   if (/MORRISONS(?:FRUIT)?STOCKTON\d*/.test(key)) return "MORRISONSSTOCKTON";
   return key;
 }
@@ -94,6 +94,14 @@ function routesFromHistoryRun(run: RunHistoryRecord, sites: RunSuggestionSite[])
   return [...new Set(routes.filter((route) => !route.startsWith("->") && !route.endsWith("->")))];
 }
 
+function capacityForOrder(order: RunSuggestionOrder, remaining: RemainingCapacity) {
+  if (typeof remaining === "number") return Math.max(remaining, 0);
+  const type = String(order.palletType || "").toLowerCase();
+  if (type.includes("euro")) return Math.max(remaining.euro, 0);
+  if (type.includes("standard") || type.includes("std")) return Math.max(remaining.standard, 0);
+  return Math.min(Math.max(remaining.standard, 0), Math.max(remaining.euro, 0));
+}
+
 export function buildHistoricalRouteAffinity(
   runs: RunHistoryRecord[],
   sites: RunSuggestionSite[],
@@ -125,7 +133,7 @@ export function suggestJobsForRun<TOrder extends RunSuggestionOrder>(
   lines: RunSuggestionLine[],
   candidates: TOrder[],
   sites: RunSuggestionSite[],
-  remainingCapacity: number,
+  remainingCapacity: RemainingCapacity,
   limit = 6,
   historicalAffinity: RunHistoryAffinity = new Map(),
 ): RunJobSuggestion<TOrder>[] {
@@ -202,10 +210,11 @@ export function suggestJobsForRun<TOrder extends RunSuggestionOrder>(
         reasons.push(`Planned with this flow ${historicalCount} time${historicalCount === 1 ? "" : "s"} recently`);
       }
 
-      if (score > 0 && remainingCapacity > 0 && order.outstandingPallets <= remainingCapacity) {
+      const availableForType = capacityForOrder(order, remainingCapacity);
+      if (score > 0 && availableForType > 0 && order.outstandingPallets <= availableForType) {
         score += 3;
         reasons.push("Fits remaining capacity");
-      } else if (score > 0 && remainingCapacity >= 0 && order.outstandingPallets > remainingCapacity) {
+      } else if (score > 0 && order.outstandingPallets > availableForType) {
         score -= 8;
         reasons.push("Exceeds current capacity");
       }
