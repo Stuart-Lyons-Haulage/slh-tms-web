@@ -55,6 +55,6 @@ describe('Approved Orders Site Master coverage', () => {
       { id: 'two', externalCode: 'SITE2', name: 'Sittingbourne', active: true },
     ];
 
-    expect(resolveSiteCoverage('Morrisons Sittingbourne 389', sites, [])).toMatchObject({ state: 'unresolved' });
+    expect(resolveSiteCoverage('Morrisons - Sittingbourne 389', sites, [])).toMatchObject({ state: 'unresolved' });
   });
 });
