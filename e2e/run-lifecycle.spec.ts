@@ -136,7 +136,7 @@ async function installApi(page: Page, state: State) {
       vehicles: [{ id: vehicleId, registration: 'AB12 CDE', fleetNumber: 'E2E-1', active: true }],
       trailers: [{ id: trailerId, trailerNumber: 'TRL-101', type: 'Curtainsider', active: true }],
     });
-    if (/^\/api\/v1\/driver-dispatch\/.+\/allocation$/.test(path) && method === 'PUT') {
+    if (/^\/api\/v1\/runs\/.+\/allocation$/.test(path) && method === 'PUT') {
       const body = request.postDataJSON() as { vehicleId?: string | null; trailerId?: string | null };
       state.driverAssigned = true;
       if (body.vehicleId) state.vehicleAssigned = true;
