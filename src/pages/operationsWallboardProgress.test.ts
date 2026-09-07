@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeliveryEta } from "../lib/api";
-import { finalEtaFor, geofenceProgress, isScheduleVisible, isWallboardActionRequired, statusFor, type RunProgressRecord } from "./operationsWallboardProgress";
+import { finalEtaFor, geofenceProgress, isScheduleVisible, isWallboardActionRequired, shouldDisplayWallboardRow, sortWallboardRowsByCollection, statusFor, type RunProgressRecord } from "./operationsWallboardProgress";
 import { stableFinalEta } from "./stableFinalEta";
 
 function eta(overrides: Partial<DeliveryEta>): DeliveryEta {
@@ -43,6 +43,18 @@ function progress(): RunProgressRecord {
 }
 
 describe("wallboard final delivery risk", () => {
+  it("orders by earliest collection, keeps final arrivals on TMS, and removes them from TV", () => {
+    const rows = sortWallboardRowsByCollection([
+      { id: "late-risk", scheduledUtc: "2026-08-28T17:00:00Z", status: "risk" as const },
+      { id: "early-complete", scheduledUtc: "2026-08-28T05:00:00Z", status: "complete" as const, finalDestinationArrived: true },
+      { id: "middle", scheduledUtc: "2026-08-28T06:00:00Z", status: "route" as const },
+    ]);
+
+    expect(rows.map(row => row.id)).toEqual(["early-complete", "middle", "late-risk"]);
+    expect(shouldDisplayWallboardRow(rows[0], false, Date.parse("2026-08-28T18:00:00Z"))).toBe(true);
+    expect(shouldDisplayWallboardRow(rows[0], true, Date.parse("2026-08-28T18:00:00Z"))).toBe(false);
+  });
+
   it("queues route risk for action and reveals scheduled runs three hours before start", () => {
     expect(isWallboardActionRequired("risk")).toBe(true);
     expect(isWallboardActionRequired("route")).toBe(false);
@@ -61,6 +73,12 @@ describe("wallboard final delivery risk", () => {
       { state: "onsite", left: 66.66666666666666 },
       { state: "pending", left: 100 },
     ]);
+  });
+
+  it("fills sparse geofence evidence at the reported stop sequence", () => {
+    expect(geofenceProgress([
+      { sequence: 3, state: "Departed" },
+    ], 4, 0).map(marker => marker.state)).toEqual(["pending", "pending", "done", "pending"]);
   });
 
   it("rejects an overnight timing replacement for a same-day delivery window", () => {
