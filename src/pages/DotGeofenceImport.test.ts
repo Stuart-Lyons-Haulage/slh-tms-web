@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterImportSites, importRowsReady, type DotImportDecision, type DotImportRow } from "./DotGeofenceImport";
+import { filterImportSites, importRowsReady, type DotImportDecision, type DotImportRow } from "./DotGeofenceImportLogic";
 
 describe("DOT geofence import review", () => {
   it("finds active Sites by code or a differently worded name", () => {
