@@ -42,6 +42,26 @@ export type RunProgressRecord = {
   speedKph?: number;
   tacho?: RunTachoEvidence | null;
 };
+export type LiveRunSnapshot = {
+  id: string;
+  reference: string;
+  status: string;
+  nextStop?: string;
+  finalStop?: string;
+  etaTarget?: string;
+  finalPlannedUtc?: string;
+  etaUtc?: string;
+  etaSource?: string;
+  tracking?: string;
+  trackingUpdatedAtUtc?: string;
+  speedKph?: number;
+  state?: string;
+  stateDetail?: string;
+  siteArrivalUtc?: string;
+  siteDepartureUtc?: string;
+  liveDwellMinutes?: number;
+  liveDwellSeconds?: number;
+};
 export type RunTachoEvidence = {
   status: "Matched" | "CardConfirmed" | "Mismatch" | "NoTachoDuty" | "NoPlannedDriver" | "NoPlannedVehicle" | "Unavailable" | string;
   driverName?: string;
@@ -86,8 +106,9 @@ export type GeofenceProgressMarker = { state: "done" | "onsite" | "pending"; lef
 export function geofenceProgress(stops: GeofenceProgressStop[] | undefined, totalStops: number, completedStops: number): GeofenceProgressMarker[] {
   const ordered = [...(stops || [])].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
   const count = Math.max(ordered.length, totalStops || 0, 1);
+  const stopsBySequence = new Map(ordered.filter(stop => Number.isFinite(stop.sequence)).map(stop => [stop.sequence as number, stop]));
   return Array.from({ length: count }, (_, index) => {
-    const state = String(ordered[index]?.state || "").toLowerCase();
+    const state = String(stopsBySequence.get(index + 1)?.state || "").toLowerCase();
     const exited = state === "departed" || state === "completed" || state === "exited" || (!state && index < completedStops);
     const onsite = !exited && state === "onsite";
     return { state: exited ? "done" : onsite ? "onsite" : "pending", left: ((index + 1) / count) * 100 };
@@ -117,13 +138,99 @@ export function isScheduleVisible(scheduledUtc: string | undefined, status: Wall
   return scheduledMs <= nowMs + revealAheadMinutes * 60000;
 }
 
+export type WallboardSortableRow = {
+  id: string;
+  scheduledUtc?: string;
+  status: WallboardStatus;
+  finalDestinationArrived?: boolean;
+};
+
+/** Keep both boards in collection-time order; severity belongs in the action rail. */
+export function sortWallboardRowsByCollection<T extends WallboardSortableRow>(rows: T[]) {
+  return [...rows].sort((a, b) => {
+    const aTime = timeMs(a.scheduledUtc);
+    const bTime = timeMs(b.scheduledUtc);
+    const aSortable = Number.isFinite(aTime) ? aTime : Number.MAX_SAFE_INTEGER;
+    const bSortable = Number.isFinite(bTime) ? bTime : Number.MAX_SAFE_INTEGER;
+    return aSortable - bSortable || a.id.localeCompare(b.id);
+  });
+}
+
+/** TMS retains final arrivals; the TV board removes them once they reach the final stop. */
+export function shouldDisplayWallboardRow(row: WallboardSortableRow, tvMode: boolean, nowMs = Date.now()) {
+  if (tvMode && (row.status === "complete" || row.finalDestinationArrived)) return false;
+  return isScheduleVisible(row.scheduledUtc, row.status, nowMs);
+}
+
 type FinalDeliveryAssessment = {
   result?: WallboardStatusResult;
   onTime: boolean;
   bufferMinutes?: number;
 };
 
-const RISK_BUFFER_MINUTES = 15;
+const NEXT_STOP_TIGHT_BUFFER_MINUTES = 15;
+const FINAL_DELIVERY_TIGHT_BUFFER_MINUTES = 60;
+const FINAL_DELIVERY_LATE_RISK_BUFFER_MINUTES = 30;
+
+/**
+ * The API's bounded live-runs snapshot is a recovery source for a slow ETA or
+ * geofence calculation. It is intentionally weaker than the authoritative
+ * enrichment feeds: it can prove movement and expose the planned final time,
+ * but it must not invent a live ETA, geofence exit, or Tacho evidence.
+ */
+export function fallbackLiveRun(run: LiveRunSnapshot, nowMs = Date.now()) {
+  const trackingMs = run.trackingUpdatedAtUtc ? Date.parse(run.trackingUpdatedAtUtc) : Number.NaN;
+  const trackingAgeSeconds = Number.isFinite(trackingMs)
+    ? Math.max(0, Math.floor((nowMs - trackingMs) / 1000))
+    : undefined;
+  const trackingFresh = trackingAgeSeconds != null && trackingAgeSeconds <= 5 * 60;
+  const trackingMoving = trackingFresh && ((run.speedKph ?? 0) > 2 || /moving|in progress/i.test(run.tracking || run.state || ""));
+  const onSite = Boolean(run.siteArrivalUtc && !run.siteDepartureUtc) || /on site|site delay/i.test(run.state || "");
+  const nextStopName = run.nextStop || run.etaTarget || run.finalStop;
+  const progress: RunProgressRecord = {
+    loadId: run.id,
+    loadReference: run.reference,
+    loadStatus: run.status,
+    runState: onSite ? "OnSiteConfirmed" : trackingMoving ? "InProgress" : run.status,
+    totalStops: 0,
+    completedStops: 0,
+    progressPercent: 0,
+    nextStop: nextStopName ? { id: `fallback-${run.id}`, sequence: 1, name: nextStopName } : undefined,
+    currentVisit: onSite && run.siteArrivalUtc ? {
+      geofenceName: run.stateDetail?.split(" · ")[0] || nextStopName,
+      enteredAtUtc: run.siteArrivalUtc,
+      liveDwellMinutes: run.liveDwellMinutes,
+      liveDwellSeconds: run.liveDwellSeconds,
+      dwellMinutes: run.liveDwellMinutes,
+      isDelayed: /site delay/i.test(run.state || ""),
+      status: /site delay/i.test(run.state || "") ? "Delayed" : "OnSite",
+    } : undefined,
+    phase: onSite ? "On site" : trackingMoving ? "Heading to" : "Next job",
+    focusStop: nextStopName,
+    geofenceOnSite: onSite,
+    trackingFresh,
+    trackingMoving,
+    trackingAgeSeconds,
+    speedKph: run.speedKph,
+  };
+  const etaUtc = run.etaUtc || run.finalPlannedUtc;
+  const eta: DeliveryEta | undefined = etaUtc ? {
+    loadId: run.id,
+    loadReference: run.reference,
+    loadStatus: run.status,
+    stopId: `fallback-final-${run.id}`,
+    sequence: Number.MAX_SAFE_INTEGER,
+    stopName: run.etaTarget || run.finalStop || "Final delivery",
+    etaUtc,
+    source: run.etaSource === "Live" || run.etaSource === "Estimated" ? run.etaSource : "Planned",
+    risk: "Pending",
+    routeDrivingMinutes: 0,
+    breakMinutesIncluded: 0,
+    tachoStatus: "Unavailable",
+    tachoExplanation: "Live ETA enrichment is unavailable; the final planned time is retained.",
+  } : undefined;
+  return { progress, eta };
+}
 
 function trackingAgeText(progress?: RunProgressRecord) {
   if (!progress || progress.trackingFresh !== false || progress.trackingAgeSeconds == null) return "";
@@ -164,7 +271,7 @@ function nextStopAdvisory(progress: RunProgressRecord | undefined, eta: Delivery
         priority: 64,
       };
     }
-    if (bufferMinutes <= RISK_BUFFER_MINUTES) {
+    if (bufferMinutes <= NEXT_STOP_TIGHT_BUFFER_MINUTES) {
       return {
         status: "risk",
         label: `${kind.label} TIGHT`,
@@ -213,20 +320,32 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
       onTime: false,
       bufferMinutes,
       result: {
-        status: estimated ? "risk" : "late",
-        label: estimated ? "FINAL ETA AT RISK" : "LATE FINAL ETA",
-        detail: `${stopName} final ETA is ${Math.abs(bufferMinutes)}m after delivery latest time`,
-        priority: estimated ? 89 : 96,
+        status: "late",
+        label: estimated ? "LATE RISK" : "LATE FINAL ETA",
+        detail: `${stopName} final ETA is ${Math.abs(bufferMinutes)}m after delivery latest time${estimated ? " · estimated ETA" : ""}`,
+        priority: estimated ? 95 : 96,
       },
     };
   }
-  if (bufferMinutes <= RISK_BUFFER_MINUTES) {
+  if (bufferMinutes <= FINAL_DELIVERY_LATE_RISK_BUFFER_MINUTES) {
+    return {
+      onTime: false,
+      bufferMinutes,
+      result: {
+        status: "late",
+        label: "LATE RISK",
+        detail: `${stopName} has ${bufferMinutes}m buffer to delivery latest time`,
+        priority: 92,
+      },
+    };
+  }
+  if (bufferMinutes <= FINAL_DELIVERY_TIGHT_BUFFER_MINUTES) {
     return {
       onTime: false,
       bufferMinutes,
       result: {
         status: "risk",
-        label: "FINAL ETA AT RISK",
+        label: "DELIVERY TIGHT",
         detail: `${stopName} has ${bufferMinutes}m buffer to delivery latest time`,
         priority: 88,
       },
@@ -238,7 +357,7 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
 export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
   const complete = progress?.runState === "Completed"
     || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops
-    || Boolean(progress && isFinalStopArrival(progress));
+    || Boolean(progress && isFinalDestinationArrived(progress));
   if (complete) {
     return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
   }
@@ -292,27 +411,27 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   const finalAssessment = finalDeliveryAssessment(etas);
   if (finalAssessment.result) return finalAssessment.result;
 
-  // The next stop is an execution milestone, not necessarily the final customer promise.
-  // Once a cumulative final ETA and final delivery latest time are both known and healthy,
-  // do not colour the whole run merely because an intermediate milestone is behind plan.
+  // Intermediate milestones remain operational information. Once a healthy cumulative
+  // final-customer ETA and deadline are known they must not recolour the whole run.
   if (!finalAssessment.onTime) {
     const nextTiming = nextStopAdvisory(progress, nextEta, nowMs);
     if (nextTiming) return nextTiming;
+
+    const hardCustomerRisk = etas.find((eta) => eta.source === "Live" && eta.risk === "Late" && eta.deliveryWindowEndUtc);
+    if (hardCustomerRisk) {
+      return {
+        status: "late",
+        label: "LATE DELIVERY ETA",
+        detail: `${hardCustomerRisk.stopName} will miss its customer window`,
+        priority: 94,
+      };
+    }
+
+    if (nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
+      return { status: "risk", label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
+    }
   }
 
-  const hardCustomerRisk = etas.find((eta) => eta.source === "Live" && eta.risk === "Late" && eta.deliveryWindowEndUtc);
-  if (hardCustomerRisk) {
-    return {
-      status: "late",
-      label: "LATE DELIVERY ETA",
-      detail: `${hardCustomerRisk.stopName} will miss its customer window`,
-      priority: 94,
-    };
-  }
-
-  if (!finalAssessment.onTime && nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
-    return { status: "risk", label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
-  }
   const staleTracking = trackingAgeText(progress);
   if (staleTracking) {
     return {
@@ -426,7 +545,7 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
   return merged;
 }
 
-function isFinalStopArrival(record: RunProgressRecord) {
+export function isFinalDestinationArrived(record: RunProgressRecord) {
   if (record.totalStops <= 0) return false;
   const finalStop = record.stopDwell?.find(stop => stop.sequence === record.totalStops);
   // The route-progress feed can lag behind the durable geofence feed: in that
@@ -442,10 +561,16 @@ function isFinalStopArrival(record: RunProgressRecord) {
   return record.completedStops === record.totalStops - 1;
 }
 
+export function finalArrivalUtc(record?: RunProgressRecord) {
+  if (!record || !isFinalDestinationArrived(record)) return undefined;
+  if (record.currentVisit?.enteredAtUtc) return record.currentVisit.enteredAtUtc;
+  return record.stopDwell?.find(stop => stop.sequence === record.totalStops)?.siteArrivalUtc;
+}
+
 export function completedJobCount(progress: RunProgressRecord[]) {
   return progress.reduce((total, record) => {
     const completed = Math.max(0, record.completedStops || 0);
-    const finalArrival = isFinalStopArrival(record) ? 1 : 0;
+    const finalArrival = isFinalDestinationArrived(record) ? 1 : 0;
     return total + Math.min(Math.max(0, record.totalStops || completed + finalArrival), completed + finalArrival);
   }, 0);
 }
