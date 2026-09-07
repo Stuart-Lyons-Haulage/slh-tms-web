@@ -2,8 +2,8 @@
 .ops-linkage-summary{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:10px}.ops-linkage-summary>div{display:flex;flex-direction:column;gap:2px}.ops-linkage-summary span{font-size:12px;opacity:.72}
 .ops-linkage-error{margin:8px 0;font-size:13px}.ops-linkage-runs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px}.ops-linkage-runs details{border:1px solid var(--border,#d0d7de);border-radius:8px;padding:8px}.ops-linkage-runs details.needs-link{border-color:#b26a00}.ops-linkage-runs summary{display:flex;justify-content:space-between;gap:10px;cursor:pointer}.ops-linkage-runs summary span{font-size:12px;opacity:.75}.ops-linkage-stops{display:grid;gap:6px;margin-top:8px}.ops-linkage-stops>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:7px;border-top:1px solid var(--border,#e5e7eb)}.ops-linkage-stops>div.needs-link{font-weight:600}.ops-linkage-stops b{overflow-wrap:anywhere}.ops-linkage-stops span{font-size:11px;font-weight:700}.ops-linkage-stops small{grid-column:1/-1;opacity:.75}
 
-/* Inline signed-in TMS linkage. This is appended to each operations row via a React portal.
-   It is deliberately never mounted in tvMode/Public TV. */
+/* Shared read-only linkage strip. Both the signed-in TMS wallboard and a paired TV
+   portal the same per-run geofence hit/time-in/time-out evidence into each row. */
 .ops-board-row>.ops-row-geofence{grid-column:1/-1;margin:0;border:0;border-top:1px solid #314754;background:#0a131b;color:#dceaf1;padding:0 10px 8px;min-width:0}
 .ops-board-row>.ops-row-geofence.needs-link{border-top-color:#9b6a1c}
 .ops-row-geofence>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;padding:8px 0 2px;list-style:none}
@@ -21,3 +21,6 @@
 
 @media(max-width:900px){.ops-row-geofence-stop{grid-template-columns:minmax(180px,1fr) repeat(3,minmax(70px,.4fr))}}
 @media(max-width:700px){.ops-linkage-summary{flex-direction:column}.ops-linkage-runs{grid-template-columns:1fr}.ops-row-geofence>summary{align-items:flex-start;flex-direction:column}.ops-row-geofence-stop{grid-template-columns:1fr 1fr}.ops-row-geofence-stop .stop-name{grid-column:1/-1}}
+
+.ops-wallboard.tv .ops-row-geofence>summary{align-items:center;flex-direction:row;min-width:0}
+.ops-wallboard.tv .ops-row-geofence>summary span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

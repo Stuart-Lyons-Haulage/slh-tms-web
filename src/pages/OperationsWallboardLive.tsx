@@ -343,7 +343,16 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
 
   useEffect(() => {
     if (!tvMode || !presentRowId || loading) return;
-    window.setTimeout(() => tableRef.current?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 350);
+    const timer = window.setTimeout(() => {
+      const table = tableRef.current;
+      const row = table?.querySelector<HTMLElement>(`[data-row-id="${presentRowId}"]`);
+      if (!table || !row) return;
+      const tableRect = table.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      if (rowRect.top >= tableRect.top && rowRect.bottom <= tableRect.bottom) return;
+      row.scrollIntoView({ block: "nearest", behavior: "auto" });
+    }, 350);
+    return () => window.clearTimeout(timer);
   }, [lastRefresh, loading, presentRowId, tvMode]);
 
   async function fullscreen() { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); }
@@ -359,10 +368,43 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       <article className="green"><span>Tracker live</span><strong>{formatAge(boardData?.latestTrackingUtc, clock)}</strong><small>{boardData?.geofenceLinkedRuns ?? 0} geofence-linked runs</small></article>
       <article className="amber"><span>On site</span><strong>{onSite}</strong><small>current site evidence retained</small></article>
       <article className="green"><span>Complete</span><strong>{completeJobs}</strong><small>departed geofenced stops</small></article>
-      <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} proved late · {risk} needs attention</small></article>
+      <article className="red"><span>At risk / late</span><strong>{late + risk}</strong><small>{late} red risk/late · {risk} amber tight</small></article>
       <article className="green"><span>Available</span><strong>{available}</strong><small>final stop completed</small></article>
     </div>
     {(error || boardData?.warning || boardData?.geofenceAvailable === false) && <div className="ops-wallboard-alert">{error || boardData?.warning || "Geofence progression is unavailable; planned journeys remain displayed."}</div>}
+    <div className="ops-board-table" ref={tableRef} role="table" aria-label="Operations arrivals and departures">
+      <div className="ops-board-head" role="row"><span>Time</span><span>Run</span><span>Vehicle</span><span>Driver</span><span>Journey</span><span>Final delivery / ETA</span><span>Status</span></div>
+      {loading && !data && <div className="ops-board-empty">Loading planned journeys and live progression...</div>}
+      {!loading && rows.length === 0 && <div className="ops-board-empty">No runs are planned for today.</div>}
+      {rows.map(row => {
+        const buffer = minutesToWindow(row.finalEta);
+        const completedStops = row.progress?.completedStops ?? 0;
+        const totalStops = row.progress?.totalStops || row.load?.stops?.length || row.etas.length || 0;
+        const percent = totalStops > 0 ? Math.min(100, Math.max(Math.round(completedStops / totalStops * 100), Math.round(row.progress?.progressPercent ?? 0))) : 0;
+        const progressLabel = row.progress?.currentVisit
+          ? `${row.progress.currentVisit.geofenceName || "On site"} · ${dwellLabel(row.progress)}`
+          : row.status === "complete"
+            ? dwellLabel(row.progress) || "Journey complete"
+            : row.progress?.focusStop
+              ? `${row.progress.phase || "Next"} · ${row.progress.focusStop}`
+              : `${completedStops} of ${totalStops || "?"} stops`;
+        const finalStopName = (row.finalEta?.stopName || finalDestinationStop(row.load)?.name || "Final delivery").replace(/^Collect · |^Deliver · /i, "");
+        const liveVehicle = liveLocationByRegistration.get(normaliseRegistration(row.vehicle));
+        const locationAvailable = liveVehicle?.latitude != null && liveVehicle.longitude != null;
+        const locationUrl = locationAvailable ? `https://www.google.com/maps/search/?api=1&query=${liveVehicle.latitude},${liveVehicle.longitude}` : undefined;
+        const locationStale = liveVehicle?.condition === "Stale" || (liveVehicle?.ageMinutes ?? 0) >= 15;
+        const locationAge = liveVehicle?.lastEventTimeUtc ? formatAge(liveVehicle.lastEventTimeUtc, clock) : liveVehicle?.ageMinutes != null ? `${Math.round(liveVehicle.ageMinutes)}m ago` : undefined;
+        const showLocationState = !tvMode && row.status !== "complete" && row.vehicle !== "VEHICLE TBC";
+        return <article className={`ops-board-row ${row.status} ${row.id === presentRowId ? "present" : ""}`} role="row" key={row.id} data-row-id={row.id}>
+          <span className="time-cell"><strong>{formatTime(row.scheduledUtc)}</strong><small>{row.status === "complete" ? "completed" : "planned start"}</small></span>
+          <span className="run-cell"><strong>{row.runLabel}</strong><small>{row.focusStop}</small>{showLocationState && (locationUrl ? <a className={`ops-live-location-link ${locationStale ? "stale" : ""}`} href={locationUrl} target="_blank" rel="noreferrer">{locationStale ? "Last location" : "Live location"}{locationAge ? ` · ${locationAge}` : ""} ↗</a> : <small className="ops-live-location-unavailable">Live location unavailable</small>)}</span>
+          <span><strong>{row.vehicle}</strong><small>{row.assignment?.trailerNumber ? `Trailer ${row.assignment.trailerNumber}` : "vehicle"}</small></span>
+          <span><strong>{row.driver}</strong><small title={row.tacho?.explanation}>{tachoText(row.tacho, row.finalEta || row.nextEta)}</small></span>
+          <span className="progress-cell"><strong>{progressLabel}</strong><div className="ops-progress-bar"><i style={{ width: `${percent}%` }} /></div><small>{row.progress?.linkageException?.message || row.route}</small></span>
+          <span className="time-cell eta"><strong>{row.displayTimeLabel === "AVAILABLE" ? "AVAILABLE" : formatTime(row.displayTimeUtc)}</strong><small>{finalStopName} · {row.displayTimeLabel}{row.displayTimeLabel === "LIVE FINAL ETA" ? ` · ${formatAge(row.finalEta?.trackingUpdatedAtUtc || boardData?.latestTrackingUtc, clock)}` : ""}</small></span>
+          <span className="status-cell"><strong>{row.statusLabel}</strong><small>{buffer == null || row.status === "onsite" || row.status === "complete" ? row.statusDetail : `${buffer >= 0 ? "+" : ""}${buffer}m · ${row.statusDetail}`}</small></span>
+        </article>;
+      })}
     <div className="ops-board-layout">
       <div className="ops-board-table" ref={tableRef} role="table" aria-label="Operations arrivals and departures">
         <div className="ops-board-head" role="row"><span>Time</span><span>Run</span><span>Vehicle</span><span>Driver</span><span>Progress</span><span>Final delivery / ETA</span><span>Status</span></div>
@@ -406,6 +448,6 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
         </div>
       </aside>
     </div>
-    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final ETA targets final customer destination · next stop drives risk</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
+    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps + TachoMaster</span><span>Final customer ETA/deadline drives run risk · intermediate stops are progress</span><span>Departed geofence = completed job</span><span>Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
   </section>;
 }
