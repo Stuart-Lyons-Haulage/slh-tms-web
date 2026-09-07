@@ -106,8 +106,9 @@ export type GeofenceProgressMarker = { state: "done" | "onsite" | "pending"; lef
 export function geofenceProgress(stops: GeofenceProgressStop[] | undefined, totalStops: number, completedStops: number): GeofenceProgressMarker[] {
   const ordered = [...(stops || [])].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
   const count = Math.max(ordered.length, totalStops || 0, 1);
+  const stopsBySequence = new Map(ordered.filter(stop => Number.isFinite(stop.sequence)).map(stop => [stop.sequence as number, stop]));
   return Array.from({ length: count }, (_, index) => {
-    const state = String(ordered[index]?.state || "").toLowerCase();
+    const state = String(stopsBySequence.get(index + 1)?.state || "").toLowerCase();
     const exited = state === "departed" || state === "completed" || state === "exited" || (!state && index < completedStops);
     const onsite = !exited && state === "onsite";
     return { state: exited ? "done" : onsite ? "onsite" : "pending", left: ((index + 1) / count) * 100 };
@@ -135,6 +136,30 @@ export function isScheduleVisible(scheduledUtc: string | undefined, status: Wall
   const scheduledMs = timeMs(scheduledUtc);
   if (!Number.isFinite(scheduledMs)) return true;
   return scheduledMs <= nowMs + revealAheadMinutes * 60000;
+}
+
+export type WallboardSortableRow = {
+  id: string;
+  scheduledUtc?: string;
+  status: WallboardStatus;
+  finalDestinationArrived?: boolean;
+};
+
+/** Keep both boards in collection-time order; severity belongs in the action rail. */
+export function sortWallboardRowsByCollection<T extends WallboardSortableRow>(rows: T[]) {
+  return [...rows].sort((a, b) => {
+    const aTime = timeMs(a.scheduledUtc);
+    const bTime = timeMs(b.scheduledUtc);
+    const aSortable = Number.isFinite(aTime) ? aTime : Number.MAX_SAFE_INTEGER;
+    const bSortable = Number.isFinite(bTime) ? bTime : Number.MAX_SAFE_INTEGER;
+    return aSortable - bSortable || a.id.localeCompare(b.id);
+  });
+}
+
+/** TMS retains final arrivals; the TV board removes them once they reach the final stop. */
+export function shouldDisplayWallboardRow(row: WallboardSortableRow, tvMode: boolean, nowMs = Date.now()) {
+  if (tvMode && (row.status === "complete" || row.finalDestinationArrived)) return false;
+  return isScheduleVisible(row.scheduledUtc, row.status, nowMs);
 }
 
 type FinalDeliveryAssessment = {
@@ -318,7 +343,7 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
 export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
   const complete = progress?.runState === "Completed"
     || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops
-    || Boolean(progress && isFinalStopArrival(progress));
+    || Boolean(progress && isFinalDestinationArrived(progress));
   if (complete) {
     return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
   }
@@ -506,7 +531,7 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
   return merged;
 }
 
-function isFinalStopArrival(record: RunProgressRecord) {
+export function isFinalDestinationArrived(record: RunProgressRecord) {
   if (record.totalStops <= 0) return false;
   const finalStop = record.stopDwell?.find(stop => stop.sequence === record.totalStops);
   // The route-progress feed can lag behind the durable geofence feed: in that
@@ -522,10 +547,16 @@ function isFinalStopArrival(record: RunProgressRecord) {
   return record.completedStops === record.totalStops - 1;
 }
 
+export function finalArrivalUtc(record?: RunProgressRecord) {
+  if (!record || !isFinalDestinationArrived(record)) return undefined;
+  if (record.currentVisit?.enteredAtUtc) return record.currentVisit.enteredAtUtc;
+  return record.stopDwell?.find(stop => stop.sequence === record.totalStops)?.siteArrivalUtc;
+}
+
 export function completedJobCount(progress: RunProgressRecord[]) {
   return progress.reduce((total, record) => {
     const completed = Math.max(0, record.completedStops || 0);
-    const finalArrival = isFinalStopArrival(record) ? 1 : 0;
+    const finalArrival = isFinalDestinationArrived(record) ? 1 : 0;
     return total + Math.min(Math.max(0, record.totalStops || completed + finalArrival), completed + finalArrival);
   }, 0);
 }
