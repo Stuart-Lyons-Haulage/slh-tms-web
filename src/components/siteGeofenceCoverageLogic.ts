@@ -72,15 +72,24 @@ function siteCandidates(site: CoverageSite) {
     .filter(Boolean);
 }
 
+function rawSiteCandidates(site: CoverageSite, status?: CoverageStatus) {
+  return [site.externalCode, site.name, site.driverTextName, ...splitAliases(site.aliases), ...(status?.linkedGeofences || [])]
+    .map(normaliseCoverageKey)
+    .filter(Boolean);
+}
+
 export function resolveSiteCoverage(label: string, sites: CoverageSite[], statuses: CoverageStatus[]): SiteCoverage {
   const keys = variants(label);
-  const directMatches = sites.filter(site => {
-    if (site.active === false) return false;
+  const sourceKey = normaliseCoverageKey(label);
+  const activeSites = sites.filter(site => site.active !== false);
+  const exactMatches = activeSites.filter(site => rawSiteCandidates(site, statuses.find(status => status.siteId === site.id)).includes(sourceKey));
+  const variantMatches = activeSites.filter(site => {
     const linkedNames = statuses.find(status => status.siteId === site.id)?.linkedGeofences || [];
     const candidates = [...siteCandidates(site), ...linkedNames.flatMap(variants)];
     return candidates.some(candidate => keys.includes(candidate));
   });
-  const unique = Array.from(new Map(directMatches.map(site => [site.id, site])).values());
+  const matches = exactMatches.length > 0 ? exactMatches : variantMatches;
+  const unique = Array.from(new Map(matches.map(site => [site.id, site])).values());
   if (unique.length !== 1) {
     return {
       sourceLabel: label,
