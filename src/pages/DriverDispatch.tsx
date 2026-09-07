@@ -7,79 +7,10 @@ import { firstCollectionStop, runDirection, suggestionRunLabel } from "./DriverD
 import "../driver-dispatch.css";
 import "../driver-dispatch-compact.css";
 
-type DispatchStop = {
-  id: string;
-  sequence: number;
-  name: string;
-  address?: string;
-  latitude?: number;
-  longitude?: number;
-  plannedArrivalUtc?: string;
-  plannerNote?: string;
-};
-
-type DispatchLoad = {
-  id: string;
-  reference: string;
-  rawReference: string;
-  planningDate: string;
-  status: string;
-  driverId?: string;
-  vehicleId?: string;
-  trailerId?: string;
-  palletSpacesUsed?: number;
-  totalPalletSpaces?: number;
-  capacityType?: string;
-  plannerNotes?: string;
-  southbound: boolean;
-  plannedStartUtc?: string;
-  stops: DispatchStop[];
-};
-
-type DispatchDriver = {
-  driverId: string;
-  employeeNumber: string;
-  displayName: string;
-  driverType: "Employed" | "Casual" | "Agency";
-  driverGroup?: string;
-  skills?: string;
-  coding?: string;
-  agencyName?: string;
-  tachoMasterDriverId?: string;
-  tachoCardNumber?: string;
-  dayNumber: number;
-  onLeave: boolean;
-  leaveType?: string;
-  partDayLeave: boolean;
-  previousRunReference?: string;
-  previousVehicleId?: string;
-  previousVehicleRegistration?: string;
-  previousFinalStop?: string;
-  previousRoute?: string;
-  assignedLoadId?: string;
-  assignedRunCount: number;
-  suggestedRunId?: string;
-  suggestedRunReference?: string;
-  suggestedVehicleId?: string;
-  suggestedVehicleRegistration?: string;
-  assistantScore?: number;
-  suggestion?: string;
-  agencyBookedFrom?: string;
-  agencyBookedThrough?: string;
-};
-
-type Workbench = {
-  planningDate: string;
-  weekStart?: string;
-  weekEnd?: string;
-  leaveSource: string;
-  assistantSource?: string;
-  drivers: DispatchDriver[];
-  vehicles: Vehicle[];
-  trailers: Trailer[];
-  loads: DispatchLoad[];
-};
-
+type DispatchStop = { id: string; sequence: number; name: string; address?: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string; plannerNote?: string };
+type DispatchLoad = { id: string; reference: string; rawReference: string; planningDate: string; status: string; driverId?: string; vehicleId?: string; trailerId?: string; palletSpacesUsed?: number; totalPalletSpaces?: number; capacityType?: string; plannerNotes?: string; southbound: boolean; plannedStartUtc?: string; stops: DispatchStop[] };
+type DispatchDriver = { driverId: string; employeeNumber: string; displayName: string; driverType: "Employed" | "Casual" | "Agency"; driverGroup?: string; skills?: string; coding?: string; agencyName?: string; tachoMasterDriverId?: string; tachoCardNumber?: string; dayNumber: number; onLeave: boolean; leaveType?: string; partDayLeave: boolean; previousRunReference?: string; previousVehicleId?: string; previousVehicleRegistration?: string; previousFinalStop?: string; previousRoute?: string; assignedLoadId?: string; assignedRunCount: number; suggestedRunId?: string; suggestedRunReference?: string; suggestedVehicleId?: string; suggestedVehicleRegistration?: string; assistantScore?: number; suggestion?: string; agencyBookedFrom?: string; agencyBookedThrough?: string };
+type Workbench = { planningDate: string; weekStart?: string; weekEnd?: string; leaveSource: string; assistantSource?: string; drivers: DispatchDriver[]; vehicles: Vehicle[]; trailers: Trailer[]; loads: DispatchLoad[] };
 type DriverType = DispatchDriver["driverType"];
 type DriverForm = { displayName: string; employeeNumber: string; driverType: DriverType; agencyName: string; startDate: string; days: number };
 type MessageState = { load: DispatchLoad; text: string; routeMinutes: number; acknowledgeUnverified: boolean };
@@ -90,7 +21,6 @@ type SearchOption = { id: string; label: string; search?: string };
 
 const filterKeys: FilterKey[] = ["driver", "typeSkills", "code", "day", "previous", "vehicle", "trailer", "run", "start", "assistant", "dispatch"];
 const filterPlaceholders: Record<FilterKey, string> = { driver: "Driver…", typeSkills: "Type / skill…", code: "Code…", day: "Day…", previous: "Previous…", vehicle: "Vehicle…", trailer: "Trailer…", run: "Run…", start: "Start…", assistant: "Assistant…", dispatch: "Status…" };
-
 function emptyFilters(): Filters { return Object.fromEntries(filterKeys.map(key => [key, ""])) as Filters; }
 function isoDate(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
 function today() { return isoDate(new Date()); }
@@ -103,18 +33,11 @@ function codeTitle(code?: string) { return code === "1" ? "Code 1 · can do anyt
 function routeMinutes(route: Record<string, unknown>) { const routes = route.routes as Array<{ summary?: { travelTimeInSeconds?: number } }> | undefined; const seconds = routes?.[0]?.summary?.travelTimeInSeconds; return typeof seconds === "number" && seconds > 0 ? Math.max(1, Math.ceil(seconds / 60)) : undefined; }
 function buildDriverText(load: DispatchLoad, dispatch: LoadDispatch, startTime: string) { const lines = [`SLH ${load.southbound ? "Southbound " : ""}${load.reference}`, dispatch.driver ? `Driver: ${dispatch.driver.displayName}` : "", startTime ? `Start time: ${startTime}` : "", dispatch.vehicle ? `Vehicle: ${dispatch.vehicle.registration}` : "", dispatch.trailer ? `Trailer: ${dispatch.trailer.trailerNumber}` : "", "", ...dispatch.stops.flatMap(stop => [`${stop.sequence}. ${stop.name}`, stop.address ? `Address: ${stop.address}` : "", stop.order?.reference ? `Ref: ${stop.order.reference}` : "", stop.order?.marketName ? `Market: ${stop.order.marketName}${stop.order.stallNumber ? ` · Stall ${stop.order.stallNumber}` : ""}` : "", stop.order?.driverInstructions ? `Notes: ${stop.order.driverInstructions}` : "", stop.order?.mapLink ? `Map: ${stop.order.mapLink}` : "", ""]), "Please reply to confirm receipt."]; return lines.filter((line, index, all) => line !== "" || (index > 0 && all[index - 1] !== "")).join("\n").trim(); }
 
-function TypeaheadSelect({ value, options, placeholder, onChange, disabled, listId }: { value: string; options: SearchOption[]; placeholder: string; onChange: (value: string) => void; disabled?: boolean; listId: string }) {
-  const selected = options.find(option => option.id === value); const [text, setText] = useState(selected?.label || ""); const [open, setOpen] = useState(false);
-  useEffect(() => setText(selected?.label || ""), [selected?.label, value]);
-  const matches = useMemo(() => { const query = text.trim().toLowerCase(); return (query ? options.filter(option => `${option.label} ${option.search || ""}`.toLowerCase().includes(query)) : options).slice(0, 18); }, [options, text]);
-  const choose = (option: SearchOption) => { setText(option.label); onChange(option.id); setOpen(false); };
-  return <div className="dispatch-typeahead"><input id={listId} role="combobox" aria-expanded={open} value={text} disabled={disabled} placeholder={placeholder} autoComplete="off" onFocus={() => setOpen(true)} onChange={event => { const next = event.target.value; setText(next); setOpen(true); if (!next.trim()) onChange(""); }} onBlur={() => window.setTimeout(() => setOpen(false), 120)} onKeyDown={event => { if (event.key === "Enter" && matches[0]) { event.preventDefault(); choose(matches[0]); } if (event.key === "Escape") { setOpen(false); setText(selected?.label || ""); } }} />{open && !disabled && <div className="dispatch-typeahead-menu">{matches.length === 0 ? <span className="dispatch-typeahead-empty">No matching option</span> : matches.map(option => <button type="button" key={option.id} className={option.id === value ? "selected" : ""} onMouseDown={event => event.preventDefault()} onClick={() => choose(option)}>{option.label}</button>)}</div>}</div>;
-}
+function TypeaheadSelect({ value, options, placeholder, onChange, disabled, listId }: { value: string; options: SearchOption[]; placeholder: string; onChange: (value: string) => void; disabled?: boolean; listId: string }) { const selected = options.find(option => option.id === value); const [text, setText] = useState(selected?.label || ""); const [open, setOpen] = useState(false); useEffect(() => setText(selected?.label || ""), [selected?.label, value]); const matches = useMemo(() => { const query = text.trim().toLowerCase(); return (query ? options.filter(option => `${option.label} ${option.search || ""}`.toLowerCase().includes(query)) : options).slice(0, 18); }, [options, text]); const choose = (option: SearchOption) => { setText(option.label); onChange(option.id); setOpen(false); }; return <div className="dispatch-typeahead"><input id={listId} role="combobox" aria-expanded={open} value={text} disabled={disabled} placeholder={placeholder} autoComplete="off" onFocus={() => setOpen(true)} onChange={event => { const next = event.target.value; setText(next); setOpen(true); if (!next.trim()) onChange(""); }} onBlur={() => window.setTimeout(() => setOpen(false), 120)} onKeyDown={event => { if (event.key === "Enter" && matches[0]) { event.preventDefault(); choose(matches[0]); } if (event.key === "Escape") { setOpen(false); setText(selected?.label || ""); } }} />{open && !disabled && <div className="dispatch-typeahead-menu">{matches.length === 0 ? <span className="dispatch-typeahead-empty">No matching option</span> : matches.map(option => <button type="button" key={option.id} className={option.id === value ? "selected" : ""} onMouseDown={event => event.preventDefault()} onClick={() => choose(option)}>{option.label}</button>)}</div>}</div>; }
 
 export function DriverDispatch() {
   const token = useAccessToken(); const initialParams = useMemo(() => new URLSearchParams(window.location.search), []); const [date, setDate] = useState(initialParams.get("date") || today()); const [data, setData] = useState<Workbench>(); const [loading, setLoading] = useState(true); const [error, setError] = useState<string>(); const [filters, setFilters] = useState<Filters>(() => emptyFilters()); const [message, setMessage] = useState<MessageState>(); const [showDriverTools, setShowDriverTools] = useState(false); const [driverToolBusy, setDriverToolBusy] = useState(false); const [driverToolNotice, setDriverToolNotice] = useState<string>(); const [driverForm, setDriverForm] = useState<DriverForm>({ displayName: "", employeeNumber: "", driverType: "Agency", agencyName: "", startDate: date, days: 7 });
-  const refresh = useCallback(async () => { setLoading(true); setError(undefined); try { setData(await request<Workbench>(`/api/v1/driver-dispatch?date=${encodeURIComponent(date)}`, await token(), undefined, 90000)); } catch (exception) { setError(exception instanceof Error ? exception.message : "Driver Dispatch could not be loaded."); } finally { setLoading(false); } }, [date, token]);
-  useEffect(() => { void refresh(); }, [refresh]); useEffect(() => { const params = new URLSearchParams(window.location.search); params.set("date", date); window.history.replaceState(null, "", `${window.location.pathname}?${params}`); }, [date]); useEffect(() => setDriverForm(current => ({ ...current, startDate: date })), [date]);
+  const refresh = useCallback(async () => { setLoading(true); setError(undefined); try { setData(await request<Workbench>(`/api/v1/driver-dispatch?date=${encodeURIComponent(date)}`, await token(), undefined, 90000)); } catch (exception) { setError(exception instanceof Error ? exception.message : "Driver Dispatch could not be loaded."); } finally { setLoading(false); } }, [date, token]); useEffect(() => { void refresh(); }, [refresh]); useEffect(() => { const params = new URLSearchParams(window.location.search); params.set("date", date); window.history.replaceState(null, "", `${window.location.pathname}?${params}`); }, [date]); useEffect(() => setDriverForm(current => ({ ...current, startDate: date })), [date]);
   const filteredDrivers = useMemo(() => { if (!data) return []; return data.drivers.filter(driver => { const assigned = data.loads.find(load => load.id === driver.assignedLoadId); const vehicle = assigned?.vehicleId ? data.vehicles.find(item => item.id === assigned.vehicleId) : undefined; const trailer = assigned?.trailerId ? data.trailers.find(item => item.id === assigned.trailerId) : undefined; const values: Filters = { driver: `${driver.displayName} ${driver.employeeNumber}`, typeSkills: `${driver.driverType} ${driver.driverGroup || ""} ${driver.skills || ""} ${driver.agencyName || ""}`, code: driver.coding || "", day: String(driver.dayNumber), previous: `${driver.previousRunReference || ""} ${driver.previousFinalStop || ""} ${driver.previousRoute || ""}`, vehicle: `${vehicle?.registration || ""} ${driver.previousVehicleRegistration || ""} ${driver.suggestedVehicleRegistration || ""}`, trailer: `${trailer?.trailerNumber || ""} ${trailer?.type || ""}`, run: assigned ? `${suggestionRunLabel(assigned)} ${assigned.reference} ${assigned.rawReference}` : `${driver.suggestedRunReference || ""} unallocated`, start: localTime(assigned?.plannedStartUtc), assistant: `${driver.suggestion || ""} ${driver.previousFinalStop || ""} ${driver.assistantScore || ""}`, dispatch: assigned ? `${assigned.status} allocated` : "unallocated" }; return filterKeys.every(key => !filters[key].trim() || values[key].toLowerCase().includes(filters[key].trim().toLowerCase())); }); }, [data, filters]);
   async function syncDrivers() { setDriverToolBusy(true); setDriverToolNotice(undefined); try { await request(`/api/v1/driver-master/tachomaster/sync`, await token(), { method: "POST" }, 180000); setDriverToolNotice("Driver Master sync completed."); await refresh(); } catch (exception) { setDriverToolNotice(exception instanceof Error ? exception.message : "Driver Master sync failed."); } finally { setDriverToolBusy(false); } }
   async function addDriver() { if (!driverForm.displayName.trim()) { setDriverToolNotice("Enter the driver's name."); return; } if (driverForm.driverType === "Agency" && !driverForm.agencyName.trim()) { setDriverToolNotice("Enter the agency name."); return; } if (driverForm.driverType !== "Agency" && !driverForm.employeeNumber.trim()) { setDriverToolNotice("Enter the employee number, or use Sync Drivers first."); return; } setDriverToolBusy(true); setDriverToolNotice(undefined); try { const result = await request<{ message?: string }>(`/api/v1/driver-dispatch/drivers`, await token(), { method: "POST", body: JSON.stringify({ displayName: driverForm.displayName.trim(), employeeNumber: driverForm.employeeNumber.trim() || null, driverType: driverForm.driverType, agencyName: driverForm.driverType === "Agency" ? driverForm.agencyName.trim() : null, startDate: driverForm.startDate, days: driverForm.driverType === "Agency" ? driverForm.days : null }) }, 90000); setDriverToolNotice(result.message || "Driver saved."); setDriverForm(current => ({ ...current, displayName: "", employeeNumber: "" })); await refresh(); } catch (exception) { setDriverToolNotice(exception instanceof Error ? exception.message : "Driver could not be added."); } finally { setDriverToolBusy(false); } }
@@ -133,6 +56,5 @@ function DispatchRow({ driver, data, showGroup, token, refresh, openMessage }: {
   return <>{showGroup && <tr className="dispatch-group"><td colSpan={10}>{driver.driverType === "Agency" ? "AGENCY" : driver.driverType === "Casual" ? "CASUAL" : "EMPLOYED"}</td></tr>}<tr className={driver.onLeave ? "on-leave" : ""}><td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}</td><td><div className="badge-line"><span className={`driver-type type-${driver.driverType.toLowerCase()}`} title={driver.agencyName || driver.driverType}>{driver.driverType === "Agency" ? "A" : driver.driverType === "Casual" ? "C" : "E"}</span>{(driver.skills || "").split(/[,;|/]+/).map(skill => skill.trim()).filter(Boolean).slice(0, 3).map(skill => <span className="skill-badge" key={skill}>{skill}</span>)}</div><small>{driver.driverType === "Agency" ? driver.agencyName || "Agency" : driver.driverGroup || ""}</small></td><td><span className={`code-badge code-${driver.coding || "x"}`} title={codeTitle(driver.coding)}>{driver.coding || "—"}</span></td><td><span className={`day-bubble ${dayClass(driver.dayNumber)}`} title={`Day ${driver.dayNumber}`}>{driver.dayNumber}</span></td><td><TypeaheadSelect disabled={driver.onLeave} value={vehicleId} onChange={setVehicleId} options={vehicleOptions} placeholder="Vehicle…" listId={`vehicle-${driver.driverId}`} />{driver.previousVehicleRegistration && <small>Prev: {driver.previousVehicleRegistration}</small>}</td><td><TypeaheadSelect disabled={driver.onLeave} value={trailerId} onChange={setTrailerId} options={trailerOptions} placeholder="Trailer…" listId={`trailer-${driver.driverId}`} /></td><td><div className="run-cell"><TypeaheadSelect disabled={driver.onLeave} value={loadId} onChange={setLoadId} options={runOptions} placeholder="Run…" listId={`run-${driver.driverId}`} />{selected && <RunHover load={selected} />}</div></td><td><input type="time" value={startTime} disabled={driver.onLeave} onChange={event => setStartTime(event.target.value)} /></td><td className="assistant-cell"><span>{driver.suggestion || (driver.previousFinalStop ? `Yesterday finished ${driver.previousFinalStop}.` : "Available for allocation.")}</span>{driver.assistantScore != null && driver.assistantScore > 0 && <small>Match {driver.assistantScore}</small>}{!driver.onLeave && (driver.suggestedRunId || driver.suggestedVehicleId) && <button className="assistant-use" type="button" onClick={useSuggestion}>Use suggestion{driver.suggestedRunReference ? ` · ${driver.suggestedRunReference}` : ""}</button>}</td><td><div className="dispatch-buttons"><button type="button" onClick={() => void save()} disabled={busy || driver.onLeave}>{busy ? "Working…" : "Save"}</button>{selected && <button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave}>Dispatch</button>}</div>{notice && <small className="row-notice">{notice}</small>}</td></tr></>;
 }
 
-function RunHover({ load }: { load: DispatchLoad }) { return <span className="run-hover" tabIndex={0}><b>{compactRun(load)}</b><span className="run-popover"><strong>{load.southbound ? "Southbound · " : ""}{load.reference}</strong><small>{load.palletSpacesUsed ?? "—"}{load.totalPalletSpaces ? ` / ${load.totalPalletSpaces}` : ""} {load.capacityType || "load units"}</small>{orderedStops(load).map(stop => <span key={stop.id}>{stop.sequence}. {cleanStopName(stop.name)}{stop.plannedArrivalUtc ? ` · ${localTime(stop.plannedArrivalUtc)}` : ""}{stop.address ? ` · ${stop.address}` : ""}</span>)}{load.plannerNotes && <em>{load.plannerNotes}</em>}</span></span>; }
-
+function RunHover({ load }: { load: DispatchLoad }) { const first = firstCollectionStop(load); const direction = runDirection(load); return <span className="run-hover" tabIndex={0}><b>{compactRun(load)}</b><span className="run-popover"><strong>{load.southbound ? "Southbound · " : ""}{load.reference}</strong><small>{direction}{first?.name ? ` · First collection: ${cleanStopName(first.name)}` : ""}</small><small>{load.palletSpacesUsed ?? "—"}{load.totalPalletSpaces ? ` / ${load.totalPalletSpaces}` : ""} {load.capacityType || "load units"}</small>{orderedStops(load).map(stop => <span key={stop.id}>{stop.sequence}. {cleanStopName(stop.name)}{stop.plannedArrivalUtc ? ` · ${localTime(stop.plannedArrivalUtc)}` : ""}{stop.address ? ` · ${stop.address}` : ""}</span>)}{load.plannerNotes && <em>{load.plannerNotes}</em>}</span></span>; }
 function MessageDialog({ state, token, close, sent }: { state: MessageState; token: () => Promise<string>; close: () => void; sent: () => Promise<void> }) { const [text, setText] = useState(state.text); const [busy, setBusy] = useState(false); const [error, setError] = useState<string>(); async function send() { setBusy(true); setError(undefined); try { await request(`/api/v1/loads/${encodeURIComponent(state.load.id)}/driver-message/sms`, await token(), { method: "POST", body: JSON.stringify({ message: text, dispatch: true, routeDrivingMinutes: state.routeMinutes, acknowledgeUnverified: state.acknowledgeUnverified }) }, 90000); await sent(); } catch (exception) { setError(exception instanceof Error ? exception.message : "Driver text could not be sent."); } finally { setBusy(false); } } return <div className="dispatch-modal-backdrop" role="dialog" aria-modal="true"><div className="dispatch-modal"><div className="title-row"><div><p className="eyebrow">Dispatch text preview</p><h2>{state.load.reference}</h2></div><button type="button" onClick={close} disabled={busy}>Close</button></div><textarea rows={16} value={text} onChange={event => setText(event.target.value)} />{error && <p className="notice inline-notice" style={{ borderColor: "#b42318" }}>{error}</p>}<div className="dispatch-modal-actions"><button type="button" onClick={close} disabled={busy}>Cancel</button><button className="primary" type="button" onClick={() => void send()} disabled={busy || !text.trim()}>{busy ? "Sending…" : "Dispatch & send text"}</button></div></div></div>; }
