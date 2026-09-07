@@ -17,6 +17,13 @@ function tagged(notes: string | undefined, label: string) {
   return notes.split("·").map((part) => part.trim()).find((part) => part.toLowerCase().startsWith(prefix.toLowerCase()))?.slice(prefix.length).trim() || "";
 }
 
+function marketDetail(order: TransportOrder) {
+  const customer = tagged(order.driverInstructions, "Market customer");
+  const stand = tagged(order.driverInstructions, "Stall / stand");
+  const salesman = tagged(order.driverInstructions, "Salesman");
+  return { customer, stand, salesman, isMarket: Boolean(customer || stand) };
+}
+
 function editable(order: TransportOrder): OrderUpdatePayload {
   return {
     reference: order.reference,
@@ -60,6 +67,8 @@ export function JobsOperational() {
       .some((value) => String(value || "").toLowerCase().includes(q));
   }), [orders.data, query]);
 
+  // Only physical collection/delivery Sites participate in geofence coverage. Market customer
+  // and stand details live in DriverInstructions and must never be treated as geofence Sites.
   const siteLabels = useMemo(() => Array.from(new Set(rows.flatMap(order => [order.sellerName, order.marketName, order.stallNumber]).map(value => String(value || "").trim()).filter(Boolean))), [rows]);
   const geofenceCoverage = useSiteGeofenceCoverage(siteLabels);
 
@@ -171,7 +180,7 @@ export function JobsOperational() {
     </div>
     <div className="planner-toolbar">
       <label>Job date <input type="date" value={date} onChange={(event) => { setDate(event.target.value); setEditingId(undefined); setForm(undefined); }} /></label>
-      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customer, order, depot, address…" />
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customer, order, market, stall, address…" />
       <span>{rows.length} active job{rows.length === 1 ? "" : "s"}</span>
     </div>
     {message && <p className="notice inline-notice">{message}</p>}
@@ -185,18 +194,23 @@ export function JobsOperational() {
       onApplyAllSuggestedAliases={() => void applySuggestedAliases(geofenceCoverage.issues)}
     />
     <div className="master-table-wrap" style={{ overflowX: "auto" }}>
-      <table className="master-table" style={{ minWidth: 1250 }}>
-        <thead><tr><th>Order</th><th>Customer</th><th>Collection</th><th>Depot</th><th>Destination</th><th>Delivery address</th><th>Quantity</th><th>Unit</th><th>Status</th><th>Actions</th></tr></thead>
-        <tbody>{rows.map((order) => <tr key={order.id}>
-          <td><strong>{order.reference}</strong></td>
-          <td>{order.customerCode}</td>
-          <td>{order.sellerName || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.sellerName)} /></td>
-          <td>{order.marketName || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.marketName)} /></td>
-          <td>{order.stallNumber || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.stallNumber)} /></td>
-          <td>{tagged(order.driverInstructions, "Delivery address") || "—"}</td>
-          <td>{order.pallets ?? "—"}</td><td>{tagged(order.driverInstructions, "Unit type") || "Pallets"}</td><td>{order.status}</td>
-          <td><div style={{ display: "flex", gap: 8 }}><button onClick={() => begin(order)}>Edit</button><button onClick={() => void cancel(order)} disabled={saving || aliasBusy}>Delete</button></div></td>
-        </tr>)}</tbody>
+      <table className="master-table" style={{ minWidth: 1320 }}>
+        <thead><tr><th>Order</th><th>Customer</th><th>Collection</th><th>Market / Depot</th><th>Destination / Market detail</th><th>Delivery address</th><th>Quantity</th><th>Unit</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>{rows.map((order) => {
+          const detail = marketDetail(order);
+          return <tr key={order.id}>
+            <td><strong>{order.reference}</strong></td>
+            <td>{order.customerCode}</td>
+            <td>{order.sellerName || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.sellerName)} /></td>
+            <td>{order.marketName || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.marketName)} /></td>
+            <td>{detail.isMarket
+              ? <><strong>{detail.customer || "Market customer"}</strong>{detail.stand && <small style={{ display: "block", marginTop: 3 }}>Stand / stall: {detail.stand}</small>}{detail.salesman && <small style={{ display: "block", marginTop: 2 }}>Salesman: {detail.salesman}</small>}</>
+              : <>{order.stallNumber || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.stallNumber)} /></>}</td>
+            <td>{tagged(order.driverInstructions, "Delivery address") || "—"}</td>
+            <td>{order.pallets ?? "—"}</td><td>{tagged(order.driverInstructions, "Unit type") || "Pallets"}</td><td>{order.status}</td>
+            <td><div style={{ display: "flex", gap: 8 }}><button onClick={() => begin(order)}>Edit</button><button onClick={() => void cancel(order)} disabled={saving || aliasBusy}>Delete</button></div></td>
+          </tr>;
+        })}</tbody>
       </table>
     </div>
     {!orders.loading && !rows.length && <p className="state">No active imported jobs for this date.</p>}
@@ -214,7 +228,7 @@ export function JobsOperational() {
             <label>Collection date<input type="date" value={form.collectionDate} onChange={(e) => set("collectionDate", e.target.value)} /></label>
             <label>Delivery date<input type="date" value={form.deliveryDate || ""} onChange={(e) => set("deliveryDate", e.target.value)} /></label>
             <label>Collection site<input value={form.collectionSite || ""} onChange={(e) => set("collectionSite", e.target.value)} /></label>
-            <label>Depot ID<input value={form.depotId || ""} onChange={(e) => set("depotId", e.target.value)} /></label>
+            <label>Depot / market<input value={form.depotId || ""} onChange={(e) => set("depotId", e.target.value)} /></label>
             <label>Destination<input value={form.destination || ""} onChange={(e) => set("destination", e.target.value)} /></label>
             <label>Delivery address / postcode<input value={form.deliveryAddress || ""} onChange={(e) => set("deliveryAddress", e.target.value)} /></label>
             <label>Quantity<input inputMode="numeric" value={form.pallets ?? ""} onChange={(e) => set("pallets", e.target.value)} /></label>
