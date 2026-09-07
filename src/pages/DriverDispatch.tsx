@@ -20,7 +20,7 @@ type Filters = Record<FilterKey, string>;
 type SearchOption = { id: string; label: string; search?: string };
 
 const filterKeys: FilterKey[] = ["driver", "typeSkills", "code", "day", "previous", "vehicle", "trailer", "run", "start", "assistant", "dispatch"];
-const filterPlaceholders: Record<FilterKey, string> = { driver: "Driver…", typeSkills: "Type / skill…", code: "Code…", day: "Day…", previous: "Previous…", vehicle: "Vehicle…", trailer: "Trailer…", run: "Filter run…", start: "Start…", assistant: "Assistant…", dispatch: "Status…" };
+const filterPlaceholders: Record<FilterKey, string> = { driver: "Driver…", typeSkills: "Type / skill…", code: "Code…", day: "Day…", previous: "Previous…", vehicle: "Vehicle…", trailer: "Trailer…", run: "Filter", start: "Start…", assistant: "Assistant…", dispatch: "Status…" };
 function emptyFilters(): Filters { return Object.fromEntries(filterKeys.map(key => [key, ""])) as Filters; }
 function isoDate(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
 function today() { return isoDate(new Date()); }
