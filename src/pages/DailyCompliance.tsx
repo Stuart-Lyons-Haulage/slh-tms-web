@@ -29,7 +29,7 @@ type ComplianceReport = {
   date: string;
   generatedAtUtc: string;
   policy: {
-    minimumPreUseOtherWorkMinutes: number;
+    minimumPreUseOtherWorkMinutes: number | null;
     employedFleetioMandatory: boolean;
     agencyPaperException: boolean;
     driverChangeRequiresNewCheck: boolean;
@@ -109,7 +109,6 @@ export function DailyCompliance() {
     amber: rows.filter(row => row.status === "Review" || row.status === "Paper evidence required").length,
     red: rows.filter(row => row.status === "Non-compliant").length,
   }), [rows]);
-  const minimumMinutes = report.data?.policy.minimumPreUseOtherWorkMinutes ?? 15;
 
   function exportFiltered() {
     const header = ["Date", "Asset Type", "Asset", "Run", "Driver", "Employment Type", "Tacho Start", "Pre-use Other Work Minutes", "First Movement", "Fleetio Form", "Fleetio Submitted", "Fleetio User", "Fleetio Driver Match", "Failed Items", "Status", "Reason"];
@@ -157,9 +156,9 @@ export function DailyCompliance() {
     {report.data && <>
       <div className="metrics">
         <article className="metric"><span>Assets in this view</span><strong>{filteredSummary.total}</strong><small>{report.data.summary.vehicles} vehicle duties · {report.data.summary.trailers} trailer duties today</small></article>
-        <article className="metric"><span>Compliant</span><strong>🟢 {filteredSummary.green}</strong><small>Fleetio + minimum {minimumMinutes}m Tacho other-work</small></article>
+        <article className="metric"><span>Compliant</span><strong>🟢 {filteredSummary.green}</strong><small>Fleetio walkround passed · Tacho other-work shown as supporting evidence</small></article>
         <article className="metric"><span>Paper / review</span><strong>🟠 {filteredSummary.amber}</strong><small>Agency paper exception or incomplete electronic evidence</small></article>
-        <article className="metric"><span>Action required</span><strong>🔴 {filteredSummary.red}</strong><small>Driver compliance gap</small></article>
+        <article className="metric"><span>Action required</span><strong>🔴 {filteredSummary.red}</strong><small>Driver compliance gap or failed Fleetio inspection item</small></article>
       </div>
 
       <div className="panel">
@@ -169,15 +168,15 @@ export function DailyCompliance() {
 
       <div className="panel" style={{ overflowX: "auto" }}>
         <table>
-          <thead><tr><th></th><th>Asset</th><th>Driver</th><th>Run</th><th>Tacho start</th><th>Pre-use work</th><th>Fleetio walkround</th><th>First movement</th><th>Status</th></tr></thead>
+          <thead><tr><th></th><th>Asset</th><th>Driver</th><th>Run</th><th>Tacho start</th><th>Tacho pre-use evidence</th><th>Fleetio walkround</th><th>First movement</th><th>Status</th></tr></thead>
           <tbody>{rows.map(row => <tr key={`${row.assetType}-${row.assetId}-${row.driverId}-${row.tachoDutyStartUtc || row.runReference}`}>
             <td style={{ fontSize: 18 }}>{statusDot(row.status)}</td>
             <td><strong>{row.assetName}</strong><br/><small>{row.assetType}</small></td>
             <td><strong>{row.driverName}</strong><br/><small>{row.employmentType}</small></td>
             <td>{row.runReference}</td>
             <td>{fmtTime(row.tachoDutyStartUtc)}</td>
-            <td><strong>{row.tachoPreUseOtherWorkMinutes == null ? "—" : `${row.tachoPreUseOtherWorkMinutes} min`}</strong><br/><small>{(row.tachoPreUseOtherWorkMinutes ?? 0) >= minimumMinutes ? "✓ Meets SLH standard" : "Below / unavailable"}</small></td>
-            <td>{row.fleetioInspectionId ? <><strong>{row.fleetioDriverMatched ? "✓" : "⚠"} {row.fleetioForm || "Inspection"}</strong><br/><small>{fmtTime(row.fleetioSubmittedAtUtc)} · {row.fleetioUser || "User unavailable"}{row.fleetioFailedItems ? ` · ${row.fleetioFailedItems} failed item(s)` : ""}</small></> : <strong>Not found</strong>}</td>
+            <td><strong>{row.tachoPreUseOtherWorkMinutes == null ? "—" : `${row.tachoPreUseOtherWorkMinutes} min`}</strong><br/><small>{row.tachoPreUseOtherWorkMinutes == null ? "No measurable other-work returned" : "Supporting Tacho evidence · not the pass/fail test"}</small></td>
+            <td>{row.fleetioInspectionId ? <><strong>{row.fleetioDriverMatched ? "✓" : "⚠"} {row.fleetioForm || "Inspection"}</strong><br/><small>{fmtTime(row.fleetioSubmittedAtUtc)} · {row.fleetioUser || "User unavailable"}{row.fleetioFailedItems ? ` · ${row.fleetioFailedItems} failed item(s)` : " · no failed items"}</small></> : <strong>Not found</strong>}</td>
             <td>{fmtTime(row.firstMovementUtc)}</td>
             <td><strong>{row.status}</strong><br/><small>{row.reason}</small></td>
           </tr>)}</tbody>
