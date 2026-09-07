@@ -6,7 +6,6 @@
   window.__SLH_LEGACY_TV__ = true;
 
   var MAX_ROWS = 10;
-  var PINNED_EXCEPTIONS = 4;
   var ROTATE_MS = 15000;
   var REFRESH_MS = 60000;
   var normalOffset = 0;
@@ -262,13 +261,17 @@
     var stops = progress && progress.stops && progress.stops.length ? progress.stops.slice(0) : fallbackStops(load);
     stops.sort(function (a, b) { return (a.sequence || 0) - (b.sequence || 0); });
     var count = Math.max(stops.length, progress ? progress.totalStops || 0 : 0, 1);
+    var stopsBySequence = {};
+    for (var stopIndex = 0; stopIndex < stops.length; stopIndex += 1) {
+      if (Number.isFinite(Number(stops[stopIndex].sequence))) { stopsBySequence[Number(stops[stopIndex].sequence)] = stops[stopIndex]; }
+    }
     var done = progress ? progress.completedStops || 0 : 0;
     var dots = '';
     var filled = 0;
     var i;
     for (i = 0; i < count; i += 1) {
       var pct = ((i + 1) / count) * 100;
-      var stateName = stops[i] && stops[i].state ? String(stops[i].state).toLowerCase() : '';
+      var stateName = stopsBySequence[i + 1] && stopsBySequence[i + 1].state ? String(stopsBySequence[i + 1].state).toLowerCase() : '';
       var cls = '';
       if (stateName === 'departed' || stateName === 'completed' || stateName === 'exited' || (!stateName && i < done)) { cls = ' done'; filled += 1; }
       else if (stateName === 'onsite') { cls = ' onsite'; }
@@ -383,12 +386,13 @@
     return;
   }
   var date = todayIso();
-  var state = { loads: [], assignments: [], progress: [], etas: [], dwell: [], liveRuns: {}, trackingSource: '', error: '' };
+  var state = { loads: [], assignments: [], progress: [], etas: [], dwell: [], liveRuns: {}, coverage: {}, trackingSource: '', error: '' };
 
   root.innerHTML = '<div id="legacy-tv">' +
     '<div class="legacy-head"><div class="brand-wrap"><img class="legacy-logo" src="/lyons-logo.svg" alt="Lyons"><div class="brand-mark"><b>LYONS</b><span>OPERATIONS WALLBOARD</span></div><div class="head-divider"></div><h1>Arrivals &amp; Departures</h1></div><div class="legacy-clock"><span id="legacy-date"></span><b id="legacy-clock"></b><small>● LIVE OFFICE WALLBOARD</small></div></div>' +
     '<div id="legacy-message">Connecting to live TMS data…</div>' +
     '<div id="legacy-kpis"></div>' +
+    '<div id="legacy-coverage" class="legacy-coverage"></div>' +
     '<div class="board-grid"><div class="runs-panel"><div id="legacy-board"></div></div><aside class="attention-panel"><h2>ATTENTION · NEEDS ACTION</h2><div id="legacy-attention"></div></aside></div>' +
     '<div class="legacy-foot"><span><b>LIVE OPERATIONS</b> · active runs auto-rotate every 15s</span><span id="legacy-source"></span><span id="legacy-refresh"></span></div></div>';
 
@@ -470,34 +474,23 @@
       });
     }
     rows.sort(function (a, b) {
-      if (a.complete !== b.complete) { return a.complete ? 1 : -1; }
-      if (a.status.priority !== b.status.priority) { return b.status.priority - a.status.priority; }
-      return a.time - b.time;
+      return a.time - b.time || a.load.id.localeCompare(b.load.id);
     });
     return rows;
   }
 
   function selectedRows(rows) {
     var active = [];
-    var exceptions = [];
-    var normals = [];
     var i;
     for (i = 0; i < rows.length; i += 1) {
       if (rows[i].complete || !isScheduledVisible(rows[i])) { continue; }
       active.push(rows[i]);
-      if (rows[i].status.exception) { exceptions.push(rows[i]); } else { normals.push(rows[i]); }
     }
-    exceptions.sort(function (a, b) { return b.status.priority - a.status.priority; });
-    normals.sort(function (a, b) {
-      if (a.status.priority !== b.status.priority) { return b.status.priority - a.status.priority; }
-      return a.time - b.time;
-    });
-    var result = exceptions.slice(0, Math.min(PINNED_EXCEPTIONS, MAX_ROWS));
-    var slots = MAX_ROWS - result.length;
-    if (slots <= 0 || !normals.length) { return result.slice(0, MAX_ROWS); }
-    if (normalOffset >= normals.length) { normalOffset = 0; }
-    for (i = 0; i < slots && i < normals.length; i += 1) {
-      result.push(normals[(normalOffset + i) % normals.length]);
+    active.sort(function (a, b) { return a.time - b.time || a.load.id.localeCompare(b.load.id); });
+    if (normalOffset >= active.length) { normalOffset = 0; }
+    var result = [];
+    for (i = 0; i < MAX_ROWS && i < active.length; i += 1) {
+      result.push(active[(normalOffset + i) % active.length]);
     }
     return result;
   }
@@ -512,8 +505,9 @@
     var board = document.getElementById('legacy-board');
     var message = document.getElementById('legacy-message');
     var kpis = document.getElementById('legacy-kpis');
+    var coverage = document.getElementById('legacy-coverage');
     var attention = document.getElementById('legacy-attention');
-    if (!board || !message || !kpis || !attention) { return; }
+    if (!board || !message || !kpis || !coverage || !attention) { return; }
 
     if (state.error) {
       message.className = 'legacy-error';
@@ -549,6 +543,13 @@
       kpi('COMPLETE', completeCount, 'complete', '✓') +
       kpi('AT RISK / LATE', riskCount + lateCount, (riskCount + lateCount) ? 'late' : 'active', '!') +
       kpi('AVAILABLE', completeCount, 'complete', '↻');
+
+    var linkedRuns = Number(state.coverage.geofenceLinkedRuns || 0);
+    var linkedStops = Number(state.coverage.geofenceLinkedStops || 0);
+    var totalStops = Number(state.coverage.geofenceTotalStops || 0);
+    var hitRuns = Number(state.coverage.geofenceHitRuns || 0);
+    var hitStops = Number(state.coverage.geofenceHitStops || 0);
+    coverage.innerHTML = '<b>GEOFENCE COVERAGE</b><span>' + esc(linkedRuns + '/' + state.loads.length + ' runs linked') + '</span><span>' + esc(linkedStops + '/' + totalStops + ' stops linked') + '</span><span>' + esc(hitRuns + ' runs with hits · ' + hitStops + ' stops exited') + '</span>' + (totalStops > linkedStops ? '<em>' + esc((totalStops - linkedStops) + ' stops need geofence links') + '</em>' : '');
 
     var html = '<table><thead><tr><th>TIME</th><th>RUN</th><th>VEHICLE</th><th>DRIVER</th><th>PROGRESS</th><th>FINAL DELIVERY / ETA</th><th>STATUS</th></tr></thead><tbody>';
     for (i = 0; i < shown.length; i += 1) {
@@ -589,16 +590,14 @@
 
   function rotateRows() {
     var rows = buildRows();
-    var normalCount = 0;
-    var exceptionCount = 0;
+    var activeCount = 0;
     var i;
     for (i = 0; i < rows.length; i += 1) {
       if (rows[i].complete) { continue; }
-      if (rows[i].status.exception) { exceptionCount += 1; } else { normalCount += 1; }
+      if (isScheduledVisible(rows[i])) { activeCount += 1; }
     }
-    var slots = MAX_ROWS - Math.min(PINNED_EXCEPTIONS, exceptionCount);
-    if (slots > 0 && normalCount > slots) {
-      normalOffset = (normalOffset + slots) % normalCount;
+    if (activeCount > MAX_ROWS) {
+      normalOffset = (normalOffset + MAX_ROWS) % activeCount;
       render();
     }
   }
@@ -619,6 +618,7 @@
       else if (name === 'assignments') { state.assignments = data || []; }
       else if (name === 'progress') {
         state.progress = data && data.runs ? data.runs : state.progress;
+        state.coverage = data || state.coverage;
         state.trackingSource = data && data.trackingSource ? data.trackingSource : state.trackingSource;
       }
       else if (name === 'etas') { state.etas = data && data.records ? data.records : []; }
