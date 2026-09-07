@@ -64,7 +64,7 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
 
   useEffect(() => {
     setDriverId(load.driverId || ""); setVehicleId(load.vehicleId || ""); setTrailerId(load.trailerId || ""); void refresh();
-  }, [load.driverId, load.vehicleId, refresh]);
+  }, [load.driverId, load.vehicleId, load.trailerId, refresh]);
 
   useEffect(() => {
     const q = driverQuery.trim();
