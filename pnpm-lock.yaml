@@ -43,8 +43,8 @@ importers:
         specifier: ^9.22.0
         version: 9.39.5
       '@playwright/test':
-        specifier: 1.55.0
-        version: 1.55.0
+        specifier: 1.62.1
+        version: 1.62.1
       '@types/react':
         specifier: ^19.0.10
         version: 19.2.18
@@ -432,9 +432,9 @@ packages:
     os: [linux]
     libc: [glibc]
 
-  '@playwright/test@1.55.0':
-    resolution: {integrity: sha512-04IXzPwHrW69XusN/SIdDdKZBzMfOT9UNT/YiJit/xpy2VuAoB8NHc8Aplb96zsWDddLnbkPL3TsmrS04ZU2xQ==}
-    engines: {node: '>=18'}
+  '@playwright/test@1.62.1':
+    resolution: {integrity: sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ==}
+    engines: {node: '>=20'}
     hasBin: true
 
   '@rolldown/pluginutils@1.0.0-rc.3':
@@ -1081,14 +1081,14 @@ packages:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
 
-  playwright-core@1.55.0:
-    resolution: {integrity: sha512-GvZs4vU3U5ro2nZpeiwyb0zuFaqb9sUiAJuyrWpcGouD8y9/HLgGbNRjIph7zU9D3hnPaisMl9zG9CgFi/biIg==}
-    engines: {node: '>=18'}
+  playwright-core@1.62.1:
+    resolution: {integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==}
+    engines: {node: '>=20'}
     hasBin: true
 
-  playwright@1.55.0:
-    resolution: {integrity: sha512-sdCWStblvV1YU909Xqx0DhOjPZE4/5lJsIS84IfN9dAZfcl/CIZ5O8l3o0j7hPMjDvqoTF8ZUcc+i/GL5erstA==}
-    engines: {node: '>=18'}
+  playwright@1.62.1:
+    resolution: {integrity: sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg==}
+    engines: {node: '>=20'}
     hasBin: true
 
   postcss@8.5.26:
@@ -1658,9 +1658,9 @@ snapshots:
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
 
-  '@playwright/test@1.55.0':
+  '@playwright/test@1.62.1':
     dependencies:
-      playwright: 1.55.0
+      playwright: 1.62.1
 
   '@rolldown/pluginutils@1.0.0-rc.3': {}
 
@@ -2263,11 +2263,11 @@ snapshots:
 
   picomatch@4.0.7: {}
 
-  playwright-core@1.55.0: {}
+  playwright-core@1.62.1: {}
 
-  playwright@1.55.0:
+  playwright@1.62.1:
     dependencies:
-      playwright-core: 1.55.0
+      playwright-core: 1.62.1
     optionalDependencies:
       fsevents: 2.3.2
 
