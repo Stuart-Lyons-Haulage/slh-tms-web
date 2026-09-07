@@ -371,16 +371,24 @@
       // not include /tv-display/.
       xhr.setRequestHeader('X-TV-Display-Key', key);
     }
+    var settled = false;
+    function finish(error, data) {
+      if (settled) { return; }
+      settled = true;
+      callback(error, data);
+    }
+    xhr.timeout = 20000;
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) { return; }
       if (xhr.status >= 200 && xhr.status < 300) {
-        try { callback(null, JSON.parse(xhr.responseText)); } catch (e) { callback(e); }
+        try { finish(null, JSON.parse(xhr.responseText)); } catch (e) { finish(e); }
       } else {
-        callback(new Error('TMS API returned ' + xhr.status + (xhr.status === 401 || xhr.status === 403 ? '. Check the TV access key.' : '.')));
+        finish(new Error('TMS API returned ' + xhr.status + (xhr.status === 401 || xhr.status === 403 ? '. Check the TV access key.' : '.')));
       }
     };
-    xhr.onerror = function () { callback(new Error('The TV could not reach the TMS API.')); };
-    try { xhr.send(); } catch (e) { callback(e); }
+    xhr.onerror = function () { finish(new Error('The TV could not reach the TMS API.')); };
+    xhr.ontimeout = function () { finish(new Error('The TMS API did not respond within 20 seconds.')); };
+    try { xhr.send(); } catch (e) { finish(e); }
   }
 
   function buildRows() {

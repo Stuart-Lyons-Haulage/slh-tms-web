@@ -5,7 +5,6 @@ import { parseApiDateTime, todayIsoDate } from "../lib/dateUtils";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
 import { completedJobCount, finalEtaFor, geofenceProgress, isScheduleVisible, isWallboardActionRequired, mergeRouteProgress, statusFor, type RouteProgressRun, type RunProgressRecord, type RunTachoEvidence } from "./operationsWallboardProgress";
-import { enrichRouteFinalDestination, mergeWallboardTiming, type RunTimingRecord, type RunTimingResponse } from "./operationsWallboardTiming";
 import "../operations-wallboard.css";
 
 type RunProgressResponse = {
@@ -185,8 +184,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
   const [liveData, setLiveData] = useState<Pick<WallboardData, "etas" | "progress" | "warning" | "geofenceAvailable" | "geofenceCount" | "geofenceLinkedRuns" | "latestTrackingUtc" | "calculatedAtUtc">>();
   const tableRef = useRef<HTMLDivElement | null>(null);
-  const lastTimingRef = useRef(new Map<string, RunTimingRecord>());
-  const acceptedFinalEtasRef = useRef(new Map<string, string>());
+  const liveRefreshInFlight = useRef<Promise<void> | null>(null);
 
   const { data, error, loading, refresh } = useApi(useCallback(async () => {
     const access = tvAccessKey ? undefined : await token();
@@ -210,46 +208,51 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
   }, [today, token, tvAccessKey]));
 
   const refreshLiveData = useCallback(async () => {
-    const access = tvAccessKey ? undefined : await token();
-    const tvInit = tvAccessKey ? { headers: { "X-TMS-TV-Key": tvAccessKey, "X-TV-Display-Key": tvAccessKey } } : undefined;
-    const [etaResult, progressResult, routeResult, timingResult] = await Promise.allSettled([
-      request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
-      request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
-      request<RouteProgressResponse>(`/api/v1/tv-display/route-progress?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
-      request<RunTimingResponse>(`/api/v1/run-timing?date=${encodeURIComponent(today)}`, access, tvInit, 90000),
-    ]);
-    const etas = etaResult.status === "fulfilled" ? etaResult.value : undefined;
-    const progress = progressResult.status === "fulfilled" ? progressResult.value : undefined;
-    const route = routeResult.status === "fulfilled" ? routeResult.value : undefined;
-    const timing = timingResult.status === "fulfilled" ? timingResult.value : undefined;
-    setLiveData(previous => {
-      const timedEtas = mergeWallboardTiming(
-        etas?.records ?? [],
-        timing?.records ?? [],
-        lastTimingRef.current,
-        acceptedFinalEtasRef.current,
-      );
-      const stableEtas = mergeEtaSnapshots(previous?.etas ?? [], timedEtas);
-      const stableProgress = mergeProgressSnapshots(previous?.progress ?? [], progress?.records ?? []);
-      const routeRuns = route ? enrichRouteFinalDestination(route.runs) : undefined;
-      return {
-        etas: stableEtas,
-        progress: routeRuns ? mergeRouteProgress(stableProgress, routeRuns) : stableProgress,
-        warning: [
-          progress?.warning,
-          route?.tachoWarning,
-          etas ? undefined : "Live ETA refresh is catching up; previous final ETAs remain visible.",
-          progress ? undefined : "Geofence refresh is catching up; previous confirmed progression remains visible.",
-          route ? undefined : "Live route position is catching up; planned journeys remain visible.",
-          timing ? undefined : "Run timing enrichment is catching up; the last accepted final customer ETA remains visible.",
-        ].filter(Boolean).join(" "),
-        geofenceAvailable: progress ? progress.geofenceAvailable !== false : previous?.geofenceAvailable ?? true,
-        geofenceCount: progress?.geofenceCount ?? previous?.geofenceCount ?? 0,
-        geofenceLinkedRuns: Math.max(route?.geofenceLinkedRuns ?? 0, progress?.geofenceLinkedRuns ?? 0, previous?.geofenceLinkedRuns ?? 0),
-        latestTrackingUtc: route?.latestTrackingUtc ?? progress?.latestTrackingUtc ?? previous?.latestTrackingUtc,
-        calculatedAtUtc: etas?.calculatedAtUtc ?? previous?.calculatedAtUtc,
-      };
-    });
+    if (liveRefreshInFlight.current) return liveRefreshInFlight.current;
+    const operation = (async () => {
+      const access = tvAccessKey ? undefined : await token();
+      const tvInit = tvAccessKey ? { headers: { "X-TMS-TV-Key": tvAccessKey, "X-TV-Display-Key": tvAccessKey } } : undefined;
+      const latest: { etas?: DeliveryEtas; progress?: RunProgressResponse; route?: RouteProgressResponse } = {};
+      const feedState: Record<"eta" | "progress" | "route", "pending" | "ready" | "failed"> = { eta: "pending", progress: "pending", route: "pending" };
+      const commit = () => setLiveData(previous => {
+        const stableEtas = latest.etas ? mergeEtaSnapshots(previous?.etas ?? [], latest.etas.records ?? []) : previous?.etas ?? [];
+        const stableProgress = latest.progress ? mergeProgressSnapshots(previous?.progress ?? [], latest.progress.records ?? []) : previous?.progress ?? [];
+        const routeProgress = latest.route ? mergeRouteProgress(stableProgress, latest.route.runs) : stableProgress;
+        return {
+          etas: stableEtas,
+          progress: routeProgress,
+          warning: [
+            latest.progress?.warning,
+            latest.route?.tachoWarning,
+            feedState.eta === "pending" ? "Live ETA refresh is catching up; previous final ETAs remain visible." : feedState.eta === "failed" ? "Live ETA refresh is unavailable; previous final ETAs remain visible." : undefined,
+            feedState.progress === "pending" ? "Geofence refresh is catching up; previous confirmed progression remains visible." : feedState.progress === "failed" ? "Geofence refresh is unavailable; previous confirmed progression remains visible." : undefined,
+            feedState.route === "pending" ? "Live route position is catching up; planned journeys remain visible." : feedState.route === "failed" ? "Live route position is unavailable; ETA and plan status remain visible." : undefined,
+          ].filter(Boolean).join(" "),
+          geofenceAvailable: latest.progress ? latest.progress.geofenceAvailable !== false : previous?.geofenceAvailable ?? true,
+          geofenceCount: latest.progress?.geofenceCount ?? previous?.geofenceCount ?? 0,
+          geofenceLinkedRuns: Math.max(latest.route?.geofenceLinkedRuns ?? 0, latest.progress?.geofenceLinkedRuns ?? 0, previous?.geofenceLinkedRuns ?? 0),
+          latestTrackingUtc: latest.route?.latestTrackingUtc ?? latest.progress?.latestTrackingUtc ?? previous?.latestTrackingUtc,
+          calculatedAtUtc: latest.etas?.calculatedAtUtc ?? previous?.calculatedAtUtc,
+        };
+      });
+
+      const etaRequest = request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(today)}`, access, tvInit, 30000)
+        .then(value => { latest.etas = value; feedState.eta = "ready"; commit(); })
+        .catch(() => { feedState.eta = "failed"; commit(); });
+      const progressRequest = request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(today)}`, access, tvInit, 30000)
+        .then(value => { latest.progress = value; feedState.progress = "ready"; commit(); })
+        .catch(() => { feedState.progress = "failed"; commit(); });
+      const routeRequest = request<RouteProgressResponse>(`/api/v1/tv-display/route-progress?date=${encodeURIComponent(today)}`, access, tvInit, 30000)
+        .then(value => { latest.route = value; feedState.route = "ready"; commit(); })
+        .catch(() => { feedState.route = "failed"; commit(); });
+      await Promise.allSettled([etaRequest, progressRequest, routeRequest]);
+    })();
+    liveRefreshInFlight.current = operation;
+    try {
+      await operation;
+    } finally {
+      if (liveRefreshInFlight.current === operation) liveRefreshInFlight.current = null;
+    }
   }, [today, token, tvAccessKey]);
 
   useEffect(() => {
@@ -272,6 +275,9 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       const list = etaByLoad.get(eta.loadId) || [];
       list.push(eta); etaByLoad.set(eta.loadId, list);
     }
+    // Current reconciled Loads are authoritative for which runs exist on the board.
+    // Progress/ETA snapshots may deliberately retain last-known evidence, but stale
+    // enrichment IDs must never manufacture a second/ghost operational row.
     const ids = new Set(loadsById.keys());
     return [...ids].map(id => {
       const load = loadsById.get(id);
