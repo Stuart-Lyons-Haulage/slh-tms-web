@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstCollectionStop, runDirection, suggestionRunLabel } from "./DriverDispatch";
+import { firstCollectionStop, runDirection, suggestionRunLabel } from "./DriverDispatchPlanning";
 
 function load(overrides: Record<string, unknown> = {}) {
   return {
@@ -10,8 +10,8 @@ function load(overrides: Record<string, unknown> = {}) {
     status: "Draft",
     southbound: false,
     stops: [
-      { id: "c", sequence: 1, name: "Collect · NWF-Runcton", latitude: 50.8, longitude: -0.7, plannedArrivalUtc: "2026-08-28T05:00:00Z" },
-      { id: "d", sequence: 2, name: "Deliver · Aldi-Stockton", latitude: 54.57, longitude: -1.31, plannedArrivalUtc: "2026-08-28T10:00:00Z" },
+      { id: "c", sequence: 1, name: "Collect · NWF-Runcton", latitude: 50.8, longitude: -0.7 },
+      { id: "d", sequence: 2, name: "Deliver · Aldi-Stockton", latitude: 54.57, longitude: -1.31 },
     ],
     ...overrides,
   } as NonNullable<Parameters<typeof suggestionRunLabel>[0]>;
