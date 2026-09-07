@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { api, request, type Driver } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
+import { todayIsoDate } from "../lib/dateUtils";
 
 type ComplianceRow = {
   assetType: "Vehicle" | "Trailer";
@@ -48,10 +49,8 @@ type ComplianceReport = {
   rows: ComplianceRow[];
 };
 
-const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+// today() replaced with timezone-safe todayIsoDate from dateUtils
+const today = todayIsoDate;
 const fmtTime = (value?: string) => value
   ? new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value))
   : "—";

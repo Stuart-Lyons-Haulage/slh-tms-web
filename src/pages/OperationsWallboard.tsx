@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { OperationsWallboard as ExistingOperationsWallboard } from "./OperationsWallboardLive";
 import { RunGeofenceLinkagePanel } from "./RunGeofenceLinkagePanel";
+import { stableFinalEta } from "./stableFinalEta";
 import "../run-geofence-linkage.css";
 
 type EtaRecord = {
@@ -54,6 +55,16 @@ function jsonResponse(original: Response, payload: unknown) {
   headers.delete("content-length");
   return new Response(JSON.stringify(payload), { status: original.status, statusText: original.statusText, headers });
 }
+
+async function fetchOptionalTiming(fetcher: typeof window.fetch, input: RequestInfo | URL, init?: RequestInit) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 8000);
+  try {
+    return await fetcher(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
 function isDeliveryDestination(eta: EtaRecord) {
   return /^deliver\b/i.test(String(eta.stopName || ""))
     || Boolean(eta.orderReference || eta.customerCode || eta.deliveryWindowEndUtc);
@@ -85,6 +96,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
     const lastTiming = new Map<string, TimingRecord>();
+    const acceptedFinalEtas = new Map<string, string>();
 
     const patchedFetch: typeof window.fetch = async (input, init) => {
       const response = await originalFetch(input, init);
@@ -106,7 +118,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
         const payload = await response.clone().json() as { records?: EtaRecord[]; [key: string]: unknown };
         if (!Array.isArray(payload.records)) return response;
 
-        const timing = await originalFetch(timingUrl(url), {
+        const timing = await fetchOptionalTiming(originalFetch, timingUrl(url), {
           method: "GET",
           headers: requestHeaders(input, init),
           cache: "no-store",
@@ -114,8 +126,12 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
           .catch(() => undefined);
 
         for (const record of timing?.records || []) {
-          if (record.completed) lastTiming.delete(record.loadId);
-          else lastTiming.set(record.loadId, { ...lastTiming.get(record.loadId), ...record });
+          if (record.completed) {
+            lastTiming.delete(record.loadId);
+            acceptedFinalEtas.delete(record.loadId);
+          } else {
+            lastTiming.set(record.loadId, { ...lastTiming.get(record.loadId), ...record });
+          }
         }
 
         const latestTiming = new Map<string, TimingRecord>();
@@ -143,10 +159,18 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
           if (!finalDestination) return eta;
 
           if (!authoritative?.finalEtaUtc) return { ...eta, isFinalDestination: true };
+          const acceptedEta = stableFinalEta(
+            authoritative.finalEtaUtc,
+            eta.etaUtc,
+            eta.deliveryWindowEndUtc,
+            acceptedFinalEtas.get(eta.loadId),
+          );
+          if (!acceptedEta) return { ...eta, isFinalDestination: true };
+          acceptedFinalEtas.set(eta.loadId, acceptedEta);
           return {
             ...eta,
             isFinalDestination: true,
-            etaUtc: authoritative.finalEtaUtc,
+            etaUtc: acceptedEta,
             source: mappedEtaSource(authoritative.finalEtaSource) || eta.source,
             deliveryWindowEndUtc: eta.deliveryWindowEndUtc,
           };
@@ -160,13 +184,20 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
           if (authoritative.completed || !authoritative.finalDestinationStopId || !authoritative.finalEtaUtc) continue;
           if (records.some(eta => eta.loadId === authoritative.loadId && eta.stopId === authoritative.finalDestinationStopId)) continue;
           const highest = Math.max(0, ...records.filter(eta => eta.loadId === authoritative.loadId).map(eta => eta.sequence ?? 0));
+          const acceptedEta = stableFinalEta(
+            authoritative.finalEtaUtc,
+            undefined,
+            undefined,
+            acceptedFinalEtas.get(authoritative.loadId),
+          ) || authoritative.finalEtaUtc;
+          acceptedFinalEtas.set(authoritative.loadId, acceptedEta);
           records.push({
             loadId: authoritative.loadId,
             loadReference: authoritative.loadReference,
             stopId: authoritative.finalDestinationStopId,
             sequence: highest + 1,
             stopName: authoritative.finalDestinationName || "Final destination",
-            etaUtc: authoritative.finalEtaUtc,
+            etaUtc: acceptedEta,
             source: mappedEtaSource(authoritative.finalEtaSource) || "Live",
             risk: "Pending",
             isFinalDestination: true,

@@ -7,6 +7,7 @@ import { subscribePlanningChanges } from "../lib/planningEvents";
 import { displayRunReference } from "../lib/runDisplay";
 import { useApi } from "../lib/useApi";
 import "../live-runs.css";
+import { listRuns } from '../api/runs';
 
 type RunColour = "upcoming" | "stationary" | "on-time" | "at-risk";
 type RunProgressStop = { id: string; sequence: number; name: string; plannedArrivalUtc?: string };
@@ -205,7 +206,7 @@ export function LiveRunsBoard({ tvMode = false }: { tvMode?: boolean }) {
 
   const { data: loadData, error: loadError, loading: loadLoading, refresh: refreshLoads } = useApi(useCallback(async () => {
     const access = await token();
-    return (await api.loads(date, access)).filter((load) => load.planningDate === date);
+    return (await listRuns(date, access)).filter((load) => load.planningDate === date);
   }, [date, token]));
 
   const { data: fleetData, error: fleetError, refresh: refreshFleet } = useApi(useCallback(async () => api.fleetStatus(await token()), [token]));

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { request } from '../lib/api';
 import { useAccessToken } from '../lib/auth';
 
@@ -57,13 +57,15 @@ export function GeofenceOperational() {
   const [selected, setSelected] = useState<Fence>();
   const [draft, setDraft] = useState<Partial<Fence>>({});
 
+  const lastGoodSites = useRef<SiteOption[]>([]);
+
   const load = useCallback(async () => {
     setLoading(true); setError(undefined);
     try {
       const access = await token();
       const [integrity, siteOptions] = await Promise.all([
         request<Integrity>('/api/v1/geofence-integrity', access),
-        request<SiteOption[]>('/api/v1/site-geofence-sync/sites', access),
+        request<SiteOption[]>('/api/v1/site-geofence-sync/sites', access).then(rows => { lastGoodSites.current = rows; return rows; }).catch(() => lastGoodSites.current),
       ]);
       setData(integrity);
       setSites(siteOptions);
@@ -73,6 +75,13 @@ export function GeofenceOperational() {
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const refreshIfVisible = () => { if (document.visibilityState === 'visible') void load(); };
+    const interval = window.setInterval(refreshIfVisible, 30_000);
+    window.addEventListener('focus', refreshIfVisible);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => { window.clearInterval(interval); window.removeEventListener('focus', refreshIfVisible); document.removeEventListener('visibilitychange', refreshIfVisible); };
+  }, [load]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -26,6 +26,7 @@ import { useAccessToken } from "../lib/auth";
 import { plannerV2Api, type PlannerDaySuggestion } from "../lib/plannerV2Api";
 import { useApi } from "../lib/useApi";
 import "../operational-planner.css";
+import { allocateRun, createRun as createRunApi, getRunRoute, listRuns, updateRunOperational, updateRunStops } from '../api/runs';
 
 type Coordinate = { latitude: number; longitude: number };
 type RouteLine = [number, number][];
@@ -284,7 +285,7 @@ export function PlannerV2() {
   const [route, setRoute] = useState<RouteLine>([]);
 
   const ordersApi = useApi(useCallback(async () => api.orders(date, date, await token()), [date, token]));
-  const loadsApi = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
+  const loadsApi = useApi(useCallback(async () => listRuns(date, await token()), [date, token]));
   const vehiclesApi = useApi(useCallback(async () => api.vehicles(await token()), [token]));
   const driversApi = useApi(useCallback(async () => api.drivers(await token()), [token]));
   const trailersApi = useApi(useCallback(async () => api.trailers(await token()), [token]));
@@ -339,7 +340,7 @@ export function PlannerV2() {
     let cancelled = false;
     void (async () => {
       try {
-        const result = await api.route(selectedLoadId, await token()) as { routes?: Array<{ legs?: RouteLeg[] }> };
+        const result = await getRunRoute(selectedLoadId, await token()) as { routes?: Array<{ legs?: RouteLeg[] }> };
         const legs: RouteLeg[] = result.routes?.[0]?.legs ?? [];
         const line: RouteLine = legs.flatMap((leg) => (leg.points ?? []).flatMap((point) => point.latitude != null && point.longitude != null
           ? [[Number(point.longitude), Number(point.latitude)] as [number, number]] : []));
@@ -373,7 +374,7 @@ export function PlannerV2() {
     if (!item || busy) return;
     setBusy(true); setMessage(undefined);
     try {
-      const created = await api.createLoad({
+      const created = await createRunApi({
         reference: `RUN-${date.replaceAll("-", "")}-${Date.now().toString().slice(-5)}`,
         planningDate: date,
         driverId: suggestedDriverId,
@@ -397,8 +398,8 @@ export function PlannerV2() {
     try {
       const current = safeStops(load);
       const stops: PlannerStop[] = [...current.map((stop) => ({ orderId: stop.orderId, name: text(stop.name) || "Stop", address: text(stop.address) || undefined, latitude: stop.latitude, longitude: stop.longitude, plannedArrivalUtc: stop.plannedArrivalUtc })), ...await stopsFor(item, current)];
-      await api.updateLoadStops(load.id, stops, await token());
-      await api.updateLoadUtilisation(load.id, {
+      await updateRunStops(load.id, stops, await token());
+      await updateRunOperational(load.id, {
         palletSpacesUsed: (Number(load.palletSpacesUsed) || 0) + capacityUnits(item),
         totalPalletSpaces: Number(load.totalPalletSpaces) || 26,
         capacityType: load.capacityType || "Standard pallets",
@@ -415,10 +416,10 @@ export function PlannerV2() {
     if (busy) return;
     setBusy(true); setMessage(undefined);
     try {
-      await api.allocateLoad(load.id, { vehicleId, driverId, trailerId }, await token());
+      await allocateRun(load.id, { vehicleId, driverId, trailerId }, await token());
       if (trailerId) {
         const trailer = trailers.find((item) => item.id === trailerId);
-        await api.updateLoadUtilisation(load.id, {
+        await updateRunOperational(load.id, {
           palletSpacesUsed: Number(load.palletSpacesUsed) || 0,
           totalPalletSpaces: Number(trailer?.standardCapacity) || Number(load.totalPalletSpaces) || 26,
           capacityType: trailer?.type || load.capacityType || "Standard pallets",
@@ -445,7 +446,7 @@ export function PlannerV2() {
         remaining.forEach((candidate, index) => { const score = distanceScore(cursor, candidate.point); if (score < best) { best = score; nextIndex = index; } });
         const next = remaining.splice(nextIndex, 1)[0]; ordered.push(next); cursor = next.point || cursor;
       }
-      await api.updateLoadStops(load.id, ordered.map(({ stop, point }) => ({ orderId: stop.orderId, name: text(stop.name) || "Stop", address: text(stop.address) || undefined, latitude: point?.latitude ?? stop.latitude, longitude: point?.longitude ?? stop.longitude, plannedArrivalUtc: stop.plannedArrivalUtc })), accessToken);
+      await updateRunStops(load.id, ordered.map(({ stop, point }) => ({ orderId: stop.orderId, name: text(stop.name) || "Stop", address: text(stop.address) || undefined, latitude: point?.latitude ?? stop.latitude, longitude: point?.longitude ?? stop.longitude, plannedArrivalUtc: stop.plannedArrivalUtc })), accessToken);
       await loadsApi.refresh(); setSelectedLoadId(load.id); setMessage(`${load.reference} stop order updated using the available map points.`);
     } catch (exception) { setMessage(exception instanceof Error ? exception.message : "Route suggestion could not be saved."); }
     finally { setBusy(false); }

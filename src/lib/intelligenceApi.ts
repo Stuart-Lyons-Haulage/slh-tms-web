@@ -101,6 +101,6 @@ export const intelligenceApi = {
   orderTimeline: (id: string, token?: string) => request<TimelineResponse>(`/api/v1/intelligence/timeline/order/${encodeURIComponent(id)}`, token, undefined, 40000),
   planLock: (date: string, token?: string) => request<PlanLockInfo | null>(`/api/v1/intelligence/plan-lock/${encodeURIComponent(date)}`, token),
   lockPlan: (date: string, token?: string) => request<PlanLockInfo>(`/api/v1/intelligence/plan-lock/${encodeURIComponent(date)}`, token, { method: 'POST' }),
-  readiness: (date: string, token?: string) => request<ReadinessResponse>(`/api/v1/operations/readiness-snapshot?date=${encodeURIComponent(date)}`, token, undefined, 40000),
+  readiness: (date: string, token?: string) => request<ReadinessResponse>(`/api/v1/runs/readiness?date=${encodeURIComponent(date)}`, token, undefined, 40000),
   stability: (from: string, to: string, token?: string) => request<PlanStabilityResponse>(`/api/v1/intelligence/plan-stability?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, token, undefined, 40000),
 };

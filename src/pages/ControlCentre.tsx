@@ -1,6 +1,7 @@
 import { AdminIntegrationSyncControls } from '../components/AdminIntegrationSyncControls';
 import { Admin } from './Pages';
 import { OperationsControlClean } from './OperationsControlClean';
+import { TvDisplaySetup } from './TvDisplaySetup';
 
 export function ControlCentre() {
   return <section className="control-centre-one-page">
@@ -8,7 +9,7 @@ export function ControlCentre() {
       <div>
         <p className="eyebrow">Control & administration</p>
         <h1>Control centre</h1>
-        <p className="intro">One continuous operational control page: live confidence first, then integration health and administration. No duplicated switchable views.</p>
+        <p className="intro">One continuous operational control page: operational reconciliation first, then integration health and administration. No duplicated switchable views.</p>
       </div>
     </div>
 
@@ -19,6 +20,7 @@ export function ControlCentre() {
       <h2>Platform controls</h2>
       <p className="hint">Use these only when an integration or platform control needs attention.</p>
     </div>
+    <TvDisplaySetup />
     <AdminIntegrationSyncControls />
     <Admin />
   </section>;

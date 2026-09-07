@@ -1,14 +1,21 @@
-const text = (value: unknown) => String(value ?? "").trim();
+export type SourceEvidence = {
+  messageId: string;
+  internetMessageId: string;
+  displayId: string;
+  subject: string;
+  receivedAt: string;
+  webLink: string;
+};
 
-export function resolveSourceEvidence(payload: Record<string, unknown>) {
-  const messageId = text(payload.sourceMessageId) || text(payload.sourceEmailMessageId);
-  const internetMessageId = text(payload.sourceInternetMessageId);
+export function resolveSourceEvidence(payload: Record<string, unknown>): SourceEvidence {
+  const messageId = String(payload.sourceMessageId ?? payload.sourceEmailMessageId ?? payload.messageId ?? '');
+  const internetMessageId = String(payload.sourceInternetMessageId ?? payload.internetMessageId ?? '');
   return {
     messageId,
     internetMessageId,
     displayId: internetMessageId || messageId,
-    subject: text(payload.sourceSubject) || text(payload.sourceEmailSubject),
-    receivedAt: text(payload.sourceReceivedAtUtc) || text(payload.sourceEmailReceivedAt),
-    webLink: text(payload.sourceWebLink) || text(payload.sourceEmailWebLink),
+    subject: String(payload.sourceSubject ?? payload.sourceEmailSubject ?? payload.subject ?? ''),
+    receivedAt: String(payload.sourceReceivedAtUtc ?? payload.sourceEmailReceivedAt ?? payload.receivedAt ?? ''),
+    webLink: String(payload.sourceWebLink ?? payload.sourceEmailWebLink ?? payload.webLink ?? ''),
   };
 }

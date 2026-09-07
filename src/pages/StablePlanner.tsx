@@ -4,6 +4,7 @@ import { useAccessToken } from "../lib/auth";
 import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
 import { useApi } from "../lib/useApi";
 import "../simple-planner.css";
+import { createRun, listRuns, updateRunOperational, updateRunStops } from '../api/runs';
 
 type Period = "" | "AM" | "PM";
 type Allocation = { loadId: string; loadReference?: string; pallets: number; updatedAtUtc: string; updatedBy?: string };
@@ -148,7 +149,7 @@ export function StablePlanner() {
   const [busyRunKey, setBusyRunKey] = useState<string>();
   const [message, setMessage] = useState<string>();
 
-  const loadsApi = useApi(useCallback(async () => api.loads(date, await token()), [date, token]));
+  const loadsApi = useApi(useCallback(async () => listRuns(date, await token()), [date, token]));
   const sitesApi = useApi(useCallback(async () => api.sites(await token()), [token]));
   const controlApi = useApi(useCallback(async () => request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, await token()), [date, token]));
 
@@ -354,7 +355,7 @@ export function StablePlanner() {
 
       if (!loadId) {
         const reference = runReference(date, runNumber);
-        const created = await api.createLoad({
+        const created = await createRun({
           reference,
           planningDate: date,
           palletSpacesUsed: totalPallets,
@@ -366,7 +367,7 @@ export function StablePlanner() {
         loadId = created.id;
         load = created;
       } else {
-        await api.updateLoadStops(loadId, stops, accessToken);
+        await updateRunStops(loadId, stops, accessToken);
       }
 
       const existingOrderIds = planningOrders
@@ -383,9 +384,9 @@ export function StablePlanner() {
 
       // The allocation endpoint preserves legacy stop linkage even for a zero quantity.
       // Re-apply the planner's final stop set so moving/removing a split cannot leave a stale stop behind.
-      await api.updateLoadStops(loadId, stops, accessToken);
+      await updateRunStops(loadId, stops, accessToken);
 
-      await api.updateLoadUtilisation(loadId, {
+      await updateRunOperational(loadId, {
         palletSpacesUsed: totalPallets,
         totalPalletSpaces: load?.totalPalletSpaces ?? 26,
         capacityType: load?.capacityType || "Standard pallets",

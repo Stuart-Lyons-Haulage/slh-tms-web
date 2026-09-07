@@ -5,6 +5,7 @@
   var latestTiming = null;
   var latestLoads = null;
   var applying = false;
+  var acceptedFinalEtas = {};
 
   function queryValue(name) {
     var sources = [window.location.search || '', window.location.hash || ''];
@@ -75,7 +76,15 @@
   function finalStop(load) {
     var stops = load && load.stops ? load.stops.slice(0) : [];
     stops.sort(function (a, b) { return Number(a.sequence || 0) - Number(b.sequence || 0); });
-    return stops.length ? stops[stops.length - 1] : null;
+    var delivery = null;
+    var i;
+    for (i = stops.length - 1; i >= 0; i -= 1) {
+      if (/^Deliver\b/i.test(String(stops[i].name || '')) || stops[i].orderId) {
+        delivery = stops[i];
+        break;
+      }
+    }
+    return delivery || (stops.length ? stops[stops.length - 1] : null);
   }
 
   function request(path, callback) {
@@ -84,7 +93,10 @@
     try { xhr = new XMLHttpRequest(); } catch (e) { callback(e); return; }
     xhr.open('GET', '/tms-api' + path, true);
     xhr.setRequestHeader('Accept', 'application/json');
-    if (key) { xhr.setRequestHeader('X-TMS-TV-Key', key); }
+    if (key) {
+      xhr.setRequestHeader('X-TMS-TV-Key', key);
+      xhr.setRequestHeader('X-TV-Display-Key', key);
+    }
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) { return; }
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -116,6 +128,31 @@
     return { kind: 'ok', label: 'ON ROUTE', detail: buffer + 'm delivery buffer' };
   }
 
+  function dateKey(value) {
+    if (!value) { return ''; }
+    var timestamp = new Date(value).getTime();
+    return isNaN(timestamp) ? '' : new Date(timestamp).toISOString().slice(0, 10);
+  }
+
+  function stableFinalEta(loadId, candidate, fallback, deadline) {
+    var candidateMs = candidate ? new Date(candidate).getTime() : NaN;
+    if (isNaN(candidateMs)) { return acceptedFinalEtas[loadId] || fallback || ''; }
+    var deadlineDay = dateKey(deadline);
+    var candidateDay = dateKey(candidate);
+    var fallbackDay = dateKey(fallback);
+    var previous = acceptedFinalEtas[loadId] || '';
+    var previousDay = dateKey(previous);
+    var fallbackMs = fallback ? new Date(fallback).getTime() : NaN;
+    if (deadlineDay && candidateDay !== deadlineDay && (fallbackDay === deadlineDay || previousDay === deadlineDay)) {
+      return previous && previousDay === deadlineDay ? previous : fallback;
+    }
+    if (!isNaN(fallbackMs) && fallbackMs > Date.now() && candidateMs < Date.now() - 15 * 60 * 1000) {
+      return previous || fallback;
+    }
+    acceptedFinalEtas[loadId] = candidate;
+    return candidate;
+  }
+
   function setText(node, value) {
     if (node && node.textContent !== value) { node.textContent = value; }
   }
@@ -138,22 +175,31 @@
     applying = true;
     try {
       var timingByKey = {};
+      var timingByLoadId = {};
       var loadByKey = {};
+      var loadById = {};
       var i;
       var records = latestTiming.records || [];
       var loads = latestLoads || [];
-      for (i = 0; i < records.length; i += 1) { timingByKey[runKey(records[i].loadReference)] = records[i]; }
-      for (i = 0; i < loads.length; i += 1) { loadByKey[runKey(loads[i].reference)] = loads[i]; }
+      for (i = 0; i < records.length; i += 1) {
+        timingByKey[runKey(records[i].loadReference)] = records[i];
+        if (records[i].loadId) { timingByLoadId[String(records[i].loadId)] = records[i]; }
+      }
+      for (i = 0; i < loads.length; i += 1) {
+        loadByKey[runKey(loads[i].reference)] = loads[i];
+        if (loads[i].id) { loadById[String(loads[i].id)] = loads[i]; }
+      }
 
-      var header = document.querySelector('#legacy-board thead th:nth-child(5)');
+      var header = document.querySelector('#legacy-board thead th:nth-child(6)');
       setText(header, 'FINAL DELIVERY / ETA');
 
       var rows = document.querySelectorAll('#legacy-board tbody tr');
       for (i = 0; i < rows.length; i += 1) {
         var runNode = rows[i].querySelector('.run-name');
         var key = runKey(runNode ? runNode.textContent : '');
-        var timing = timingByKey[key];
-        var load = loadByKey[key];
+        var rowLoadId = rows[i].getAttribute('data-load-id') || '';
+        var timing = timingByLoadId[rowLoadId] || timingByKey[key];
+        var load = loadById[rowLoadId] || loadByKey[key];
         if (!timing || !load) { continue; }
 
         // Completed runs remain on the board. The Operations Wallboard is an operating
@@ -162,11 +208,20 @@
         rows[i].style.display = '';
 
         var stop = finalStop(load);
-        var etaCell = rows[i].cells && rows[i].cells.length > 4 ? rows[i].cells[4] : null;
+        var acceptedEta = stableFinalEta(rowLoadId || key, timing.finalEtaUtc, stop && stop.plannedArrivalUtc, stop && stop.plannedArrivalUtc);
+        var effectiveTiming = timing;
+        if (acceptedEta && acceptedEta !== timing.finalEtaUtc) {
+          effectiveTiming = {};
+          for (var timingKey in timing) {
+            if (Object.prototype.hasOwnProperty.call(timing, timingKey)) { effectiveTiming[timingKey] = timing[timingKey]; }
+          }
+          effectiveTiming.finalEtaUtc = acceptedEta;
+        }
+        var etaCell = rows[i].cells && rows[i].cells.length > 5 ? rows[i].cells[5] : null;
         var nameNode = etaCell ? etaCell.querySelector('.next-name') : null;
         var timeNode = etaCell ? etaCell.querySelector('.eta-time') : null;
         setText(nameNode, stripPrefix(stop ? stop.name : 'Final job'));
-        setText(timeNode, timing.finalEtaUtc ? formatTime(timing.finalEtaUtc) : '--:--');
+        setText(timeNode, effectiveTiming.finalEtaUtc ? formatTime(effectiveTiming.finalEtaUtc) : '--:--');
 
         var oldAlert = etaCell ? etaCell.querySelector('.row-alert') : null;
         if (oldAlert && oldAlert.parentNode) { oldAlert.parentNode.removeChild(oldAlert); }
@@ -177,7 +232,7 @@
           setText(statusNode, 'AVAILABLE');
           rows[i].className = '';
         } else {
-          var risk = riskFor(timing, stop);
+          var risk = riskFor(effectiveTiming, stop);
           if (risk && statusNode) {
             var current = normalise(statusNode.textContent);
             if (risk.kind === 'late') {
@@ -233,7 +288,7 @@
       if (!error && data && data.records) { latestTiming = data; }
       complete();
     });
-    request('/api/v1/loads?date=' + encodeURIComponent(date), function (error, data) {
+    request('/api/v1/tv-display/planned-runs?date=' + encodeURIComponent(date), function (error, data) {
       if (!error && data) { latestLoads = data; }
       complete();
     });

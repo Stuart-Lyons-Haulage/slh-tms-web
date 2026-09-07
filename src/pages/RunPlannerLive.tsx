@@ -4,6 +4,7 @@ import { useAccessToken } from "../lib/auth";
 import { signalPlanningChange, subscribePlanningChanges } from "../lib/planningEvents";
 import { RunPlanningIntelligence } from "../components/RunPlanningIntelligence";
 import "../simple-planner.css";
+import { createRun, listRuns, updateRunStops } from '../api/runs';
 
 type Period = "" | "AM" | "PM";
 type Allocation = { loadId: string; loadReference?: string; pallets: number };
@@ -155,7 +156,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
     const access = await token();
     const nextControl = await request<PlanningControlData>(`/api/v1/planning-control/pallets?date=${encodeURIComponent(date)}`, access);
     const [loadsResult, sitesResult] = await Promise.allSettled([
-      api.loads(date, access),
+      listRuns(date, access),
       api.sites(access),
     ]);
     const safeLoads = loadsResult.status === "fulfilled" && Array.isArray(loadsResult.value) ? loadsResult.value : [];
@@ -281,10 +282,10 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
     if (!stops.length) {
       // The paired API change allows a Draft run to be completely cleared. Keeping this
       // compatibility catch prevents an older API revision from blocking the allocation reset.
-      try { await api.updateLoadStops(loadId, [], access); } catch { /* allocation zero remains authoritative */ }
+      try { await updateRunStops(loadId, [], access); } catch { /* allocation zero remains authoritative */ }
       return;
     }
-    await api.updateLoadStops(loadId, stops, access);
+    await updateRunStops(loadId, stops, access);
   }
 
   function notesForRun(run: RunDraft, period = run.period) {
@@ -411,7 +412,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
         let number = index + 1;
         while (existingReferences.has(runRef(date, number).toUpperCase())) number += 1;
 
-        const created = await api.createLoad({
+        const created = await createRun({
           reference: runRef(date, number),
           planningDate: date,
           palletSpacesUsed: order.outstandingPallets,
@@ -425,8 +426,12 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
         updateRun(active.key, (run) => ({ ...run, loadId }));
       }
 
-      await allocate(order.id, loadId, order.outstandingPallets, access);
-      await syncStops(loadId, nextLines, access);
+      // These writes affect separate server resources. Run them together so adding an
+      // order does not make the planner wait for two full round trips in sequence.
+      await Promise.all([
+        allocate(order.id, loadId, order.outstandingPallets, access),
+        syncStops(loadId, nextLines, access),
+      ]);
       signalPlanningChange();
       setMessage(`${order.outstandingPallets} pallet${order.outstandingPallets === 1 ? "" : "s"} added and auto-saved. Any remaining balance stays in Orders to Plan.`);
       void refreshControl().catch(() => undefined);
@@ -565,12 +570,12 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
           <strong>{visible.length}</strong>
         </div>
         <input className="simple-order-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order, site or customer…" />
-        <p className="simple-order-help">Click to add the current balance to the selected run. If you reduce the pallets on the run, the remainder appears here immediately.</p>
+        <p className="simple-order-help">Click an order to add its current pallet balance to the selected run. PO and customer references remain attached to the order.</p>
         <div className="simple-order-list">
           {visible.map((order) => <button key={order.id} className="simple-order-card" type="button" disabled={Boolean(busyKey)} onClick={() => void addOrder(order)}>
-            <span><small>Collection</small><strong>{order.collection}</strong><small>{order.reference}</small></span>
+            <span><small>Collection</small><strong>{order.collection}</strong></span>
             <span className="simple-order-pallets"><strong>{order.outstandingPallets}</strong><small>of {order.orderedPallets}</small></span>
-            <span><small>Delivery</small><strong>{order.destination}</strong><small>{order.customerCode}</small></span>
+            <span><small>Delivery</small><strong>{order.destination}</strong></span>
           </button>)}
           {!visible.length && <p>All current orders are fully planned.</p>}
         </div>

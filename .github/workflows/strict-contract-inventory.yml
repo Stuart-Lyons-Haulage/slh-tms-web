@@ -1,0 +1,32 @@
+name: Strict contract inventory
+
+on:
+  push:
+    branches: ['feature/eliminate-runtime-patches']
+    paths:
+      - .github/workflows/strict-contract-inventory.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Explicit any inventory
+        shell: bash
+        run: |
+          echo '=== EXPLICIT ANY ==='
+          grep -RInE '\bany\b|Record<string, any>|\[key: string\]: any' src --include='*.ts' --include='*.tsx' || true
+      - name: Strict TypeScript inventory
+        shell: bash
+        run: pnpm exec tsc --noEmit --strict --noImplicitAny --project tsconfig.app.json --pretty false

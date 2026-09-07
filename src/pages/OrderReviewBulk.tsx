@@ -136,6 +136,23 @@ function needsDriverReference(payload: Payload) {
   return /\b(crate|crates|tray|trays|trolley|trolleys)\b/.test(haystack);
 }
 
+function isPmOvernightCarryIn(payload: Payload, planningDate: string) {
+  if (text(payload.deliveryDate) !== planningDate || !text(payload.collectionDate)) return false;
+
+  const collection = new Date(`${text(payload.collectionDate)}T12:00:00`);
+  collection.setDate(collection.getDate() + 1);
+  if (dateKey(collection) !== planningDate) return false;
+
+  const time = text(payload.requestedTime).toLowerCase();
+  const match = time.match(/(?:^|\s)(\d{1,2})(?::(\d{2}))?\s*(pm)?(?:\s|$)/);
+  if (!match) return false;
+
+  const rawHour = Number(match[1]);
+  const isPm = Boolean(match[3]);
+  const hour = isPm && rawHour < 12 ? rawHour + 12 : rawHour;
+  return hour >= 12;
+}
+
 function reviewWarnings(payload: Payload) {
   const sourceWarnings = warnings(payload).filter((warning) => !isPoReferenceWarning(warning));
   if (needsDriverReference(payload) && !driverReference(payload)) {
@@ -147,7 +164,7 @@ function reviewWarnings(payload: Payload) {
 function blockingReason(row: ParsedRow, date: string) {
   if (row.parseError) return "Payload cannot be read";
   const payload = row.payload;
-  if (text(payload.collectionDate) !== date) return "Collection date does not match the selected planning date";
+  if (text(payload.collectionDate) !== date && !isPmOvernightCarryIn(payload, date)) return "Collection date does not match the selected planning date";
   if (!text(payload.poNumber)) return "TMS reference is missing";
   if (!text(payload.customerCode)) return "Customer is missing";
   if (palletCount(payload) <= 0) return "Zero or missing pallets";
