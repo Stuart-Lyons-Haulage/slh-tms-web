@@ -74,7 +74,12 @@ function siteCandidates(site: CoverageSite) {
 
 export function resolveSiteCoverage(label: string, sites: CoverageSite[], statuses: CoverageStatus[]): SiteCoverage {
   const keys = variants(label);
-  const directMatches = sites.filter(site => site.active !== false && siteCandidates(site).some(candidate => keys.includes(candidate)));
+  const directMatches = sites.filter(site => {
+    if (site.active === false) return false;
+    const linkedNames = statuses.find(status => status.siteId === site.id)?.linkedGeofences || [];
+    const candidates = [...siteCandidates(site), ...linkedNames.flatMap(variants)];
+    return candidates.some(candidate => keys.includes(candidate));
+  });
   const unique = Array.from(new Map(directMatches.map(site => [site.id, site])).values());
   if (unique.length !== 1) {
     return {
