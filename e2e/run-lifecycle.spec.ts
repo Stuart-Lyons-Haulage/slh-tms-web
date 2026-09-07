@@ -206,16 +206,15 @@ test('planner → dispatch → geofence arrival/departure → completion stays c
   const runInput = page.getByPlaceholder('Run…');
   await runInput.fill('RUN-');
   await page.getByRole('button', { name: new RegExp(runReference(state.planningDate), 'i') }).click();
-  await expect(page.getByText('Allocation saved.')).toBeVisible();
 
   const vehicleInput = page.getByPlaceholder('Vehicle…');
   await vehicleInput.fill('AB12');
   await page.getByRole('button', { name: /AB12 CDE/ }).click();
-  await expect(page.getByText('Allocation saved.')).toBeVisible();
   const trailerInput = page.getByPlaceholder('Trailer…');
   await trailerInput.fill('TRL');
   await page.getByRole('button', { name: /TRL-101/ }).click();
-  await expect(page.getByText('Allocation saved.')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   expect(state.driverAssigned && state.vehicleAssigned && state.trailerAssigned).toBe(true);
 
   await page.getByRole('link', { name: 'Operations Wallboard' }).click();
