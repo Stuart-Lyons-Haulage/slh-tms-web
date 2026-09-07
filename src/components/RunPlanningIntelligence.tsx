@@ -18,6 +18,75 @@ const riskSymbol = (risk?: string) => risk === "Red" ? "⚠" : risk === "Amber" 
 const availabilityRisk = (today?: number, week?: number): DriverSuggestion["shiftRisk"] => today != null && today < 240 || week != null && week < 600 ? "Red" : today != null && today < 360 || week != null && week < 900 ? "Amber" : today == null && week == null ? "Unknown" : "Green";
 
 export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onChanged?: () => void | Promise<void> }) {
+  const token = useAccessToken();
+  const [data, setData] = useState<Intelligence>();
+  const [driverQuery, setDriverQuery] = useState("");
+  const [vehicleQuery, setVehicleQuery] = useState("");
+  const [directDrivers, setDirectDrivers] = useState<DriverSuggestion[]>([]);
+  const [directVehicles, setDirectVehicles] = useState<VehicleSuggestion[]>([]);
+  const [driverId, setDriverId] = useState(load.driverId || "");
+  const [vehicleId, setVehicleId] = useState(load.vehicleId || "");
+  const [trailerId, setTrailerId] = useState(load.trailerId || "");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string>();
+  const [expanded, setExpanded] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try { setData(await request<Intelligence>(`/api/v1/planning-intelligence/loads/${load.id}`, await token(), undefined, 40000)); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Planning intelligence could not load."); }
+  }, [load.id, token]);
+
+  useEffect(() => {
+    setDriverId(load.driverId || ""); setVehicleId(load.vehicleId || ""); setTrailerId(load.trailerId || ""); void refresh();
+  }, [load.driverId, load.trailerId, load.vehicleId, refresh]);
+
+  useEffect(() => {
+    const q = driverQuery.trim();
+    if (q.length < 2) { setDirectDrivers([]); return; }
+    const handle = window.setTimeout(async () => {
+      try {
+        const rows = await request<DriverLookup[]>(`/api/v1/operational-master-data/drivers/search?q=${encodeURIComponent(q)}&includeInactive=false`, await token());
+        setDirectDrivers(rows.map(row => ({ id: row.id, displayName: row.displayName, employeeNumber: row.employeeNumber, tachoName: row.tachoName,
+          dailyRemainingMinutes: row.tachoDriveAvailableTodayMinutes, weeklyRemainingMinutes: row.tachoDriveAvailableWeekMinutes, weeklyWorkRemainingMinutes: row.tachoWorkAvailableWeekMinutes,
+          score: 0, shiftRisk: availabilityRisk(row.tachoDriveAvailableTodayMinutes, row.tachoDriveAvailableWeekMinutes), reason: "Direct driver master-data match." })));
+      } catch { setDirectDrivers([]); }
+    }, 180);
+    return () => window.clearTimeout(handle);
+  }, [driverQuery, token]);
+
+  useEffect(() => {
+    const q = vehicleQuery.trim();
+    if (q.length < 2) { setDirectVehicles([]); return; }
+    const handle = window.setTimeout(async () => {
+      try {
+        const rows = await request<VehicleLookup[]>(`/api/v1/operational-master-data/vehicles/search?q=${encodeURIComponent(q)}&includeInactive=false`, await token());
+        setDirectVehicles(rows.map(row => ({
+          id: row.id,
+          registration: row.registration,
+          fleetNumber: row.fleetNumber,
+          abbreviation: row.abbreviation,
+          liveUpdatedAtUtc: row.lastLocation?.lastEventTimeUtc,
+          isMoving: row.lastLocation?.isMoving,
+          lastKnownStatus: row.lastLocation?.lastKnownStatus,
+          reason: row.lastLocation?.lastEventTimeUtc ? "Direct registration match using the latest DOT position." : "Direct registration match; no fresh DOT position is available.",
+        })));
+      } catch { setDirectVehicles([]); }
+    }, 180);
+    return () => window.clearTimeout(handle);
+  }, [vehicleQuery, token]);
+
+  const drivers = useMemo(() => {
+    const q = driverQuery.trim().toLowerCase();
+    if (q.length >= 2 && directDrivers.length) return directDrivers;
+    return (data?.driverSuggestions || []).filter(x => !q || `${x.displayName} ${x.employeeNumber} ${x.tachoName || ""}`.toLowerCase().includes(q));
+  }, [data, directDrivers, driverQuery]);
+
+  const vehicles = useMemo(() => {
+    const q = vehicleQuery.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    if (q.length >= 2 && directVehicles.length) return directVehicles;
+    return (data?.vehicleSuggestions || []).filter(x => !q || `${x.registration}${x.abbreviation || ""}${x.fleetNumber || ""}`.replace(/[^a-z0-9]/gi, "").toLowerCase().includes(q));
+  }, [data, directVehicles, vehicleQuery]);
+
   const token = useAccessToken(); const [data, setData] = useState<Intelligence>(); const [driverQuery, setDriverQuery] = useState(""); const [vehicleQuery, setVehicleQuery] = useState(""); const [directDrivers, setDirectDrivers] = useState<DriverSuggestion[]>([]); const [directVehicles, setDirectVehicles] = useState<VehicleSuggestion[]>([]); const [driverId, setDriverId] = useState(load.driverId || ""); const [vehicleId, setVehicleId] = useState(load.vehicleId || ""); const [trailerId, setTrailerId] = useState(load.trailerId || ""); const [busy, setBusy] = useState(false); const [message, setMessage] = useState<string>(); const [expanded, setExpanded] = useState(false);
   const refresh = useCallback(async () => { try { setData(await request<Intelligence>(`/api/v1/planning-intelligence/loads/${load.id}`, await token(), undefined, 40000)); } catch (error) { setMessage(error instanceof Error ? error.message : "Planning intelligence could not load."); } }, [load.id, token]);
   useEffect(() => { setDriverId(load.driverId || ""); setVehicleId(load.vehicleId || ""); setTrailerId(load.trailerId || ""); void refresh(); }, [load.driverId, load.vehicleId, load.trailerId, refresh]);

@@ -118,7 +118,7 @@ export class ApiError extends Error { constructor(public status: number, message
 function errorMessage(payload: unknown): string | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
   const record = payload as Record<string, unknown>;
-  return typeof record.detail === 'string' ? record.detail : typeof record.message === 'string' ? record.message : undefined;
+  return typeof record.detail === 'string' ? record.detail : typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : undefined;
 }
 
 export async function request<T = unknown>(path: string, token?: string, init?: RequestInit, ..._legacyArgs: unknown[]): Promise<T> {

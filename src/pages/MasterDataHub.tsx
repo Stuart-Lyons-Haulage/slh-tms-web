@@ -7,6 +7,7 @@ import { MarketsMasterClean } from './MarketsMasterClean';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
 import { GeofenceOperational } from './GeofenceOperational';
 import { MasterDataAddPanel, type AddableMasterSection } from './MasterDataAddPanel';
+import { DotGeofenceImport } from './DotGeofenceImport';
 
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
 
@@ -62,6 +63,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       {section === 'vehicles' && <FleetMasterUnified kind="vehicles" />}
       {section === 'trailers' && <FleetMasterUnified kind="trailers" />}
       {section === 'sites' && <>
+        <DotGeofenceImport onImported={() => setRefreshKey(value => value + 1)} />
         <MasterDataOperational initialTab="sites" showCategoryButtons={false} showHeading={false} />
         <div className="panel" style={{ marginTop: 18, marginBottom: 18 }}>
           <p className="eyebrow">Site execution evidence</p>
