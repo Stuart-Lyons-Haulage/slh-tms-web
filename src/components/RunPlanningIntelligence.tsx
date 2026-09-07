@@ -15,6 +15,7 @@ type VehicleSuggestion = {
   isMoving?: boolean; lastKnownStatus?: string; currentDriver?: string; tachoStatus?: "SignedOn" | "NotSignedOn" | string; tachoSignOnUtc?: string; previousRun?: string; previousEnd?: string;
   reason?: string;
 };
+type TrailerSuggestion = { id: string; trailerNumber: string; type?: string; standardCapacity?: number; euroCapacity?: number; previousRun?: string; previousDate?: string; blocked?: boolean; reason?: string };
 type Intelligence = {
   id: string; reference: string; planningDate: string;
   firstStop?: { id: string; name: string; latitude?: number; longitude?: number; plannedArrivalUtc?: string };
@@ -23,6 +24,7 @@ type Intelligence = {
   nightOutRequired?: boolean;
   driverSuggestions: DriverSuggestion[];
   vehicleSuggestions: VehicleSuggestion[];
+  trailerSuggestions: TrailerSuggestion[];
   generatedAtUtc: string;
 };
 type DriverLookup = { id: string; displayName: string; employeeNumber: string; tachoName?: string; tachoDriveAvailableTodayMinutes?: number; tachoDriveAvailableWeekMinutes?: number; tachoWorkAvailableWeekMinutes?: number };
@@ -50,6 +52,7 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
   const [directVehicles, setDirectVehicles] = useState<VehicleSuggestion[]>([]);
   const [driverId, setDriverId] = useState(load.driverId || "");
   const [vehicleId, setVehicleId] = useState(load.vehicleId || "");
+  const [trailerId, setTrailerId] = useState(load.trailerId || "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [expanded, setExpanded] = useState(false);
@@ -60,8 +63,8 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
   }, [load.id, token]);
 
   useEffect(() => {
-    setDriverId(load.driverId || ""); setVehicleId(load.vehicleId || ""); void refresh();
-  }, [load.driverId, load.vehicleId, refresh]);
+    setDriverId(load.driverId || ""); setVehicleId(load.vehicleId || ""); setTrailerId(load.trailerId || ""); void refresh();
+  }, [load.driverId, load.trailerId, load.vehicleId, refresh]);
 
   useEffect(() => {
     const q = driverQuery.trim();
@@ -110,11 +113,13 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
     return (data?.vehicleSuggestions || []).filter(x => !q || `${x.registration}${x.abbreviation || ""}${x.fleetNumber || ""}`.replace(/[^a-z0-9]/gi, "").toLowerCase().includes(q));
   }, [data, directVehicles, vehicleQuery]);
 
+  const trailers = data?.trailerSuggestions || [];
+
   async function allocate() {
     setBusy(true); setMessage(undefined);
     try {
       const access = await token();
-      await allocateRun(load.id, { driverId: driverId || undefined, vehicleId: vehicleId || undefined, trailerId: load.trailerId || undefined }, access);
+      await allocateRun(load.id, { driverId: driverId || undefined, vehicleId: vehicleId || undefined, trailerId: trailerId || undefined }, access);
       await refresh(); await onChanged?.();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Allocation could not be saved."); }
     finally { setBusy(false); }
@@ -150,8 +155,9 @@ export function RunPlanningIntelligence({ load, onChanged }: { load: Load; onCha
       <div><label><strong>Vehicle</strong><input value={vehicleQuery} onChange={e => setVehicleQuery(e.target.value)} placeholder="Type reg or last 3…" style={{ width: "100%" }} /></label>
         <div style={{ maxHeight: 250, overflow: "auto", marginTop: 6 }}>{vehicles.slice(0, 10).map(item => <button key={item.id} type="button" onClick={() => { setVehicleId(item.id); setVehicleQuery(item.registration); }} style={{ width: "100%", textAlign: "left", marginBottom: 5, border: vehicleId === item.id ? "2px solid #0b5f78" : undefined }}><strong>{item.registration}</strong>{item.fleetNumber ? ` · ${item.fleetNumber}` : ""}{item.abbreviation ? ` · ${item.abbreviation}` : ""}<br/><small>{signOnText(item)}{item.isMoving ? " · Moving" : item.lastKnownStatus ? ` · ${item.lastKnownStatus}` : ""}</small>{item.reason && <><br/><small>{item.reason}</small></>}</button>)}</div>
       </div>
+      <div><strong>Trailer</strong><div style={{ maxHeight: 180, overflow: "auto", marginTop: 6 }}>{trailers.map(item => <button key={item.id} type="button" disabled={item.blocked} onClick={() => setTrailerId(item.id)} style={{ width: "100%", textAlign: "left", marginBottom: 5, border: trailerId === item.id ? "2px solid #0b5f78" : undefined, opacity: item.blocked ? .5 : 1 }}><strong>{item.trailerNumber}</strong>{item.type ? ` · ${item.type}` : ""}<br /><small>{item.standardCapacity || 26} Std / {item.euroCapacity || 33} Euro · {item.reason}</small></button>)}</div></div>
     </div>
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12, alignItems: "center" }}><button type="button" className="primary" disabled={busy || !driverId || !vehicleId} onClick={() => void allocate()}>Save allocation</button><span style={{ marginLeft: 8 }}><strong>Night out required?</strong></span><button type="button" disabled={busy} className={data?.nightOutRequired === true ? "primary" : ""} onClick={() => void setNightOut(true)}>Yes</button><button type="button" disabled={busy} className={data?.nightOutRequired === false ? "primary" : ""} onClick={() => void setNightOut(false)}>No</button>{data?.nightOutRequired == null && <small>Planner confirmation required</small>}</div>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12, alignItems: "center" }}><button type="button" className="primary" disabled={busy || !driverId || !vehicleId || !trailerId} onClick={() => void allocate()}>Save allocation</button><span style={{ marginLeft: 8 }}><strong>Night out required?</strong></span><button type="button" disabled={busy} className={data?.nightOutRequired === true ? "primary" : ""} onClick={() => void setNightOut(true)}>Yes</button><button type="button" disabled={busy} className={data?.nightOutRequired === false ? "primary" : ""} onClick={() => void setNightOut(false)}>No</button>{data?.nightOutRequired == null && <small>Planner confirmation required</small>}</div>
     {message && <p className="notice inline-notice" style={{ marginTop: 8 }}>{message}</p>}
     </>}
   </section>;
