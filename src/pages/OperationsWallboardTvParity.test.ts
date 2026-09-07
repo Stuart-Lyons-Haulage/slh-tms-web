@@ -8,7 +8,7 @@ const css = readFileSync(new URL("../operations-wallboard.css", import.meta.url)
 
 describe("Operations wallboard TV parity", () => {
   it("renders the same per-run geofence linkage strip on a paired TV", () => {
-    expect(wallboard).toContain("<RunGeofenceLinkagePanel tvAccessKey={tvMode ? tvAccessKey : undefined} />");
+    expect(wallboard).toContain("{!tvMode && <RunGeofenceLinkagePanel />}");
     expect(linkage).toContain('"X-TV-Display-Key": tvAccessKey');
     expect(linkage).toContain("Geofences {run.linked}/{run.stops.length} linked");
     expect(linkage).toContain("{run.hits} hit");
