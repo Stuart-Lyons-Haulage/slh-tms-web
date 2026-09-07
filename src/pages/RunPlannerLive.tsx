@@ -86,6 +86,16 @@ const siteFor = (sites: Site[], value: string) => {
     [site.name, site.driverTextName, site.externalCode, ...(site.aliases || "").split(/[,;|]/)]
       .some((candidate) => normalise(candidate) === target));
 };
+const plannerSiteName = (sites: Site[], value: string) => {
+  const site = siteFor(sites, value);
+  if (site) return site.name?.trim() || site.driverTextName?.trim() || value;
+
+  // Keep the planner usable while legacy delivery names are progressively added as
+  // Site Master aliases. These two Morrisons source labels are the same physical site.
+  const key = normalise(value);
+  if (/MORRISONS(?:FRUIT)?STOCKTON\d*/.test(key)) return "Morrisons Stockton";
+  return value;
+};
 const stopFromSite = (sites: Site[], value: string) => {
   const site = siteFor(sites, value);
   return {
@@ -116,7 +126,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
   const saveTimers = useRef<Record<string, number>>({});
   const mutationCounter = useRef(0);
 
-  const hydrate = useCallback((nextControl: PlanningControlData, nextLoads: Load[]) => {
+  const hydrate = useCallback((nextControl: PlanningControlData, nextLoads: Load[], nextSites: Site[]) => {
     const ordered = [...nextLoads].sort((left, right) => String(left.reference).localeCompare(String(right.reference)));
     if (!ordered.length) {
       const shell = blankRun(`shell-${date}-1`);
@@ -125,18 +135,44 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
       return;
     }
 
+    const ordersById = new Map(nextControl.orders.map((order) => [order.id, order]));
     const drafts = ordered.map((load) => {
-      const lines = nextControl.orders.flatMap((order) => {
+      const seenOrderIds = new Set<string>();
+      const sequencedLines = [...load.stops]
+        .filter((stop) => Boolean(stop.orderId) && /^deliver/i.test(stop.name))
+        .sort((left, right) => left.sequence - right.sequence)
+        .flatMap((stop) => {
+          const orderId = stop.orderId;
+          if (!orderId || seenOrderIds.has(orderId)) return [];
+          const order = ordersById.get(orderId);
+          const allocation = order?.allocations.find((item) => item.loadId === load.id && item.pallets > 0);
+          if (!order || !allocation) return [];
+          seenOrderIds.add(order.id);
+          return [{
+            key: `${load.id}-${order.id}`,
+            orderId: order.id,
+            collectionSite: plannerSiteName(nextSites, order.collection),
+            deliverySite: plannerSiteName(nextSites, order.destination),
+            pallets: String(allocation.pallets),
+            note: stop.plannerNote || "",
+          }];
+        });
+
+      // Legacy runs may have allocations but no saved delivery stop. Keep them visible,
+      // but only after every line whose explicit stop sequence is already persisted.
+      const unsequencedLines = nextControl.orders.flatMap((order) => {
+        if (seenOrderIds.has(order.id)) return [];
         const allocation = order.allocations.find((item) => item.loadId === load.id && item.pallets > 0);
         return allocation ? [{
           key: `${load.id}-${order.id}`,
           orderId: order.id,
-          collectionSite: order.collection,
-          deliverySite: order.destination,
+          collectionSite: plannerSiteName(nextSites, order.collection),
+          deliverySite: plannerSiteName(nextSites, order.destination),
           pallets: String(allocation.pallets),
           note: load.stops.find((stop) => stop.orderId === order.id && /^deliver/i.test(stop.name))?.plannerNote || "",
         }] : [];
       });
+      const lines = [...sequencedLines, ...unsequencedLines];
       return {
         key: load.id,
         loadId: load.id,
@@ -167,7 +203,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
     if (loadsResult.status === "rejected" || sitesResult.status === "rejected") {
       setMessage("Planner loaded the approved pallet balance. Run or site lookup is temporarily unavailable, so new run stop details may be limited until refresh.");
     }
-    hydrate(nextControl, safeLoads);
+    hydrate(nextControl, safeLoads, safeSites);
   }, [date, hydrate, token]);
 
   const refreshControl = useCallback(async () => {
@@ -391,8 +427,8 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
     const line: RunLine = {
       key: crypto.randomUUID(),
       orderId: order.id,
-      collectionSite: order.collection,
-      deliverySite: order.destination,
+      collectionSite: plannerSiteName(sites, order.collection),
+      deliverySite: plannerSiteName(sites, order.destination),
       pallets: String(order.outstandingPallets), note: "",
     };
     const blankIndex = active.lines.findIndex((item) => !item.orderId && !item.collectionSite && !item.deliverySite && !item.pallets);
@@ -573,9 +609,9 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
         <p className="simple-order-help">Click an order to add its current pallet balance to the selected run. PO and customer references remain attached to the order.</p>
         <div className="simple-order-list">
           {visible.map((order) => <button key={order.id} className="simple-order-card" type="button" disabled={Boolean(busyKey)} onClick={() => void addOrder(order)}>
-            <span><small>Collection</small><strong>{order.collection}</strong></span>
+            <span><small>Collection</small><strong>{plannerSiteName(sites, order.collection)}</strong></span>
             <span className="simple-order-pallets"><strong>{order.outstandingPallets}</strong><small>of {order.orderedPallets}</small></span>
-            <span><small>Delivery</small><strong>{order.destination}</strong></span>
+            <span><small>Delivery</small><strong>{plannerSiteName(sites, order.destination)}</strong></span>
           </button>)}
           {!visible.length && <p>All current orders are fully planned.</p>}
         </div>
