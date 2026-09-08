@@ -98,7 +98,7 @@ async function installApi(page: Page, state: State) {
     }] });
     if (path.includes('/api/v1/driver-dispatch/') && method === 'PUT') {
       state.driverAssigned = true; state.vehicleAssigned = true; state.trailerAssigned = true;
-      return json(route, { id: runId });
+      return json(route, { ...runPayload(state), southbound: false });
     }
 
     if (path === '/api/v1/drivers' && method === 'GET') return json(route, [{ id: driverId, employeeNumber: 'D001', displayName: 'Test Driver', active: true }]);
