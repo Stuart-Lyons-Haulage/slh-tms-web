@@ -19,8 +19,8 @@ function emitPlanningChange(source: 'local' | 'server') {
     window.dispatchEvent(new Event(PLANNING_SERVER_CHANGED_EVENT));
     return;
   }
-  try { window.localStorage.setItem(PLANNING_CHANGED_STORAGE_KEY, String(changedAt)); } catch { }
-  try { getChannel()?.postMessage({ changedAt }); } catch { }
+  try { window.localStorage.setItem(PLANNING_CHANGED_STORAGE_KEY, String(changedAt)); } catch { /* storage can be disabled; BroadcastChannel/event remain sufficient */ }
+  try { getChannel()?.postMessage({ changedAt }); } catch { /* BroadcastChannel is best-effort; local event still fires */ }
 }
 
 export function signalPlanningChange() {
