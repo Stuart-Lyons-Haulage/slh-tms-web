@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
 import { useAccessToken } from '../lib/auth';
 import { useApi } from '../lib/useApi';
+import { startVisiblePolling } from '../lib/visiblePolling';
 import { warehouseDisplayRows, type WarehouseDailyResult, type WarehouseMovement } from './warehousePlanningData';
 
 function localDate() {
@@ -18,16 +19,13 @@ export function WarehousePlanning() {
   const [date, setDate] = useState(localDate());
   const data = useApi(useCallback(async () => request<WarehouseDailyResult>(`/api/v1/warehouse/daily?date=${encodeURIComponent(date)}`, await token()), [date, token]));
   const refresh = data.refresh;
-  useEffect(() => {
-    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, 30_000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+  useEffect(() => startVisiblePolling(refresh, 120_000), [refresh]);
   const rows = useMemo(() => data.data ? warehouseDisplayRows(data.data) : [], [data.data]);
 
   return <section className="page warehouse-page">
     <div className="page-heading warehouse-heading">
       <div><p className="eyebrow">Barnham warehouse control</p><h1>Warehouse load list</h1><p>Every inbound and outbound movement involving Barnham Coldstore or Stuart Lyons Distribution.</p></div>
-      <div className="warehouse-actions"><label>Date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><button type="button" onClick={() => window.print()}>Print load list</button></div>
+      <div className="warehouse-actions"><label>Date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><button type="button" onClick={() => window.print()}>Print load list</button><button type="button" onClick={() => void refresh()}>Refresh</button></div>
     </div>
     {data.loading && <p className="notice">Loading warehouse movements…</p>}
     {data.error && <p className="notice error">Warehouse movements could not be loaded: {data.error}</p>}
