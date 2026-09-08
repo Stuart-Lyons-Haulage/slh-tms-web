@@ -11,6 +11,7 @@ import { OrderControl } from './pages/OrderControl';
 import { StablePlanner } from './pages/StablePlanner';
 import { PlannerEnhanced } from './pages/PlannerEnhanced';
 import { PalletPlanningControl } from './pages/PalletPlanningControl';
+import { WarehousePlanning } from './pages/WarehousePlanning';
 import { DriverDispatch } from './pages/DriverDispatch';
 import { RunPerformance } from './pages/RunPerformance';
 import { OperationalPlanner } from './pages/OperationalPlanner';
@@ -35,7 +36,7 @@ import { ManagementStabilityBanner } from './components/ManagementStabilityBanne
 import { MobileDock } from './components/MobileDock';
 
 const dailyNavigation = [
-  ['/dashboard', 'Dashboard'], ['/operations-wallboard', 'Operations wallboard'], ['/staging', 'Load Review'], ['/', 'Planner'], ['/pallet-control', 'Pallet Control'], ['/driver-dispatch', 'Driver Dispatch'], ['/tracking', 'Live tracking'],
+  ['/dashboard', 'Dashboard'], ['/operations-wallboard', 'Operations wallboard'], ['/staging', 'Load Review'], ['/', 'Planner'], ['/pallet-control', 'Pallet Control'], ['/warehouse', 'Warehouse Load List'], ['/driver-dispatch', 'Driver Dispatch'], ['/tracking', 'Live tracking'],
 ];
 const masterNavigation = [['/master-data', 'Master data']];
 const insightNavigation = [
@@ -107,7 +108,7 @@ function Shell() {
       {authenticated && <button className="mobile-sign-out" type="button" onClick={() => instance.logoutRedirect()}>Sign out · {accounts[0]?.name || 'Microsoft account'}</button>}
     </aside>}
     <main className={tvMode ? 'tv-main' : undefined}>{tvMode ? tvContent : authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
-      <Route path="/" element={<PlannerEnhanced />} /><Route path="/dashboard" element={<DashboardOperational />} /><Route path="/operations-wallboard" element={<OperationsWallboard />} /><Route path="/live-runs" element={<OperationsWallboard />} /><Route path="/tv-display" element={<TvDisplaySetup />} /><Route path="/order-intake" element={<ImportCentre initialTab="orders" />} /><Route path="/jobs" element={<OrderControl initialTab="live" />} /><Route path="/driver-dispatch" element={<DriverDispatch />} /><Route path="/loads" element={<DriverDispatch />} /><Route path="/allocation" element={<DriverDispatch />} /><Route path="/pallet-control" element={<PalletPlanningControl />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<ImportCentre />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderControl />} />
+      <Route path="/" element={<PlannerEnhanced />} /><Route path="/dashboard" element={<DashboardOperational />} /><Route path="/operations-wallboard" element={<OperationsWallboard />} /><Route path="/live-runs" element={<OperationsWallboard />} /><Route path="/tv-display" element={<TvDisplaySetup />} /><Route path="/order-intake" element={<ImportCentre initialTab="orders" />} /><Route path="/jobs" element={<OrderControl initialTab="live" />} /><Route path="/driver-dispatch" element={<DriverDispatch />} /><Route path="/loads" element={<DriverDispatch />} /><Route path="/allocation" element={<DriverDispatch />} /><Route path="/pallet-control" element={<PalletPlanningControl />} /><Route path="/warehouse" element={<WarehousePlanning />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<ImportCentre />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderControl />} />
       <Route path="/attention" element={<AttentionAndExceptions />} /><Route path="/exceptions" element={<AttentionAndExceptions />} /><Route path="/readiness" element={<DashboardOperational />} /><Route path="/plan-stability" element={<PlanStability />} /><Route path="/timeline/run/:id" element={<TimelinePage kind="run" />} /><Route path="/timeline/order/:id" element={<TimelinePage kind="order" />} />
       <Route path="/management" element={<Management />} /><Route path="/run-performance" element={<RunPerformance />} /><Route path="/night-outs" element={<NightOutReport />} /><Route path="/control-centre" element={<ControlCentre />} /><Route path="/operations-control" element={<ControlCentre />} /><Route path="/admin" element={<ControlCentre />} /><Route path="/driver" element={<DriverDispatch />} />
       <Route path="/communications" element={<CustomerCommunications />} />
