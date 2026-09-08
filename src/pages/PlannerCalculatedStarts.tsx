@@ -27,6 +27,16 @@ function localTime(value?: string) {
   return new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }
 
+function normaliseResponse(value: unknown, planningDate: string): Response {
+  if (!value || typeof value !== "object") return { planningDate, walkaroundMinutes: 10, rows: [] };
+  const record = value as Partial<Response>;
+  return {
+    planningDate: typeof record.planningDate === "string" ? record.planningDate : planningDate,
+    walkaroundMinutes: typeof record.walkaroundMinutes === "number" ? record.walkaroundMinutes : 10,
+    rows: Array.isArray(record.rows) ? record.rows : [],
+  };
+}
+
 export function PlannerCalculatedStarts({ planningDate }: { planningDate: string }) {
   const token = useAccessToken();
   const [data, setData] = useState<Response>();
@@ -36,7 +46,8 @@ export function PlannerCalculatedStarts({ planningDate }: { planningDate: string
   const applied = useRef(new Set<string>());
 
   const refresh = useCallback(async () => {
-    const next = await request<Response>(`/api/v1/planner-starts?date=${encodeURIComponent(planningDate)}`, await token());
+    const payload = await request<unknown>(`/api/v1/planner-starts?date=${encodeURIComponent(planningDate)}`, await token());
+    const next = normaliseResponse(payload, planningDate);
     setData(next);
     setDrafts((current) => {
       const updated = { ...current };
@@ -55,9 +66,10 @@ export function PlannerCalculatedStarts({ planningDate }: { planningDate: string
     return unsubscribe;
   }, [refresh]);
 
+  const rows = useMemo(() => Array.isArray(data?.rows) ? data.rows : [], [data]);
+
   useEffect(() => {
-    if (!data) return;
-    const pending = data.rows.filter((row) => row.suggestedStartUtc && !row.existingStartUtc && !applied.current.has(row.loadId));
+    const pending = rows.filter((row) => row.suggestedStartUtc && !row.existingStartUtc && !applied.current.has(row.loadId));
     if (!pending.length) return;
     for (const row of pending) applied.current.add(row.loadId);
     void (async () => {
@@ -69,9 +81,7 @@ export function PlannerCalculatedStarts({ planningDate }: { planningDate: string
         setMessage(error instanceof Error ? error.message : "A calculated start could not be auto-saved.");
       }
     })();
-  }, [data, refresh, token]);
-
-  const rows = useMemo(() => data?.rows || [], [data]);
+  }, [refresh, rows, token]);
 
   async function saveManual(row: StartSuggestion) {
     const value = (drafts[row.loadId] || "").trim();
@@ -132,6 +142,6 @@ export function PlannerCalculatedStarts({ planningDate }: { planningDate: string
         })}</tbody>
       </table>
     </div>
-    {!rows.length && <p style={{ margin: 0 }}>No live runs for this planning date yet. Start intelligence appears once a run exists and a driver is allocated.</p>}
+    {!rows.length && <p style={{ margin: 0 }}>No calculated start is available yet. The run builder remains usable while driver/Tacho/start evidence is loading or unavailable.</p>}
   </section>;
 }
