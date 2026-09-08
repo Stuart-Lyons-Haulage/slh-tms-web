@@ -45,6 +45,7 @@ const topNavigation: NavGroup[] = [
     items: [
       ['/staging', 'Load Review'],
       ['/', 'Planner'],
+      ['/pallet-control', 'Pallet Order'],
       ['/driver-dispatch', 'Driver Dispatch'],
       ['/warehouse', 'Warehouse Loads'],
       ['/communications', 'Customer Communication'],
