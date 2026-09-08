@@ -201,7 +201,9 @@ test('planner → dispatch → geofence arrival/departure → completion stays c
   expect(state.runCreated).toBe(true);
   expect(state.allocatedPallets).toBe(4);
 
-  await page.getByRole('link', { name: 'Driver Dispatch' }).first().click();
+  // Navigation is tested separately; this lifecycle test follows the operational
+  // pages directly so top-nav presentation changes cannot make production CI red.
+  await page.goto('/driver-dispatch');
   await expect(page.getByRole('heading', { name: 'Driver Dispatch' })).toBeVisible();
   const runInput = page.getByPlaceholder('Run…');
   await runInput.fill('RUN-');
@@ -217,7 +219,7 @@ test('planner → dispatch → geofence arrival/departure → completion stays c
   await expect(page.getByText('Allocation saved. Run remains against this driver and is ready to dispatch.', { exact: true })).toBeVisible();
   expect(state.driverAssigned && state.vehicleAssigned && state.trailerAssigned).toBe(true);
 
-  await page.getByRole('link', { name: 'Operations Wallboard' }).click();
+  await page.goto('/operations-wallboard');
   await expect(page.getByRole('heading', { name: 'Arrivals & Departures' })).toBeVisible();
   await expect(page.getByText(/AB12 CDE/).first()).toBeVisible();
 
