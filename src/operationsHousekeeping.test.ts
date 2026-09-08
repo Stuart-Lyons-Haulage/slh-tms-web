@@ -15,7 +15,9 @@ describe("operations housekeeping contract", () => {
     expect(planner).not.toContain("SubcontractorQuickAdd");
     expect(planner).not.toContain("Automatic order intake");
     expect(planner).not.toContain("review-orders-link");
-    expect(planner).toContain("Open Pallet Control");
+    expect(planner).not.toContain("Open Pallet Control");
+    expect(planner).toContain("Add Run");
+    expect(planner).toContain("Refresh");
   });
 
   it("removes pallet utilisation from the mixed-unit run builder and gives optimiser more time", () => {
@@ -29,8 +31,8 @@ describe("operations housekeeping contract", () => {
     expect(review).toContain("pendingOrderDates");
   });
 
-  it("keeps Pallet Control as three stacked live boards with Site Master delivery headings", () => {
-    expect(app).toContain("['/pallet-control', 'Pallet Control']");
+  it("keeps Pallet Order as three stacked live boards with Site Master delivery headings", () => {
+    expect(app).toContain("['/pallet-control', 'Pallet Order']");
     expect(palletControl).toContain('matrix("toPlan", "To Plan"');
     expect(palletControl).toContain('matrix("planned", "Planned"');
     expect(palletControl).toContain('matrix("summary", "Pallet Summary"');
@@ -39,7 +41,7 @@ describe("operations housekeeping contract", () => {
     expect(palletControl).toContain("destinationLabels");
     expect(palletControl).toContain("pallet-destination-heading");
     expect(palletControl).not.toContain("vertical-destination");
-    expect(palletControl).toContain("2000");
+    expect(palletControl).toContain("subscribePlanningChanges");
     expect(palletControl).toContain("Trays / Crates");
     expect(palletControl).toContain("Trolleys");
     expect(palletControl).not.toContain("Current orders");
@@ -51,11 +53,17 @@ describe("operations housekeeping contract", () => {
     expect(imports).toContain("Master data CSV");
   });
 
-  it("puts Imports last in navigation and makes Control Centre one page", () => {
-    expect(app).toContain('title="Imports"');
+  it("keeps Imports in Admin navigation and makes Control Centre one page", () => {
+    expect(app).toContain("['/planner-import', 'Imports']");
     expect(control).not.toContain("useState");
     expect(control).toContain("OperationsControlClean");
     expect(control).toContain("AdminIntegrationSyncControls");
+  });
+
+  it("uses lightweight global review counts rather than downloading the review queue", () => {
+    expect(app).toContain("/api/v1/staging/count?status=PendingReview&entityType=order");
+    expect(app).toContain("60000");
+    expect(app).not.toContain("api.staging(await accessToken(), 'PendingReview', 'order', 2000)");
   });
 
   it("expands Dashboard into health, attention and feed freshness", () => {
