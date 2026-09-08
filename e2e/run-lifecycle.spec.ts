@@ -233,5 +233,8 @@ test('planner → dispatch → geofence arrival/departure → completion stays c
   state.geofenceStage = 3;
   await page.reload();
   await expect(page.getByText('AVAILABLE').first()).toBeVisible();
-  await expect(page.getByText(/2 of 2 geofences exited/i)).toBeVisible();
+  // Final arrival now completes the journey at geofence entry. Depending on whether
+  // final exit evidence has also landed, the completed row can legitimately show
+  // either the locked arrival wording or the fully exited count.
+  await expect(page.getByText(/Final destination arrived|2 of 2 geofences exited/i).first()).toBeVisible();
 });
