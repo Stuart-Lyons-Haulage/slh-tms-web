@@ -10,11 +10,12 @@ const daysAgo = (days: number) => addDaysIso(-days);
 export function AttentionCentre() {
   const token = useAccessToken(); const navigate = useNavigate(); const [date, setDate] = useState(todayIsoDate());
   const report = useApi(useCallback(async () => intelligenceApi.attention(date, await token()), [date, token]));
-  const groups = useMemo(() => ({ high: report.data?.items.filter(x => x.severity === 'High') ?? [], medium: report.data?.items.filter(x => x.severity === 'Medium') ?? [], low: report.data?.items.filter(x => x.severity === 'Low') ?? [] }), [report.data]);
+  const visibleItems = useMemo(() => report.data?.items.filter(x => x.type !== 'MissingGeocode') ?? [], [report.data]);
+  const groups = useMemo(() => ({ high: visibleItems.filter(x => x.severity === 'High'), medium: visibleItems.filter(x => x.severity === 'Medium'), low: visibleItems.filter(x => x.severity === 'Low') }), [visibleItems]);
   return <section className="intel-page"><div className="intel-heading"><div><p className="eyebrow">Operations control</p><h1>Needs Attention</h1><p>One queue for work that needs a planner or manager decision.</p></div><label>Planning date<input type="date" value={date} onChange={e => setDate(e.target.value)} /></label></div>
     {report.loading && <div className="state">Checking operational exceptions…</div>}{report.error && <div className="state error">{report.error}</div>}
-    {report.data && <><div className="intel-summary"><article className="bad"><span>High</span><strong>{groups.high.length}</strong></article><article className="warn-card"><span>Medium</span><strong>{groups.medium.length}</strong></article><article><span>Low</span><strong>{groups.low.length}</strong></article><article><span>Total</span><strong>{report.data.count}</strong></article></div>
-      <div className="attention-list">{report.data.items.length === 0 ? <div className="state good-state">No current attention items for {formatDate(date)}.</div> : report.data.items.map(item => <button key={item.id} className={`attention-row ${item.severity.toLowerCase()}`} onClick={() => navigate(item.href)}><span className="severity">{item.severity}</span><div><b>{item.title}</b><small>{item.detail}</small></div><span className="open-arrow">›</span></button>)}</div></>}
+    {report.data && <><div className="intel-summary"><article className="bad"><span>High</span><strong>{groups.high.length}</strong></article><article className="warn-card"><span>Medium</span><strong>{groups.medium.length}</strong></article><article><span>Low</span><strong>{groups.low.length}</strong></article><article><span>Total</span><strong>{visibleItems.length}</strong></article></div>
+      <div className="attention-list">{visibleItems.length === 0 ? <div className="state good-state">No current attention items for {formatDate(date)}.</div> : visibleItems.map(item => <button key={item.id} className={`attention-row ${item.severity.toLowerCase()}`} onClick={() => navigate(item.href)}><span className="severity">{item.severity}</span><div><b>{item.title}</b><small>{item.detail}</small></div><span className="open-arrow">›</span></button>)}</div></>}
   </section>;
 }
 
