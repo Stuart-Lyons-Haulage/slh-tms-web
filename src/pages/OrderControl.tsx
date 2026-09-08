@@ -29,7 +29,7 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
         if (!active || result.repaired <= 0) return;
         setRepairNotice(result.message);
         setReviewVersion(value => value + 1);
-      } catch { }
+      } catch { /* compatibility repair is optional; normal review loading remains authoritative */ }
     })();
     return () => { active = false; };
   }, [token]);
