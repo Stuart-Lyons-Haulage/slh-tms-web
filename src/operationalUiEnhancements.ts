@@ -7,6 +7,11 @@ function compactRunNumber(value: string) {
   return match?.[1] || value.trim();
 }
 
+function setTextIfChanged(element: HTMLElement | undefined | null, value: string) {
+  if (!element || element.textContent === value) return;
+  element.textContent = value;
+}
+
 function plannerPeriodFromCard(card: Element) {
   const selected = card.querySelector<HTMLButtonElement>(".run-period-selector button.selected");
   const value = selected?.textContent?.trim().toUpperCase();
@@ -19,7 +24,7 @@ function refreshPlannerRunLabels() {
     const strong = card.querySelector<HTMLElement>(".simple-run-header > div:first-child > strong");
     if (!strong) return;
     const period = plannerPeriodFromCard(card);
-    strong.textContent = `RUN ${index + 1}${period ? ` ${period}` : ""}`;
+    setTextIfChanged(strong, `RUN ${index + 1}${period ? ` ${period}` : ""}`);
   });
 }
 
@@ -41,9 +46,10 @@ function refreshDispatchRunQueue() {
       const raw = strong.textContent || "";
       const period = periodFromPlannerNotes(card.getAttribute("data-planner-notes"));
       const existingPeriod = raw.match(/\b(AM|PM)\b/i)?.[1]?.toUpperCase() || period;
-      strong.textContent = `RUN ${compactRunNumber(raw)}${existingPeriod ? ` ${existingPeriod}` : ""}`;
+      setTextIfChanged(strong, `RUN ${compactRunNumber(raw)}${existingPeriod ? ` ${existingPeriod}` : ""}`);
     }
-    if (details[0]) details[0].textContent = lines.length === 1 ? lines[0] : `${lines[0]} → ${lines.at(-1)}`;
+    const routeSummary = lines.length === 1 ? lines[0] : `${lines[0]} → ${lines.at(-1)}`;
+    setTextIfChanged(details[0], routeSummary);
   }
 }
 
@@ -66,7 +72,17 @@ export function installOperationalUiEnhancements() {
     if (target?.closest(".run-period-selector button")) window.setTimeout(refreshPlannerRunLabels, 0);
   });
 
-  const observer = new MutationObserver(refreshRunLabels);
+  let refreshQueued = false;
+  const queueRefresh = () => {
+    if (refreshQueued) return;
+    refreshQueued = true;
+    window.requestAnimationFrame(() => {
+      refreshQueued = false;
+      refreshRunLabels();
+    });
+  };
+
+  const observer = new MutationObserver(queueRefresh);
   observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
   window.setTimeout(refreshRunLabels, 0);
 }
