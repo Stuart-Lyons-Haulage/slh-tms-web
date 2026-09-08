@@ -13,6 +13,25 @@
 </head>
 <body>
   <div id="root"></div>
+  <script>
+    (function () {
+      var path = window.location.pathname;
+      var tv = path === '/tv' || path === '/operations-wallboard/tv' || path === '/live-runs/tv';
+      if (!tv) return;
+
+      // Restore the 28 Aug execution boundary for physical Hisense/VIDAA screens.
+      // Those televisions use the lightweight compatibility runtime, while desktop
+      // browsers continue to use the same modern React wallboard layout/data model.
+      var ua = String(window.navigator && window.navigator.userAgent || '');
+      var smartTv = /Hisense|VIDAA|SmartTV|Smart-TV|NetCast|Vewd|Opera TV/i.test(ua);
+      if (smartTv) {
+        try {
+          window.location.replace('/tv.html' + (window.location.search || ''));
+          return;
+        } catch (e) { /* continue to compatibility fallback below */ }
+      }
+    }());
+  </script>
   <script type="module" src="/src/main.tsx"></script>
   <script>
     (function () {
@@ -20,8 +39,6 @@
       var tv = path === '/tv' || path === '/operations-wallboard/tv' || path === '/live-runs/tv';
       if (!tv) return;
 
-      // React is the primary TV renderer. Older office-TV browsers that do not
-      // execute module scripts get the same API-backed compatibility wallboard.
       function appendScript(src, onload) {
         var script = document.createElement('script');
         script.src = src;
@@ -35,16 +52,16 @@
         window.__SLH_TV_COMPATIBILITY__ = true;
         var css = document.createElement('link');
         css.rel = 'stylesheet';
-        css.href = '/tv-legacy.css?v=20260907-wallboard-v9';
+        css.href = '/tv-legacy.css?v=20260908-known-good-boundary';
         document.head.appendChild(css);
         var compactCss = document.createElement('link');
         compactCss.rel = 'stylesheet';
-        compactCss.href = '/tv-legacy-compact.css?v=20260907-wallboard-v9';
+        compactCss.href = '/tv-legacy-compact.css?v=20260908-known-good-boundary';
         document.head.appendChild(compactCss);
-        appendScript('/tv-timezone-patch.js?v=20260907-wallboard-v9', function () {
-          appendScript('/tv-legacy.js?v=20260907-wallboard-v9', function () {
-            appendScript('/tv-run-labels-patch.js?v=20260907-wallboard-v9', function () {
-              appendScript('/tv-final-timing-patch.js?v=20260907-wallboard-v9');
+        appendScript('/tv-timezone-patch.js?v=20260908-known-good-boundary', function () {
+          appendScript('/tv-legacy.js?v=20260908-known-good-boundary', function () {
+            appendScript('/tv-run-labels-patch.js?v=20260908-known-good-boundary', function () {
+              appendScript('/tv-final-timing-patch.js?v=20260908-known-good-boundary');
             });
           });
         });
@@ -54,7 +71,7 @@
         var root = document.getElementById('root');
         if (!root || String(root.textContent || '').replace(/\s+/g, '') !== '' || window.__SLH_TV_REACT_STARTED__) return;
         startCompatibilityWallboard();
-      }, 20000);
+      }, 8000);
     }());
   </script>
   <script>
