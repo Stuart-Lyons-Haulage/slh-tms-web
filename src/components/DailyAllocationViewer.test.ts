@@ -10,11 +10,12 @@ describe("Dashboard Driver Dispatch mirror", () => {
     expect(source).not.toContain('driverAssignments(');
   });
 
-  it("is read-only and mirrors the operational Dispatch columns", () => {
-    for (const heading of ["Driver", "Type / skills", "Code", "Day", "Vehicle", "Trailer", "Run", "Assistant", "Status"]) {
+  it("is read-only and shows only operational allocation fields", () => {
+    for (const heading of ["Driver", "Type / skills", "Code", "Day", "Vehicle", "Trailer", "Run", "Status"]) {
       expect(source).toContain(`<th>${heading}</th>`);
     }
-    expect(source).toContain("Read-only Driver Dispatch mirror");
+    expect(source).toContain("Today’s allocated routes");
+    expect(source).toContain("Open Driver Dispatch");
     expect(source).not.toContain("Allocate</button>");
     expect(source).not.toContain("Save allocation</button>");
   });
