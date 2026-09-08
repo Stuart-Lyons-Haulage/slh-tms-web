@@ -214,7 +214,7 @@ test('planner → dispatch → geofence arrival/departure → completion stays c
   await trailerInput.fill('TRL');
   await page.getByRole('button', { name: /TRL-101/ }).click();
   await page.getByRole('button', { name: 'Allocate', exact: true }).click();
-  await expect(page.getByText('Allocation saved. Run is ready for dispatch.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Allocation saved. Run remains against this driver and is ready to dispatch.', { exact: true })).toBeVisible();
   expect(state.driverAssigned && state.vehicleAssigned && state.trailerAssigned).toBe(true);
 
   await page.getByRole('link', { name: 'Operations Wallboard' }).click();
