@@ -10,19 +10,33 @@ export interface UseApiResult<T> {
   refresh: () => Promise<void>;
 }
 
+const warmApiCache = new Map<string, unknown>();
+
+function warmCacheKey(load: () => Promise<unknown>) {
+  const source = Function.prototype.toString.call(load);
+  if (source.includes('tv-display/planned-runs') && source.includes('driver-assignments')) return 'operations-wallboard-base';
+  return undefined;
+}
+
 export function useApi<T>(load: () => Promise<T>): UseApiResult<T> {
-  const [data, setData] = useState<T>();
+  const cacheKey = useRef<string | undefined>(warmCacheKey(load as () => Promise<unknown>));
+  const initialData = cacheKey.current ? warmApiCache.get(cacheKey.current) as T | undefined : undefined;
+  const [data, setData] = useState<T | undefined>(() => initialData);
   const [error, setError] = useState<string>();
   const [dataProblem, setDataProblem] = useState<DataIntegrityError>();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialData);
   const requestNumber = useRef(0);
   const inFlight = useRef<Promise<void> | null>(null);
   const mounted = useRef(true);
+  const hasData = useRef(Boolean(initialData));
   const refresh = useCallback(async () => {
     if (inFlight.current) return inFlight.current;
     const request = ++requestNumber.current;
     const operation = (async () => {
-      setLoading(true);
+      // Keep an already-rendered wallboard visible while the newest snapshot is fetched.
+      // This module survives React route unmount/remounts, so returning to Operations
+      // Wallboard is instant instead of rebuilding planned runs and assignments from TBC.
+      if (!hasData.current) setLoading(true);
       setError(undefined);
       setDataProblem(undefined);
       try {
@@ -31,9 +45,12 @@ export function useApi<T>(load: () => Promise<T>): UseApiResult<T> {
           const progressEnvelope = result as unknown as ProgressRefreshEnvelope;
           if (isDegradedProgressRefresh(progressEnvelope)) {
             setData(current => current ?? result);
+            if (!hasData.current) hasData.current = true;
             setError(progressEnvelope.warning || 'Live progression refresh degraded; the last confirmed progression remains on screen.');
           } else {
             setData(result);
+            hasData.current = true;
+            if (cacheKey.current) warmApiCache.set(cacheKey.current, result);
           }
         }
       } catch (exception: unknown) {
