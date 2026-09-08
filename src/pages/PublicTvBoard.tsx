@@ -11,6 +11,10 @@ const UK_ZONE = "Europe/London";
 const timeFormat = new Intl.DateTimeFormat("en-GB", { timeZone: UK_ZONE, hour: "2-digit", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("en-GB", { timeZone: UK_ZONE, weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
+function keyedTvUrl(displayKey: string) {
+  return `${window.location.pathname}?key=${encodeURIComponent(displayKey)}`;
+}
+
 function persistDisplayKeyInUrl(displayKey: string) {
   if (!displayKey) return;
   try {
@@ -19,8 +23,8 @@ function persistDisplayKeyInUrl(displayKey: string) {
     url.searchParams.set("key", displayKey);
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   } catch {
-    // Older TV browsers may restrict history writes. Keeping the in-memory key still works
-    // when custom headers survive the browser/proxy path.
+    // Some older TV browsers restrict History API writes. The post-pair navigation below
+    // deliberately reloads onto a keyed URL so those browsers still retain the pairing.
   }
 }
 
@@ -63,9 +67,6 @@ function TvOperationsBoard({ displayKey, onUnauthorized }: { displayKey: string;
     let cancelled = false;
     persistDisplayKeyInUrl(displayKey);
 
-    // Some Hisense browser/proxy paths accept the pairing POST but strip custom headers
-    // from subsequent GET requests. The API validates the same read-only paired key from
-    // ?key=, so add it to same-origin TMS API requests while the TV wallboard is mounted.
     const originalFetch = window.fetch.bind(window);
     const compatibleFetch: typeof window.fetch = (input, init) => {
       try {
@@ -155,6 +156,12 @@ export function PublicTvBoard() {
       persistDisplayKeyInUrl(result.key);
       setDisplayKey(result.key);
       setPairCode("");
+
+      // Hisense/Vewd browsers have proven unreliable when a pairing is retained only via
+      // SPA state, localStorage or History API. Force one navigation onto the keyed URL.
+      // The key is read-only, SQL-validated and every wallboard feed accepts it as the
+      // transport fallback, so a subsequent TV refresh no longer returns to the PIN page.
+      try { window.location.replace(keyedTvUrl(result.key)); } catch { /* React state remains a fallback */ }
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : "The TV could not be paired.");
     } finally {
