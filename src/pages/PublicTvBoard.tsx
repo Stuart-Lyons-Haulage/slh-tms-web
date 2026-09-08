@@ -23,8 +23,8 @@ function persistDisplayKeyInUrl(displayKey: string) {
     url.searchParams.set("key", displayKey);
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   } catch {
-    // Some older TV browsers restrict History API writes. The post-pair navigation below
-    // deliberately reloads onto a keyed URL so those browsers still retain the pairing.
+    // Older TV browsers can restrict History API writes. The post-pair navigation below
+    // deliberately reloads onto a keyed URL so the pairing still survives refreshes.
   }
 }
 
@@ -66,30 +66,9 @@ function TvOperationsBoard({ displayKey, onUnauthorized }: { displayKey: string;
   useEffect(() => {
     let cancelled = false;
     persistDisplayKeyInUrl(displayKey);
-
-    const originalFetch = window.fetch.bind(window);
-    const compatibleFetch: typeof window.fetch = (input, init) => {
-      try {
-        const inputUrl = typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-        const url = new URL(inputUrl, window.location.origin);
-        if (url.origin === window.location.origin && url.pathname.startsWith("/tms-api/api/v1/")) {
-          url.searchParams.set("key", displayKey);
-          if (typeof input === "string" || input instanceof URL) return originalFetch(url.toString(), init);
-          return originalFetch(new Request(url.toString(), input), init);
-        }
-      } catch {
-        // Fall through to the browser's normal fetch behaviour.
-      }
-      return originalFetch(input, init);
-    };
-    window.fetch = compatibleFetch;
-
     setConnection("checking");
     setConnectionError(undefined);
+
     void request<unknown>(
       `/api/v1/tv-display/planned-runs?date=${encodeURIComponent(todayIsoDate())}&key=${encodeURIComponent(displayKey)}`,
       undefined,
@@ -105,10 +84,8 @@ function TvOperationsBoard({ displayKey, onUnauthorized }: { displayKey: string;
       setConnectionError(exception instanceof Error ? exception.message : "The TV wallboard could not connect to the TMS API.");
       setConnection("error");
     });
-    return () => {
-      cancelled = true;
-      if (window.fetch === compatibleFetch) window.fetch = originalFetch;
-    };
+
+    return () => { cancelled = true; };
   }, [displayKey, onUnauthorized]);
 
   if (connection === "checking") return <div className="tv-display-page"><div className="tv-display-empty">Connecting TV wallboard…</div></div>;
@@ -156,11 +133,6 @@ export function PublicTvBoard() {
       persistDisplayKeyInUrl(result.key);
       setDisplayKey(result.key);
       setPairCode("");
-
-      // Hisense/Vewd browsers have proven unreliable when a pairing is retained only via
-      // SPA state, localStorage or History API. Force one navigation onto the keyed URL.
-      // The key is read-only, SQL-validated and every wallboard feed accepts it as the
-      // transport fallback, so a subsequent TV refresh no longer returns to the PIN page.
       try { window.location.replace(keyedTvUrl(result.key)); } catch { /* React state remains a fallback */ }
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : "The TV could not be paired.");
