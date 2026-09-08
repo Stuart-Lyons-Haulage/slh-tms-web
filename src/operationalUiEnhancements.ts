@@ -7,6 +7,27 @@ function compactRunNumber(value: string) {
   return match?.[1] || value.trim();
 }
 
+function plannerPeriodFromCard(card: Element) {
+  const selected = card.querySelector<HTMLButtonElement>(".run-period-selector button.selected");
+  const value = selected?.textContent?.trim().toUpperCase();
+  return value === "AM" || value === "PM" ? value : "";
+}
+
+function refreshPlannerRunLabels() {
+  const cards = Array.from(document.querySelectorAll<HTMLElement>(".simple-run-card"));
+  cards.forEach((card, index) => {
+    const strong = card.querySelector<HTMLElement>(".simple-run-header > div:first-child > strong");
+    if (!strong) return;
+    const period = plannerPeriodFromCard(card);
+    strong.textContent = `RUN ${index + 1}${period ? ` ${period}` : ""}`;
+  });
+}
+
+function periodFromPlannerNotes(value?: string | null) {
+  const match = String(value || "").match(/Planner\s*period\s*:\s*(AM|PM)/i);
+  return match?.[1]?.toUpperCase() || "";
+}
+
 function refreshDispatchRunQueue() {
   const queue = document.querySelector<HTMLElement>('[data-testid="built-runs-queue"]');
   if (!queue) return;
@@ -16,12 +37,19 @@ function refreshDispatchRunQueue() {
     if (!lines.length) continue;
     const strong = card.querySelector<HTMLElement>("strong");
     const details = card.querySelectorAll<HTMLElement>("small");
-    if (strong && strong.dataset.compactRunApplied !== "true") {
-      strong.textContent = `RUN ${compactRunNumber(strong.textContent || "")}`;
-      strong.dataset.compactRunApplied = "true";
+    if (strong) {
+      const raw = strong.textContent || "";
+      const period = periodFromPlannerNotes(card.getAttribute("data-planner-notes"));
+      const existingPeriod = raw.match(/\b(AM|PM)\b/i)?.[1]?.toUpperCase() || period;
+      strong.textContent = `RUN ${compactRunNumber(raw)}${existingPeriod ? ` ${existingPeriod}` : ""}`;
     }
     if (details[0]) details[0].textContent = lines.length === 1 ? lines[0] : `${lines[0]} → ${lines.at(-1)}`;
   }
+}
+
+function refreshRunLabels() {
+  refreshPlannerRunLabels();
+  refreshDispatchRunQueue();
 }
 
 export function installOperationalUiEnhancements() {
@@ -31,12 +59,14 @@ export function installOperationalUiEnhancements() {
   marker.__SLH_OPERATIONAL_UI_ENHANCEMENTS__ = true;
 
   document.addEventListener("click", (event) => {
-    const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>(".top-nav-menu a") : null;
-    if (!link) return;
-    link.closest<HTMLDetailsElement>("details")?.removeAttribute("open");
+    const target = event.target instanceof Element ? event.target : null;
+    const link = target?.closest<HTMLAnchorElement>(".top-nav-menu a");
+    if (link) link.closest<HTMLDetailsElement>("details")?.removeAttribute("open");
+
+    if (target?.closest(".run-period-selector button")) window.setTimeout(refreshPlannerRunLabels, 0);
   });
 
-  const observer = new MutationObserver(refreshDispatchRunQueue);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  window.setTimeout(refreshDispatchRunQueue, 0);
+  const observer = new MutationObserver(refreshRunLabels);
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+  window.setTimeout(refreshRunLabels, 0);
 }
