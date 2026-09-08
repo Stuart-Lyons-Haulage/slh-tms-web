@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { SourceEmailEvidenceDrawer } from "../components/SourceEmailEvidenceDrawer";
 import { JobsOperational } from "./JobsOperational";
 import { OrderReviewBulk } from "./OrderReviewBulk";
 
@@ -9,9 +11,16 @@ type NwfRepairResponse = { repaired: number; message: string };
 
 export function OrderControl({ initialTab = "review" }: { initialTab?: OrderControlTab }) {
   const token = useAccessToken();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<OrderControlTab>(initialTab);
   const [reviewVersion, setReviewVersion] = useState(0);
   const [repairNotice, setRepairNotice] = useState<string>();
+  const reviewId = searchParams.get("reviewId")?.trim() || undefined;
+  const sourceEmailStagingId = searchParams.get("sourceEmail") === "1" ? reviewId : undefined;
+
+  useEffect(() => {
+    if (reviewId) setTab("review");
+  }, [reviewId]);
 
   useEffect(() => {
     let active = true;
@@ -27,6 +36,12 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
     })();
     return () => { active = false; };
   }, [token]);
+
+  function closeSourceEmail() {
+    const next = new URLSearchParams(searchParams);
+    next.delete("sourceEmail");
+    setSearchParams(next, { replace: true });
+  }
 
   return <>
     <section className="panel" style={{ marginBottom: 18 }}>
@@ -54,5 +69,6 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
     </section>
 
     {tab === "review" ? <OrderReviewBulk key={reviewVersion} /> : <JobsOperational />}
+    {sourceEmailStagingId && <SourceEmailEvidenceDrawer stagingId={sourceEmailStagingId} onClose={closeSourceEmail} />}
   </>;
 }
