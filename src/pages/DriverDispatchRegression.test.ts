@@ -34,7 +34,7 @@ describe("Driver Dispatch UI contract", () => {
   it("makes the Dispatch action available from the locally committed allocation", () => {
     expect(source).toContain('dispatchStatus: "Awaiting Dispatch"');
     expect(source).toContain('driver.assignedLoadId === selected.id && effectiveStatus === "Awaiting Dispatch"');
-    expect(source).toContain('>Dispatch</button>');
+    expect(source).toContain('{busy ? "Preparing…" : "Dispatch"}</button>');
   });
 
   it("allows allocation while weekly rest is due but still blocks dispatch", () => {
