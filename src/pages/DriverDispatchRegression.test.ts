@@ -34,9 +34,20 @@ describe("Driver Dispatch UI contract", () => {
   it("makes the Dispatch action available from the locally committed allocation", () => {
     expect(source).toContain('dispatchStatus: "Awaiting Dispatch"');
     expect(source).toContain('driver.assignedLoadId === selected.id && effectiveStatus === "Awaiting Dispatch"');
-    expect(source).toContain('onClick={() => void prepareDispatch()}');
     expect(source).toContain('{busy ? "Preparing…" : "Dispatch"}</button>');
-    expect(source).toContain('>Dispatch</button>');
+  });
+
+  it("allows allocation while weekly rest is due but still blocks dispatch", () => {
+    expect(source).toContain('const weeklyRestBlocked = status?.weeklyRestStatus === "Overdue"');
+    expect(source).toContain('disabled={driver.onLeave} value={vehicleId}');
+    expect(source).toContain('disabled={driver.onLeave} value={trailerId}');
+    expect(source).toContain('disabled={driver.onLeave} value={loadId}');
+    expect(source).toContain('selected && canEditAllocation && <button');
+    expect(source).toContain('disabled={busy || driver.onLeave || weeklyRestBlocked}');
+    const saveStart = source.indexOf("async function save()");
+    const dispatchStart = source.indexOf("async function prepareDispatch()", saveStart);
+    expect(source.slice(saveStart, dispatchStart)).not.toContain("if (weeklyRestBlocked)");
+    expect(source.slice(dispatchStart)).toContain("if (weeklyRestBlocked)");
   });
 
   it("verifies the allocation response contains the selected resources", () => {
