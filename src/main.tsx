@@ -7,6 +7,7 @@ import { E2eHarness } from './E2eHarness';
 import { DataIntegrityBoundary } from './components/DataIntegrityBoundary';
 import { cacheLocationForRoute, isPublicTvLink, isTvRoute } from './tvBootstrap';
 import { installOrderReviewRecovery } from './orderReviewRecovery';
+import { installOperationalUiEnhancements } from './operationalUiEnhancements';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
@@ -25,9 +26,8 @@ import './pallet-control.css';
 import './source-email-evidence.css';
 import './ui-navigation-refresh.css';
 
-// Install once for the whole SPA so Dashboard -> Load Review deep links also work.
-// The recovery logic itself only acts when the current route is /staging.
 installOrderReviewRecovery();
+installOperationalUiEnhancements();
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
