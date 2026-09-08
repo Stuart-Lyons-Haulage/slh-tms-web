@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { OperationsWallboard as ExistingOperationsWallboard } from "./OperationsWallboardLive";
 import { RunGeofenceLinkagePanel } from "./RunGeofenceLinkagePanel";
 import "../run-geofence-linkage.css";
+import "../operations-wallboard-brand.css";
 
 function FirstCollectionTimeLabel() {
   useEffect(() => {
