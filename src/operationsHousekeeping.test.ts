@@ -31,7 +31,7 @@ describe("operations housekeeping contract", () => {
     expect(review).toContain("pendingOrderDates");
   });
 
-  it("keeps Pallet Order as three stacked live boards with Site Master delivery headings", () => {
+  it("keeps Pallet Order as three stacked event-driven boards with Site Master delivery headings", () => {
     expect(app).toContain("['/pallet-control', 'Pallet Order']");
     expect(palletControl).toContain('matrix("toPlan", "To Plan"');
     expect(palletControl).toContain('matrix("planned", "Planned"');
@@ -42,6 +42,8 @@ describe("operations housekeeping contract", () => {
     expect(palletControl).toContain("pallet-destination-heading");
     expect(palletControl).not.toContain("vertical-destination");
     expect(palletControl).toContain("subscribePlanningChanges");
+    expect(palletControl).toContain("30_000");
+    expect(palletControl).not.toContain("2000");
     expect(palletControl).toContain("Trays / Crates");
     expect(palletControl).toContain("Trolleys");
     expect(palletControl).not.toContain("Current orders");
@@ -62,7 +64,7 @@ describe("operations housekeeping contract", () => {
 
   it("uses lightweight global review counts rather than downloading the review queue", () => {
     expect(app).toContain("/api/v1/staging/count?status=PendingReview&entityType=order");
-    expect(app).toContain("60000");
+    expect(app).toContain("120_000");
     expect(app).not.toContain("api.staging(await accessToken(), 'PendingReview', 'order', 2000)");
   });
 
