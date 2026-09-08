@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const reviewSource = readFileSync(new URL("./OrderReviewBulk.tsx", import.meta.url), "utf8");
+const controlSource = readFileSync(new URL("./OrderControl.tsx", import.meta.url), "utf8");
+const dashboardSource = readFileSync(new URL("./DashboardOperational.tsx", import.meta.url), "utf8");
 const drawerSource = readFileSync(new URL("../components/SourceEmailEvidenceDrawer.tsx", import.meta.url), "utf8");
 
 describe("Order Review source email evidence", () => {
@@ -12,10 +14,17 @@ describe("Order Review source email evidence", () => {
     expect(reviewSource).toContain("setSourceEmailStagingId(row.item.id)");
   });
 
-  it("loads the retained email through the staged-order evidence endpoint", () => {
+  it("loads retained email evidence inside the TMS instead of requiring Outlook", () => {
     expect(drawerSource).toContain("/api/v1/order-intake/source-email/");
     expect(drawerSource).toContain("Email body");
     expect(drawerSource).toContain("Attachments");
-    expect(drawerSource).toContain("Open original in Outlook");
+    expect(drawerSource).not.toContain("Open original in Outlook");
+  });
+
+  it("opens the exact source email when an Order Review attention item is clicked", () => {
+    expect(dashboardSource).toContain("&sourceEmail=1");
+    expect(controlSource).toContain('searchParams.get("reviewId")');
+    expect(controlSource).toContain('searchParams.get("sourceEmail") === "1"');
+    expect(controlSource).toContain("SourceEmailEvidenceDrawer");
   });
 });
