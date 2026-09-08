@@ -22,6 +22,7 @@ import './master-fleet.css';
 import './live-vehicle-popup.css';
 import './operations-housekeeping.css';
 import './pallet-control.css';
+import './ui-navigation-refresh.css';
 
 if (window.location.pathname === '/staging') installOrderReviewRecovery();
 
