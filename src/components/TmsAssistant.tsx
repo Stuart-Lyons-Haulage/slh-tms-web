@@ -7,6 +7,22 @@ const localDate = () => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
+function assistantActionRoute(item: { id: string; area: string }) {
+  if (item.id === "loads-unallocated") return { path: "/driver-dispatch", label: "Driver Dispatch" };
+  const routes: Record<string, string> = {
+    Sites: "/sites",
+    Drivers: "/drivers",
+    Vehicles: "/fleet-assets",
+    Reporting: "/reporting",
+    Planner: "/",
+    Customers: "/customers",
+    Markets: "/markets",
+    Orders: "/jobs",
+    Dispatch: "/driver-dispatch",
+  };
+  return { path: routes[item.area] || "/master-data", label: item.area };
+}
+
 type EfficiencySuggestion = {
   driverId: string; driverName: string; previousRun: string; previousEnd: string;
   orderId: string; orderReference: string; collection: string; destination: string;
@@ -191,13 +207,16 @@ export function TmsAssistant() {
         </article>)}
       </div>}
       <div className="assistant-suggestions">
-        {snapshot?.suggestions.slice(0, 10).map(item => <article className={item.severity} key={item.id}>
-          <span>{item.area}</span><strong>{item.title}</strong><p>{item.detail}</p>
-          <div className="assistant-card-actions">
-            <button type="button" onClick={() => { const routes: Record<string,string> = { Sites:"/sites", Drivers:"/drivers", Vehicles:"/fleet-assets", Reporting:"/reporting", Planner:"/", Customers:"/customers", Markets:"/markets", Orders:"/jobs" }; window.location.assign(routes[item.area] || "/master-data"); }}>Open {item.area}</button>
-            {item.autoFixAvailable && <button type="button" className="primary" disabled={busy} onClick={() => void applyFixes()}>Fix safely</button>}
-          </div>
-        </article>)}
+        {snapshot?.suggestions.slice(0, 10).map(item => {
+          const action = assistantActionRoute(item);
+          return <article className={item.severity} key={item.id}>
+            <span>{item.area}</span><strong>{item.title}</strong><p>{item.detail}</p>
+            <div className="assistant-card-actions">
+              <button type="button" onClick={() => window.location.assign(action.path)}>Open {action.label}</button>
+              {item.autoFixAvailable && <button type="button" className="primary" disabled={busy} onClick={() => void applyFixes()}>Fix safely</button>}
+            </div>
+          </article>;
+        })}
       </div>
       {answer && <div className="assistant-answer"><strong>Verified result</strong><p style={{ whiteSpace: "pre-line" }}>{answer}</p></div>}
       <form onSubmit={event => void ask(event)}>
