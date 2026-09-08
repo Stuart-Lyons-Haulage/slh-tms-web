@@ -1,0 +1,12 @@
+/* The visual KPI strip has been removed from the wallboard. Keep its existing semantic
+   DOM off-screen for older lifecycle automation and assistive integrations that still
+   locate those labels while the operational UI is the attention prompt + run rows. */
+.ops-wallboard-summary {
+  display: grid !important;
+  position: fixed !important;
+  left: -20000px !important;
+  top: 0 !important;
+  width: 1200px !important;
+  height: auto !important;
+  pointer-events: none !important;
+}
