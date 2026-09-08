@@ -81,7 +81,7 @@ export function DashboardOperational() {
       <section className="panel dashboard-attention-panel">
         <div className="title-row"><div><p className="eyebrow">Today's attention</p><h2>What needs a decision</h2></div><Link to="/attention">Open all →</Link></div>
         {attention.error && <p className="notice inline-notice">Exceptions could not refresh: {attention.error}</p>}
-        {attention.data?.items.length ? <div className="dashboard-attention-list">{attention.data.items.slice(0, 6).map((item) => <Link key={item.id} to={item.type === "OrderReview" && item.entityId ? `/staging?reviewId=${encodeURIComponent(item.entityId)}` : item.href} className={`dashboard-attention-row severity-${item.severity.toLowerCase()}`}><span>{item.severity}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><b>→</b></Link>)}</div> : <p className="hint">No active operational exceptions are being reported for today.</p>}
+        {attention.data?.items.length ? <div className="dashboard-attention-list">{attention.data.items.slice(0, 6).map((item) => <Link key={item.id} to={item.type === "OrderReview" && item.entityId ? `/staging?reviewId=${encodeURIComponent(item.entityId)}&sourceEmail=1` : item.href} className={`dashboard-attention-row severity-${item.severity.toLowerCase()}`}><span>{item.severity}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><b>→</b></Link>)}</div> : <p className="hint">No active operational exceptions are being reported for today.</p>}
       </section>
 
       <section className="panel dashboard-feed-panel">
