@@ -6,6 +6,84 @@ import "../run-geofence-linkage.css";
 import "../operations-wallboard-brand.css";
 import "../operations-wallboard-kpi-compat.css";
 
+type CachedWallboardResponse = {
+  body: string;
+  status: number;
+  statusText: string;
+  headers: Array<[string, string]>;
+};
+
+const wallboardResponseCache = new Map<string, CachedWallboardResponse>();
+let wallboardFetchInstalled = false;
+
+function installWallboardFetchResilience() {
+  if (wallboardFetchInstalled || typeof window === "undefined" || typeof window.fetch !== "function") return;
+  wallboardFetchInstalled = true;
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const method = String(init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+    let url: URL | undefined;
+    try {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      url = new URL(raw, window.location.origin);
+    } catch {
+      return originalFetch(input, init);
+    }
+
+    const isWallboardRead = method === "GET"
+      && url.origin === window.location.origin
+      && url.pathname.startsWith("/tms-api/api/v1/")
+      && (
+        url.pathname.includes("/tv-display/")
+        || url.pathname.includes("/run-progress")
+        || url.pathname.includes("/run-timing")
+        || url.pathname.includes("/operations/delivery-etas")
+        || url.pathname.includes("/driver-assignments")
+      );
+
+    if (!isWallboardRead) return originalFetch(input, init);
+
+    const cacheKey = `${url.pathname}?${url.searchParams.toString()}`;
+    const cachedResponse = () => {
+      const cached = wallboardResponseCache.get(cacheKey);
+      if (!cached) return undefined;
+      return new Response(cached.body, {
+        status: cached.status,
+        statusText: cached.statusText,
+        headers: cached.headers,
+      });
+    };
+
+    try {
+      const response = await originalFetch(input, init);
+      if (response.ok) {
+        const clone = response.clone();
+        void clone.text().then(body => {
+          wallboardResponseCache.set(cacheKey, {
+            body,
+            status: response.status,
+            statusText: response.statusText,
+            headers: Array.from(response.headers.entries()),
+          });
+        }).catch(() => undefined);
+        return response;
+      }
+
+      // Never hide a genuine pairing/authentication problem, but transient service,
+      // timeout and throttling faults must not blank a live operations screen.
+      if (response.status === 408 || response.status === 429 || response.status >= 500) {
+        return cachedResponse() || response;
+      }
+      return response;
+    } catch (error) {
+      return cachedResponse() || Promise.reject(error);
+    }
+  };
+}
+
+installWallboardFetchResilience();
+
 function FirstCollectionTimeLabel() {
   useEffect(() => {
     const apply = () => {
@@ -50,10 +128,34 @@ function CompletedExitEvidenceLabel() {
   return null;
 }
 
+function WallboardStatusClarifier() {
+  useEffect(() => {
+    const apply = () => {
+      document.querySelectorAll<HTMLElement>(".ops-board-row.onsite:not(.final-arrived)").forEach(row => {
+        const status = row.querySelector<HTMLElement>(".status-cell strong");
+        if (status?.textContent?.trim().toUpperCase() === "ARRIVED") status.textContent = "ON SITE";
+      });
+
+      document.querySelectorAll<HTMLElement>(".ops-wallboard-alert").forEach(alert => {
+        const text = alert.textContent || "";
+        if (/refresh is unavailable|snapshot is unavailable/i.test(text)) {
+          alert.textContent = "Live refresh delayed — retaining the last confirmed ETA, progress, driver and vehicle data until a newer successful snapshot arrives.";
+        }
+      });
+    };
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, []);
+  return null;
+}
+
 export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: boolean; tvAccessKey?: string }) {
   return <>
     <FirstCollectionTimeLabel />
     <CompletedExitEvidenceLabel />
+    <WallboardStatusClarifier />
     <EtaLearningBridge />
     {!tvMode && <RunGeofenceLinkagePanel />}
     <ExistingOperationsWallboard tvMode={tvMode} tvAccessKey={tvAccessKey} />
