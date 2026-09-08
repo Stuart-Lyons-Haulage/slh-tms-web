@@ -4,6 +4,7 @@ import { request, type LoadDispatch, type Trailer, type Vehicle } from "../lib/a
 import { useAccessToken } from "../lib/auth";
 import { getDriverDispatchRoute, getRunDispatch } from "../api/runs";
 import { firstCollectionStop, runDirection, suggestionRunLabel } from "./DriverDispatchPlanning";
+import { dispatchStartsCalculatedEvent, type StartSuggestion } from "./DispatchCalculatedStarts";
 import "../driver-dispatch.css";
 import "../driver-dispatch-compact.css";
 
@@ -222,6 +223,11 @@ function statusClass(status?: DispatchStatus) {
 function knownUnavailable(driver: DispatchDriver, status?: DriverDispatchStatus) {
   return driver.onLeave || status?.availabilityStatus === "Unavailable" || status?.weeklyRestStatus === "Overdue";
 }
+function fleetioWarning(vehicle?: Vehicle) {
+  const value = vehicle?.fleetioStatus?.trim();
+  if (!value) return undefined;
+  return /(out\s*of\s*service|inactive|vor|off\s*road|maintenance)/i.test(value) ? `Fleetio: ${value}` : undefined;
+}
 
 function TypeaheadSelect({ value, options, placeholder, onChange, disabled, listId }: {
   value: string;
@@ -292,6 +298,7 @@ export function DriverDispatch() {
   const [date, setDate] = useState(initialParams.get("date") || today());
   const [data, setData] = useState<Workbench>();
   const [statuses, setStatuses] = useState<Record<string, DriverDispatchStatus>>({});
+  const [calculatedStarts, setCalculatedStarts] = useState<Record<string, StartSuggestion>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [statusError, setStatusError] = useState<string>();
@@ -331,15 +338,21 @@ export function DriverDispatch() {
     window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
   }, [date]);
   useEffect(() => setDriverForm(current => ({ ...current, startDate: date })), [date]);
+  useEffect(() => setCalculatedStarts({}), [date]);
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<{ date?: string; rows?: StartSuggestion[] }>).detail;
+      if (!detail || detail.date !== date || !Array.isArray(detail.rows)) return;
+      setCalculatedStarts(Object.fromEntries(detail.rows.map(row => [row.loadId, row])));
+    };
+    window.addEventListener(dispatchStartsCalculatedEvent, receive);
+    return () => window.removeEventListener(dispatchStartsCalculatedEvent, receive);
+  }, [date]);
 
   const filteredDrivers = useMemo(() => {
     if (!data) return [];
     return data.drivers.filter(driver => {
       const status = statuses[driver.driverId];
-      // Do not offer known-unavailable people as allocation candidates. If a run is already
-      // allocated, retain the row so the planner can see and correct the unsafe assignment.
-      if (!driver.assignedLoadId && knownUnavailable(driver, status)) return false;
-
       const assigned = data.loads.find(load => load.id === driver.assignedLoadId);
       const vehicle = assigned?.vehicleId ? data.vehicles.find(item => item.id === assigned.vehicleId) : undefined;
       const trailer = assigned?.trailerId ? data.trailers.find(item => item.id === assigned.trailerId) : undefined;
@@ -354,15 +367,15 @@ export function DriverDispatch() {
         trailer: `${trailer?.trailerNumber || ""} ${trailer?.type || ""}`,
         run: assigned ? `${suggestionRunLabel(assigned)} ${assigned.reference} ${assigned.rawReference}` : `${driver.suggestedRunReference || ""} unallocated`,
         assistant: `${driver.suggestion || ""} ${driver.previousFinalStop || ""} ${driver.assistantScore || ""}`,
-        dispatch: dispatchStatus
+        dispatch: `${dispatchStatus} ${knownUnavailable(driver, status) ? "warning unavailable" : "available"}`
       };
       return filterKeys.every(key => !filters[key].trim() || values[key].toLowerCase().includes(filters[key].trim().toLowerCase()));
     });
   }, [data, filters, statuses]);
 
-  const hiddenUnavailable = useMemo(() => {
+  const warningDrivers = useMemo(() => {
     if (!data) return 0;
-    return data.drivers.filter(driver => !driver.assignedLoadId && knownUnavailable(driver, statuses[driver.driverId])).length;
+    return data.drivers.filter(driver => knownUnavailable(driver, statuses[driver.driverId])).length;
   }, [data, statuses]);
 
   const applySavedAllocation = useCallback((saved: DispatchLoad, driverId: string, previousLoadId?: string) => {
@@ -465,7 +478,7 @@ export function DriverDispatch() {
       <div>
         <p className="eyebrow">Planning → allocation → route → driver text</p>
         <h1>Driver Dispatch</h1>
-        <p className="hint">TachoMaster removes drivers who are proven unavailable. Assistant suggestions keep live-linked vehicles first, then learned/yesterday vehicle continuity.</p>
+        <p className="hint">All active drivers stay visible. Sage HR/TachoMaster warnings identify drivers who should not be allocated; assistant suggestions keep live-linked vehicles first, then learned/yesterday vehicle continuity.</p>
       </div>
       <div className="title-actions dispatch-actions">
         <label>Planning date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
@@ -495,20 +508,21 @@ export function DriverDispatch() {
         <span><strong>{filteredDrivers.length}</strong> drivers shown</span>
         <span><strong>{data.loads.length}</strong> planned runs</span>
         <span><strong>{data.drivers.filter(driver => driver.suggestedRunId && !driver.assignedLoadId).length}</strong> assistant matches</span>
-        <span><strong>{hiddenUnavailable}</strong> unavailable hidden</span>
+        <span><strong>{warningDrivers}</strong> availability warnings shown</span>
         {filterKeys.some(key => filters[key]) && <button type="button" className="text-button clear-dispatch-filters" onClick={() => setFilters(emptyFilters())}>Clear filters</button>}
       </div>
       <div className="dispatch-table-wrap">
         <table className="dispatch-table">
           <thead>
-            <tr><th>Driver</th><th>Type / skills</th><th>Code</th><th>Day</th><th>Vehicle</th><th>Trailer</th><th>Run</th><th>Assistant</th><th>Status</th><th>Dispatch</th></tr>
-            <tr className="dispatch-filter-row">{filterKeys.map(key => <th key={key}><input aria-label={`Filter ${key}`} placeholder={filterPlaceholders[key]} value={filters[key]} onChange={event => setFilters(current => ({ ...current, [key]: event.target.value }))} /></th>)}</tr>
+            <tr><th>Driver</th><th>Type / skills</th><th>Code</th><th>Day</th><th>Vehicle</th><th>Trailer</th><th>Run</th><th>Assistant</th><th>Status</th><th>Dispatch</th><th>Could start</th></tr>
+            <tr className="dispatch-filter-row">{filterKeys.map(key => <th key={key}><input aria-label={`Filter ${key}`} placeholder={filterPlaceholders[key]} value={filters[key]} onChange={event => setFilters(current => ({ ...current, [key]: event.target.value }))} /></th>)}<th /></tr>
           </thead>
           <tbody>{filteredDrivers.map((driver, index) => <DispatchRow
             key={driver.driverId}
             driver={driver}
             data={data}
             status={statuses[driver.driverId]}
+            calculatedStart={driver.assignedLoadId ? calculatedStarts[driver.assignedLoadId] : undefined}
             showGroup={index === 0 || filteredDrivers[index - 1].driverType !== driver.driverType}
             token={token}
             applySavedAllocation={applySavedAllocation}
@@ -517,7 +531,7 @@ export function DriverDispatch() {
           />)}</tbody>
         </table>
       </div>
-      <p className="hint dispatch-footer-note">Drivers proven unavailable by Sage HR/TachoMaster are removed from the candidate list. A driver already allocated to a run stays visible if availability changes so the planner can reassign it. Unverified Tacho evidence remains visible but final Dispatch always performs the authoritative live route-and-hours check.</p>
+      <p className="hint dispatch-footer-note">All active drivers remain visible, including leave/Tacho exceptions. Warning rows stay visible for planning awareness but unsafe allocation/dispatch remains blocked. A run already allocated to another driver is not offered in the run selector, reducing duplicate allocation risk. Final Dispatch still performs the authoritative live route-and-hours check.</p>
     </>}
 
     {message && <MessageDialog
@@ -555,10 +569,11 @@ function BuiltRunsQueue({ loads }: { loads: DispatchLoad[] }) {
   </div>;
 }
 
-function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocation, applyUnassignedAllocation, openMessage }: {
+function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, applySavedAllocation, applyUnassignedAllocation, openMessage }: {
   driver: DispatchDriver;
   data: Workbench;
   status?: DriverDispatchStatus;
+  calculatedStart?: StartSuggestion;
   showGroup: boolean;
   token: () => Promise<string>;
   applySavedAllocation: (saved: DispatchLoad, driverId: string, previousLoadId?: string) => void;
@@ -569,13 +584,23 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
   const suggestedLoad = driver.suggestedRunId ? data.loads.find(load => load.id === driver.suggestedRunId) : undefined;
   const suggestedTrailerId = suggestedLoad?.trailerId;
   const [loadId, setLoadId] = useState(initial?.id || "");
-  // Live/assistant evidence is stronger than yesterday when the two disagree.
   const [vehicleId, setVehicleId] = useState(initial?.vehicleId || driver.suggestedVehicleId || driver.previousVehicleId || "");
   const [trailerId, setTrailerId] = useState(initial?.trailerId || suggestedTrailerId || "");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
   const selected = data.loads.find(load => load.id === loadId);
   const tachoUnavailable = status?.availabilityStatus === "Unavailable" || status?.weeklyRestStatus === "Overdue";
+  const selectedVehicle = vehicleId ? data.vehicles.find(vehicle => vehicle.id === vehicleId) : undefined;
+  const fleetWarning = fleetioWarning(selectedVehicle);
+  const availabilityWarning = knownUnavailable(driver, status);
+  const couldStartUtc = calculatedStart?.suggestedStartUtc || initial?.plannedStartUtc;
+  const couldStartTitle = [
+    calculatedStart?.explanation,
+    calculatedStart?.restType ? `Rest: ${calculatedStart.restType}` : undefined,
+    calculatedStart?.origin ? `Origin: ${calculatedStart.origin}` : undefined,
+    calculatedStart?.travelMinutes != null ? `Travel to first collection: ${calculatedStart.travelMinutes} min` : undefined,
+    fleetWarning
+  ].filter(Boolean).join("\n");
 
   const vehicleOptions: SearchOption[] = [...data.vehicles]
     .sort((left, right) => {
@@ -586,7 +611,8 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
       const assistant = vehicle.id === driver.suggestedVehicleId;
       const yesterday = vehicle.id === driver.previousVehicleId;
       const evidence = assistant && yesterday ? " · Assistant · in yesterday" : assistant ? " · Assistant" : yesterday ? " · in yesterday" : "";
-      return { id: vehicle.id, label: `${vehicle.registration}${evidence}`, search: `${vehicle.registration} ${vehicle.fleetNumber || ""}` };
+      const fleet = fleetioWarning(vehicle) ? ` · ⚠ ${vehicle.fleetioStatus}` : "";
+      return { id: vehicle.id, label: `${vehicle.registration}${evidence}${fleet}`, search: `${vehicle.registration} ${vehicle.fleetNumber || ""} ${vehicle.fleetioStatus || ""}` };
     });
 
   const trailerOptions: SearchOption[] = [...data.trailers]
@@ -634,7 +660,7 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
 
   async function save() {
     if (driver.onLeave || tachoUnavailable) {
-      setNotice(status?.availabilityMessage || status?.weeklyRestMessage || "This driver is not available for allocation.");
+      setNotice(status?.availabilityMessage || status?.weeklyRestMessage || "This driver is visible for planning but is not currently available for allocation.");
       return;
     }
     if (!loadId) {
@@ -645,6 +671,7 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
       setNotice("Choose a vehicle before allocating the run.");
       return;
     }
+    if (fleetWarning && !window.confirm(`${fleetWarning}. Keep this vehicle selected and continue with the allocation?`)) return;
     setBusy(true);
     setNotice(undefined);
     try {
@@ -712,6 +739,10 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
     }
     if (tachoUnavailable) {
       setNotice(status?.availabilityMessage || status?.weeklyRestMessage || "TachoMaster shows this driver as unavailable.");
+      return;
+    }
+    if (fleetWarning) {
+      setNotice(`${fleetWarning}. Resolve or change the vehicle before dispatch.`);
       return;
     }
     setBusy(true);
@@ -793,11 +824,11 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
 
   const persistedStatus = status?.dispatchStatus;
   const effectiveStatus: DispatchStatus = selected && persistedStatus === "No Run" ? "Awaiting Dispatch" : persistedStatus || (selected ? "Awaiting Dispatch" : "No Run");
-  const unavailableAssigned = Boolean(driver.assignedLoadId && knownUnavailable(driver, status));
+  const unavailableAssigned = Boolean(driver.assignedLoadId && availabilityWarning);
 
   return <>
-    {showGroup && <tr className="dispatch-group"><td colSpan={10}>{driver.driverType === "Agency" ? "AGENCY" : driver.driverType === "Casual" ? "CASUAL" : "EMPLOYED"}</td></tr>}
-    <tr className={unavailableAssigned ? "weekly-rest-blocked" : ""}>
+    {showGroup && <tr className="dispatch-group"><td colSpan={11}>{driver.driverType === "Agency" ? "AGENCY" : driver.driverType === "Casual" ? "CASUAL" : "EMPLOYED"}</td></tr>}
+    <tr className={availabilityWarning ? "weekly-rest-blocked" : ""}>
       <td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}</td>
       <td><div className="badge-line"><span className={`driver-type type-${driver.driverType.toLowerCase()}`} title={driver.agencyName || driver.driverType}>{driver.driverType === "Agency" ? "A" : driver.driverType === "Casual" ? "C" : "E"}</span>{(driver.skills || "").split(/[,;|/]+/).map(skill => skill.trim()).filter(Boolean).slice(0, 3).map(skill => <span className="skill-badge" key={skill}>{skill}</span>)}</div><small>{driver.driverType === "Agency" ? driver.agencyName || "Agency" : driver.driverGroup || ""}</small></td>
       <td><span className={`code-badge code-${driver.coding || "x"}`} title={codeTitle(driver.coding)}>{driver.coding || "—"}</span></td>
@@ -805,6 +836,7 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
       <td>
         <TypeaheadSelect disabled={driver.onLeave || tachoUnavailable} value={vehicleId} onChange={setVehicleId} options={vehicleOptions} placeholder="Vehicle…" listId={`vehicle-${driver.driverId}`} />
         {driver.previousVehicleRegistration && <small title={`Driver was in ${driver.previousVehicleRegistration} yesterday`}>In yesterday · {driver.previousVehicleRegistration}</small>}
+        {fleetWarning && <small title={fleetWarning}>⚠ {fleetWarning}</small>}
       </td>
       <td><TypeaheadSelect disabled={driver.onLeave || tachoUnavailable} value={trailerId} onChange={setTrailerId} options={trailerOptions} placeholder="Trailer…" listId={`trailer-${driver.driverId}`} /></td>
       <td><div className="run-cell"><TypeaheadSelect disabled={driver.onLeave || tachoUnavailable} value={loadId} onChange={setLoadId} options={runOptions} placeholder="Run…" listId={`run-${driver.driverId}`} />{selected && <RunHover load={selected} />}</div></td>
@@ -815,9 +847,11 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
       </td>
       <td className="dispatch-status-cell">
         <span className={`dispatch-status-pill ${statusClass(effectiveStatus)}`}>{effectiveStatus}</span>
+        {initial && <small title={`Allocated run ${initial.reference}`}>Allocated · {compactRun(initial)}</small>}
         {selected && persistedStatus === "No Run" && <small>Selection ready to allocate</small>}
-        {status?.availabilityStatus === "Unavailable" && <small title={status.availabilityMessage}>Tacho: Unavailable</small>}
+        {status?.availabilityStatus === "Unavailable" && <small title={status.availabilityMessage}>⚠ Tacho: Unavailable</small>}
         {status?.availabilityStatus === "Unverified" && <small title={status.availabilityMessage}>Tacho: Check before dispatch</small>}
+        {status?.weeklyRestStatus === "Overdue" && <small title={status.weeklyRestMessage}>⚠ Weekly rest overdue</small>}
         {status?.availabilityStatus === "Available" && status.weeklyRestStatus === "DueSoon" && <small title={status.weeklyRestMessage}>Tacho: Rest due soon</small>}
         {status?.driveAvailablePlanningDayMinutes != null && <small title="TachoMaster planning-day driving availability">Drive left: {Math.max(0, Math.round(status.driveAvailablePlanningDayMinutes / 60 * 10) / 10)}h</small>}
         {status?.lastDriverReply && effectiveStatus === "Confirmed" && <small title={status.lastDriverReply}>{status.lastDriverReply.length > 72 ? `${status.lastDriverReply.slice(0, 72)}…` : status.lastDriverReply}</small>}
@@ -830,13 +864,20 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
                 <button type="button" onClick={prepareUpdate} disabled={busy}>Update text</button>
               </>
             : selected && driver.assignedLoadId === selected.id && effectiveStatus === "Awaiting Dispatch"
-              ? <button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave || tachoUnavailable}>{busy ? "Preparing…" : "Dispatch"}</button>
+              ? <button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave || tachoUnavailable || Boolean(fleetWarning)}>{busy ? "Preparing…" : "Dispatch"}</button>
               : null}
           {selected && <button className={driver.assignedLoadId === selected.id ? undefined : "primary"} type="button" onClick={() => void save()} disabled={busy || driver.onLeave || tachoUnavailable || !vehicleId}>{busy ? "Working…" : driver.assignedLoadId === selected.id ? "Save allocation" : "Allocate"}</button>}
           {driver.assignedLoadId && <button type="button" onClick={() => void unassign()} disabled={busy}>Unassign run</button>}
           {unavailableAssigned && <span className="dispatch-blocked-note">Allocated but unavailable · reassign this run</span>}
+          {!driver.assignedLoadId && availabilityWarning && <span className="dispatch-blocked-note">Visible for planning · allocation currently blocked</span>}
         </div>
         {notice && <small className="row-notice">{notice}</small>}
+      </td>
+      <td className="dispatch-start-cell" title={couldStartTitle || "Click Calculate Starts after allocating a driver and vehicle."}>
+        <strong>{couldStartUtc ? localTime(couldStartUtc) : "—"}</strong>
+        {calculatedStart?.restType && <small>{calculatedStart.restType}</small>}
+        {!couldStartUtc && calculatedStart?.explanation && <small>Hover for reason</small>}
+        {fleetWarning && <small>⚠ Fleetio</small>}
       </td>
     </tr>
   </>;
