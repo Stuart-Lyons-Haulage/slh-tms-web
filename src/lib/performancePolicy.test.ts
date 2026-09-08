@@ -47,9 +47,11 @@ describe("SLH TMS performance policy", () => {
     vi.useFakeTimers();
     const documentEvents = new EventTarget();
     let visibilityState: "visible" | "hidden" = "hidden";
-    const documentStub = Object.assign(documentEvents, {
-      get visibilityState() { return visibilityState; },
+    Object.defineProperty(documentEvents, "visibilityState", {
+      configurable: true,
+      get: () => visibilityState,
     });
+    const documentStub = documentEvents as EventTarget & { readonly visibilityState: "visible" | "hidden" };
     const windowEvents = new EventTarget();
     const windowStub = Object.assign(windowEvents, {
       setTimeout: globalThis.setTimeout,
