@@ -3,6 +3,7 @@ import { useState } from "react";
 import { OptimiserProposalReview } from "../components/OptimiserProposalReview";
 import { RunGeofenceWarningPanel } from "../components/GeofenceCoverageWarnings";
 import { signalPlanningChange } from "../lib/planningEvents";
+import { PlannerCalculatedStarts } from "./PlannerCalculatedStarts";
 import { RunPlannerLive } from "./RunPlannerLive";
 
 function localDate() {
@@ -36,6 +37,7 @@ export function PlannerEnhanced() {
 
     <RunGeofenceWarningPanel planningDate={date} />
     <OptimiserProposalReview planningDate={date} onApplied={() => signalPlanningChange()} />
+    <PlannerCalculatedStarts planningDate={date} />
     <RunPlannerLive planningDate={date} />
 
     <div className="mobile-planner-handoff">
