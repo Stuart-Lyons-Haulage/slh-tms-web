@@ -1,18 +1,23 @@
-import { type MouseEvent, useState } from "react";
+import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import { getDriverDispatchRoute, getRunDispatch } from "../api/runs";
 import { request, type LoadDispatch } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { DriverDispatch } from "./DriverDispatch";
 
-type WorkbenchDriver = { driverId: string; displayName: string; assignedLoadId?: string };
+type WorkbenchDriver = { driverId: string; employeeNumber?: string; displayName: string; assignedLoadId?: string };
 type WorkbenchLoad = { id: string; reference: string; rawReference?: string; southbound?: boolean; plannedStartUtc?: string; stops?: Array<{ sequence: number; plannedArrivalUtc?: string }> };
 type Workbench = { drivers: WorkbenchDriver[]; loads: WorkbenchLoad[] };
 type DispatchReadiness = { canDispatch: boolean; explanation?: string; structuralReadiness?: { classification: "Recommended" | "Unverified" | "Blocked"; requiresAcknowledgement: boolean; checks: Array<{ passed: boolean; message: string }> } };
 type DialogState = { driverName: string; load?: WorkbenchLoad; text: string; loading: boolean; error?: string };
+type OperationalStatus = "No Run" | "Awaiting Dispatch" | "Dispatched" | "Working" | "Completed";
+type OperationalDriverStatus = { driverId: string; operationalStatus?: OperationalStatus; driverConfirmed?: boolean; driverConfirmationAtUtc?: string };
+type OperationalDisplay = { status: OperationalStatus; driverConfirmed: boolean; confirmationAt?: string };
 
 function localTime(value?: string) { if (!value) return ""; const date = new Date(value); return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }); }
 function firstPlannedTime(load: WorkbenchLoad) { return [...(load.stops || [])].sort((a, b) => a.sequence - b.sequence).find(stop => stop.plannedArrivalUtc)?.plannedArrivalUtc || load.plannedStartUtc; }
 function routeMinutes(route: Record<string, unknown>) { const routes = route.routes as Array<{ summary?: { travelTimeInSeconds?: number } }> | undefined; const seconds = routes?.[0]?.summary?.travelTimeInSeconds; return typeof seconds === "number" && seconds > 0 ? Math.max(1, Math.ceil(seconds / 60)) : undefined; }
+function driverKey(name?: string, employeeNumber?: string) { return `${(name || "").trim().toLowerCase()}|${(employeeNumber || "").trim().toLowerCase()}`; }
+function statusClass(status: OperationalStatus) { return status === "Working" || status === "Completed" ? "confirmed" : status === "Dispatched" ? "awaiting" : status === "Awaiting Dispatch" ? "ready" : "empty"; }
 function buildDriverText(load: WorkbenchLoad, dispatch: LoadDispatch) {
   const startTime = localTime(firstPlannedTime(load));
   const lines = [`SLH ${load.southbound ? "Southbound " : ""}${load.reference}`, dispatch.driver ? `Driver: ${dispatch.driver.displayName}` : "", startTime ? `Planned start: ${startTime}` : "", dispatch.vehicle ? `Vehicle: ${dispatch.vehicle.registration}` : "", dispatch.trailer ? `Trailer: ${dispatch.trailer.trailerNumber}` : "", "", ...dispatch.stops.flatMap(stop => [`${stop.sequence}. ${stop.name}`, stop.address ? `Address: ${stop.address}` : "", stop.order?.reference ? `Ref: ${stop.order.reference}` : "", stop.order?.marketName ? `Market: ${stop.order.marketName}${stop.order.stallNumber ? ` · Stall ${stop.order.stallNumber}` : ""}` : "", stop.order?.driverInstructions ? `Notes: ${stop.order.driverInstructions}` : "", stop.order?.mapLink ? `Map: ${stop.order.mapLink}` : "", ""]), "Please reply to confirm receipt."];
@@ -21,9 +26,90 @@ function buildDriverText(load: WorkbenchLoad, dispatch: LoadDispatch) {
 
 export function DriverDispatchOperational() {
   const token = useAccessToken();
+  const rootRef = useRef<HTMLDivElement>(null);
   const [dialog, setDialog] = useState<DialogState>();
   const [sending, setSending] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [operationalByDriver, setOperationalByDriver] = useState<Record<string, OperationalDisplay>>({});
+
+  const refreshOperationalStatuses = useCallback(async () => {
+    try {
+      const access = await token();
+      const date = new URLSearchParams(window.location.search).get("date") || new Date().toISOString().slice(0, 10);
+      const [workbench, response] = await Promise.all([
+        request<Workbench>(`/api/v1/driver-dispatch?date=${encodeURIComponent(date)}`, access, undefined, 90000),
+        request<{ drivers: OperationalDriverStatus[] }>(`/api/v1/driver-dispatch-status?date=${encodeURIComponent(date)}`, access, undefined, 90000)
+      ]);
+      const byId = Object.fromEntries(response.drivers.map(item => [item.driverId, item]));
+      const next: Record<string, OperationalDisplay> = {};
+      for (const driver of workbench.drivers) {
+        const status = byId[driver.driverId];
+        if (!status?.operationalStatus) continue;
+        next[driverKey(driver.displayName, driver.employeeNumber)] = {
+          status: status.operationalStatus,
+          driverConfirmed: Boolean(status.driverConfirmed),
+          confirmationAt: status.driverConfirmationAtUtc
+        };
+      }
+      setOperationalByDriver(current => JSON.stringify(current) === JSON.stringify(next) ? current : next);
+    } catch {
+      // DriverDispatch itself still carries the normal fallback status. Do not disturb the screen if
+      // the lightweight operational mirror is temporarily unavailable.
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void refreshOperationalStatuses();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshOperationalStatuses();
+    }, 30_000);
+    const onFocus = () => void refreshOperationalStatuses();
+    const onVisibility = () => { if (document.visibilityState === "visible") void refreshOperationalStatuses(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refreshOperationalStatuses]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const apply = () => {
+      for (const row of Array.from(root.querySelectorAll<HTMLTableRowElement>("table.dispatch-table tbody tr:not(.dispatch-group)"))) {
+        const name = row.querySelector("td:first-child strong")?.textContent?.trim();
+        const employeeNumber = row.querySelector("td:first-child small")?.textContent?.trim();
+        const operational = operationalByDriver[driverKey(name, employeeNumber)];
+        if (!operational) continue;
+        const cell = row.querySelector<HTMLElement>(".dispatch-status-cell");
+        const pill = cell?.querySelector<HTMLElement>(".dispatch-status-pill");
+        if (pill) {
+          if (pill.textContent !== operational.status) pill.textContent = operational.status;
+          pill.classList.remove("confirmed", "awaiting", "ready", "empty");
+          pill.classList.add(statusClass(operational.status));
+          pill.setAttribute("data-operational-status", operational.status);
+        }
+        const existing = cell?.querySelector<HTMLElement>("[data-driver-confirmed]");
+        if (operational.driverConfirmed) {
+          if (!existing && cell) {
+            const note = document.createElement("small");
+            note.setAttribute("data-driver-confirmed", "true");
+            note.textContent = "Driver confirmed";
+            if (operational.confirmationAt) note.title = `Driver confirmed at ${operational.confirmationAt}`;
+            cell.appendChild(note);
+          }
+        } else if (existing) {
+          existing.remove();
+        }
+      }
+    };
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [operationalByDriver, refreshKey]);
 
   async function openDispatchPreview(driverName: string) {
     setDialog({ driverName, text: "Preparing driver text preview…", loading: true });
@@ -74,11 +160,12 @@ export function DriverDispatchOperational() {
       await request(`/api/v1/loads/${encodeURIComponent(dialog.load.id)}/driver-message/sms`, access, { method: "POST", body: JSON.stringify({ message: dialog.text, dispatch: true, routeDrivingMinutes: minutes, acknowledgeUnverified: acknowledged }) }, 90000);
       setDialog(undefined);
       setRefreshKey(value => value + 1);
+      await refreshOperationalStatuses();
     } catch (error) { setDialog(current => current ? { ...current, error: error instanceof Error ? error.message : "Driver text could not be sent." } : current); }
     finally { setSending(false); }
   }
 
-  return <div onClickCapture={captureDispatchClick}>
+  return <div ref={rootRef} onClickCapture={captureDispatchClick}>
     <DriverDispatch key={refreshKey} />
     {dialog && <div className="dispatch-modal-backdrop" role="dialog" aria-modal="true" aria-label="Dispatch text preview"><div className="dispatch-modal dispatch-text-first-modal"><div className="title-row"><div><p className="eyebrow">Dispatch text preview</p><h2>{dialog.load?.reference || dialog.driverName}</h2><p className="hint">Review or edit the exact driver text. Route, Tacho and dispatch-readiness checks run when you press Send Dispatch.</p></div><button type="button" onClick={() => setDialog(undefined)} disabled={sending}>Close</button></div><textarea rows={14} value={dialog.text} disabled={dialog.loading || sending} onChange={event => setDialog(current => current ? { ...current, text: event.target.value } : current)} />{dialog.loading && <p className="hint">Loading the allocated run, driver, vehicle, trailer and stop details…</p>}{dialog.error && <p className="notice inline-notice" style={{ borderColor: "#b42318" }}>{dialog.error}</p>}<div className="dispatch-modal-actions"><button type="button" onClick={() => setDialog(undefined)} disabled={sending}>Cancel</button><button className="primary" type="button" onClick={() => void sendDispatch()} disabled={dialog.loading || sending || !dialog.load || !dialog.text.trim()}>{sending ? "Sending…" : "SEND DISPATCH"}</button></div></div></div>}
   </div>;
