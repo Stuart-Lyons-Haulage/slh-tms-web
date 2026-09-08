@@ -17,6 +17,15 @@ type CachedWallboardResponse = {
 const wallboardResponseCache = new Map<string, CachedWallboardResponse>();
 const WALLBOARD_CACHE_PREFIX = "slh-wallboard-response:";
 const WALLBOARD_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const WALLBOARD_RELOAD_BYPASS_MS = 10000;
+const wallboardReloadBypassUntil = (() => {
+  try {
+    const entry = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    return entry?.type === "reload" ? Date.now() + WALLBOARD_RELOAD_BYPASS_MS : 0;
+  } catch {
+    return 0;
+  }
+})();
 let wallboardFetchInstalled = false;
 
 function stableWallboardCacheKey(url: URL) {
@@ -139,7 +148,9 @@ function installWallboardFetchResilience() {
     // cold-loading Azure, tracking, geofence, ETA and Tacho feeds every time the user
     // returns to the tab. Refresh the same resource quietly behind the cached response;
     // the normal 20-second wallboard cycle will pick up the newer snapshot next pass.
-    if (cached) {
+    // A deliberate browser reload bypasses the warm cache briefly so recovery/testing can
+    // force an immediate authoritative read rather than seeing the prior page snapshot.
+    if (cached && Date.now() >= wallboardReloadBypassUntil) {
       void refreshCacheInBackground();
       return responseFromCache(cached)!;
     }
