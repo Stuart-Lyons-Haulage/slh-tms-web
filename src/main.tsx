@@ -5,6 +5,7 @@ import { PublicClientApplication } from '@azure/msal-browser';
 import { App } from './App';
 import { E2eHarness } from './E2eHarness';
 import { DataIntegrityBoundary } from './components/DataIntegrityBoundary';
+import { DispatchCalculatedStartsPortal } from './pages/DispatchCalculatedStartsPortal';
 import { cacheLocationForRoute, isPublicTvLink, isTvRoute } from './tvBootstrap';
 import { installOrderReviewRecovery } from './orderReviewRecovery';
 import { installOperationalUiEnhancements } from './operationalUiEnhancements';
@@ -40,7 +41,7 @@ const msal = new PublicClientApplication({ auth: { clientId: clientId || '000000
 function renderApp() {
   const root = document.getElementById('root');
   if (!root) throw new Error('TMS root element is missing.');
-  const content = e2eAuth ? <E2eHarness /> : <App />;
+  const content = e2eAuth ? <E2eHarness /> : <><App /><DispatchCalculatedStartsPortal /></>;
   createRoot(root).render(
     <StrictMode>
       <MsalProvider instance={msal}>
