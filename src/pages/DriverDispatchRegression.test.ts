@@ -45,6 +45,14 @@ describe("Driver Dispatch UI contract", () => {
     expect(source).toContain("disabled={busy || driver.onLeave || tachoUnavailable}");
   });
 
+  it("allows an allocated run, vehicle and trailer to be edited after dispatch and explicitly unassigned", () => {
+    expect(source).not.toContain('const canEditAllocation = effectiveStatus !== "Sent Awaiting Response" && effectiveStatus !== "Confirmed";');
+    expect(source).toContain("async function unassign()");
+    expect(source).toContain('body: JSON.stringify({ driverId: null, vehicleId: null, trailerId: null })');
+    expect(source).toContain("Unassign run</button>");
+    expect(source).toContain("Save allocation");
+  });
+
   it("prefers assistant/live vehicle evidence and marks yesterday continuity clearly", () => {
     expect(source).toContain('initial?.vehicleId || driver.suggestedVehicleId || driver.previousVehicleId || ""');
     expect(source).toContain('" · Assistant · in yesterday"');

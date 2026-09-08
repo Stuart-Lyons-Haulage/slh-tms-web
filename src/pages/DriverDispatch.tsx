@@ -369,7 +369,7 @@ export function DriverDispatch() {
     setData(current => {
       if (!current) return current;
       const loads = current.loads.map(load => {
-        if (previousLoadId && previousLoadId !== saved.id && load.id === previousLoadId) return { ...load, driverId: undefined, status: "Draft" };
+        if (previousLoadId && previousLoadId !== saved.id && load.id === previousLoadId) return { ...load, driverId: undefined, vehicleId: undefined, trailerId: undefined, status: "Draft" };
         if (load.id !== saved.id) return load;
         return { ...load, driverId, vehicleId: saved.vehicleId, trailerId: saved.trailerId, status: saved.status || "Planned" };
       });
@@ -385,6 +385,27 @@ export function DriverDispatch() {
       [driverId]: current[driverId]
         ? { ...current[driverId], dispatchStatus: "Awaiting Dispatch" }
         : { driverId, dispatchStatus: "Awaiting Dispatch", weeklyRestStatus: "Unknown", weeklyRestMessage: "" }
+    }));
+  }, []);
+
+  const applyUnassignedAllocation = useCallback((loadId: string, driverId: string) => {
+    setData(current => {
+      if (!current) return current;
+      return {
+        ...current,
+        loads: current.loads.map(load => load.id === loadId
+          ? { ...load, driverId: undefined, vehicleId: undefined, trailerId: undefined, status: "Draft" }
+          : load),
+        drivers: current.drivers.map(item => item.driverId === driverId
+          ? { ...item, assignedLoadId: undefined, assignedRunCount: Math.max(0, (item.assignedRunCount || 1) - 1) }
+          : item)
+      };
+    });
+    setStatuses(current => ({
+      ...current,
+      [driverId]: current[driverId]
+        ? { ...current[driverId], dispatchStatus: "No Run" }
+        : { driverId, dispatchStatus: "No Run", weeklyRestStatus: "Unknown", weeklyRestMessage: "" }
     }));
   }, []);
 
@@ -491,6 +512,7 @@ export function DriverDispatch() {
             showGroup={index === 0 || filteredDrivers[index - 1].driverType !== driver.driverType}
             token={token}
             applySavedAllocation={applySavedAllocation}
+            applyUnassignedAllocation={applyUnassignedAllocation}
             openMessage={setMessage}
           />)}</tbody>
         </table>
@@ -533,13 +555,14 @@ function BuiltRunsQueue({ loads }: { loads: DispatchLoad[] }) {
   </div>;
 }
 
-function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocation, openMessage }: {
+function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocation, applyUnassignedAllocation, openMessage }: {
   driver: DispatchDriver;
   data: Workbench;
   status?: DriverDispatchStatus;
   showGroup: boolean;
   token: () => Promise<string>;
   applySavedAllocation: (saved: DispatchLoad, driverId: string, previousLoadId?: string) => void;
+  applyUnassignedAllocation: (loadId: string, driverId: string) => void;
   openMessage: (state: MessageState) => void;
 }) {
   const initial = data.loads.find(load => load.id === driver.assignedLoadId);
@@ -630,7 +653,7 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
       if (previous && previous.id !== loadId) {
         await request(`/api/v1/runs/${encodeURIComponent(previous.id)}/allocation`, access, {
           method: "PUT",
-          body: JSON.stringify({ driverId: null, vehicleId: previous.vehicleId || null, trailerId: previous.trailerId || null })
+          body: JSON.stringify({ driverId: null, vehicleId: null, trailerId: null })
         });
       }
       const saved = await request<DispatchLoad>(`/api/v1/runs/${encodeURIComponent(loadId)}/allocation`, access, {
@@ -644,6 +667,35 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
       setNotice("Allocation saved. Run remains against this driver and is ready to dispatch.");
     } catch (exception) {
       setNotice(exception instanceof Error ? exception.message : "Allocation could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unassign() {
+    const assigned = data.loads.find(load => load.id === driver.assignedLoadId);
+    if (!assigned) {
+      setNotice("This driver has no allocated run to remove.");
+      return;
+    }
+    if (!window.confirm(`Unassign ${assigned.reference} from ${driver.displayName}? This will also release the vehicle and trailer.`)) return;
+    setBusy(true);
+    setNotice(undefined);
+    try {
+      const saved = await request<DispatchLoad>(`/api/v1/runs/${encodeURIComponent(assigned.id)}/allocation`, await token(), {
+        method: "PUT",
+        body: JSON.stringify({ driverId: null, vehicleId: null, trailerId: null })
+      });
+      if (saved.driverId || saved.vehicleId || saved.trailerId) {
+        throw new Error("The run was not fully unassigned. Refresh and try again.");
+      }
+      applyUnassignedAllocation(assigned.id, driver.driverId);
+      setLoadId("");
+      setVehicleId("");
+      setTrailerId("");
+      setNotice("Run unassigned. Driver, vehicle and trailer are free to reallocate.");
+    } catch (exception) {
+      setNotice(exception instanceof Error ? exception.message : "Run could not be unassigned.");
     } finally {
       setBusy(false);
     }
@@ -741,7 +793,6 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
 
   const persistedStatus = status?.dispatchStatus;
   const effectiveStatus: DispatchStatus = selected && persistedStatus === "No Run" ? "Awaiting Dispatch" : persistedStatus || (selected ? "Awaiting Dispatch" : "No Run");
-  const canEditAllocation = effectiveStatus !== "Sent Awaiting Response" && effectiveStatus !== "Confirmed";
   const unavailableAssigned = Boolean(driver.assignedLoadId && knownUnavailable(driver, status));
 
   return <>
@@ -781,7 +832,8 @@ function DispatchRow({ driver, data, status, showGroup, token, applySavedAllocat
             : selected && driver.assignedLoadId === selected.id && effectiveStatus === "Awaiting Dispatch"
               ? <button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave || tachoUnavailable}>{busy ? "Preparing…" : "Dispatch"}</button>
               : null}
-          {selected && canEditAllocation && <button className={driver.assignedLoadId === selected.id ? undefined : "primary"} type="button" onClick={() => void save()} disabled={busy || driver.onLeave || tachoUnavailable || !vehicleId}>{busy ? "Working…" : driver.assignedLoadId === selected.id ? "Save allocation" : "Allocate"}</button>}
+          {selected && <button className={driver.assignedLoadId === selected.id ? undefined : "primary"} type="button" onClick={() => void save()} disabled={busy || driver.onLeave || tachoUnavailable || !vehicleId}>{busy ? "Working…" : driver.assignedLoadId === selected.id ? "Save allocation" : "Allocate"}</button>}
+          {driver.assignedLoadId && <button type="button" onClick={() => void unassign()} disabled={busy}>Unassign run</button>}
           {unavailableAssigned && <span className="dispatch-blocked-note">Allocated but unavailable · reassign this run</span>}
         </div>
         {notice && <small className="row-notice">{notice}</small>}
