@@ -7,6 +7,7 @@ export function startVisiblePolling(refresh: () => void | Promise<void>, baseMs:
   let timer: number | undefined;
   let stopped = false;
   let refreshing = false;
+  let lastResumeAt = 0;
   const focusEnabled = options.focus !== false;
   const visibilityEnabled = options.visibility !== false;
 
@@ -30,6 +31,9 @@ export function startVisiblePolling(refresh: () => void | Promise<void>, baseMs:
 
   const resume = () => {
     if (document.visibilityState !== 'visible') return;
+    const now = Date.now();
+    if (now - lastResumeAt < 750) return;
+    lastResumeAt = now;
     void run();
     schedule();
   };
