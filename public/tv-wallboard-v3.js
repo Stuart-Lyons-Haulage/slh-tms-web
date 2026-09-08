@@ -310,10 +310,14 @@
         if ((name === 'loads' || name === 'assignments') && (status === 401 || status === 403)) { coreUnauthorised = true; }
         else if (name === 'loads' || name === 'assignments') { coreErrors.push(name + ': ' + err.message); }
         else { optionalErrors.push(name + ': ' + err.message); }
-      } else if (name === 'loads') { state.loads = data || []; }
-      else if (name === 'assignments') { state.assignments = data || []; }
+      } else if (name === 'loads') {
+        state.loads = data || [];
+      }
+      else if (name === 'assignments') {
+        state.assignments = data || [];
+      }
       else if (name === 'progress') {
-        var nextProgress = data && data.runs ? data.runs : (data && data.records ? data.records : []);
+        var nextProgress = data && data.records ? data.records : (data && data.runs ? data.runs : []);
         if (nextProgress && nextProgress.length) { state.progress = nextProgress; }
       }
       else if (name === 'etas') {
@@ -334,9 +338,9 @@
       }
     }
     request('/api/v1/tv-display/planned-runs?date=' + encodeURIComponent(date), function (e, d, s) { done('loads', e, d, s); });
-    request('/api/v1/tv-display/assignments?date=' + encodeURIComponent(date), function (e, d, s) { done('assignments', e, d, s); });
-    request('/api/v1/tv-display/route-progress?date=' + encodeURIComponent(date), function (e, d, s) { done('progress', e, d, s); });
-    request('/api/v1/operations/delivery-etas?date=' + encodeURIComponent(date), function (e, d, s) { done('etas', e, d, s); });
+    request('/api/v1/driver-assignments?from=' + encodeURIComponent(date) + '&to=' + encodeURIComponent(date), function (e, d, s) { done('assignments', e, d, s); });
+    request('/api/v1/tv-display/wallboard-proxy/run-progress?date=' + encodeURIComponent(date), function (e, d, s) { done('progress', e, d, s); });
+    request('/api/v1/tv-display/wallboard-proxy/delivery-etas?date=' + encodeURIComponent(date), function (e, d, s) { done('etas', e, d, s); });
     request('/api/v1/run-timing?date=' + encodeURIComponent(date), function (e, d, s) { done('timing', e, d, s); });
   }
 
