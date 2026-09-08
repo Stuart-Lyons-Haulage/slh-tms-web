@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { OperationsWallboard as ExistingOperationsWallboard } from "./OperationsWallboardLive";
 import { RunGeofenceLinkagePanel } from "./RunGeofenceLinkagePanel";
+import { EtaLearningBridge } from "./EtaLearningBridge";
 import "../run-geofence-linkage.css";
 import "../operations-wallboard-brand.css";
 import "../operations-wallboard-kpi-compat.css";
@@ -23,6 +24,7 @@ function FirstCollectionTimeLabel() {
 export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: boolean; tvAccessKey?: string }) {
   return <>
     <FirstCollectionTimeLabel />
+    <EtaLearningBridge />
     {!tvMode && <RunGeofenceLinkagePanel />}
     <ExistingOperationsWallboard tvMode={tvMode} tvAccessKey={tvAccessKey} />
   </>;
