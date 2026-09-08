@@ -2,10 +2,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./DriverDispatch.tsx", import.meta.url), "utf8");
+const operationalSource = readFileSync(new URL("./DriverDispatchOperational.tsx", import.meta.url), "utf8");
+const calculatedStartsSource = readFileSync(new URL("./DispatchCalculatedStarts.tsx", import.meta.url), "utf8");
 
 describe("Driver Dispatch UI contract", () => {
-  it("keeps status visible and removes the manual Start column", () => {
+  it("keeps status visible and uses a calculated Could start column rather than manual start entry", () => {
     expect(source).toContain("<th>Status</th>");
+    expect(source).toContain("<th>Could start</th>");
     expect(source).toContain("No Run");
     expect(source).toContain("Awaiting Dispatch");
     expect(source).toContain("Sent Awaiting Response");
@@ -31,18 +34,32 @@ describe("Driver Dispatch UI contract", () => {
     expect(source.slice(saveStart, dispatchStart)).not.toContain("await refresh()");
   });
 
+  it("does not remount the entire Dispatch screen on a timer", () => {
+    expect(operationalSource).not.toContain("startVisiblePolling");
+    expect(operationalSource).not.toContain("60_000");
+    expect(operationalSource).toContain("setRefreshKey(value => value + 1)");
+  });
+
   it("makes the Dispatch action available from the locally committed allocation", () => {
     expect(source).toContain('dispatchStatus: "Awaiting Dispatch"');
     expect(source).toContain('driver.assignedLoadId === selected.id && effectiveStatus === "Awaiting Dispatch"');
     expect(source).toContain('{busy ? "Preparing…" : "Dispatch"}</button>');
   });
 
-  it("removes known-unavailable candidates but keeps an existing unsafe allocation visible for correction", () => {
-    expect(source).toContain("if (!driver.assignedLoadId && knownUnavailable(driver, status)) return false;");
+  it("keeps all active drivers visible while warning and blocking proven-unavailable drivers", () => {
+    expect(source).not.toContain("if (!driver.assignedLoadId && knownUnavailable(driver, status)) return false;");
+    expect(source).toContain("availability warnings shown");
+    expect(source).toContain("Visible for planning · allocation currently blocked");
+    expect(source).toContain("Allocated but unavailable · reassign this run");
     expect(source).toContain('status?.availabilityStatus === "Unavailable"');
     expect(source).toContain('status?.weeklyRestStatus === "Overdue"');
-    expect(source).toContain("Allocated but unavailable · reassign this run");
-    expect(source).toContain("disabled={busy || driver.onLeave || tachoUnavailable}");
+    expect(source).toContain("disabled={busy || driver.onLeave || tachoUnavailable || !vehicleId}");
+  });
+
+  it("continues to prevent a run already allocated to another driver being offered for duplicate allocation", () => {
+    expect(source).toContain(".filter(load => !load.driverId || load.id === driver.assignedLoadId)");
+    expect(source).toContain("allocated to me");
+    expect(source).toContain("unallocated");
   });
 
   it("allows an allocated run, vehicle and trailer to be edited after dispatch and explicitly unassigned", () => {
@@ -57,6 +74,23 @@ describe("Driver Dispatch UI contract", () => {
     expect(source).toContain('initial?.vehicleId || driver.suggestedVehicleId || driver.previousVehicleId || ""');
     expect(source).toContain('" · Assistant · in yesterday"');
     expect(source).toContain("In yesterday · {driver.previousVehicleRegistration}");
+  });
+
+  it("uses Fleetio vehicle status as an allocation warning and dispatch guard", () => {
+    expect(source).toContain("function fleetioWarning(vehicle?: Vehicle)");
+    expect(source).toContain("Keep this vehicle selected and continue with the allocation?");
+    expect(source).toContain("Resolve or change the vehicle before dispatch.");
+    expect(source).toContain("⚠ Fleetio");
+  });
+
+  it("publishes calculated Tacho and tracking evidence into the Could start column", () => {
+    expect(calculatedStartsSource).toContain('dispatchStartsCalculatedEvent = "slh:dispatch-starts-calculated"');
+    expect(calculatedStartsSource).toContain("suggestedStartUtc?: string");
+    expect(calculatedStartsSource).toContain("legalRestCompleteUtc?: string");
+    expect(calculatedStartsSource).toContain("origin?: string");
+    expect(calculatedStartsSource).toContain("travelMinutes?: number");
+    expect(source).toContain("calculatedStart?.suggestedStartUtc || initial?.plannedStartUtc");
+    expect(source).toContain("calculatedStart?.explanation");
   });
 
   it("opens editable dispatch and free-form update previews", () => {
