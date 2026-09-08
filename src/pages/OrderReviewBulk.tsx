@@ -4,6 +4,7 @@ import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
 import { SourceEmailEvidenceDrawer } from "../components/SourceEmailEvidenceDrawer";
 import { resolveSourceEvidence } from "../sourceEvidence";
+import { driverReference } from "./orderReviewReferences";
 import "../order-control.css";
 
 type Payload = Record<string, unknown> & {
@@ -124,18 +125,6 @@ function isPoReferenceWarning(value: string) {
   return lower.includes("po") && (lower.includes("missing") || lower.includes("blank") || lower.includes("not found") || lower.includes("no customer"));
 }
 
-export function driverReference(payload: Payload) {
-  return text(payload.customerPo)
-    || text(payload.poRef)
-    || text(payload.customerRef)
-    || text(payload.productPo)
-    || text(payload.cratePo)
-    || text(payload.transportPo)
-    || text(payload.collectionReference)
-    || text(payload.loadReference)
-    || text(payload.loadRef);
-}
-
 function needsDriverReference(payload: Payload) {
   const haystack = [payload.jobType, payload.driverInstructions, payload.sourceSubject]
     .map((value) => text(value).toLowerCase())
@@ -160,7 +149,7 @@ function isPmOvernightCarryIn(payload: Payload, planningDate: string) {
   return hour >= 12;
 }
 
-export function reviewWarnings(payload: Payload) {
+function reviewWarnings(payload: Payload) {
   const sourceWarnings = warnings(payload).filter((warning) => !isPoReferenceWarning(warning));
   if (needsDriverReference(payload) && !driverReference(payload)) {
     return ["Tray/crate reference is missing for the driver text.", ...sourceWarnings];
