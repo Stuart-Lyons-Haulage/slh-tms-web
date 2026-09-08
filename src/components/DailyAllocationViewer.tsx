@@ -8,8 +8,18 @@ import "../daily-allocation-viewer.css";
 type DispatchLoad = { id: string; reference: string; rawReference: string; driverId?: string; vehicleId?: string; trailerId?: string };
 type DispatchDriver = { driverId: string; employeeNumber: string; displayName: string; driverType: "Employed" | "Casual" | "Agency"; driverGroup?: string; skills?: string; coding?: string; agencyName?: string; dayNumber: number; onLeave: boolean; leaveType?: string; assignedLoadId?: string; suggestion?: string; assistantScore?: number };
 type Workbench = { planningDate: string; drivers: DispatchDriver[]; vehicles: Vehicle[]; trailers: Trailer[]; loads: DispatchLoad[] };
-type DispatchStatus = "No Run" | "Awaiting Dispatch" | "Sent Awaiting Response" | "Confirmed";
-type DriverDispatchStatus = { driverId: string; dispatchStatus: DispatchStatus; weeklyRestStatus: "Ready" | "DueSoon" | "Overdue" | "Unverified" | "Unknown"; weeklyRestMessage: string };
+type DispatchMessageStatus = "No Run" | "Awaiting Dispatch" | "Sent Awaiting Response" | "Confirmed";
+type OperationalStatus = "No Run" | "Awaiting Dispatch" | "Dispatched" | "Working" | "Completed";
+type DriverDispatchStatus = {
+  driverId: string;
+  dispatchStatus: DispatchMessageStatus;
+  operationalStatus?: OperationalStatus;
+  driverConfirmed?: boolean;
+  driverConfirmationAtUtc?: string;
+  projectedDayNumber?: number;
+  weeklyRestStatus: "Ready" | "DueSoon" | "Overdue" | "Unverified" | "Unknown";
+  weeklyRestMessage: string;
+};
 type DispatchMirror = { workbench: Workbench; statuses: Record<string, DriverDispatchStatus> };
 
 function iso(date: Date) { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`; }
@@ -17,10 +27,12 @@ function addDays(value: string, amount: number) { const [y,m,d]=value.split("-")
 function label(value: string) { const [y,m,d]=value.split("-").map(Number); const date=new Date(y,m-1,d,12); return { day: String(d), weekday: date.toLocaleDateString("en-GB",{weekday:"short"}) }; }
 function runLabel(value: string) { const match=value.match(/\b(?:run\s*)?(\d{1,3})\b/i); return match?.[1] || value; }
 function typeSkills(driver: DispatchDriver) { return [driver.driverType, driver.skills || driver.driverGroup || driver.agencyName].filter(Boolean).join(" · "); }
-function effectiveStatus(driver: DispatchDriver, status?: DriverDispatchStatus): DispatchStatus {
+function effectiveStatus(driver: DispatchDriver, status?: DriverDispatchStatus): OperationalStatus {
+  if (status?.operationalStatus) return status.operationalStatus;
   const assigned = Boolean(driver.assignedLoadId);
-  if (assigned && status?.dispatchStatus === "No Run") return "Awaiting Dispatch";
-  return status?.dispatchStatus || (assigned ? "Awaiting Dispatch" : "No Run");
+  if (!assigned) return "No Run";
+  if (status?.dispatchStatus === "Sent Awaiting Response" || status?.dispatchStatus === "Confirmed") return "Dispatched";
+  return "Awaiting Dispatch";
 }
 
 export function DailyAllocationViewer({ initialDate }: { initialDate: string }) {
@@ -69,8 +81,9 @@ export function DailyAllocationViewer({ initialDate }: { initialDate: string }) 
       const vehicle = load?.vehicleId ? data?.vehicles.find(item=>item.id===load.vehicleId) : undefined;
       const trailer = load?.trailerId ? data?.trailers.find(item=>item.id===load.trailerId) : undefined;
       const status = statuses[driver.driverId];
-      const dispatchStatus = effectiveStatus(driver,status);
-      return <tr key={driver.driverId}><td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <small>{driver.leaveType || "Away"}</small>}</td><td>{typeSkills(driver)}</td><td>{driver.coding || "—"}</td><td>{driver.dayNumber}</td><td>{vehicle?.registration || "—"}</td><td>{trailer?.trailerNumber || "—"}</td><td>{load ? <span className="viewer-run">{runLabel(load.reference || load.rawReference)}</span> : "—"}</td><td><strong>{dispatchStatus}</strong>{status?.weeklyRestStatus && status.weeklyRestStatus !== "Ready" && status.weeklyRestStatus !== "Unknown" ? <small title={status.weeklyRestMessage}>Tacho: {status.weeklyRestStatus === "Overdue" ? "Weekly rest due" : status.weeklyRestStatus === "Unverified" ? "Weekly rest unavailable" : "Rest due soon"}</small> : null}</td></tr>;
+      const operationalStatus = effectiveStatus(driver,status);
+      const displayDay = status?.projectedDayNumber || driver.dayNumber;
+      return <tr key={driver.driverId}><td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <small>{driver.leaveType || "Away"}</small>}</td><td>{typeSkills(driver)}</td><td>{driver.coding || "—"}</td><td>{displayDay}</td><td>{vehicle?.registration || "—"}</td><td>{trailer?.trailerNumber || "—"}</td><td>{load ? <span className="viewer-run">{runLabel(load.reference || load.rawReference)}</span> : "—"}</td><td><strong>{operationalStatus}</strong>{status?.driverConfirmed && <small title={status.driverConfirmationAtUtc ? `Driver confirmed at ${status.driverConfirmationAtUtc}` : "Driver confirmed receipt"}>Driver confirmed</small>}{status?.weeklyRestStatus && status.weeklyRestStatus !== "Ready" && status.weeklyRestStatus !== "Unknown" ? <small title={status.weeklyRestMessage}>Tacho: {status.weeklyRestStatus === "Overdue" ? "Weekly rest due" : status.weeklyRestStatus === "Unverified" ? "Weekly rest unavailable" : "Rest due soon"}</small> : null}</td></tr>;
     })}</tbody></table></div></>}
   </section>;
 }
