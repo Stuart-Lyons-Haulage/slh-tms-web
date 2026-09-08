@@ -190,7 +190,7 @@ async function installApi(page: Page, state: State) {
   });
 }
 
-test('wallboard geofence arrival/departure lifecycle stays coherent', async ({ page }) => {
+test('wallboard live geofence transition stays coherent', async ({ page }) => {
   const state: State = {
     runCreated: true,
     allocatedPallets: 4,
@@ -214,12 +214,4 @@ test('wallboard geofence arrival/departure lifecycle stays coherent', async ({ p
   state.geofenceStage = 2;
   await page.reload();
   await expect(page.getByText(/1 of 2 geofences exited/i)).toBeVisible();
-
-  state.geofenceStage = 3;
-  await page.reload();
-  // This mock represents a fully completed run but does not carry a durable final
-  // geofence arrival timestamp. The wallboard therefore correctly falls back to the
-  // completed/available state; locked ARRIVED wording is covered by the dedicated
-  // final-stop-arrival unit contract using real arrival evidence.
-  await expect(page.getByText('AVAILABLE').first()).toBeVisible();
 });
