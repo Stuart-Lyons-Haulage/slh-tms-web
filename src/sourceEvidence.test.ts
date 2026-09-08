@@ -1,21 +1,19 @@
 import { describe, expect, it } from "vitest";
 import * as sourceEvidenceModule from "./sourceEvidence";
 
+type Resolver = (payload: Record<string, unknown>) => {
+  messageId: string;
+  internetMessageId: string;
+  displayId: string;
+  subject: string;
+  receivedAt: string;
+  webLink: string;
+};
+
+const resolve = (sourceEvidenceModule as { resolveSourceEvidence?: Resolver }).resolveSourceEvidence;
+
 describe("resolveSourceEvidence", () => {
   it("keeps existing review rows linked when the API uses sourceEmail field names", () => {
-    // Production defect caught: mapping-exception rows store sourceEmailWebLink,
-    // while the review screen only reads sourceWebLink and hides the evidence link.
-    const resolve = (sourceEvidenceModule as {
-      resolveSourceEvidence?: (payload: Record<string, unknown>) => {
-        messageId: string;
-        internetMessageId: string;
-        displayId: string;
-        subject: string;
-        receivedAt: string;
-        webLink: string;
-      };
-    }).resolveSourceEvidence;
-
     expect(resolve?.({
       sourceEmailMessageId: "outlook-123",
       sourceInternetMessageId: "<mail-123@example.com>",
@@ -33,17 +31,6 @@ describe("resolveSourceEvidence", () => {
   });
 
   it("prefers the established source fields when both contracts are present", () => {
-    const resolve = (sourceEvidenceModule as {
-      resolveSourceEvidence?: (payload: Record<string, unknown>) => {
-        messageId: string;
-        internetMessageId: string;
-        displayId: string;
-        subject: string;
-        receivedAt: string;
-        webLink: string;
-      };
-    }).resolveSourceEvidence;
-
     expect(resolve?.({
       sourceMessageId: "current-id",
       sourceInternetMessageId: "<current@example.com>",
@@ -62,5 +49,37 @@ describe("resolveSourceEvidence", () => {
       receivedAt: "2026-08-27T09:00:00Z",
       webLink: "https://outlook/current",
     });
+  });
+
+  it("opens a retained source-email snapshot when the staged payload contains the body", () => {
+    const result = resolve?.({
+      sourceMessageId: "message-1",
+      sourceSubject: "Waitrose order O78442",
+      sourceReceivedAtUtc: "2026-09-08T09:15:00Z",
+      sourceSenderName: "Customer Orders",
+      sourceSender: "orders@example.com",
+      sourceBodyText: "Please collect two pallets from Sefter and deliver to Waitrose.",
+      sourceToRecipients: [{ address: "info@lyonshaulage.com" }],
+      sourceAttachments: [{ name: "booking.pdf", size: 2048, isInline: false }],
+      sourceWebLink: "https://outlook.office365.com/message/1",
+    });
+
+    expect(result?.webLink.startsWith("data:text/html;charset=utf-8,")).toBe(true);
+    const html = decodeURIComponent(result?.webLink.split(",", 2)[1] || "");
+    expect(html).toContain("Waitrose order O78442");
+    expect(html).toContain("Please collect two pallets from Sefter");
+    expect(html).toContain("booking.pdf");
+    expect(html).toContain("Open original message in Outlook");
+  });
+
+  it("escapes retained email content before rendering the snapshot", () => {
+    const result = resolve?.({
+      sourceSubject: "<script>alert(1)</script>",
+      sourceBodyText: "<img src=x onerror=alert(1)>",
+    });
+    const html = decodeURIComponent(result?.webLink.split(",", 2)[1] || "");
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).not.toContain("<img src=x onerror=alert(1)>");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
   });
 });

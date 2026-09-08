@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, request, type StagedImport } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
+import { SourceEmailEvidenceDrawer } from "../components/SourceEmailEvidenceDrawer";
 import { resolveSourceEvidence } from "../sourceEvidence";
 import "../order-control.css";
 
@@ -196,6 +197,7 @@ export function OrderReviewBulk() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [editingId, setEditingId] = useState<string>();
   const [draft, setDraft] = useState<Payload>();
+  const [sourceEmailStagingId, setSourceEmailStagingId] = useState<string>();
 
   const queue = useApi(useCallback(async () =>
     api.staging(await token(), "PendingReview", "order", 2000), [token]));
@@ -243,6 +245,7 @@ export function OrderReviewBulk() {
     setSelectedIds(new Set());
     setEditingId(undefined);
     setDraft(undefined);
+    setSourceEmailStagingId(undefined);
   }
 
   function toggleRow(id: string) {
@@ -310,6 +313,7 @@ export function OrderReviewBulk() {
         setEditingId(undefined);
         setDraft(undefined);
       }
+      if (sourceEmailStagingId === row.item.id) setSourceEmailStagingId(undefined);
       await queue.refresh();
       setNotice(`${displayReference(row.payload)} rejected. The source evidence remains in the audit history.`);
     } catch (error) {
@@ -341,6 +345,7 @@ export function OrderReviewBulk() {
       setSelectedIds(new Set());
       setEditingId(undefined);
       setDraft(undefined);
+      setSourceEmailStagingId(undefined);
       await queue.refresh();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Selected approval failed.");
@@ -423,7 +428,7 @@ export function OrderReviewBulk() {
       </button>
     </div>
 
-    {flaggedRows.length > 0 && <p className="order-review-explainer">The {flaggedRows.length} amber jobs are <strong>not locked</strong>. Open Edit to check/correct the source fields, then tick each job you are satisfied with. They are deliberately excluded from “Select all clean”.</p>}
+    {flaggedRows.length > 0 && <p className="order-review-explainer">The {flaggedRows.length} amber jobs are <strong>not locked</strong>. Use Review source email to compare the booking with the original message, then Edit if a field needs correcting. They are deliberately excluded from “Select all clean”.</p>}
 
     {queue.loading && !queue.data && <div className="state">Loading orders waiting for approval…</div>}
     {!queue.loading && datedRows.length === 0 && <div className="state">No orders are waiting for approval for this date.</div>}
@@ -440,6 +445,7 @@ export function OrderReviewBulk() {
         const payload = isEditing && draft ? draft : row.payload;
         const sourceEvidence = resolveSourceEvidence(row.payload);
         const sourceLink = sourceEvidence.webLink;
+        const hasSourceIdentity = Boolean(sourceEvidence.messageId || sourceEvidence.internetMessageId || sourceLink);
         const statusClass = blocked ? "blocked" : reviewFlag ? "review" : "ready";
         const statusText = blocked ? blocked : reviewFlag ? `Check: ${reviewFlag}` : "Ready to approve";
 
@@ -456,18 +462,19 @@ export function OrderReviewBulk() {
           <span className="bulk-order-pallets"><strong>{palletCount(row.payload)}</strong><small>pallets</small></span>
           <span className={`bulk-order-status ${statusClass}`}>{statusText}</span>
           <div className="bulk-order-actions">
+            {hasSourceIdentity && <button type="button" className="source-email-review-button" onClick={() => setSourceEmailStagingId(row.item.id)} disabled={busy || Boolean(busyId)}>Review source email</button>}
             {!isEditing && <button type="button" onClick={() => beginEdit(row)} disabled={busy || Boolean(busyId)}>Edit</button>}
             {isEditing && <>
               <button type="button" onClick={() => { setEditingId(undefined); setDraft(undefined); }} disabled={rowBusy}>Cancel</button>
               <button type="button" className="primary" onClick={() => void saveEdit(row)} disabled={rowBusy}>{rowBusy ? "Saving…" : "Save"}</button>
             </>}
             <button type="button" className="reject-button" onClick={() => void rejectRow(row)} disabled={busy || Boolean(busyId)}>{rowBusy ? "Working…" : "Reject"}</button>
-            {sourceLink && <a className="button-like" href={sourceLink} target="_blank" rel="noreferrer">Open email ↗</a>}
           </div>
 
           {(reviewFlag || sourceWarnings.length > 0) && !isEditing && <div className="bulk-row-warning">
             <strong>{reviewFlag ? "Why this needs checking" : "Source warning"}</strong>
             {sourceWarnings.length > 0 ? sourceWarnings.map((warning, index) => <span key={`${row.item.id}-warning-${index}`}>{warning}</span>) : <span>{reviewFlag}</span>}
+            {hasSourceIdentity && <button type="button" className="source-email-review-button" onClick={() => setSourceEmailStagingId(row.item.id)}>Review source email</button>}
           </div>}
 
           {isEditing && <div className="bulk-order-editor">
@@ -489,11 +496,14 @@ export function OrderReviewBulk() {
               {sourceEvidence.displayId && <span title={sourceEvidence.displayId}><strong>Email ID:</strong> {sourceEvidence.displayId}</span>}
               {row.payload.sourceAttachmentName && <span><strong>Attachment:</strong> {text(row.payload.sourceAttachmentName)}</span>}
               {row.payload.intakeParser && <span><strong>Parser:</strong> {text(row.payload.intakeParser)}</span>}
-              {sourceLink && <a href={sourceLink} target="_blank" rel="noreferrer">Open source email ↗</a>}
+              {hasSourceIdentity && <button type="button" onClick={() => setSourceEmailStagingId(row.item.id)}>Review source email</button>}
+              {sourceLink && <a href={sourceLink} target="_blank" rel="noreferrer">Open retained snapshot ↗</a>}
             </div>
           </div>}
         </article>;
       })}
     </div>}
+
+    {sourceEmailStagingId && <SourceEmailEvidenceDrawer stagingId={sourceEmailStagingId} onClose={() => setSourceEmailStagingId(undefined)} />}
   </section>;
 }
