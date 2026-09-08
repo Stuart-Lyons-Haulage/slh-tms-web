@@ -5,7 +5,7 @@ const vehicleId = '22222222-2222-2222-2222-222222222222';
 const trailerId = '33333333-3333-3333-3333-333333333333';
 const runId = '44444444-4444-4444-4444-444444444444';
 const orderId = '55555555-5555-5555-5555-555555555555';
-const collectionStopId = '66666666-6666-6666-666666666666';
+const collectionStopId = '66666666-6666-6666-6666-666666666666';
 const deliveryStopId = '77777777-7777-7777-7777-777777777777';
 
 function isoDate(date = new Date()) {
@@ -96,9 +96,16 @@ async function installApi(page: Page, state: State) {
       driverConfirmed: false,
       weeklyRestStatus: 'Ready', weeklyRestMessage: 'Ready', availabilityStatus: 'Available', availabilityMessage: 'Available', projectedDayNumber: 1
     }] });
+    // Driver Dispatch uses the canonical resilient Run allocation endpoint. Return the full
+    // saved run so the UI can validate that the selected driver/vehicle/trailer actually stuck.
+    if (path === `/api/v1/runs/${runId}/allocation` && method === 'PUT') {
+      state.driverAssigned = true; state.vehicleAssigned = true; state.trailerAssigned = true;
+      return json(route, runPayload(state));
+    }
+    // Keep the legacy mock only for older branches; current production code does not use it.
     if (path.includes('/api/v1/driver-dispatch/') && method === 'PUT') {
       state.driverAssigned = true; state.vehicleAssigned = true; state.trailerAssigned = true;
-      return json(route, { id: runId });
+      return json(route, runPayload(state));
     }
 
     if (path === '/api/v1/drivers' && method === 'GET') return json(route, [{ id: driverId, employeeNumber: 'D001', displayName: 'Test Driver', active: true }]);
