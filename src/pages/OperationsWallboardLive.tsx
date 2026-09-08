@@ -148,48 +148,11 @@ function tachoText(tacho?: RunTachoEvidence | null, eta?: DeliveryEta) {
   return "tacho unavailable";
 }
 function mergeEtaSnapshots(previous: DeliveryEta[], incoming: DeliveryEta[]) {
-  if (!incoming.length) return previous;
-  const merged = new Map(previous.map(eta => [`${eta.loadId}|${eta.sequence}`, eta]));
-  for (const eta of incoming) merged.set(`${eta.loadId}|${eta.sequence}`, eta);
-  return [...merged.values()];
-}
-
-function stopEvidenceScore(stops?: RunProgressRecord["stopDwell"]) {
-  return (stops || []).reduce((score, stop) => score + (stop.state === "Departed" ? 3 : stop.state === "OnSite" ? 2 : 1), 0);
+  return incoming.length ? incoming : previous;
 }
 
 function mergeProgressSnapshots(previous: RunProgressRecord[], incoming: RunProgressRecord[]) {
-  if (!incoming.length) return previous;
-  const merged = new Map(previous.map(record => [record.loadId, record]));
-  for (const next of incoming) {
-    const current = merged.get(next.loadId);
-    if (!current) { merged.set(next.loadId, next); continue; }
-    const preserveCurrentProgress = current.completedStops > next.completedStops;
-    const currentStopScore = stopEvidenceScore(current.stopDwell);
-    const nextStopScore = stopEvidenceScore(next.stopDwell);
-    merged.set(next.loadId, {
-      ...next,
-      completedStops: Math.max(current.completedStops, next.completedStops),
-      progressPercent: Math.max(current.progressPercent, next.progressPercent),
-      runState: current.runState === "Completed" ? current.runState : next.runState,
-      currentVisit: next.currentVisit ?? current.currentVisit,
-      lastDeparture: next.lastDeparture ?? current.lastDeparture,
-      stopDwell: nextStopScore >= currentStopScore ? next.stopDwell : current.stopDwell,
-      linkageException: next.linkageException ?? current.linkageException,
-      nextStop: preserveCurrentProgress ? current.nextStop ?? next.nextStop : next.nextStop ?? current.nextStop,
-      phase: preserveCurrentProgress ? current.phase ?? next.phase : next.phase ?? current.phase,
-      focusStop: preserveCurrentProgress ? current.focusStop ?? next.focusStop : next.focusStop ?? current.focusStop,
-      geofenceOnSite: Boolean(current.geofenceOnSite || current.currentVisit || next.geofenceOnSite || next.currentVisit),
-      trackingFresh: next.trackingFresh ?? current.trackingFresh,
-      trackingMoving: next.trackingMoving ?? current.trackingMoving,
-      ignitionOn: next.ignitionOn ?? current.ignitionOn,
-      driverCardPresent: next.driverCardPresent ?? current.driverCardPresent,
-      trackingAgeSeconds: next.trackingAgeSeconds ?? current.trackingAgeSeconds,
-      speedKph: next.speedKph ?? current.speedKph,
-      tacho: next.tacho ?? current.tacho,
-    });
-  }
-  return [...merged.values()];
+  return incoming.length ? incoming : previous;
 }
 
 export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAccessKey }: { tvMode?: boolean; tvAccessKey?: string }) {
@@ -274,9 +237,9 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
           warning: [
             latest.progress?.warning,
             latest.route?.tachoWarning,
-            feedState.eta === "pending" ? "Live ETA refresh is catching up; previous final ETAs remain visible." : feedState.eta === "failed" ? fallbackEtas.length ? "Live ETA refresh is unavailable; planned final times remain visible." : "Live ETA refresh is unavailable; previous final ETAs remain visible." : undefined,
-            feedState.progress === "pending" ? "Geofence refresh is catching up; previous confirmed progression remains visible." : feedState.progress === "failed" ? "Geofence refresh is unavailable; previous confirmed progression remains visible." : undefined,
-            feedState.route === "pending" ? "Live route position is catching up; planned journeys remain visible." : feedState.route === "failed" ? fallbacks.length ? "Live route enrichment is unavailable; bounded live status remains visible." : "Live route position is unavailable; ETA and plan status remain visible." : undefined,
+            feedState.eta === "failed" ? fallbackEtas.length ? "Live ETA refresh is unavailable; planned final times remain visible." : "Live ETA refresh is unavailable; previous final ETAs remain visible." : undefined,
+            feedState.progress === "failed" ? "Geofence refresh is unavailable; previous confirmed progression remains visible." : undefined,
+            feedState.route === "failed" ? fallbacks.length ? "Live route enrichment is unavailable; bounded live status remains visible." : "Live route position is unavailable; ETA and plan status remain visible." : undefined,
             feedState.snapshot === "failed" && !latest.etas && !latest.progress ? "Bounded live snapshot is unavailable; planned journeys remain visible." : undefined,
           ].filter(Boolean).join(" "),
           geofenceAvailable: latest.progress ? latest.progress.geofenceAvailable !== false : previous?.geofenceAvailable ?? true,
@@ -294,21 +257,22 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       });
 
       const etaRequest = request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(today)}`, access, tvInit, 30000)
-        .then(value => { latest.etas = value; feedState.eta = "ready"; commit(); })
-        .catch(() => { feedState.eta = "failed"; commit(); });
+        .then(value => { latest.etas = value; feedState.eta = "ready"; })
+        .catch(() => { feedState.eta = "failed"; });
       const progressRequest = request<RunProgressResponse>(`/api/v1/run-progress?date=${encodeURIComponent(today)}`, access, tvInit, 30000)
-        .then(value => { latest.progress = value; feedState.progress = "ready"; commit(); })
-        .catch(() => { feedState.progress = "failed"; commit(); });
+        .then(value => { latest.progress = value; feedState.progress = "ready"; })
+        .catch(() => { feedState.progress = "failed"; });
       const routeRequest = request<RouteProgressResponse>(`/api/v1/tv-display/route-progress?date=${encodeURIComponent(today)}`, access, tvInit, 30000)
-        .then(value => { latest.route = value; feedState.route = "ready"; commit(); })
-        .catch(() => { feedState.route = "failed"; commit(); });
+        .then(value => { latest.route = value; feedState.route = "ready"; })
+        .catch(() => { feedState.route = "failed"; });
       const timingRequest = request<RunTimingResponse>(`/api/v1/run-timing?date=${encodeURIComponent(today)}`, access, tvInit, 30000)
-        .then(value => { latest.timing = value; commit(); })
+        .then(value => { latest.timing = value; })
         .catch(() => { /* the bounded live snapshot remains a valid fallback */ });
       const snapshotRequest = request<LiveRunsResponse>(`/api/v1/tv-display/live-runs?date=${encodeURIComponent(today)}`, access, tvInit, 15000)
-        .then(value => { latest.liveRuns = value; feedState.snapshot = "ready"; commit(); })
-        .catch(() => { feedState.snapshot = "failed"; commit(); });
+        .then(value => { latest.liveRuns = value; feedState.snapshot = "ready"; })
+        .catch(() => { feedState.snapshot = "failed"; });
       await Promise.allSettled([etaRequest, progressRequest, routeRequest, timingRequest, snapshotRequest]);
+      commit();
     })();
     liveRefreshInFlight.current = operation;
     try {
