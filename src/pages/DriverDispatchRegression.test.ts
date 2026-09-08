@@ -36,6 +36,7 @@ describe("Driver Dispatch UI contract", () => {
     expect(source).toContain('driver.assignedLoadId === selected.id && effectiveStatus === "Awaiting Dispatch"');
     expect(source).toContain('onClick={() => void prepareDispatch()}');
     expect(source).toContain('{busy ? "Preparing…" : "Dispatch"}</button>');
+    expect(source).toContain('>Dispatch</button>');
   });
 
   it("verifies the allocation response contains the selected resources", () => {
