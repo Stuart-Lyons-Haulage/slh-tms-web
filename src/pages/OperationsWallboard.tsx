@@ -44,6 +44,21 @@ function installWallboardFetchResilience() {
 
     if (!isWallboardRead) return originalFetch(input, init);
 
+    // The six-digit pairing flow issues a database-backed TV key. A couple of legacy
+    // wallboard endpoints still accept only the server wallboard key, so paired TVs use
+    // a read-only API proxy that validates the paired key server-side and calls those
+    // feeds with the server credential. Signed-in TMS traffic continues to use the
+    // original endpoints directly.
+    if (url.searchParams.has("key")) {
+      if (url.pathname.endsWith("/operations/delivery-etas"))
+        url.pathname = "/tms-api/api/v1/tv-display/wallboard-proxy/delivery-etas";
+      else if (url.pathname.endsWith("/run-progress"))
+        url.pathname = "/tms-api/api/v1/tv-display/wallboard-proxy/run-progress";
+    }
+
+    const fetchInput: RequestInfo | URL = input instanceof Request
+      ? new Request(url.toString(), input)
+      : url.toString();
     const cacheKey = `${url.pathname}?${url.searchParams.toString()}`;
     const cachedResponse = () => {
       const cached = wallboardResponseCache.get(cacheKey);
@@ -62,7 +77,7 @@ function installWallboardFetchResilience() {
     const resilientInit = init ? { ...init, signal: undefined } : init;
 
     try {
-      const response = await originalFetch(input, resilientInit);
+      const response = await originalFetch(fetchInput, resilientInit);
       if (response.ok) {
         const clone = response.clone();
         void clone.text().then(body => {
