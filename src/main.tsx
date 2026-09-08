@@ -6,6 +6,7 @@ import { App } from './App';
 import { E2eHarness } from './E2eHarness';
 import { DataIntegrityBoundary } from './components/DataIntegrityBoundary';
 import { cacheLocationForRoute, isPublicTvLink, isTvRoute } from './tvBootstrap';
+import { installOrderReviewRecovery } from './orderReviewRecovery';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
@@ -21,6 +22,8 @@ import './master-fleet.css';
 import './live-vehicle-popup.css';
 import './operations-housekeeping.css';
 import './pallet-control.css';
+
+installOrderReviewRecovery();
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
