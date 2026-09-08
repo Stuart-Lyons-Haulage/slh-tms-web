@@ -14,6 +14,9 @@ type Payload = Record<string, unknown> & {
   productPo?: string;
   cratePo?: string;
   transportPo?: string;
+  collectionReference?: string;
+  loadReference?: string;
+  loadRef?: string;
   customerCode?: string;
   collectionDate?: string;
   deliveryDate?: string;
@@ -121,13 +124,16 @@ function isPoReferenceWarning(value: string) {
   return lower.includes("po") && (lower.includes("missing") || lower.includes("blank") || lower.includes("not found") || lower.includes("no customer"));
 }
 
-function driverReference(payload: Payload) {
+export function driverReference(payload: Payload) {
   return text(payload.customerPo)
     || text(payload.poRef)
     || text(payload.customerRef)
     || text(payload.productPo)
     || text(payload.cratePo)
-    || text(payload.transportPo);
+    || text(payload.transportPo)
+    || text(payload.collectionReference)
+    || text(payload.loadReference)
+    || text(payload.loadRef);
 }
 
 function needsDriverReference(payload: Payload) {
@@ -154,7 +160,7 @@ function isPmOvernightCarryIn(payload: Payload, planningDate: string) {
   return hour >= 12;
 }
 
-function reviewWarnings(payload: Payload) {
+export function reviewWarnings(payload: Payload) {
   const sourceWarnings = warnings(payload).filter((warning) => !isPoReferenceWarning(warning));
   if (needsDriverReference(payload) && !driverReference(payload)) {
     return ["Tray/crate reference is missing for the driver text.", ...sourceWarnings];
