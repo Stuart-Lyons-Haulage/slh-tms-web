@@ -44,7 +44,9 @@ export function DailyAllocationViewer({ initialDate }: { initialDate: string }) 
   const unallocatedRuns = (data?.loads || []).filter(load=>!load.driverId).length;
 
   useEffect(() => {
-    const interval = window.setInterval(() => void refreshMirror(), 10_000);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshMirror();
+    }, 30_000);
     const onFocus = () => void refreshMirror();
     const onVisibility = () => { if (document.visibilityState === "visible") void refreshMirror(); };
     window.addEventListener("focus", onFocus);
