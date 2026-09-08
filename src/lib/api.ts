@@ -33,7 +33,7 @@ export type SageHrStatus = { configured: boolean; connected: boolean; employeeCo
 export type RoadTechStatus = { configured: boolean; connected: boolean; recordCount: number; latestEventUtc?: string; missingSettings?: string[]; message: string };
 export type SageHrSync = { sourceEmployeeCount: number; driverCandidateCount: number; created: number; updated: number; skipped: number; syncedAtUtc: string; connected?: boolean; message?: string };
 export type TachoMasterStatus = { configured: boolean; connected: boolean; sharedRoadTechCredentials?: boolean; matchedVehicleCount: number; missingSettings?: string[]; message: string };
-export type TachoMasterSync = { configured: boolean; connected?: boolean; sourceDrivers?: number; matched: number; unmatched?: number; syncedAtUtc?: string; missingSettings?: string[]; message: string };
+export type TachoMasterSync = { configured: boolean; connected?: boolean; sourceDrivers?: number; matched: number; unmatched?: number; syncedAtUtc?: string; missingSettings?: string[]; message?: string };
 export type DeliveryEta = DeliveryEtaDto;
 export type DeliveryEtas = DeliveryEtasDto;
 export type IntegrationStatus = { roadTech: { configured: boolean; connected: boolean; latestEventUtc?: string }; azureMaps: { configured: boolean }; azureSms: { configured: boolean }; textBee?: { configured: boolean; dutyPhoneLabel?: string; missingSettings?: string[] }; fleetio?: { configured: boolean; missingSettings?: string[] }; tachoMaster?: { configured: boolean; missingSettings?: string[] }; sageHr: { configured: boolean }; emailIntake: { configured: boolean; lastReceivedUtc?: string }; batchIntake: { configured: boolean; endpoint: string } };
@@ -45,193 +45,41 @@ export type AssistantSuggestion = { id: string; severity: string; title: string;
 export type AssistantSnapshot = { source: string; aiConfigured: boolean; metrics: { unplannedOrders: number; unallocatedLoads: number; vehicleComplianceRisks: number; missingSiteMapPoints: number; duplicateSiteGroups: number }; suggestions: AssistantSuggestion[] };
 export type AssistantAdvice = { answer: string; source: string; suggestions: AssistantSuggestion[] };
 export type SafeFixResult = { applied: number; skipped: number; changes?: string[]; skippedReasons?: string[] };
-
 export type CustomerCommunicationClaim = { vehicleNumber?: string; loadReference?: string; etaFromLocal?: string; etaToLocal?: string; pallets?: number; evidence?: string };
 export type CustomerCommunicationAttachment = { name?: string };
-export type CustomerCommunication = {
-  id: string;
-  status: string;
-  idempotencyKey?: string;
-  source?: string;
-  receivedAtUtc: string;
-  reviewedAtUtc?: string;
-  reviewedBy?: string;
-  reviewNote?: string;
-  payload: {
-    source: { subject?: string; senderName?: string; senderAddress?: string };
-    extraction: {
-      purpose: string;
-      planVersion: string;
-      exceptionSignals: string[];
-      customerHints: string[];
-      claims: CustomerCommunicationClaim[];
-      nextUpdateLocal?: string;
-      acceptanceUntilLocal?: string;
-      attachments: CustomerCommunicationAttachment[];
-      warnings: string[];
-    };
-  };
-};
-
-export type OperationsReconciliation = {
-  planningDate: string;
-  generatedAtUtc: string;
-  orders: { total: number; readyToPlan: number; planned: number; inTransit: number; delivered: number };
-  loads: { total: number; planned: number; dispatched: number; completed: number; unallocated: number };
-  fleet: { activeDrivers: number; assignedDrivers: number; unassignedDrivers: number; activeVehicles: number; assignedVehicles: number; vehiclesSeenToday: number; vehiclesNoSignal: number };
-  staging: { pendingReview: number };
-};
-
+export type CustomerCommunication = { id: string; status: string; idempotencyKey?: string; source?: string; receivedAtUtc: string; reviewedAtUtc?: string; reviewedBy?: string; reviewNote?: string; payload: { source: { subject?: string; senderName?: string; senderAddress?: string }; extraction: { purpose: string; planVersion: string; exceptionSignals: string[]; customerHints: string[]; claims: CustomerCommunicationClaim[]; nextUpdateLocal?: string; acceptanceUntilLocal?: string; attachments: CustomerCommunicationAttachment[]; warnings: string[] } } };
+export type OperationsReconciliation = { planningDate: string; generatedAtUtc: string; orders: { total: number; readyToPlan: number; planned: number; inTransit: number; delivered: number }; loads: { total: number; planned: number; dispatched: number; completed: number; unallocated: number }; fleet: { activeDrivers: number; assignedDrivers: number; unassignedDrivers: number; activeVehicles: number; assignedVehicles: number; vehiclesSeenToday: number; vehiclesNoSignal: number }; staging: { pendingReview: number } };
 export type OperationalException = { type: string; severity: string; reference: string; description: string; loadId?: string };
 export type OperationsExceptions = { planningDate: string; generatedAtUtc: string; summary: { total: number; high: number; medium: number; low: number }; byType: Record<string, number>; exceptions: OperationalException[] };
-
 export type DuplicateCheckRequest = { customer?: string; po?: string; purchaseOrder?: string; orderReference?: string; collectionDate?: string; deliveryDate?: string; collectionLocation?: string; deliveryLocation?: string; pallets?: number; sourceMessageId?: string; sourceAttachmentName?: string };
 export type DuplicateCheckMatch = { recordId?: string; classification?: string; reference?: string; status?: string; collectionDate?: string; deliveryDate?: string };
 export type DuplicateCheckResponse = { classification: 'New order' | 'Exact duplicate' | 'Possible duplicate' | 'Amendment/update'; confidence?: string; primaryIdentifier?: string; matchCount: number; matches: DuplicateCheckMatch[]; rule?: string };
-
-export type DriverUpdate = {
-  employeeNumber?: string;
-  displayName?: string;
-  tachoName?: string;
-  mobileNumber?: string;
-  driverType?: string;
-  driverGroup?: string;
-  skills?: string;
-  coding?: string;
-  agencyName?: string;
-  northEligible?: boolean;
-  preloadEligible?: boolean;
-  notes?: string;
-  tachoMasterDriverId?: string;
-  drivingLicenceNumber?: string;
-  licenceExpiry?: string;
-  licenceStatus?: string;
-  active: boolean;
-};
+export type DriverUpdate = { employeeNumber?: string; displayName?: string; tachoName?: string; mobileNumber?: string; driverType?: string; driverGroup?: string; skills?: string; coding?: string; agencyName?: string; northEligible?: boolean; preloadEligible?: boolean; notes?: string; tachoMasterDriverId?: string; drivingLicenceNumber?: string; licenceExpiry?: string; licenceStatus?: string; active: boolean };
 export type SiteUpdate = Omit<Site, 'id'>;
-
 type UnknownRecord = Record<string, unknown>;
 
-const baseUrl = (import.meta.env.VITE_API_BASE_URL || '/tms-api').replace(/\/$/, '');
+export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/tms-api').replace(/\/$/, '');
+const baseUrl = apiBaseUrl;
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
+function errorMessage(payload: unknown): string | undefined { if (!payload || typeof payload !== 'object') return undefined; const record = payload as Record<string, unknown>; return typeof record.detail === 'string' ? record.detail : typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : undefined; }
+export async function request<T = unknown>(path: string, token?: string, init?: RequestInit, ..._legacyArgs: unknown[]): Promise<T> { void _legacyArgs; if (!baseUrl) throw new ApiError(0, 'Set VITE_API_BASE_URL to connect the TMS API.'); const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } }); if (!response.ok) { const errorPayload: unknown = await response.json().catch(() => null); const message = response.status === 403 ? 'Microsoft sign-in worked, but your account has not been granted TMS API access yet.' : errorMessage(errorPayload) || `Request failed (${response.status}).`; throw new ApiError(response.status, message); } const payload: unknown = await response.json(); return payload as T; }
 
-function errorMessage(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== 'object') return undefined;
-  const record = payload as Record<string, unknown>;
-  return typeof record.detail === 'string' ? record.detail : typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : undefined;
-}
+export interface TmsApi { customers(token?: string): Promise<Customer[]>; customerContacts(token?: string): Promise<CustomerContact[]>; vehicles(token?: string): Promise<Vehicle[]>; drivers(token?: string): Promise<Driver[]>; trailers(token?: string): Promise<Trailer[]>; sites(token?: string): Promise<Site[]>; marketContacts(token?: string): Promise<MarketContact[]>; fuelPrices(token?: string): Promise<FuelPrice[]>; staging(token?: string, status?: string, entityType?: string, take?: number): Promise<StagedImport[]>; }
 
-export async function request<T = unknown>(path: string, token?: string, init?: RequestInit, ..._legacyArgs: unknown[]): Promise<T> {
-  void _legacyArgs;
-  if (!baseUrl) throw new ApiError(0, 'Set VITE_API_BASE_URL to connect the TMS API.');
-  const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } });
-  if (!response.ok) {
-    const errorPayload: unknown = await response.json().catch(() => null);
-    const message = response.status === 403 ? 'Microsoft sign-in worked, but your account has not been granted TMS API access yet.' : errorMessage(errorPayload) || `Request failed (${response.status}).`;
-    throw new ApiError(response.status, message);
-  }
-  const payload: unknown = await response.json();
-  return payload as T;
-}
+async function list<T>(path: string, token?: string): Promise<T[]> { return request<T[]>(path, token); }
 
-export interface TmsApi {
-  customers(token?: string): Promise<Customer[]>;
-  customerContacts(token?: string): Promise<CustomerContact[]>;
-  vehicles(token?: string): Promise<Vehicle[]>;
-  updateVehicle(id: string, payload: Omit<Vehicle, 'id'>, token?: string): Promise<Vehicle>;
-  drivers(token?: string): Promise<Driver[]>;
-  updateDriver(id: string, payload: DriverUpdate, token?: string): Promise<Driver>;
-  trailers(token?: string): Promise<Trailer[]>;
-  sites(token?: string): Promise<Site[]>;
-  updateSite(id: string, payload: SiteUpdate, token?: string): Promise<Site>;
-  marketContacts(token?: string): Promise<MarketContact[]>;
-  fuelPrices(token?: string): Promise<FuelPrice[]>;
-  saveFuelPrice(payload: { weekCommencing: string; provider: string; pricePencePerLitre: number; isPricingMaximum: boolean; source?: string; notes?: string }, token?: string): Promise<FuelPrice>;
-  staging(token?: string, status?: string, entityType?: string, take?: number): Promise<StagedImport[]>;
-  orders(from?: string, to?: string, token?: string): Promise<TransportOrder[]>;
-  stageOrder(payload: Record<string, string>, idempotencyKey: string, token?: string): Promise<StageImportResponse>;
-  stageRecord(entityType: string, payload: Record<string, string | boolean | number | undefined>, idempotencyKey: string, token?: string): Promise<StageImportResponse>;
-  stageBatch(records: StageBatchRequest[], token?: string): Promise<StageBatchResponse>;
-  applyMasterData(records: StageBatchRequest[], token?: string): Promise<MasterApplyResponse>;
-  linkMasterRegister(token?: string): Promise<{ linked: number; message: string }>;
-  telemetry(token?: string): Promise<Telemetry>;
-  fleetStatus(token?: string): Promise<FleetStatus>;
-  trackingHistory(date: string, token?: string): Promise<Telemetry>;
-  operationsReconciliation(date: string, token?: string): Promise<OperationsReconciliation>;
-  operationsExceptions(date: string, token?: string): Promise<OperationsExceptions>;
-  driverAssignments(from: string, to: string, token?: string): Promise<DriverAssignment[]>;
-  returnLoadSuggestions(date: string, token?: string): Promise<ReturnLoadSuggestions>;
-  deliveryEtas(date: string, token?: string): Promise<DeliveryEtas>;
-  sendDispatchSms(loadId: string, token?: string): Promise<DispatchSmsResponseDto>;
-  geocode(address: string, token?: string): Promise<UnknownRecord>;
-  sageHrStatus(token?: string): Promise<SageHrStatus>;
-  tachoMasterStatus(token?: string): Promise<TachoMasterStatus>;
-  syncTachoMasterDrivers(token?: string): Promise<TachoMasterSync>;
-  roadTechStatus(token?: string): Promise<RoadTechStatus>;
-  fleetioStatus(token?: string): Promise<FleetioStatus>;
-  fleetioVehicleAlignment(token?: string): Promise<FleetioVehicleAlignment>;
-  syncFleetioVehicles(token?: string): Promise<FleetioSync>;
-  integrationStatus(token?: string): Promise<IntegrationStatus>;
-  diagnosticsTables(token?: string): Promise<DiagnosticsTables>;
-  syncSageHrDrivers(token?: string): Promise<SageHrSync>;
-  customerCommunications(token?: string, status?: string, purpose?: string, take?: number): Promise<CustomerCommunication[]>;
-  approveCustomerCommunication(id: string, note: string, token?: string): Promise<unknown>;
-  rejectCustomerCommunication(id: string, note: string, token?: string): Promise<unknown>;
-  duplicateCheck(payload: DuplicateCheckRequest, token?: string): Promise<DuplicateCheckResponse>;
-  review(id: string, approved: boolean, note: string, token?: string): Promise<unknown>;
-  clearPendingStaging(token?: string): Promise<{ deleted: number }>;
-  assistantSnapshot(date: string, token?: string): Promise<AssistantSnapshot>;
-  assistantAdvice(message: string, date: string, token?: string): Promise<AssistantAdvice>;
-  fixSafeValidations(token?: string): Promise<SafeFixResult>;
-}
-
-export const api: TmsApi = {
-  customers: token => request<Customer[]>('/api/v1/customers', token),
-  customerContacts: token => request<CustomerContact[]>('/api/v1/customer-contacts', token),
-  vehicles: token => request<Vehicle[]>('/api/v1/vehicles', token),
-  updateVehicle: (id, payload, token) => request<Vehicle>(`/api/v1/vehicles/${id}`, token, { method: 'PUT', body: JSON.stringify(payload) }),
-  drivers: token => request<Driver[]>('/api/v1/drivers', token),
-  updateDriver: (id, payload, token) => request<Driver>(`/api/v1/drivers/${id}`, token, { method: 'PUT', body: JSON.stringify(payload) }),
-  trailers: token => request<Trailer[]>('/api/v1/trailers', token),
-  sites: token => request<Site[]>('/api/v1/sites', token),
-  updateSite: (id, payload, token) => request<Site>(`/api/v1/sites/${id}`, token, { method: 'PUT', body: JSON.stringify(payload) }),
-  marketContacts: async token => normaliseMarketContacts(await request<MarketContact[]>('/api/v1/market-contacts', token)),
-  fuelPrices: token => request<FuelPrice[]>('/api/v1/fuel-prices', token),
-  saveFuelPrice: (payload, token) => request<FuelPrice>('/api/v1/fuel-prices', token, { method: 'POST', body: JSON.stringify(payload) }),
-  staging: (token, status = 'PendingReview', entityType = '', take = 1000) => request<StagedImport[]>(`/api/v1/staging?take=${take}${status ? `&status=${encodeURIComponent(status)}` : ''}${entityType ? `&entityType=${encodeURIComponent(entityType)}` : ''}`, token),
-  orders: (from, to, token) => request<TransportOrder[]>(`/api/v1/orders?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`, token),
-  stageOrder: (payload, idempotencyKey, token) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType: 'order', idempotencyKey, source: 'SLH TMS Web/CSV', payload }) }),
-  stageRecord: (entityType, payload, idempotencyKey, token) => request<StageImportResponse>('/api/v1/staging', token, { method: 'POST', body: JSON.stringify({ entityType, idempotencyKey, source: 'SLH TMS Web', payload }) }),
-  stageBatch: (records, token) => request<StageBatchResponse>('/api/v1/staging/batch', token, { method: 'POST', body: JSON.stringify(normaliseMarketMasterRecords(records)) }),
-  applyMasterData: (records, token) => request<MasterApplyResponse>('/api/v1/master-data/apply', token, { method: 'POST', body: JSON.stringify(normaliseMarketMasterRecords(records)) }),
-  linkMasterRegister: token => request<{ linked: number; message: string }>('/api/v1/master-data/register/link', token, { method: 'POST' }),
-  telemetry: token => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
-  fleetStatus: token => request<FleetStatus>('/api/v1/tracking/dot/fleet-status', token),
-  trackingHistory: (date, token) => request<Telemetry>(`/api/v1/tracking/dot/history?date=${encodeURIComponent(date)}`, token),
-  operationsReconciliation: (date, token) => request<OperationsReconciliation>(`/api/v1/operations/reconciliation?date=${encodeURIComponent(date)}`, token),
-  operationsExceptions: (date, token) => request<OperationsExceptions>(`/api/v1/operations/exceptions?date=${encodeURIComponent(date)}`, token),
-  driverAssignments: (from, to, token) => request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, token),
-  returnLoadSuggestions: (date, token) => request<ReturnLoadSuggestions>(`/api/v1/planning/return-load-suggestions?date=${encodeURIComponent(date)}`, token),
-  deliveryEtas: (date, token) => request<DeliveryEtas>(`/api/v1/operations/delivery-etas?date=${encodeURIComponent(date)}`, token),
-  sendDispatchSms: (loadId, token) => request<DispatchSmsResponseDto>(`/api/v1/loads/${loadId}/dispatch/sms`, token, { method: 'POST' }),
-  geocode: (address, token) => geocodeAddress(address, token),
-  sageHrStatus: token => request<SageHrStatus>('/api/v1/integrations/sage-hr/status', token),
-  tachoMasterStatus: token => request<TachoMasterStatus>('/api/v1/integrations/tachomaster/status', token),
-  syncTachoMasterDrivers: token => request<TachoMasterSync>('/api/v1/integrations/tachomaster/sync-drivers', token, { method: 'POST' }),
-  roadTechStatus: token => request<RoadTechStatus>('/api/v1/integrations/roadtech/status', token),
-  fleetioStatus: token => request<FleetioStatus>('/api/v1/integrations/fleetio/status', token),
-  fleetioVehicleAlignment: token => request<FleetioVehicleAlignment>('/api/v1/integrations/fleetio/vehicle-alignment', token),
-  syncFleetioVehicles: token => request<FleetioSync>('/api/v1/integrations/fleetio/sync-assets-resilient', token, { method: 'POST' }),
-  integrationStatus: token => request<IntegrationStatus>('/api/v1/integrations/status', token),
-  diagnosticsTables: token => request<DiagnosticsTables>('/api/v1/diagnostics/tables', token),
-  syncSageHrDrivers: token => request<SageHrSync>('/api/v1/integrations/sage-hr/sync-drivers', token, { method: 'POST' }),
-  customerCommunications: (token, status = 'PendingReview', purpose, take = 100) => request<CustomerCommunication[]>(`/api/v1/customer-communications?${new URLSearchParams({ ...(status ? { status } : {}), ...(purpose ? { purpose } : {}), take: String(take) })}`, token),
-  approveCustomerCommunication: (id, note, token) => request(`/api/v1/customer-communications/${id}/approve`, token, { method: 'POST', body: JSON.stringify({ note }) }),
-  rejectCustomerCommunication: (id, note, token) => request(`/api/v1/customer-communications/${id}/reject`, token, { method: 'POST', body: JSON.stringify({ note }) }),
-  duplicateCheck: (payload, token) => request<DuplicateCheckResponse>('/api/v1/order-intake/duplicate-check', token, { method: 'POST', body: JSON.stringify(payload) }),
-  review: (id, approved, note, token) => request(`/api/v1/staging/${id}/${approved ? 'approve' : 'reject'}`, token, { method: 'POST', body: JSON.stringify({ note }) }),
-  clearPendingStaging: token => request<{ deleted: number }>('/api/v1/staging/pending?confirm=CLEAR-PENDING', token, { method: 'DELETE' }),
-  assistantSnapshot: (date, token) => request<AssistantSnapshot>(`/api/v1/assistant/snapshot?date=${encodeURIComponent(date)}`, token),
-  assistantAdvice: (message, date, token) => request<AssistantAdvice>('/api/v1/assistant/advice', token, { method: 'POST', body: JSON.stringify({ message, date }) }),
-  fixSafeValidations: token => request<SafeFixResult>('/api/v1/assistant/fix-safe-validations', token, { method: 'POST' }),
+export const api = {
+  customers: (token?: string) => list<Customer>('/api/v1/customers', token),
+  customerContacts: (token?: string) => list<CustomerContact>('/api/v1/customer-contacts', token),
+  vehicles: (token?: string) => list<Vehicle>('/api/v1/vehicles', token),
+  drivers: (token?: string) => list<Driver>('/api/v1/drivers', token),
+  trailers: (token?: string) => list<Trailer>('/api/v1/trailers', token),
+  sites: (token?: string) => list<Site>('/api/v1/sites', token),
+  marketContacts: (token?: string) => list<MarketContact>('/api/v1/market-contacts', token),
+  fuelPrices: (token?: string) => list<FuelPrice>('/api/v1/fuel-prices', token),
+  staging: (token?: string, status = 'PendingReview', entityType?: string, take = 200) => request<StagedImport[]>(`/api/v1/staging?status=${encodeURIComponent(status)}${entityType ? `&entityType=${encodeURIComponent(entityType)}` : ''}&take=${take}`, token),
+  driverAssignments: (from: string, to: string, token?: string) => request<DriverAssignment[]>(`/api/v1/driver-assignments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, token),
+  geocode: (address: string, token?: string) => geocodeAddress(address, token),
+  marketMaster: async (token?: string) => normaliseMarketMasterRecords(await request<UnknownRecord[]>('/api/v1/market-master', token)),
+  marketContactsNormalised: async (token?: string) => normaliseMarketContacts(await request<UnknownRecord[]>('/api/v1/market-contacts', token)),
 };
