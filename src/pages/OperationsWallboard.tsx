@@ -144,7 +144,11 @@ function CompletedExitEvidenceLabel() {
     apply();
     const observer = new MutationObserver(apply);
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
+    const timer = window.setInterval(apply, 500);
+    return () => {
+      observer.disconnect();
+      window.clearInterval(timer);
+    };
   }, []);
   return null;
 }
