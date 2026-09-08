@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { displayRunReference } from "./runDisplay";
 
 describe("displayRunReference", () => {
+  it("removes the operating date from a raw wallboard run reference", () => {
+    expect(displayRunReference("RUN 20260908 01", undefined, "2026-09-08T04:30:00Z")).toBe("Run 1 AM");
+  });
+
   it("uses the operational first stop instead of stale AM planner metadata", () => {
     const label = displayRunReference(
       "PLAN-20260828-2",
