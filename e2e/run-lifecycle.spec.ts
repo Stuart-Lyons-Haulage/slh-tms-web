@@ -96,7 +96,7 @@ async function installApi(page: Page, state: State) {
       driverConfirmed: false,
       weeklyRestStatus: 'Ready', weeklyRestMessage: 'Ready', availabilityStatus: 'Available', availabilityMessage: 'Available', projectedDayNumber: 1
     }] });
-    if (path.includes('/api/v1/driver-dispatch/') && method === 'PUT') {
+    if (path === `/api/v1/runs/${runId}/allocation` && method === 'PUT') {
       state.driverAssigned = true; state.vehicleAssigned = true; state.trailerAssigned = true;
       return json(route, { ...runPayload(state), southbound: false });
     }
