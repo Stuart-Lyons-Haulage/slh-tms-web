@@ -11,10 +11,65 @@ type CachedWallboardResponse = {
   status: number;
   statusText: string;
   headers: Array<[string, string]>;
+  cachedAt: number;
 };
 
 const wallboardResponseCache = new Map<string, CachedWallboardResponse>();
+const WALLBOARD_CACHE_PREFIX = "slh-wallboard-response:";
+const WALLBOARD_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 let wallboardFetchInstalled = false;
+
+function stableWallboardCacheKey(url: URL) {
+  const copy = new URL(url.toString());
+  copy.searchParams.delete("key");
+  copy.searchParams.delete("_ts");
+  copy.searchParams.sort();
+  return `${copy.pathname}?${copy.searchParams.toString()}`;
+}
+
+function readStoredWallboardResponse(cacheKey: string) {
+  const memory = wallboardResponseCache.get(cacheKey);
+  if (memory && Date.now() - memory.cachedAt <= WALLBOARD_CACHE_MAX_AGE_MS) return memory;
+  if (memory) wallboardResponseCache.delete(cacheKey);
+  try {
+    const raw = window.sessionStorage.getItem(`${WALLBOARD_CACHE_PREFIX}${cacheKey}`);
+    if (!raw) return undefined;
+    const cached = JSON.parse(raw) as CachedWallboardResponse;
+    if (!cached?.body || Date.now() - Number(cached.cachedAt || 0) > WALLBOARD_CACHE_MAX_AGE_MS) {
+      window.sessionStorage.removeItem(`${WALLBOARD_CACHE_PREFIX}${cacheKey}`);
+      return undefined;
+    }
+    wallboardResponseCache.set(cacheKey, cached);
+    return cached;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeStoredWallboardResponse(cacheKey: string, response: Response, body: string) {
+  const cached: CachedWallboardResponse = {
+    body,
+    status: response.status,
+    statusText: response.statusText,
+    headers: Array.from(response.headers.entries()),
+    cachedAt: Date.now(),
+  };
+  wallboardResponseCache.set(cacheKey, cached);
+  try {
+    window.sessionStorage.setItem(`${WALLBOARD_CACHE_PREFIX}${cacheKey}`, JSON.stringify(cached));
+  } catch {
+    // An in-memory warm cache still prevents repeated cold loads if session storage is blocked.
+  }
+}
+
+function responseFromCache(cached?: CachedWallboardResponse) {
+  if (!cached) return undefined;
+  return new Response(cached.body, {
+    status: cached.status,
+    statusText: cached.statusText,
+    headers: cached.headers,
+  });
+}
 
 function installWallboardFetchResilience() {
   if (wallboardFetchInstalled || typeof window === "undefined" || typeof window.fetch !== "function") return;
@@ -59,46 +114,52 @@ function installWallboardFetchResilience() {
     const fetchInput: RequestInfo | URL = input instanceof Request
       ? new Request(url.toString(), input)
       : url.toString();
-    const cacheKey = `${url.pathname}?${url.searchParams.toString()}`;
-    const cachedResponse = () => {
-      const cached = wallboardResponseCache.get(cacheKey);
-      if (!cached) return undefined;
-      return new Response(cached.body, {
-        status: cached.status,
-        statusText: cached.statusText,
-        headers: cached.headers,
-      });
-    };
+    const cacheKey = stableWallboardCacheKey(url);
+    const cached = readStoredWallboardResponse(cacheKey);
 
     // The shared request helper uses short client-side abort timers. ETA and geofence
     // reconstruction can legitimately exceed those while RoadTech/Azure/Tacho are slow.
     // Do not abort an otherwise healthy server calculation; keep the last confirmed row
     // visible until this slower read completes and then atomically replace it.
-    const resilientInit = init ? { ...init, signal: undefined } : init;
+    const resilientInit = init ? { ...init, signal: undefined, cache: "no-store" as RequestCache } : { cache: "no-store" as RequestCache };
+
+    const refreshCacheInBackground = async () => {
+      try {
+        const response = await originalFetch(fetchInput, resilientInit);
+        if (!response.ok) return;
+        const clone = response.clone();
+        const body = await clone.text();
+        writeStoredWallboardResponse(cacheKey, response, body);
+      } catch {
+        // The visible wallboard continues to use the last confirmed snapshot.
+      }
+    };
+
+    // A wallboard tab must open from the last confirmed snapshot immediately rather than
+    // cold-loading Azure, tracking, geofence, ETA and Tacho feeds every time the user
+    // returns to the tab. Refresh the same resource quietly behind the cached response;
+    // the normal 20-second wallboard cycle will pick up the newer snapshot next pass.
+    if (cached) {
+      void refreshCacheInBackground();
+      return responseFromCache(cached)!;
+    }
 
     try {
       const response = await originalFetch(fetchInput, resilientInit);
       if (response.ok) {
         const clone = response.clone();
-        void clone.text().then(body => {
-          wallboardResponseCache.set(cacheKey, {
-            body,
-            status: response.status,
-            statusText: response.statusText,
-            headers: Array.from(response.headers.entries()),
-          });
-        }).catch(() => undefined);
+        void clone.text().then(body => writeStoredWallboardResponse(cacheKey, response, body)).catch(() => undefined);
         return response;
       }
 
       // Never hide a genuine pairing/authentication problem, but transient service,
       // timeout and throttling faults must not blank a live operations screen.
       if (response.status === 408 || response.status === 429 || response.status >= 500) {
-        return cachedResponse() || response;
+        return responseFromCache(readStoredWallboardResponse(cacheKey)) || response;
       }
       return response;
     } catch (error) {
-      return cachedResponse() || Promise.reject(error);
+      return responseFromCache(readStoredWallboardResponse(cacheKey)) || Promise.reject(error);
     }
   };
 }
