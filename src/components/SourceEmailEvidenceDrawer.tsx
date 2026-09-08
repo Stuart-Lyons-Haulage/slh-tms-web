@@ -96,8 +96,8 @@ export function SourceEmailEvidenceDrawer({ stagingId, onClose }: { stagingId: s
       try {
         const result = await request<SourceEmailEvidence>(`/api/v1/order-intake/source-email/${encodeURIComponent(stagingId)}`, await token());
         if (active) setEvidence(result);
-      } catch (exception) {
-        if (active) setError(exception instanceof Error ? exception.message : "The source email could not be loaded.");
+      } catch {
+        if (active) setError("Source email unavailable in the TMS. The retained message could not be retrieved for this load.");
       } finally {
         if (active) setLoading(false);
       }
@@ -120,7 +120,7 @@ export function SourceEmailEvidenceDrawer({ stagingId, onClose }: { stagingId: s
 
       {!loading && !error && evidence && <>
         {!evidence.evidenceAvailable && <p className="source-email-note">This booking predates full source-email retention. The metadata and any retained body preview are shown below.</p>}
-        {evidence.bodyTruncated && <p className="source-email-note">The stored source body exceeded the evidence limit. Use the Outlook original below for the complete message.</p>}
+        {evidence.bodyTruncated && <p className="source-email-note">The stored source body exceeded the evidence limit. The retained preview is shown below.</p>}
 
         <dl className="source-email-meta">
           <dt>From</dt><dd>{[text(evidence.senderName), text(evidence.senderAddress)].filter(Boolean).join(" · ") || "—"}</dd>
@@ -144,8 +144,7 @@ export function SourceEmailEvidenceDrawer({ stagingId, onClose }: { stagingId: s
         </section>
 
         <footer>
-          {evidence.webLink && <a className="button-like primary" href={evidence.webLink} target="_blank" rel="noreferrer">Open original in Outlook ↗</a>}
-          <button type="button" onClick={onClose}>Close</button>
+          <button type="button" className="primary" onClick={onClose}>Close</button>
         </footer>
       </>}
     </aside>
