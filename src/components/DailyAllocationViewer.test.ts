@@ -11,12 +11,17 @@ describe("Dashboard Driver Dispatch mirror", () => {
   });
 
   it("is read-only and mirrors the operational Dispatch columns", () => {
-    for (const heading of ["Driver", "Type / skills", "Code", "Day", "Vehicle", "Trailer", "Run", "Assistant", "Status"]) {
+    for (const heading of ["Driver", "Type / skills", "Code", "Day", "Vehicle", "Trailer", "Run", "Status"]) {
       expect(source).toContain(`<th>${heading}</th>`);
     }
-    expect(source).toContain("Read-only Driver Dispatch mirror");
     expect(source).not.toContain("Allocate</button>");
     expect(source).not.toContain("Save allocation</button>");
+  });
+
+  it("does not hammer the dispatch workbench while the dashboard is open", () => {
+    expect(source).toContain("30_000");
+    expect(source).toContain('document.visibilityState === "visible"');
+    expect(source).not.toContain("10_000");
   });
 
   it("keeps allocated rows consistent when the persisted status still says No Run", () => {
