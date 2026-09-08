@@ -114,7 +114,7 @@ function palletCount(payload: Payload) {
 
 function isBackhaul(payload: Payload) {
   const normal = text(payload.jobType).toLowerCase().replace(/[^a-z0-9]/g, "");
-  return normal === "backhaul" || normal === "backload";
+  return normal.includes("backhaul") || normal.includes("backload");
 }
 
 function isPalletQuantityWarning(value: string) {
