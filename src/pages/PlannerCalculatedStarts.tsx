@@ -27,6 +27,13 @@ function localTime(value?: string) {
   return new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }
 
+function addMinutesToClock(value: string, minutes: number) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return "";
+  const total = (Number(match[1]) * 60 + Number(match[2]) + minutes) % (24 * 60);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 function normaliseResponse(value: unknown, planningDate: string): Response {
   if (!value || typeof value !== "object") return { planningDate, walkaroundMinutes: 10, rows: [] };
   const record = value as Partial<Response>;
@@ -109,6 +116,11 @@ export function PlannerCalculatedStarts({ planningDate }: { planningDate: string
     try {
       await request(`/api/v1/planner-starts/${row.loadId}/apply`, await token(), { method: "PUT" });
       setMessage(`${row.runReference} recalculated from Tacho, walkaround and routing evidence.`);
+      setDrafts((current) => {
+        const updated = { ...current };
+        delete updated[row.loadId];
+        return updated;
+      });
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Calculated start could not be applied.");
@@ -128,14 +140,19 @@ export function PlannerCalculatedStarts({ planningDate }: { planningDate: string
         <thead><tr><th>Run</th><th>Driver</th><th>Calculated start</th><th>Rest evidence</th><th>Origin</th><th>Walkaround</th><th>First collection ETA</th><th>Latest on site</th><th /></tr></thead>
         <tbody>{rows.map((row) => {
           const source = row.existingStartSource || (row.existingStartUtc ? "Manual override" : "Calculated");
+          const startDraft = drafts[row.loadId] || "";
+          const manualEta = source !== "Calculated" && startDraft && row.travelMinutes != null
+            ? addMinutesToClock(startDraft, (row.walkaroundMinutes || 10) + row.travelMinutes)
+            : "";
+          const firstEta = manualEta || localTime(row.firstCollectionEtaUtc);
           return <tr key={row.loadId} title={row.explanation}>
             <td><strong>{row.runReference}</strong></td>
             <td>{row.driverName || <small>Not allocated</small>}</td>
-            <td><div style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="time" value={drafts[row.loadId] || ""} onChange={(event) => setDrafts((current) => ({ ...current, [row.loadId]: event.target.value }))} onBlur={() => void saveManual(row)} disabled={!row.driverName || busy === row.loadId} /><small>{source === "Calculated" ? "Auto" : "Manual override"}</small></div></td>
+            <td><div style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="time" value={startDraft} onChange={(event) => setDrafts((current) => ({ ...current, [row.loadId]: event.target.value }))} onBlur={() => void saveManual(row)} disabled={!row.driverName || busy === row.loadId} /><small>{source === "Calculated" ? "Auto" : "Manual override"}</small></div></td>
             <td><strong>{localTime(row.legalRestCompleteUtc) || "—"}</strong><br /><small>{row.restType}</small></td>
             <td>{row.origin || "—"}<br /><small>{row.travelMinutes != null ? `${row.travelMinutes} min travel` : "Route pending"}</small></td>
             <td><strong>{row.walkaroundMinutes || 10} min</strong></td>
-            <td><strong>{localTime(row.firstCollectionEtaUtc) || "—"}</strong><br /><small>{row.firstCollection || "First collection"}</small></td>
+            <td><strong>{firstEta || "—"}</strong><br /><small>{row.firstCollection || "First collection"}{manualEta ? " · from override" : ""}</small></td>
             <td><strong>{row.latestOnSite || "Not set"}</strong><br /><small>{row.latestOnSite ? "Site Master" : "Add site rule"}</small></td>
             <td><button type="button" onClick={() => void recalculate(row)} disabled={!row.suggestedStartUtc || busy === row.loadId}>Recalculate</button></td>
           </tr>;
