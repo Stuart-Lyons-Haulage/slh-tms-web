@@ -12,7 +12,7 @@ import { StablePlanner } from './pages/StablePlanner';
 import { PlannerEnhanced } from './pages/PlannerEnhanced';
 import { PalletPlanningControl } from './pages/PalletPlanningControl';
 import { WarehousePlanning } from './pages/WarehousePlanning';
-import { DriverDispatch } from './pages/DriverDispatch';
+import { DriverDispatchOperational } from './pages/DriverDispatchOperational';
 import { RunPerformance } from './pages/RunPerformance';
 import { OperationalPlanner } from './pages/OperationalPlanner';
 import { PlannerV2 } from './pages/PlannerV2';
@@ -158,9 +158,9 @@ function Shell() {
       <Route path="/tv-display" element={<TvDisplaySetup />} />
       <Route path="/order-intake" element={<ImportCentre initialTab="orders" />} />
       <Route path="/jobs" element={<OrderControl initialTab="live" />} />
-      <Route path="/driver-dispatch" element={<DriverDispatch />} />
-      <Route path="/loads" element={<DriverDispatch />} />
-      <Route path="/allocation" element={<DriverDispatch />} />
+      <Route path="/driver-dispatch" element={<DriverDispatchOperational />} />
+      <Route path="/loads" element={<DriverDispatchOperational />} />
+      <Route path="/allocation" element={<DriverDispatchOperational />} />
       <Route path="/pallet-control" element={<PalletPlanningControl />} />
       <Route path="/warehouse" element={<WarehousePlanning />} />
       <Route path="/planner-stable" element={<StablePlanner />} />
@@ -184,7 +184,7 @@ function Shell() {
       <Route path="/control-centre" element={<ControlCentre />} />
       <Route path="/operations-control" element={<ControlCentre />} />
       <Route path="/admin" element={<ControlCentre />} />
-      <Route path="/driver" element={<DriverDispatch />} />
+      <Route path="/driver" element={<DriverDispatchOperational />} />
       <Route path="/communications" element={<CustomerCommunications />} />
       <Route path="/master-data" element={<MasterDataHub />} />
       <Route path="/drivers" element={<MasterDataHub initialSection="drivers" />} />
