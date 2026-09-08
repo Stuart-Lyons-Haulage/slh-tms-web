@@ -24,7 +24,14 @@ describe("Dashboard Driver Dispatch mirror", () => {
     expect(source).not.toContain("10_000");
   });
 
-  it("keeps allocated rows consistent when the persisted status still says No Run", () => {
-    expect(source).toContain('if (assigned && status?.dispatchStatus === "No Run") return "Awaiting Dispatch"');
+  it("uses the operational lifecycle while retaining safe legacy fallbacks", () => {
+    expect(source).toContain('if (status?.operationalStatus) return status.operationalStatus');
+    expect(source).toContain('if (!assigned) return "No Run"');
+    expect(source).toContain('return "Dispatched"');
+    expect(source).toContain('return "Awaiting Dispatch"');
+    for (const status of ["Dispatched", "Working", "Completed"]) {
+      expect(source).toContain(status);
+    }
+    expect(source).toContain("driverConfirmed");
   });
 });
