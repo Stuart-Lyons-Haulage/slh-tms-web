@@ -197,7 +197,7 @@ test('planner → dispatch → geofence arrival/departure → completion stays c
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Available now' })).toBeVisible();
   await page.getByRole('button', { name: /Hall Hunter.*4.*Leyland/i }).click();
-  await expect(page.getByText(/4 pallets added and auto-saved/i)).toBeVisible();
+  await expect(page.getByText(/4 pallets added\./i)).toBeVisible();
   expect(state.runCreated).toBe(true);
   expect(state.allocatedPallets).toBe(4);
 
