@@ -9,6 +9,7 @@ import { DispatchCalculatedStartsPortal } from './pages/DispatchCalculatedStarts
 import { cacheLocationForRoute, isPublicTvLink, isTvRoute } from './tvBootstrap';
 import { installOrderReviewRecovery } from './orderReviewRecovery';
 import { installOperationalUiEnhancements } from './operationalUiEnhancements';
+import { installPollingPolicy } from './lib/pollingPolicy';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
@@ -28,6 +29,7 @@ import './source-email-evidence.css';
 import './ui-navigation-refresh.css';
 import './table-header-viewport-fix.css';
 
+installPollingPolicy();
 installOrderReviewRecovery();
 installOperationalUiEnhancements();
 
@@ -42,13 +44,7 @@ function renderApp() {
   const root = document.getElementById('root');
   if (!root) throw new Error('TMS root element is missing.');
   const content = e2eAuth ? <E2eHarness /> : <><App /><DispatchCalculatedStartsPortal /></>;
-  createRoot(root).render(
-    <StrictMode>
-      <MsalProvider instance={msal}>
-        <DataIntegrityBoundary>{content}</DataIntegrityBoundary>
-      </MsalProvider>
-    </StrictMode>,
-  );
+  createRoot(root).render(<StrictMode><MsalProvider instance={msal}><DataIntegrityBoundary>{content}</DataIntegrityBoundary></MsalProvider></StrictMode>);
 }
 
 function showStartupFailure(error: unknown) {
@@ -61,31 +57,17 @@ function showStartupFailure(error: unknown) {
 
 async function start() {
   try {
-    if (e2eAuth) {
-      renderApp();
-      return;
-    }
+    if (e2eAuth) { renderApp(); return; }
     if (isTvRoutePath && (window as Window & { __SLH_TV_COMPATIBILITY__?: boolean }).__SLH_TV_COMPATIBILITY__) return;
     if (isTvRoutePath) (window as Window & { __SLH_TV_REACT_STARTED__?: boolean }).__SLH_TV_REACT_STARTED__ = true;
-    if (publicTvLink) {
-      renderApp();
-      void msal.initialize().catch((error) => console.warn('MSAL unavailable in keyed TV mode; continuing with TV-key access.', error));
-      return;
-    }
-
+    if (publicTvLink) { renderApp(); void msal.initialize().catch(error => console.warn('MSAL unavailable in keyed TV mode; continuing with TV-key access.', error)); return; }
     await msal.initialize();
     let redirect;
-    try {
-      redirect = await msal.handleRedirectPromise();
-    } catch (error) {
-      console.error('Microsoft sign-in callback failed', error);
-    }
+    try { redirect = await msal.handleRedirectPromise(); } catch (error) { console.error('Microsoft sign-in callback failed', error); }
     const account = redirect?.account || msal.getAllAccounts()[0];
     if (account) msal.setActiveAccount(account);
     renderApp();
-  } catch (error) {
-    showStartupFailure(error);
-  }
+  } catch (error) { showStartupFailure(error); }
 }
 
 void start();
