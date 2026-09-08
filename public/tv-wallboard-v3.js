@@ -310,10 +310,19 @@
         if ((name === 'loads' || name === 'assignments') && (status === 401 || status === 403)) { coreUnauthorised = true; }
         else if (name === 'loads' || name === 'assignments') { coreErrors.push(name + ': ' + err.message); }
         else { optionalErrors.push(name + ': ' + err.message); }
-      } else if (name === 'loads') { state.loads = data || []; }
-      else if (name === 'assignments') { state.assignments = data || []; }
+      } else if (name === 'loads') {
+        // Planned runs are the canonical run list. Only replace the previous list after
+        // a successful response, so a transient refresh cannot blank the television.
+        state.loads = data || [];
+      }
+      else if (name === 'assignments') {
+        // Use the same driver-assignment feed as the signed-in Operations wallboard.
+        state.assignments = data || [];
+      }
       else if (name === 'progress') {
-        var nextProgress = data && data.runs ? data.runs : (data && data.records ? data.records : []);
+        // Use the same canonical run-progress projection as the signed-in wallboard.
+        // The TV proxy performs only paired-key authentication; it does not change data.
+        var nextProgress = data && data.records ? data.records : (data && data.runs ? data.runs : []);
         if (nextProgress && nextProgress.length) { state.progress = nextProgress; }
       }
       else if (name === 'etas') {
@@ -334,9 +343,9 @@
       }
     }
     request('/api/v1/tv-display/planned-runs?date=' + encodeURIComponent(date), function (e, d, s) { done('loads', e, d, s); });
-    request('/api/v1/tv-display/assignments?date=' + encodeURIComponent(date), function (e, d, s) { done('assignments', e, d, s); });
-    request('/api/v1/tv-display/route-progress?date=' + encodeURIComponent(date), function (e, d, s) { done('progress', e, d, s); });
-    request('/api/v1/operations/delivery-etas?date=' + encodeURIComponent(date), function (e, d, s) { done('etas', e, d, s); });
+    request('/api/v1/driver-assignments?from=' + encodeURIComponent(date) + '&to=' + encodeURIComponent(date), function (e, d, s) { done('assignments', e, d, s); });
+    request('/api/v1/tv-display/wallboard-proxy/run-progress?date=' + encodeURIComponent(date), function (e, d, s) { done('progress', e, d, s); });
+    request('/api/v1/tv-display/wallboard-proxy/delivery-etas?date=' + encodeURIComponent(date), function (e, d, s) { done('etas', e, d, s); });
     request('/api/v1/run-timing?date=' + encodeURIComponent(date), function (e, d, s) { done('timing', e, d, s); });
   }
 
