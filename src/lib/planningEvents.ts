@@ -1,6 +1,7 @@
 import { apiBaseUrl } from './api';
 
 const PLANNING_CHANGED_EVENT = "slh:orders-changed";
+const PLANNING_SERVER_CHANGED_EVENT = "slh:planning-server-changed";
 const PLANNING_CHANGED_STORAGE_KEY = "slh:planning-changed-at";
 const PLANNING_CHANNEL = "slh-tms-planning";
 
@@ -11,16 +12,19 @@ function getChannel() {
   return channel;
 }
 
-function emitPlanningChange(broadcast = true) {
+function emitPlanningChange(source: 'local' | 'server') {
   const changedAt = Date.now();
   window.dispatchEvent(new Event(PLANNING_CHANGED_EVENT));
+  if (source === 'server') {
+    window.dispatchEvent(new Event(PLANNING_SERVER_CHANGED_EVENT));
+    return;
+  }
   try { window.localStorage.setItem(PLANNING_CHANGED_STORAGE_KEY, String(changedAt)); } catch { }
-  if (!broadcast) return;
   try { getChannel()?.postMessage({ changedAt }); } catch { }
 }
 
 export function signalPlanningChange() {
-  emitPlanningChange(true);
+  emitPlanningChange('local');
 }
 
 export function subscribePlanningChanges(listener: () => void) {
@@ -36,6 +40,11 @@ export function subscribePlanningChanges(listener: () => void) {
     window.removeEventListener("storage", onStorageChange);
     broadcastChannel?.removeEventListener('message', onBroadcast);
   };
+}
+
+export function subscribeServerPlanningChanges(listener: () => void) {
+  window.addEventListener(PLANNING_SERVER_CHANGED_EVENT, listener);
+  return () => window.removeEventListener(PLANNING_SERVER_CHANGED_EVENT, listener);
 }
 
 export function connectPlanningEventStream(token: string) {
@@ -63,7 +72,7 @@ export function connectPlanningEventStream(token: string) {
         while (boundary >= 0) {
           const frame = buffer.slice(0, boundary);
           buffer = buffer.slice(boundary + 2);
-          if (frame.split('\n').some(line => line.trim() === 'event: planning-data-changed')) emitPlanningChange(true);
+          if (frame.split('\n').some(line => line.trim() === 'event: planning-data-changed')) emitPlanningChange('server');
           boundary = buffer.indexOf('\n\n');
         }
       }
