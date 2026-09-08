@@ -33,10 +33,20 @@ describe("Driver Dispatch UI contract", () => {
     expect(source.slice(saveStart, dispatchStart)).not.toContain("await refresh()");
   });
 
-  it("does not remount the entire Dispatch screen on a timer", () => {
+  it("does not remount the entire Dispatch screen on a timer or after send", () => {
     expect(operationalSource).not.toContain("startVisiblePolling");
     expect(operationalSource).not.toContain("60_000");
-    expect(operationalSource).toContain("setRefreshKey(value => value + 1)");
+    expect(operationalSource).not.toContain("refreshKey");
+    expect(operationalSource).toContain("<DriverDispatch />");
+  });
+
+  it("does not intercept Dispatch with a second stale workbench allocation lookup", () => {
+    expect(operationalSource).not.toContain("openDispatchPreview");
+    expect(operationalSource).not.toContain("does not currently have an allocated run");
+    expect(operationalSource).not.toContain("event.preventDefault()");
+    expect(operationalSource).not.toContain("event.stopPropagation()");
+    expect(operationalSource).toContain('toLowerCase() !== "send dispatch"');
+    expect(operationalSource).toContain("refreshOperationalStatuses()");
   });
 
   it("makes the Dispatch action available from the locally committed allocation", () => {
