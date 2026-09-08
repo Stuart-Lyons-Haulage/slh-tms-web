@@ -15,7 +15,9 @@ describe("operations housekeeping contract", () => {
     expect(planner).not.toContain("SubcontractorQuickAdd");
     expect(planner).not.toContain("Automatic order intake");
     expect(planner).not.toContain("review-orders-link");
-    expect(planner).toContain("Open Pallet Control");
+    expect(planner).toContain("PlannerCalculatedStarts");
+    expect(planner).toContain("Add Run");
+    expect(planner).toContain("Refresh");
   });
 
   it("removes pallet utilisation from the mixed-unit run builder and gives optimiser more time", () => {
@@ -30,7 +32,7 @@ describe("operations housekeeping contract", () => {
   });
 
   it("keeps Pallet Control as three stacked live boards with Site Master delivery headings", () => {
-    expect(app).toContain("['/pallet-control', 'Pallet Control']");
+    expect(app).toContain("PalletPlanningControl");
     expect(palletControl).toContain('matrix("toPlan", "To Plan"');
     expect(palletControl).toContain('matrix("planned", "Planned"');
     expect(palletControl).toContain('matrix("summary", "Pallet Summary"');
@@ -51,8 +53,16 @@ describe("operations housekeeping contract", () => {
     expect(imports).toContain("Master data CSV");
   });
 
-  it("puts Imports last in navigation and makes Control Centre one page", () => {
-    expect(app).toContain('title="Imports"');
+  it("puts Imports last in Admin navigation and makes Control Centre one page", () => {
+    expect(app).toContain("['/planner-import', 'Imports']");
+    const adminStart = app.indexOf("label: 'Admin'");
+    const controlIndex = app.indexOf("['/control-centre', 'Control Centre']", adminStart);
+    const masterIndex = app.indexOf("['/master-data', 'Master Data']", adminStart);
+    const importsIndex = app.indexOf("['/planner-import', 'Imports']", adminStart);
+    expect(adminStart).toBeGreaterThanOrEqual(0);
+    expect(controlIndex).toBeGreaterThan(adminStart);
+    expect(masterIndex).toBeGreaterThan(controlIndex);
+    expect(importsIndex).toBeGreaterThan(masterIndex);
     expect(control).not.toContain("useState");
     expect(control).toContain("OperationsControlClean");
     expect(control).toContain("AdminIntegrationSyncControls");
