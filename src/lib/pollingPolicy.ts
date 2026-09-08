@@ -14,6 +14,14 @@ export function effectivePollingDelay(pathname: string, requestedMs: number) {
   return requestedMs;
 }
 
+type ManagedInterval = {
+  handler: TimerHandler;
+  args: unknown[];
+  delayMs: number;
+  timerId?: number;
+  active: boolean;
+};
+
 export function installPollingPolicy() {
   if (typeof window === 'undefined') return;
   const marker = window as Window & { __SLH_POLLING_POLICY__?: boolean };
@@ -21,14 +29,82 @@ export function installPollingPolicy() {
   marker.__SLH_POLLING_POLICY__ = true;
 
   const nativeSetInterval = window.setInterval.bind(window);
+  const nativeClearInterval = window.clearInterval.bind(window);
+  const nativeSetTimeout = window.setTimeout.bind(window);
+  const nativeClearTimeout = window.clearTimeout.bind(window);
+  const managed = new Map<number, ManagedInterval>();
+  let nextManagedId = -1;
+  let lastResumeAt = 0;
+
+  const invoke = (entry: ManagedInterval) => {
+    if (!entry.active || document.visibilityState !== 'visible') return;
+    if (typeof entry.handler === 'function') {
+      const callback = entry.handler as (...values: unknown[]) => void;
+      callback(...entry.args);
+    } else {
+      nativeSetTimeout(entry.handler, 0, ...entry.args);
+    }
+  };
+
+  const schedule = (id: number) => {
+    const entry = managed.get(id);
+    if (!entry?.active || document.visibilityState !== 'visible') return;
+    if (entry.timerId !== undefined) nativeClearTimeout(entry.timerId);
+    entry.timerId = nativeSetTimeout(() => {
+      entry.timerId = undefined;
+      invoke(entry);
+      schedule(id);
+    }, jitteredDelay(entry.delayMs));
+  };
+
+  const suspendAll = () => {
+    for (const entry of managed.values()) {
+      if (entry.timerId !== undefined) nativeClearTimeout(entry.timerId);
+      entry.timerId = undefined;
+    }
+  };
+
+  const resumeAll = () => {
+    if (document.visibilityState !== 'visible') return;
+    const now = Date.now();
+    if (now - lastResumeAt < 750) return;
+    lastResumeAt = now;
+    for (const [id, entry] of managed) {
+      invoke(entry);
+      schedule(id);
+    }
+  };
+
   window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
     const requested = Number(timeout || 0);
     if (requested < 10_000) return nativeSetInterval(handler, timeout, ...args);
-    const effective = effectivePollingDelay(window.location.pathname, requested);
-    const delay = jitteredDelay(effective);
-    const wrapped: TimerHandler = typeof handler === 'function'
-      ? (...callbackArgs: unknown[]) => { if (document.visibilityState === 'visible') handler(...callbackArgs); }
-      : handler;
-    return nativeSetInterval(wrapped, delay, ...args);
+    const id = nextManagedId--;
+    managed.set(id, {
+      handler,
+      args,
+      delayMs: effectivePollingDelay(window.location.pathname, requested),
+      active: true,
+    });
+    schedule(id);
+    return id;
   }) as typeof window.setInterval;
+
+  window.clearInterval = ((id?: number) => {
+    if (typeof id === 'number') {
+      const entry = managed.get(id);
+      if (entry) {
+        entry.active = false;
+        if (entry.timerId !== undefined) nativeClearTimeout(entry.timerId);
+        managed.delete(id);
+        return;
+      }
+    }
+    nativeClearInterval(id);
+  }) as typeof window.clearInterval;
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resumeAll();
+    else suspendAll();
+  });
+  window.addEventListener('focus', resumeAll);
 }
