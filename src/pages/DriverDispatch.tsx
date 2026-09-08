@@ -98,6 +98,10 @@ type DriverDispatchStatus = {
   availabilityMessage?: string;
   driveAvailablePlanningDayMinutes?: number;
   workAvailableWeekMinutes?: number;
+  projectedDayNumber?: number;
+  earliestStartUtc?: string;
+  earliestStartSource?: string;
+  earliestStartIsAssumption?: boolean;
 };
 type MessageMode = "initial" | "amendment" | "update";
 type MessageState = { load: DispatchLoad; text: string; routeMinutes: number; acknowledgeUnverified: boolean; mode: MessageMode };
@@ -221,7 +225,7 @@ function statusClass(status?: DispatchStatus) {
   return status === "Confirmed" ? "confirmed" : status === "Sent Awaiting Response" ? "awaiting" : status === "Awaiting Dispatch" ? "ready" : "empty";
 }
 function knownUnavailable(driver: DispatchDriver, status?: DriverDispatchStatus) {
-  return driver.onLeave || status?.availabilityStatus === "Unavailable" || status?.weeklyRestStatus === "Overdue";
+  return driver.onLeave || status?.availabilityStatus === "Unavailable";
 }
 function fleetioWarning(vehicle?: Vehicle) {
   const value = vehicle?.fleetioStatus?.trim();
@@ -341,9 +345,10 @@ export function DriverDispatch() {
   useEffect(() => setCalculatedStarts({}), [date]);
   useEffect(() => {
     const receive = (event: Event) => {
-      const detail = (event as CustomEvent<{ date?: string; rows?: StartSuggestion[] }>).detail;
-      if (!detail || detail.date !== date || !Array.isArray(detail.rows)) return;
-      setCalculatedStarts(Object.fromEntries(detail.rows.map(row => [row.loadId, row])));
+      const detail = (event as CustomEvent<{ date?: string; rows?: StartSuggestion[]; statuses?: DriverDispatchStatus[] }>).detail;
+      if (!detail || detail.date !== date) return;
+      if (Array.isArray(detail.rows)) setCalculatedStarts(Object.fromEntries(detail.rows.map(row => [row.loadId, row])));
+      if (Array.isArray(detail.statuses)) setStatuses(Object.fromEntries(detail.statuses.map(row => [row.driverId, row])));
     };
     window.addEventListener(dispatchStartsCalculatedEvent, receive);
     return () => window.removeEventListener(dispatchStartsCalculatedEvent, receive);
@@ -361,7 +366,7 @@ export function DriverDispatch() {
         driver: `${driver.displayName} ${driver.employeeNumber}`,
         typeSkills: `${driver.driverType} ${driver.driverGroup || ""} ${driver.skills || ""} ${driver.agencyName || ""}`,
         code: driver.coding || "",
-        day: String(driver.dayNumber),
+        day: String(status?.projectedDayNumber || driver.dayNumber),
         previous: `${driver.previousRunReference || ""} ${driver.previousFinalStop || ""} ${driver.previousRoute || ""}`,
         vehicle: `${vehicle?.registration || ""} ${driver.previousVehicleRegistration || ""} ${driver.suggestedVehicleRegistration || ""}`,
         trailer: `${trailer?.trailerNumber || ""} ${trailer?.type || ""}`,
@@ -514,8 +519,12 @@ export function DriverDispatch() {
       <div className="dispatch-table-wrap">
         <table className="dispatch-table">
           <thead>
-            <tr><th>Driver</th><th>Type / skills</th><th>Code</th><th>Day</th><th>Vehicle</th><th>Trailer</th><th>Run</th><th>Assistant</th><th>Status</th><th>Dispatch</th><th>Could start</th></tr>
-            <tr className="dispatch-filter-row">{filterKeys.map(key => <th key={key}><input aria-label={`Filter ${key}`} placeholder={filterPlaceholders[key]} value={filters[key]} onChange={event => setFilters(current => ({ ...current, [key]: event.target.value }))} /></th>)}<th /></tr>
+            <tr><th>Driver</th><th>Start</th><th>Type / skills</th><th>Code</th><th>Day</th><th>Vehicle</th><th>Trailer</th><th>Run</th><th>Assistant</th><th>Status</th><th>Dispatch</th></tr>
+            <tr className="dispatch-filter-row">
+              <th><input aria-label="Filter driver" placeholder={filterPlaceholders.driver} value={filters.driver} onChange={event => setFilters(current => ({ ...current, driver: event.target.value }))} /></th>
+              <th />
+              {filterKeys.filter(key => key !== "driver").map(key => <th key={key}><input aria-label={`Filter ${key}`} placeholder={filterPlaceholders[key]} value={filters[key]} onChange={event => setFilters(current => ({ ...current, [key]: event.target.value }))} /></th>)}
+            </tr>
           </thead>
           <tbody>{filteredDrivers.map((driver, index) => <DispatchRow
             key={driver.driverId}
@@ -531,7 +540,7 @@ export function DriverDispatch() {
           />)}</tbody>
         </table>
       </div>
-      <p className="hint dispatch-footer-note">All active drivers remain visible, including leave/Tacho exceptions. Warning rows stay visible for planning awareness but unsafe allocation/dispatch remains blocked. A run already allocated to another driver is not offered in the run selector, reducing duplicate allocation risk. Final Dispatch still performs the authoritative live route-and-hours check.</p>
+      <p className="hint dispatch-footer-note">All active drivers remain visible, including leave/Tacho exceptions. Warning rows stay visible for planning awareness but only proven current unavailability blocks allocation/dispatch. Start is projected from Tacho duty/rest evidence; a ~ time is an assumption because today's duty is still open. Final Dispatch still performs the authoritative live route-and-hours check.</p>
     </>}
 
     {message && <MessageDialog
@@ -589,16 +598,19 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
   const selected = data.loads.find(load => load.id === loadId);
-  const tachoUnavailable = status?.availabilityStatus === "Unavailable" || status?.weeklyRestStatus === "Overdue";
+  const tachoUnavailable = status?.availabilityStatus === "Unavailable";
   const selectedVehicle = vehicleId ? data.vehicles.find(vehicle => vehicle.id === vehicleId) : undefined;
   const fleetWarning = fleetioWarning(selectedVehicle);
   const availabilityWarning = knownUnavailable(driver, status);
-  const couldStartUtc = calculatedStart?.suggestedStartUtc || initial?.plannedStartUtc;
+  const displayDay = status?.projectedDayNumber || driver.dayNumber;
+  const couldStartUtc = calculatedStart?.suggestedStartUtc || status?.earliestStartUtc || initial?.plannedStartUtc;
+  const couldStartAssumption = !calculatedStart?.suggestedStartUtc && Boolean(status?.earliestStartIsAssumption);
   const couldStartTitle = [
-    calculatedStart?.explanation,
+    calculatedStart?.explanation || status?.earliestStartSource,
     calculatedStart?.restType ? `Rest: ${calculatedStart.restType}` : undefined,
     calculatedStart?.origin ? `Origin: ${calculatedStart.origin}` : undefined,
     calculatedStart?.travelMinutes != null ? `Travel to first collection: ${calculatedStart.travelMinutes} min` : undefined,
+    `Projected duty day: Day ${displayDay}`,
     fleetWarning
   ].filter(Boolean).join("\n");
 
@@ -830,9 +842,19 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
     {showGroup && <tr className="dispatch-group"><td colSpan={11}>{driver.driverType === "Agency" ? "AGENCY" : driver.driverType === "Casual" ? "CASUAL" : "EMPLOYED"}</td></tr>}
     <tr className={availabilityWarning ? "weekly-rest-blocked" : ""}>
       <td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}</td>
+      <td className="dispatch-start-cell" title={couldStartTitle || "Click Calculate Starts or refresh Tacho status."}>
+        <strong>{couldStartUtc ? `${couldStartAssumption ? "~" : ""}${localTime(couldStartUtc)}` : "—"}</strong>
+        {calculatedStart?.restType
+          ? <small>{calculatedStart.restType}</small>
+          : status?.earliestStartSource
+            ? <small>{couldStartAssumption ? "Assumption" : "Tacho rest"}</small>
+            : null}
+        {!couldStartUtc && calculatedStart?.explanation && <small>Hover for reason</small>}
+        {fleetWarning && <small>⚠ Fleetio</small>}
+      </td>
       <td><div className="badge-line"><span className={`driver-type type-${driver.driverType.toLowerCase()}`} title={driver.agencyName || driver.driverType}>{driver.driverType === "Agency" ? "A" : driver.driverType === "Casual" ? "C" : "E"}</span>{(driver.skills || "").split(/[,;|/]+/).map(skill => skill.trim()).filter(Boolean).slice(0, 3).map(skill => <span className="skill-badge" key={skill}>{skill}</span>)}</div><small>{driver.driverType === "Agency" ? driver.agencyName || "Agency" : driver.driverGroup || ""}</small></td>
       <td><span className={`code-badge code-${driver.coding || "x"}`} title={codeTitle(driver.coding)}>{driver.coding || "—"}</span></td>
-      <td><span className={`day-bubble ${dayClass(driver.dayNumber)}`} title={`Day ${driver.dayNumber}`}>{driver.dayNumber}</span></td>
+      <td><span className={`day-bubble ${dayClass(displayDay)}`} title={`Projected Day ${displayDay}`}>{displayDay}</span></td>
       <td>
         <TypeaheadSelect disabled={driver.onLeave || tachoUnavailable} value={vehicleId} onChange={setVehicleId} options={vehicleOptions} placeholder="Vehicle…" listId={`vehicle-${driver.driverId}`} />
         {driver.previousVehicleRegistration && <small title={`Driver was in ${driver.previousVehicleRegistration} yesterday`}>In yesterday · {driver.previousVehicleRegistration}</small>}
@@ -851,7 +873,7 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
         {selected && persistedStatus === "No Run" && <small>Selection ready to allocate</small>}
         {status?.availabilityStatus === "Unavailable" && <small title={status.availabilityMessage}>⚠ Tacho: Unavailable</small>}
         {status?.availabilityStatus === "Unverified" && <small title={status.availabilityMessage}>Tacho: Check before dispatch</small>}
-        {status?.weeklyRestStatus === "Overdue" && <small title={status.weeklyRestMessage}>⚠ Weekly rest overdue</small>}
+        {status?.weeklyRestStatus === "Overdue" && status?.availabilityStatus === "Unavailable" && <small title={status.weeklyRestMessage}>⚠ Weekly rest overdue</small>}
         {status?.availabilityStatus === "Available" && status.weeklyRestStatus === "DueSoon" && <small title={status.weeklyRestMessage}>Tacho: Rest due soon</small>}
         {status?.driveAvailablePlanningDayMinutes != null && <small title="TachoMaster planning-day driving availability">Drive left: {Math.max(0, Math.round(status.driveAvailablePlanningDayMinutes / 60 * 10) / 10)}h</small>}
         {status?.lastDriverReply && effectiveStatus === "Confirmed" && <small title={status.lastDriverReply}>{status.lastDriverReply.length > 72 ? `${status.lastDriverReply.slice(0, 72)}…` : status.lastDriverReply}</small>}
@@ -872,12 +894,6 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
           {!driver.assignedLoadId && availabilityWarning && <span className="dispatch-blocked-note">Visible for planning · allocation currently blocked</span>}
         </div>
         {notice && <small className="row-notice">{notice}</small>}
-      </td>
-      <td className="dispatch-start-cell" title={couldStartTitle || "Click Calculate Starts after allocating a driver and vehicle."}>
-        <strong>{couldStartUtc ? localTime(couldStartUtc) : "—"}</strong>
-        {calculatedStart?.restType && <small>{calculatedStart.restType}</small>}
-        {!couldStartUtc && calculatedStart?.explanation && <small>Hover for reason</small>}
-        {fleetWarning && <small>⚠ Fleetio</small>}
       </td>
     </tr>
   </>;
