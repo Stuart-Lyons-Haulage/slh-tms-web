@@ -6,14 +6,13 @@ const operationalSource = readFileSync(new URL("./DriverDispatchOperational.tsx"
 const calculatedStartsSource = readFileSync(new URL("./DispatchCalculatedStarts.tsx", import.meta.url), "utf8");
 
 describe("Driver Dispatch UI contract", () => {
-  it("keeps status visible and uses a calculated Could start column rather than manual start entry", () => {
+  it("keeps status visible and puts the calculated Start column beside the driver", () => {
     expect(source).toContain("<th>Status</th>");
-    expect(source).toContain("<th>Could start</th>");
+    expect(source).toContain("<th>Driver</th><th>Start</th><th>Type / skills</th>");
     expect(source).toContain("No Run");
     expect(source).toContain("Awaiting Dispatch");
     expect(source).toContain("Sent Awaiting Response");
     expect(source).toContain("Confirmed");
-    expect(source).not.toContain("<th>Start</th>");
     expect(source).not.toContain("<input type=\"time\"");
   });
 
@@ -46,13 +45,13 @@ describe("Driver Dispatch UI contract", () => {
     expect(source).toContain('{busy ? "Preparing…" : "Dispatch"}</button>');
   });
 
-  it("keeps all active drivers visible while warning and blocking proven-unavailable drivers", () => {
+  it("keeps all active drivers visible while only blocking proven current unavailability", () => {
     expect(source).not.toContain("if (!driver.assignedLoadId && knownUnavailable(driver, status)) return false;");
     expect(source).toContain("availability warnings shown");
     expect(source).toContain("Visible for planning · allocation currently blocked");
     expect(source).toContain("Allocated but unavailable · reassign this run");
-    expect(source).toContain('status?.availabilityStatus === "Unavailable"');
-    expect(source).toContain('status?.weeklyRestStatus === "Overdue"');
+    expect(source).toContain('const tachoUnavailable = status?.availabilityStatus === "Unavailable";');
+    expect(source).not.toContain('status?.availabilityStatus === "Unavailable" || status?.weeklyRestStatus === "Overdue"');
     expect(source).toContain("disabled={busy || driver.onLeave || tachoUnavailable || !vehicleId}");
   });
 
@@ -83,14 +82,17 @@ describe("Driver Dispatch UI contract", () => {
     expect(source).toContain("⚠ Fleetio");
   });
 
-  it("publishes calculated Tacho and tracking evidence into the Could start column", () => {
+  it("publishes calculated and projected Tacho evidence into the Start and Day columns", () => {
     expect(calculatedStartsSource).toContain('dispatchStartsCalculatedEvent = "slh:dispatch-starts-calculated"');
     expect(calculatedStartsSource).toContain("suggestedStartUtc?: string");
-    expect(calculatedStartsSource).toContain("legalRestCompleteUtc?: string");
-    expect(calculatedStartsSource).toContain("origin?: string");
-    expect(calculatedStartsSource).toContain("travelMinutes?: number");
-    expect(source).toContain("calculatedStart?.suggestedStartUtc || initial?.plannedStartUtc");
-    expect(source).toContain("calculatedStart?.explanation");
+    expect(calculatedStartsSource).toContain("earliestStartUtc?: string");
+    expect(calculatedStartsSource).toContain("projectedDayNumber?: number");
+    expect(calculatedStartsSource).toContain("earliestStartIsAssumption?: boolean");
+    expect(calculatedStartsSource).toContain("publishStarts(date, rows, statusResponse.drivers)");
+    expect(source).toContain("status?.projectedDayNumber || driver.dayNumber");
+    expect(source).toContain("calculatedStart?.suggestedStartUtc || status?.earliestStartUtc || initial?.plannedStartUtc");
+    expect(source).toContain("couldStartAssumption");
+    expect(source).toContain("Projected duty day: Day");
   });
 
   it("opens editable dispatch and free-form update previews", () => {
