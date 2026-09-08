@@ -22,6 +22,7 @@ import './master-fleet.css';
 import './live-vehicle-popup.css';
 import './operations-housekeeping.css';
 import './pallet-control.css';
+import './source-email-evidence.css';
 import './ui-navigation-refresh.css';
 
 // Install once for the whole SPA so Dashboard -> Load Review deep links also work.
