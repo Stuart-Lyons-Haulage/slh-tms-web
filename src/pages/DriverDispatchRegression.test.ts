@@ -37,17 +37,28 @@ describe("Driver Dispatch UI contract", () => {
     expect(source).toContain('{busy ? "Preparing…" : "Dispatch"}</button>');
   });
 
-  it("allows allocation while weekly rest is due but still blocks dispatch", () => {
-    expect(source).toContain('const weeklyRestBlocked = status?.weeklyRestStatus === "Overdue"');
-    expect(source).toContain('disabled={driver.onLeave} value={vehicleId}');
-    expect(source).toContain('disabled={driver.onLeave} value={trailerId}');
-    expect(source).toContain('disabled={driver.onLeave} value={loadId}');
-    expect(source).toContain('selected && canEditAllocation && <button');
-    expect(source).toContain('disabled={busy || driver.onLeave || weeklyRestBlocked}');
-    const saveStart = source.indexOf("async function save()");
-    const dispatchStart = source.indexOf("async function prepareDispatch()", saveStart);
-    expect(source.slice(saveStart, dispatchStart)).not.toContain("if (weeklyRestBlocked)");
-    expect(source.slice(dispatchStart)).toContain("if (weeklyRestBlocked)");
+  it("removes known-unavailable candidates but keeps an existing unsafe allocation visible for correction", () => {
+    expect(source).toContain("if (!driver.assignedLoadId && knownUnavailable(driver, status)) return false;");
+    expect(source).toContain('status?.availabilityStatus === "Unavailable"');
+    expect(source).toContain('status?.weeklyRestStatus === "Overdue"');
+    expect(source).toContain("Allocated but unavailable · reassign this run");
+    expect(source).toContain("disabled={busy || driver.onLeave || tachoUnavailable}");
+  });
+
+  it("prefers assistant/live vehicle evidence and marks yesterday continuity clearly", () => {
+    expect(source).toContain('initial?.vehicleId || driver.suggestedVehicleId || driver.previousVehicleId || ""');
+    expect(source).toContain('" · Assistant · in yesterday"');
+    expect(source).toContain("In yesterday · {driver.previousVehicleRegistration}");
+  });
+
+  it("opens editable dispatch and free-form update previews", () => {
+    expect(source).toContain('type MessageMode = "initial" | "amendment" | "update"');
+    expect(source).toContain('mode: "initial"');
+    expect(source).toContain('mode: "update"');
+    expect(source).toContain("Free-form update text");
+    expect(source).toContain("Update text</button>");
+    expect(source).toContain("SEND UPDATE");
+    expect(source).toContain('dispatch: state.mode === "initial"');
   });
 
   it("verifies the allocation response contains the selected resources", () => {
