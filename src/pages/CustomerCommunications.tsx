@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, type CustomerCommunication, type DeliveryEta } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
+import { startVisiblePolling } from "../lib/visiblePolling";
 
 const purposeLabel: Record<string, string> = { EtaUpdate: "ETA update", LoadPlan: "Load plan", Exception: "Exception", Other: "Other" };
 
@@ -13,6 +14,7 @@ export function CustomerCommunications() {
   const [message, setMessage] = useState<string>();
   const [liveEtas, setLiveEtas] = useState<DeliveryEta[]>([]);
   const communications = useApi(useCallback(async () => api.customerCommunications(await token(), status, purpose || undefined, 200), [purpose, status, token]));
+  const refreshCommunications = communications.refresh;
 
   const refreshLiveEtas = useCallback(async () => {
     const result = await api.deliveryEtas(new Date().toISOString().slice(0, 10), await token());
@@ -20,6 +22,7 @@ export function CustomerCommunications() {
   }, [token]);
 
   useEffect(() => { void refreshLiveEtas().catch(() => setLiveEtas([])); }, [refreshLiveEtas]);
+  useEffect(() => startVisiblePolling(() => Promise.allSettled([refreshCommunications(), refreshLiveEtas()]).then(() => undefined), 120_000), [refreshCommunications, refreshLiveEtas]);
 
   async function review(item: CustomerCommunication, approve: boolean) {
     try {
@@ -27,7 +30,7 @@ export function CustomerCommunications() {
       if (approve) await api.approveCustomerCommunication(item.id, note, await token());
       else await api.rejectCustomerCommunication(item.id, note, await token());
       setMessage(`${approve ? "Approved" : "Rejected"}: ${item.payload.source.subject || item.id}`);
-      await communications.refresh();
+      await refreshCommunications();
     } catch (exception) { setMessage(exception instanceof Error ? exception.message : "Communication review failed."); }
   }
 
@@ -39,7 +42,7 @@ export function CustomerCommunications() {
     <div className="planner-toolbar">
       <label>Status <select value={status} onChange={event => setStatus(event.target.value)}><option value="PendingReview">Pending review</option><option value="Promoted">Reviewed</option><option value="Rejected">Rejected</option><option value="">All</option></select></label>
       <label>Type <select value={purpose} onChange={event => setPurpose(event.target.value)}><option value="">All communications</option><option value="EtaUpdate">ETA updates</option><option value="LoadPlan">Load plans</option><option value="Exception">Exceptions</option></select></label>
-      <button type="button" onClick={() => void communications.refresh()} disabled={communications.loading}>Refresh</button>
+      <button type="button" onClick={() => void refreshCommunications()} disabled={communications.loading}>Refresh</button>
       <button type="button" onClick={() => void refreshLiveEtas()} disabled={communications.loading}>Refresh live ETAs</button>
     </div>
     {liveEtas.length > 0 && <div className="notice inline-notice"><strong>Live DOT/geofence ETA feed:</strong> {liveEtas.filter(item => item.source === "Live").length} live · {liveEtas.filter(item => item.source !== "Live").length} planned or pending. Geofence-confirmed stops are excluded from the remaining ETA calculation.</div>}
