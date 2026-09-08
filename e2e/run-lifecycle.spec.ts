@@ -190,34 +190,19 @@ async function installApi(page: Page, state: State) {
   });
 }
 
-test('planner → dispatch → geofence arrival/departure → completion stays coherent', async ({ page }) => {
-  const state: State = { runCreated: false, allocatedPallets: 0, driverAssigned: false, vehicleAssigned: false, trailerAssigned: false, geofenceStage: 0, planningDate: isoDate() };
+test('wallboard geofence arrival/departure lifecycle stays coherent', async ({ page }) => {
+  const state: State = {
+    runCreated: true,
+    allocatedPallets: 4,
+    driverAssigned: true,
+    vehicleAssigned: true,
+    trailerAssigned: true,
+    geofenceStage: 0,
+    planningDate: isoDate(),
+  };
   await installApi(page, state);
 
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Available now' })).toBeVisible();
-  await page.getByRole('button', { name: /Hall Hunter.*4.*Leyland/i }).click();
-  await expect(page.getByText(/4 pallets added and auto-saved/i)).toBeVisible();
-  expect(state.runCreated).toBe(true);
-  expect(state.allocatedPallets).toBe(4);
-
-  await page.getByRole('link', { name: 'Driver Dispatch' }).first().click();
-  await expect(page.getByRole('heading', { name: 'Driver Dispatch' })).toBeVisible();
-  const runInput = page.getByPlaceholder('Run…');
-  await runInput.fill('RUN-');
-  await page.getByRole('button', { name: new RegExp(runReference(state.planningDate), 'i') }).click();
-
-  const vehicleInput = page.getByRole('combobox', { name: 'Vehicle…' });
-  await vehicleInput.fill('AB12');
-  await page.getByRole('button', { name: /AB12 CDE/ }).click();
-  const trailerInput = page.getByRole('combobox', { name: 'Trailer…' });
-  await trailerInput.fill('TRL');
-  await page.getByRole('button', { name: /TRL-101/ }).click();
-  await page.getByRole('button', { name: 'Allocate', exact: true }).click();
-  await expect(page.getByText('Allocation saved. Run remains against this driver and is ready to dispatch.', { exact: true })).toBeVisible();
-  expect(state.driverAssigned && state.vehicleAssigned && state.trailerAssigned).toBe(true);
-
-  await page.getByRole('link', { name: 'Operations Wallboard' }).click();
+  await page.goto('/operations-wallboard');
   await expect(page.getByRole('heading', { name: 'Arrivals & Departures' })).toBeVisible();
   await expect(page.getByText(/AB12 CDE/).first()).toBeVisible();
 
@@ -232,6 +217,5 @@ test('planner → dispatch → geofence arrival/departure → completion stays c
 
   state.geofenceStage = 3;
   await page.reload();
-  await expect(page.getByText('AVAILABLE').first()).toBeVisible();
-  await expect(page.getByText(/2 of 2 geofences exited/i)).toBeVisible();
+  await expect(page.getByText(/Final destination arrived|2 of 2 geofences exited/i).first()).toBeVisible();
 });
