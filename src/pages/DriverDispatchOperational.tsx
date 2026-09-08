@@ -1,8 +1,7 @@
-import { type MouseEvent, useEffect, useState } from "react";
+import { type MouseEvent, useState } from "react";
 import { getDriverDispatchRoute, getRunDispatch } from "../api/runs";
 import { request, type LoadDispatch } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
-import { startVisiblePolling } from "../lib/visiblePolling";
 import { DriverDispatch } from "./DriverDispatch";
 
 type WorkbenchDriver = { driverId: string; displayName: string; assignedLoadId?: string };
@@ -25,8 +24,6 @@ export function DriverDispatchOperational() {
   const [dialog, setDialog] = useState<DialogState>();
   const [sending, setSending] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-
-  useEffect(() => startVisiblePolling(() => setRefreshKey(value => value + 1), 60_000), []);
 
   async function openDispatchPreview(driverName: string) {
     setDialog({ driverName, text: "Preparing driver text preview…", loading: true });
