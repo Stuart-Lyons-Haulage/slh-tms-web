@@ -112,6 +112,23 @@ function palletCount(payload: Payload) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function isBackhaul(payload: Payload) {
+  const normal = text(payload.jobType).toLowerCase().replace(/[^a-z0-9]/g, "");
+  return normal === "backhaul" || normal === "backload";
+}
+
+function isPalletQuantityWarning(value: string) {
+  const lower = value.toLowerCase();
+  if (!lower.includes("pallet")) return false;
+  return lower.includes("missing")
+    || lower.includes("zero")
+    || lower.includes("not supplied")
+    || lower.includes("not provided")
+    || lower.includes("not given")
+    || lower.includes("blank")
+    || lower.includes("quantity is not");
+}
+
 function warnings(payload: Payload) {
   return Array.isArray(payload.intakeWarnings) ? payload.intakeWarnings.map(text).filter(Boolean) : [];
 }
@@ -155,7 +172,8 @@ function isPmOvernightCarryIn(payload: Payload, planningDate: string) {
 }
 
 function reviewWarnings(payload: Payload) {
-  const sourceWarnings = warnings(payload).filter((warning) => !isPoReferenceWarning(warning));
+  const sourceWarnings = warnings(payload).filter((warning) =>
+    !isPoReferenceWarning(warning) && !(isBackhaul(payload) && isPalletQuantityWarning(warning)));
   if (needsDriverReference(payload) && !driverReference(payload)) {
     return ["Tray/crate reference is missing for the driver text.", ...sourceWarnings];
   }
@@ -168,7 +186,7 @@ function blockingReason(row: ParsedRow, date: string) {
   if (text(payload.collectionDate) !== date && !isPmOvernightCarryIn(payload, date)) return "Collection date does not match the selected planning date";
   if (!text(payload.poNumber)) return "TMS reference is missing";
   if (!text(payload.customerCode)) return "Customer is missing";
-  if (palletCount(payload) <= 0) return "Zero or missing pallets";
+  if (!isBackhaul(payload) && palletCount(payload) <= 0) return "Zero or missing pallets";
   if (payload.plannerReady === false) return "Pre-order / not planner-ready";
   if (text(payload.intakeStatus).toLowerCase() === "preorder") return "Pre-order awaiting instruction";
   return undefined;
@@ -459,7 +477,7 @@ export function OrderReviewBulk() {
           />
           <span className="bulk-order-ref"><strong>{displayReference(row.payload)}</strong><small>{text(row.payload.poNumber) || "TMS reference missing"}</small></span>
           <span><strong>{text(row.payload.customerCode) || "Customer missing"}</strong><small>{text(row.payload.sellerName) || "Collection site missing"} → {text(row.payload.stallNumber) || "Destination missing"}</small></span>
-          <span className="bulk-order-pallets"><strong>{palletCount(row.payload)}</strong><small>pallets</small></span>
+          <span className="bulk-order-pallets"><strong>{isBackhaul(row.payload) && palletCount(row.payload) <= 0 ? "—" : palletCount(row.payload)}</strong><small>{isBackhaul(row.payload) && palletCount(row.payload) <= 0 ? "backhaul" : "pallets"}</small></span>
           <span className={`bulk-order-status ${statusClass}`}>{statusText}</span>
           <div className="bulk-order-actions">
             {hasSourceIdentity && <button type="button" className="source-email-review-button" onClick={() => setSourceEmailStagingId(row.item.id)} disabled={busy || Boolean(busyId)}>Review source email</button>}
