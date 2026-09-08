@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { warehouseDisplayRows, type WarehouseDailyResult } from './WarehousePlanning';
+import { warehouseDisplayRows, type WarehouseDailyResult } from './warehousePlanningData';
 
 describe('warehouseDisplayRows', () => {
   it('keeps inbound and outbound movements ordered by expected warehouse time', () => {
