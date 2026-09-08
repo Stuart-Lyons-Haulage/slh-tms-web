@@ -1,4 +1,5 @@
 const INTERNAL_RUN_REFERENCE = /^PLAN-\d{8}-(.+)$/i;
+const DATED_RUN_REFERENCE = /^RUN[\s_-]*\d{8}[\s_-]+0*(\d+)$/i;
 const NUMERIC_RUN = /^(?:RUN[\s:_-]*)?(\d+)(?:[\s_-]*(AM|PM))?$/i;
 const LEGACY_LOAD_RUN = /^L0*(\d+)$/i;
 const PERIOD = /\b(AM|PM)\b/i;
@@ -53,6 +54,8 @@ function periodFromPlannedUtc(firstPlannedUtc?: string) {
 }
 
 function stripInternalReference(reference: string) {
+  const dated = reference.trim().match(DATED_RUN_REFERENCE);
+  if (dated) return dated[1];
   const match = reference.trim().match(INTERNAL_RUN_REFERENCE);
   return match ? match[1] : reference.trim();
 }
