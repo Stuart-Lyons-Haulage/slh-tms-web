@@ -55,8 +55,14 @@ function installWallboardFetchResilience() {
       });
     };
 
+    // The shared request helper uses short client-side abort timers. ETA and geofence
+    // reconstruction can legitimately exceed those while RoadTech/Azure/Tacho are slow.
+    // Do not abort an otherwise healthy server calculation; keep the last confirmed row
+    // visible until this slower read completes and then atomically replace it.
+    const resilientInit = init ? { ...init, signal: undefined } : init;
+
     try {
-      const response = await originalFetch(input, init);
+      const response = await originalFetch(input, resilientInit);
       if (response.ok) {
         const clone = response.clone();
         void clone.text().then(body => {
