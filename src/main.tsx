@@ -24,7 +24,9 @@ import './operations-housekeeping.css';
 import './pallet-control.css';
 import './ui-navigation-refresh.css';
 
-if (window.location.pathname === '/staging') installOrderReviewRecovery();
+// Install once for the whole SPA so Dashboard -> Load Review deep links also work.
+// The recovery logic itself only acts when the current route is /staging.
+installOrderReviewRecovery();
 
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
