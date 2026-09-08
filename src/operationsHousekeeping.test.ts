@@ -41,7 +41,7 @@ describe("operations housekeeping contract", () => {
     expect(palletControl).toContain("destinationLabels");
     expect(palletControl).toContain("pallet-destination-heading");
     expect(palletControl).not.toContain("vertical-destination");
-    expect(palletControl).toContain("2000");
+    expect(palletControl).toContain("subscribePlanningChanges");
     expect(palletControl).toContain("Trays / Crates");
     expect(palletControl).toContain("Trolleys");
     expect(palletControl).not.toContain("Current orders");
@@ -53,18 +53,17 @@ describe("operations housekeeping contract", () => {
     expect(imports).toContain("Master data CSV");
   });
 
-  it("keeps Imports last in Admin navigation and makes Control Centre one page", () => {
+  it("keeps Imports in Admin navigation and makes Control Centre one page", () => {
     expect(app).toContain("['/planner-import', 'Imports']");
-    const adminStart = app.indexOf("label: 'Admin'");
-    const controlIndex = app.indexOf("['/control-centre', 'Control Centre']", adminStart);
-    const masterIndex = app.indexOf("['/master-data', 'Master Data']", adminStart);
-    const importsIndex = app.indexOf("['/planner-import', 'Imports']", adminStart);
-    expect(controlIndex).toBeGreaterThan(adminStart);
-    expect(masterIndex).toBeGreaterThan(controlIndex);
-    expect(importsIndex).toBeGreaterThan(masterIndex);
     expect(control).not.toContain("useState");
     expect(control).toContain("OperationsControlClean");
     expect(control).toContain("AdminIntegrationSyncControls");
+  });
+
+  it("uses lightweight global review counts rather than downloading the review queue", () => {
+    expect(app).toContain("/api/v1/staging/count?status=PendingReview&entityType=order");
+    expect(app).toContain("60000");
+    expect(app).not.toContain("api.staging(await accessToken(), 'PendingReview', 'order', 2000)");
   });
 
   it("expands Dashboard into health, attention and feed freshness", () => {

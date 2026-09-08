@@ -1,3 +1,11 @@
+/* Run identity is system-derived: RUN X + AM/PM. Route/job is not a planner-entered name. */
+.planner-enhanced-page .simple-run-details > label:first-child {
+  display: none !important;
+}
+.planner-enhanced-page .simple-run-header > div:first-child > strong {
+  text-transform: uppercase;
+}
+
 @media (min-width: 901px) {
   /* Do not pin every table header to the browser viewport. Individual data grids
      can keep their own local sticky behaviour inside their scroll container. */
@@ -45,15 +53,8 @@
     padding-bottom: 5px !important;
   }
 
-  /* Run identity is system-derived: RUN X + AM/PM. Route/job is not a planner-entered name. */
-  .planner-enhanced-page .simple-run-details > label:first-child {
-    display: none !important;
-  }
   .planner-enhanced-page .simple-run-details {
     grid-template-columns: auto minmax(260px, 1fr) !important;
-  }
-  .planner-enhanced-page .simple-run-header > div:first-child > strong {
-    text-transform: uppercase;
   }
 
   .dispatch-text-first-modal .title-row {

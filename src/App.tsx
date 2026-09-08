@@ -29,7 +29,7 @@ import { ReportingOperational } from './pages/ReportingOperational';
 import { CustomerCommunications } from './pages/CustomerCommunications';
 import { DailyCompliance } from './pages/DailyCompliance';
 import { apiScope, useAccessToken } from './lib/auth';
-import { api } from './lib/api';
+import { request } from './lib/api';
 import { TmsAssistant } from './components/TmsAssistant';
 import { GlobalSearch } from './components/GlobalSearch';
 import { HeaderIntelligence } from './components/HeaderIntelligence';
@@ -112,8 +112,8 @@ function Shell() {
   const refreshReviewOrderCount = useCallback(async () => {
     if (!authenticated || tvMode) return;
     try {
-      const rows = await api.staging(await accessToken(), 'PendingReview', 'order', 2000);
-      setReviewOrderCount(rows.length);
+      const result = await request<{ count: number }>('/api/v1/staging/count?status=PendingReview&entityType=order', await accessToken());
+      setReviewOrderCount(result.count);
     } catch {
       setReviewOrderCount(undefined);
     }
@@ -124,7 +124,7 @@ function Shell() {
     void refreshReviewOrderCount();
     const id = window.setInterval(() => {
       if (document.visibilityState === 'visible') void refreshReviewOrderCount();
-    }, 30000);
+    }, 60000);
     const onFocus = () => void refreshReviewOrderCount();
     window.addEventListener('focus', onFocus);
     return () => {
