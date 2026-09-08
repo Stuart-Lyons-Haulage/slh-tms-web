@@ -3,6 +3,7 @@ import { OperationsWallboard as ExistingOperationsWallboard } from "./Operations
 import { RunGeofenceLinkagePanel } from "./RunGeofenceLinkagePanel";
 import "../run-geofence-linkage.css";
 import "../operations-wallboard-brand.css";
+import "../operations-wallboard-kpi-compat.css";
 
 function FirstCollectionTimeLabel() {
   useEffect(() => {
