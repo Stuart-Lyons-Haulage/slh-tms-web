@@ -7,7 +7,7 @@ export function startVisiblePolling(refresh: () => void | Promise<void>, baseMs:
   let timer: number | undefined;
   let stopped = false;
   let refreshing = false;
-  let lastResumeAt = 0;
+  let lastResumeAt = Number.NEGATIVE_INFINITY;
   const focusEnabled = options.focus !== false;
   const visibilityEnabled = options.visibility !== false;
 
