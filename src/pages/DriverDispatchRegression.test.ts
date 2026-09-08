@@ -14,16 +14,27 @@ describe("Driver Dispatch UI contract", () => {
     expect(source).not.toContain("<input type=\"time\"");
   });
 
-  it("shows the built run pool before the driver allocation table", () => {
+  it("shows only unallocated runs in the pool above the driver table", () => {
     expect(source).toContain("data-testid=\"built-runs-queue\"");
     expect(source).toContain("Built runs ready to allocate");
+    expect(source).toContain("filter(load => !load.driverId)");
     expect(source.indexOf("<BuiltRunsQueue loads={data.loads} />")).toBeLessThan(source.indexOf("dispatch-table-wrap"));
   });
 
-  it("does not leave a selected run stuck behind No Run", () => {
-    expect(source).toContain('selected && persistedStatus === "No Run" ? "Awaiting Dispatch"');
-    expect(source).toContain('driver.assignedLoadId === selected.id ? "Save allocation" : "Allocate"');
-    expect(source).toContain("Allocation saved. Run is ready for dispatch.");
+  it("keeps a successful allocation visible against the driver instead of refreshing it away", () => {
+    expect(source).toContain("const applySavedAllocation = useCallback");
+    expect(source).toContain("assignedLoadId: saved.id");
+    expect(source).toContain("applySavedAllocation(saved, driver.driverId, previous?.id)");
+    expect(source).toContain("Run remains against this driver and is ready to dispatch");
+    const saveStart = source.indexOf("async function save()");
+    const dispatchStart = source.indexOf("async function prepareDispatch()", saveStart);
+    expect(source.slice(saveStart, dispatchStart)).not.toContain("await refresh()");
+  });
+
+  it("makes the Dispatch action available from the locally committed allocation", () => {
+    expect(source).toContain('dispatchStatus: "Awaiting Dispatch"');
+    expect(source).toContain('driver.assignedLoadId === selected.id && effectiveStatus === "Awaiting Dispatch"');
+    expect(source).toContain('>Dispatch</button>');
   });
 
   it("verifies the allocation response contains the selected resources", () => {
