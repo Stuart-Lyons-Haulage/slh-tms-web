@@ -38,8 +38,9 @@ export function DailyAllocationViewer({ initialDate }: { initialDate: string }) 
   const days = useMemo(()=>[-3,-2,-1,0,1,2,3].map(offset=>addDays(date,offset)),[date]);
   const data = mirror.data?.workbench;
   const statuses = mirror.data?.statuses || {};
-  const rows = useMemo(() => [...(data?.drivers || [])].sort((a,b)=>a.driverType.localeCompare(b.driverType) || a.displayName.localeCompare(b.displayName)), [data?.drivers]);
-  const allocated = rows.filter(row=>row.assignedLoadId).length;
+  const rows = useMemo(() => [...(data?.drivers || [])]
+    .filter((driver) => Boolean(driver.assignedLoadId))
+    .sort((a,b)=>a.driverType.localeCompare(b.driverType) || a.displayName.localeCompare(b.displayName)), [data?.drivers]);
   const unallocatedRuns = (data?.loads || []).filter(load=>!load.driverId).length;
 
   useEffect(() => {
@@ -56,18 +57,18 @@ export function DailyAllocationViewer({ initialDate }: { initialDate: string }) 
   }, [refreshMirror]);
 
   return <section className="panel allocation-viewer">
-    <div className="title-row"><div><p className="eyebrow">Read-only Driver Dispatch mirror</p><h2>Driver Dispatch</h2><p className="hint">This is the same driver, allocation and status data used by Driver Dispatch. Nothing can be changed from this Dashboard view.</p></div><Link to={`/driver-dispatch?date=${encodeURIComponent(date)}`}>Open Driver Dispatch →</Link></div>
+    <div className="title-row"><div><p className="eyebrow">Today’s allocated routes</p><h2>Drivers on Runs</h2></div><Link to={`/driver-dispatch?date=${encodeURIComponent(date)}`}>Open Driver Dispatch →</Link></div>
     <div className="allocation-day-strip">{days.map(item=>{const value=label(item);return <button type="button" key={item} className={item===date?"active":""} onClick={()=>setDate(item)}><small>{value.weekday}</small><strong>{value.day}</strong></button>;})}</div>
-    {mirror.loading && !mirror.data && <div className="state">Loading Driver Dispatch mirror…</div>}
-    {mirror.error && <p className="notice inline-notice">Driver Dispatch mirror could not refresh: {mirror.error}</p>}
-    {!mirror.loading && rows.length===0 && <p className="hint">No Driver Dispatch records are available for this day.</p>}
-    {rows.length>0 && <><div className="allocation-viewer-summary"><strong>{allocated}</strong> drivers allocated · <strong>{rows.length}</strong> drivers shown · <strong>{unallocatedRuns}</strong> built run{unallocatedRuns===1?"":"s"} still unallocated</div><div className="allocation-viewer-table-wrap"><table><thead><tr><th>Driver</th><th>Type / skills</th><th>Code</th><th>Day</th><th>Vehicle</th><th>Trailer</th><th>Run</th><th>Assistant</th><th>Status</th></tr></thead><tbody>{rows.map(driver=>{
+    {mirror.loading && !mirror.data && <div className="state">Loading allocated routes…</div>}
+    {mirror.error && <p className="notice inline-notice">Allocated routes could not refresh: {mirror.error}</p>}
+    {!mirror.loading && rows.length===0 && <p className="hint">No drivers are allocated to runs for this day.</p>}
+    {rows.length>0 && <><div className="allocation-viewer-summary"><strong>{rows.length}</strong> allocated driver{rows.length===1?"":"s"} shown · <strong>{unallocatedRuns}</strong> built run{unallocatedRuns===1?"":"s"} still unallocated</div><div className="allocation-viewer-table-wrap"><table><thead><tr><th>Driver</th><th>Type / skills</th><th>Code</th><th>Day</th><th>Vehicle</th><th>Trailer</th><th>Run</th><th>Status</th></tr></thead><tbody>{rows.map(driver=>{
       const load = data?.loads.find(item=>item.id===driver.assignedLoadId);
       const vehicle = load?.vehicleId ? data?.vehicles.find(item=>item.id===load.vehicleId) : undefined;
       const trailer = load?.trailerId ? data?.trailers.find(item=>item.id===load.trailerId) : undefined;
       const status = statuses[driver.driverId];
       const dispatchStatus = effectiveStatus(driver,status);
-      return <tr key={driver.driverId}><td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <small>{driver.leaveType || "Away"}</small>}</td><td>{typeSkills(driver)}</td><td>{driver.coding || "—"}</td><td>{driver.dayNumber}</td><td>{vehicle?.registration || "—"}</td><td>{trailer?.trailerNumber || "—"}</td><td>{load ? <span className="viewer-run">{runLabel(load.reference || load.rawReference)}</span> : "—"}</td><td>{driver.suggestion || "—"}{driver.assistantScore != null && driver.assistantScore > 0 ? <small>Match {driver.assistantScore}</small> : null}</td><td><strong>{dispatchStatus}</strong>{status?.weeklyRestStatus && status.weeklyRestStatus !== "Ready" && status.weeklyRestStatus !== "Unknown" ? <small title={status.weeklyRestMessage}>Tacho: {status.weeklyRestStatus === "Overdue" ? "Weekly rest due" : status.weeklyRestStatus === "Unverified" ? "Weekly rest unavailable" : "Rest due soon"}</small> : null}</td></tr>;
+      return <tr key={driver.driverId}><td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <small>{driver.leaveType || "Away"}</small>}</td><td>{typeSkills(driver)}</td><td>{driver.coding || "—"}</td><td>{driver.dayNumber}</td><td>{vehicle?.registration || "—"}</td><td>{trailer?.trailerNumber || "—"}</td><td>{load ? <span className="viewer-run">{runLabel(load.reference || load.rawReference)}</span> : "—"}</td><td><strong>{dispatchStatus}</strong>{status?.weeklyRestStatus && status.weeklyRestStatus !== "Ready" && status.weeklyRestStatus !== "Unknown" ? <small title={status.weeklyRestMessage}>Tacho: {status.weeklyRestStatus === "Overdue" ? "Weekly rest due" : status.weeklyRestStatus === "Unverified" ? "Weekly rest unavailable" : "Rest due soon"}</small> : null}</td></tr>;
     })}</tbody></table></div></>}
   </section>;
 }
