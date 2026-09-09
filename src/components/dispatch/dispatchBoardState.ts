@@ -87,6 +87,18 @@ export function filterDriversByEmploymentType(
   return drivers.filter(driver => employmentBucket(driver.employmentType) === filter);
 }
 
+export function sortDriversForDispatch(
+  drivers: DispatchDriverDto[],
+  selections: DispatchSelectionMap
+): DispatchDriverDto[] {
+  return [...drivers].sort((left, right) => {
+    const leftHasRun = Boolean(selections[left.driverId]?.runId);
+    const rightHasRun = Boolean(selections[right.driverId]?.runId);
+    if (leftHasRun !== rightHasRun) return leftHasRun ? -1 : 1;
+    return left.name.localeCompare(right.name, "en-GB", { sensitivity: "base" });
+  });
+}
+
 export function filterDispatchDrivers(
   drivers: DispatchDriverDto[],
   filter: DispatchFilter,
@@ -95,9 +107,7 @@ export function filterDispatchDrivers(
   times: DispatchAvailableTimeMap,
   failures: DispatchLockFailure[]
 ): DispatchDriverDto[] {
-  if (filter === "all") return drivers;
-
-  return drivers.filter(driver => {
+  const filtered = filter === "all" ? drivers : drivers.filter(driver => {
     const selection = selections[driver.driverId] || emptyDispatchSelection();
     const selectedRun = runs.find(run => run.runId === selection.runId);
     const suggestedRun = runs.find(run => run.runId === driver.suggestedRunId);
@@ -113,6 +123,8 @@ export function filterDispatchDrivers(
     }
     return true;
   });
+
+  return sortDriversForDispatch(filtered, selections);
 }
 
 export function validateLockSelections(
