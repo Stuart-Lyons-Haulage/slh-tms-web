@@ -1,8 +1,10 @@
 import { canDriverTakeRun, dispatchSkills, parseSkillFlags, tachoVehicleId, trailerEligible, ukTime, wtdClass } from "./dispatchRules";
+import { dispatchActionForStatus } from "./dispatchMessaging";
 import type {
   DispatchAllocationSelection,
   DispatchAvailableTimeDto,
   DispatchDriverDto,
+  DispatchDriverStatusDto,
   DispatchEquipmentTrailer,
   DispatchEquipmentVehicle,
   DispatchLockFailure,
@@ -17,8 +19,14 @@ type Props = {
   runOwnerById: Record<string, string | undefined>;
   selection: DispatchAllocationSelection;
   availableTime?: DispatchAvailableTimeDto;
+  status?: DispatchDriverStatusDto;
+  lockedRunId?: string;
   failures: DispatchLockFailure[];
+  busy: boolean;
   onSelectionChange: (driverId: string, patch: Partial<DispatchAllocationSelection>) => void;
+  onDispatch: (driver: DispatchDriverDto, selection: DispatchAllocationSelection) => void;
+  onAmend: (driver: DispatchDriverDto, selection: DispatchAllocationSelection) => void;
+  onUpdate: (driver: DispatchDriverDto, selection: DispatchAllocationSelection) => void;
 };
 
 function employmentLabel(value: string): string {
@@ -35,6 +43,13 @@ function dayTone(driver: DispatchDriverDto): string {
   return "ok";
 }
 
+function statusTone(status?: string): string {
+  if (status === "Confirmed" || status === "Completed") return "confirmed";
+  if (status === "Sent Awaiting Response" || status === "Dispatched" || status === "Working") return "awaiting";
+  if (status === "Awaiting Dispatch") return "ready";
+  return "empty";
+}
+
 export function DispatchDriverRow({
   driver,
   runs,
@@ -43,8 +58,14 @@ export function DispatchDriverRow({
   runOwnerById,
   selection,
   availableTime,
+  status,
+  lockedRunId,
   failures,
-  onSelectionChange
+  busy,
+  onSelectionChange,
+  onDispatch,
+  onAmend,
+  onUpdate
 }: Props) {
   const heldSkills = parseSkillFlags(driver.skills);
   const visibleSkills = dispatchSkills.filter(item => heldSkills.has(item.skill));
@@ -59,6 +80,9 @@ export function DispatchDriverRow({
   const wtdTone = availableTime?.wtdStatus || wtdClass(wtdHours);
   const blocked = driver.isBlocked;
   const blockedText = driver.blockedReason || "Unavailable";
+  const lockedToDriver = Boolean(selection.runId && lockedRunId === selection.runId);
+  const dispatchStatus = status?.dispatchStatus || (lockedToDriver ? "Awaiting Dispatch" : "No Run");
+  const action = dispatchActionForStatus(lockedToDriver, dispatchStatus);
 
   function changeRun(runId: string) {
     const nextRun = runs.find(run => run.runId === runId);
@@ -79,7 +103,7 @@ export function DispatchDriverRow({
     </td>
 
     <td>
-      <span className={`smart-day ${dayTone(driver)}`}>Day {driver.tachoData.currentDutyDay}</span>
+      <span className={`smart-day ${dayTone(driver)}`}>Day {status?.projectedDayNumber || driver.tachoData.currentDutyDay}</span>
       {driver.needsReturn && <small className="smart-inline-warning">{driver.tachoData.currentDutyDay >= 5 ? "Return priority" : "Return soon"}</small>}
     </td>
 
@@ -91,11 +115,7 @@ export function DispatchDriverRow({
     </td>
 
     <td className="smart-skills-cell">
-      {visibleSkills.map(item => <span
-        key={item.skill}
-        className="smart-skill held"
-        title={item.label}
-      >{item.badge}</span>)}
+      {visibleSkills.map(item => <span key={item.skill} className="smart-skill held" title={item.label}>{item.badge}</span>)}
     </td>
 
     {blocked ? <>
@@ -104,7 +124,7 @@ export function DispatchDriverRow({
       <td><span className="smart-blocked-label">{blockedText}</span></td>
     </> : <>
       <td>
-        <select aria-label={`Run for ${driver.name}`} value={selection.runId} onChange={event => changeRun(event.target.value)}>
+        <select aria-label={`Run for ${driver.name}`} value={selection.runId} onChange={event => changeRun(event.target.value)} disabled={lockedToDriver && dispatchStatus !== "No Run"}>
           <option value="">Run…</option>
           {legalRuns.map(run => <option key={run.runId} value={run.runId}>
             {run.reference}{run.runId === driver.suggestedRunId ? driver.backloadCandidate ? " · Backload candidate" : " · Suggested" : ""}
@@ -112,7 +132,7 @@ export function DispatchDriverRow({
         </select>
       </td>
       <td>
-        <select aria-label={`Vehicle for ${driver.name}`} value={selection.vehicleId} onChange={event => onSelectionChange(driver.driverId, { vehicleId: event.target.value })}>
+        <select aria-label={`Vehicle for ${driver.name}`} value={selection.vehicleId} onChange={event => onSelectionChange(driver.driverId, { vehicleId: event.target.value })} disabled={lockedToDriver && dispatchStatus !== "No Run"}>
           <option value="">Vehicle…</option>
           {vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>
             {vehicle.registration}{vehicle.id === tachoVehicle ? " · Tacho: last used" : ""}
@@ -121,7 +141,7 @@ export function DispatchDriverRow({
         {driver.tachoData.lastVehicleRegistration && <small>Tacho: last used · {driver.tachoData.lastVehicleRegistration}</small>}
       </td>
       <td>
-        <select aria-label={`Trailer for ${driver.name}`} value={selection.trailerId} onChange={event => onSelectionChange(driver.driverId, { trailerId: event.target.value })}>
+        <select aria-label={`Trailer for ${driver.name}`} value={selection.trailerId} onChange={event => onSelectionChange(driver.driverId, { trailerId: event.target.value })} disabled={lockedToDriver && dispatchStatus !== "No Run"}>
           <option value="">Trailer…</option>
           {legalTrailers.map(trailer => <option key={trailer.id} value={trailer.id}>{trailer.trailerNumber}{trailer.type ? ` · ${trailer.type}` : ""}</option>)}
         </select>
@@ -131,7 +151,10 @@ export function DispatchDriverRow({
     </>}
 
     <td className="smart-available-cell">
-      {!availableTime ? <span className="smart-muted">Get times</span> : <>
+      {!availableTime ? <>
+        <strong>{status?.earliestStartUtc ? ukTime(status.earliestStartUtc) : "—"}</strong>
+        <span className="smart-muted">{status?.earliestStartUtc ? status.earliestStartIsAssumption ? "Assumed start" : "Tacho start" : "Get times"}</span>
+      </> : <>
         <strong>{ukTime(availableTime.availableFrom)}</strong>
         <small>{availableTime.requiredRestPeriod}h Tacho rest · WTD {availableTime.weeklyWorkingTimeUsed.toFixed(1)}h</small>
         <div className={`smart-wtd-bar ${wtdTone}`} title={`WTD ${availableTime.weeklyWorkingTimeUsed.toFixed(1)} hours`}>
@@ -141,6 +164,22 @@ export function DispatchDriverRow({
         {availableTime.breachDetail && <small className="smart-inline-error">{availableTime.breachDetail}</small>}
       </>}
       {failures.map((failure, index) => <small className="smart-inline-error" key={`${failure.reason}-${index}`}>{failure.reason}</small>)}
+    </td>
+
+    <td className="smart-status-cell">
+      <span className={`smart-status-pill ${statusTone(status?.operationalStatus || dispatchStatus)}`}>{status?.operationalStatus || dispatchStatus}</span>
+      {status?.driverConfirmed && <small>Driver confirmed</small>}
+      {status?.lastDriverReply && <small title={status.lastDriverReply}>{status.lastDriverReply.length > 60 ? `${status.lastDriverReply.slice(0, 60)}…` : status.lastDriverReply}</small>}
+      {status?.availabilityStatus === "Unavailable" && <small className="smart-inline-error">{status.availabilityMessage || "Tacho unavailable"}</small>}
+    </td>
+
+    <td className="smart-dispatch-action-cell">
+      {action === "allocate" && selection.runId && <small>Lock Plan to allocate and enable Dispatch.</small>}
+      {action === "dispatch" && lockedToDriver && <button className="smart-action primary" type="button" disabled={busy || blocked || status?.availabilityStatus === "Unavailable"} onClick={() => onDispatch(driver, selection)}>{busy ? "Preparing…" : "Dispatch"}</button>}
+      {action === "amend" && lockedToDriver && <>
+        <button className="smart-action secondary" type="button" disabled={busy} onClick={() => onAmend(driver, selection)}>{busy ? "Working…" : "Amendment"}</button>
+        <button className="smart-action ghost dark" type="button" disabled={busy} onClick={() => onUpdate(driver, selection)}>Update text</button>
+      </>}
     </td>
   </tr>;
 }
