@@ -48,6 +48,13 @@ function addMinutes(value: string, minutes: number) {
   return Number.isFinite(timestamp) ? new Date(timestamp + minutes * 60_000).toISOString() : value;
 }
 
+function sameDestination(eta: DeliveryEta, authoritative: RunTimingRecord) {
+  if (authoritative.finalDestinationStopId && eta.stopId === authoritative.finalDestinationStopId) return true;
+  const etaName = cleanStopName(eta.stopName).toLowerCase();
+  const authoritativeName = cleanStopName(authoritative.finalDestinationName).toLowerCase();
+  return Boolean(etaName && authoritativeName && etaName === authoritativeName);
+}
+
 /**
  * Keep the current operational focus and final customer destination distinct without
  * intercepting global fetch. This is the direct equivalent of the old route-progress patch.
@@ -73,6 +80,8 @@ export function enrichRouteFinalDestination(runs: RouteProgressRun[]) {
  *
  * Synthetic timing rows are only a resilience fallback. When the canonical delivery ETA
  * exists they are removed so an older timing snapshot cannot replace a newer live ETA.
+ * A canonical delivery row must retain its delivery window even when the API stop IDs differ;
+ * otherwise a late final ETA could be displayed without being classified as late.
  */
 export function mergeWallboardTiming(
   incoming: DeliveryEta[],
@@ -108,8 +117,8 @@ export function mergeWallboardTiming(
   const records: EnrichedEta[] = canonicalIncoming.map(eta => {
     const authoritative = latestTiming.get(eta.loadId) || lastTiming.get(eta.loadId);
     const fallbackSequence = destinationSequenceByLoad.get(eta.loadId) ?? highestSequenceByLoad.get(eta.loadId);
-    const finalDestination = authoritative?.finalDestinationStopId
-      ? eta.stopId === authoritative.finalDestinationStopId
+    const finalDestination = authoritative
+      ? sameDestination(eta, authoritative) || eta.sequence === fallbackSequence && isDeliveryDestination(eta)
       : eta.sequence === fallbackSequence;
     if (!finalDestination) return eta;
     if (!authoritative?.finalEtaUtc) return { ...eta, isFinalDestination: true };
@@ -137,10 +146,20 @@ export function mergeWallboardTiming(
   });
 
   for (const authoritative of latestTiming.values()) {
-    if (authoritative.completed || !authoritative.finalDestinationStopId || !authoritative.finalEtaUtc) continue;
-    if (records.some(eta => eta.loadId === authoritative.loadId && eta.stopId === authoritative.finalDestinationStopId)) continue;
+    if (authoritative.completed || !authoritative.finalEtaUtc) continue;
 
     const sameLoad = records.filter(eta => eta.loadId === authoritative.loadId);
+    const canonicalDelivery = [...sameLoad]
+      .sort((a, b) => b.sequence - a.sequence)
+      .find(isDeliveryDestination);
+
+    // If a canonical delivery record exists, keep its customer window/risk metadata and
+    // never append a second timing-only final row. Stop IDs can legitimately differ after
+    // plan/import reconciliation, so name/sequence matching above is deliberately tolerant.
+    if (canonicalDelivery) continue;
+    if (!authoritative.finalDestinationStopId) continue;
+    if (records.some(eta => eta.loadId === authoritative.loadId && sameDestination(eta, authoritative))) continue;
+
     const template = sameLoad[0];
     if (!template) continue;
     const highest = Math.max(0, ...sameLoad.map(eta => eta.sequence));
