@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BackloadMatchNotifications } from "../components/BackloadMatchNotifications";
 import { CustomerLoadPlanActions } from "../components/CustomerLoadPlanActions";
 import { DispatchBoard } from "../components/dispatch/DispatchBoard";
 import "../authoritative-dispatch.css";
@@ -16,9 +17,12 @@ export function DriverDispatchOperational() {
     window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
   }, [dispatchDate]);
 
-  return <DispatchBoard
-    planningDate={dispatchDate}
-    onPlanningDateChange={setDispatchDate}
-    extraActions={<CustomerLoadPlanActions date={dispatchDate} />}
-  />;
+  return <>
+    <BackloadMatchNotifications />
+    <DispatchBoard
+      planningDate={dispatchDate}
+      onPlanningDateChange={setDispatchDate}
+      extraActions={<CustomerLoadPlanActions date={dispatchDate} />}
+    />
+  </>;
 }
