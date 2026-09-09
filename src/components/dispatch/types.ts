@@ -8,6 +8,7 @@ export type DispatchSkillName =
   | "ManualHandling";
 
 export type DispatchFilter = "all" | "unallocated" | "backloads" | "warnings" | "skills-mismatch";
+export type DispatchEmploymentFilter = "all" | "employed" | "agency" | "casual" | "subcontractor";
 
 export interface DispatchGeoPointDto {
   latitude: number;
@@ -130,4 +131,25 @@ export interface DispatchEquipmentWorkbench {
   vehicles: DispatchEquipmentVehicle[];
   trailers: DispatchEquipmentTrailer[];
   loads: LegacyDispatchLoad[];
+}
+
+export interface DispatchVisibilityItem {
+  driverId: string;
+  employmentType: "Employed" | "Agency" | "Casual" | "Subcontractor" | string;
+  skills?: string;
+  coding?: string;
+  lastTachoRead?: string;
+  lastLiveActivity?: string;
+  lastExecutedRun?: string;
+  currentlyAllocated: boolean;
+  rosteredAgency: boolean;
+  subcontractor: boolean;
+  evidence: string;
+}
+
+export interface DispatchVisibilitySnapshot {
+  planningDate: string;
+  windowDays: number;
+  cutoffDate: string;
+  drivers: DispatchVisibilityItem[];
 }
