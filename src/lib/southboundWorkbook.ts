@@ -22,7 +22,7 @@ const headers = [
   "Unit",
 ];
 
-function clean(value: WorkbookCell) { return String(value ?? "").trim(); }
+function clean(value: unknown) { return String(value ?? "").trim(); }
 function csv(value: unknown) {
   const text = String(value ?? "");
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -56,7 +56,7 @@ function quantityFromText(value: unknown) {
   return matches.reduce((sum, match) => sum + Number(match[1]), 0);
 }
 function unitFromText(...values: unknown[]) {
-  const text = values.map(clean).join(" ").toLowerCase();
+  const text = values.map(value => clean(value)).join(" ").toLowerCase();
   if (/troll(?:y|ey|ies)/.test(text)) return "Trollies";
   if (/dolav/.test(text)) return "Dolavs";
   if (/crate/.test(text)) return "Crates";
