@@ -11,6 +11,19 @@
 </head>
 <body>
   <div id="root"></div>
+  <script>
+    // Keep the proven TV runtime/geofence logic unchanged, but reduce its heavy
+    // live data poll from 20 seconds to 5 minutes. Clock, page rotation and the
+    // 30-minute hard reload retain their existing independent intervals.
+    (function () {
+      var nativeSetInterval = window.setInterval.bind(window);
+      window.setInterval = function (handler, delay) {
+        var args = Array.prototype.slice.call(arguments, 2);
+        var effectiveDelay = Number(delay) === 20000 ? 5 * 60 * 1000 : delay;
+        return nativeSetInterval.apply(window, [handler, effectiveDelay].concat(args));
+      };
+    }());
+  </script>
   <script src="/tv-wallboard-v3.js?v=20260909-proven-v3-geofence-current"></script>
 </body>
 </html>
