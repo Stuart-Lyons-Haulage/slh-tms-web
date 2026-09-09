@@ -5,6 +5,7 @@ import live from "./OperationsWallboardLive.tsx?raw";
 import linkage from "./RunGeofenceLinkagePanel.tsx?raw";
 
 const css = readFileSync(new URL("../operations-wallboard.css", import.meta.url), "utf8");
+const physicalTv = readFileSync(new URL("../../public/tv-wallboard-v4.js", import.meta.url), "utf8");
 
 describe("Operations wallboard TV parity", () => {
   it("renders the same per-run geofence linkage strip on a paired TV", () => {
@@ -26,5 +27,15 @@ describe("Operations wallboard TV parity", () => {
     expect(css).toContain(".ops-wallboard.tv .ops-board-head");
     expect(css).toContain("min-width: 0;");
     expect(css).toContain("overflow-x: hidden;");
+  });
+
+  it("keeps the physical Hisense board on the same live progress and timing sources as the signed-in TMS", () => {
+    expect(physicalTv).toContain("/api/v1/tv-display/wallboard-proxy/run-progress");
+    expect(physicalTv).toContain("/api/v1/tv-display/route-progress");
+    expect(physicalTv).toContain("/api/v1/tv-display/wallboard-proxy/delivery-etas");
+    expect(physicalTv).toContain("/api/v1/run-timing");
+    expect(physicalTv).toContain("/api/v1/driver-assignments");
+    expect(physicalTv).toContain("Math.max(Number(base.completedStops || 0), Number(route.completedStops || 0))");
+    expect(physicalTv).toContain("finalArrivalUtc(progress, timing, load)");
   });
 });
