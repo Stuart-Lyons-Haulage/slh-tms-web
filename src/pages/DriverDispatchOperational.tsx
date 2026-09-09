@@ -1,4 +1,6 @@
 import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { CustomerLoadPlanActions } from "../components/CustomerLoadPlanActions";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { DriverDispatch } from "./DriverDispatch";
@@ -23,15 +25,21 @@ function statusClass(status: OperationalStatus) {
         : "empty";
 }
 
+function currentDispatchDate() {
+  return new URLSearchParams(window.location.search).get("date") || new Date().toISOString().slice(0, 10);
+}
+
 export function DriverDispatchOperational() {
   const token = useAccessToken();
   const rootRef = useRef<HTMLDivElement>(null);
   const [operationalByDriver, setOperationalByDriver] = useState<Record<string, OperationalDisplay>>({});
+  const [dispatchDate, setDispatchDate] = useState(currentDispatchDate);
+  const [actionHost, setActionHost] = useState<HTMLElement>();
 
   const refreshOperationalStatuses = useCallback(async () => {
     try {
       const access = await token();
-      const date = new URLSearchParams(window.location.search).get("date") || new Date().toISOString().slice(0, 10);
+      const date = currentDispatchDate();
       const [workbench, response] = await Promise.all([
         request<Workbench>(`/api/v1/driver-dispatch?date=${encodeURIComponent(date)}`, access, undefined, 90000),
         request<{ drivers: OperationalDriverStatus[] }>(`/api/v1/driver-dispatch-status?date=${encodeURIComponent(date)}`, access, undefined, 90000)
@@ -68,6 +76,19 @@ export function DriverDispatchOperational() {
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [refreshOperationalStatuses]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const locateHost = () => {
+      const next = root.querySelector<HTMLElement>(".dispatch-title .dispatch-actions");
+      setActionHost(current => current === next ? current : next || undefined);
+    };
+    locateHost();
+    const observer = new MutationObserver(locateHost);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -111,14 +132,20 @@ export function DriverDispatchOperational() {
   // could lose a just-saved allocation, producing the false “driver does not have a run” error.
   // This capture is passive: after the canonical SEND DISPATCH click, re-read operational status so
   // the pill changes to Dispatched promptly without remounting or interrupting the send request.
-  function observeSendDispatch(event: MouseEvent<HTMLDivElement>) {
-    const button = (event.target as HTMLElement).closest("button");
+  function observeDispatchInteraction(event: MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement;
+    if (target instanceof HTMLInputElement && target.type === "date") {
+      setDispatchDate(target.value || currentDispatchDate());
+      return;
+    }
+    const button = target.closest("button");
     if ((button?.textContent || "").trim().toLowerCase() !== "send dispatch") return;
     window.setTimeout(() => void refreshOperationalStatuses(), 1200);
     window.setTimeout(() => void refreshOperationalStatuses(), 3500);
   }
 
-  return <div ref={rootRef} onClickCapture={observeSendDispatch}>
+  return <div ref={rootRef} onClickCapture={observeDispatchInteraction} onChangeCapture={observeDispatchInteraction}>
     <DriverDispatch />
+    {actionHost && createPortal(<CustomerLoadPlanActions date={dispatchDate} />, actionHost)}
   </div>;
 }
