@@ -21,6 +21,13 @@ describe("Order Review source email evidence", () => {
     expect(drawerSource).not.toContain("Open original in Outlook");
   });
 
+  it("normalises legacy recipient and attachment shapes before array operations", () => {
+    expect(drawerSource).toContain("function normaliseArray<T>");
+    expect(drawerSource).toContain("normaliseArray<Recipient>(items).map");
+    expect(drawerSource).toContain("normaliseArray<Attachment>(evidence?.attachments).filter");
+    expect(drawerSource).toContain("JSON.parse(trimmed)");
+  });
+
   it("opens the exact source email when an Order Review attention item is clicked", () => {
     expect(dashboardSource).toContain("&sourceEmail=1");
     expect(controlSource).toContain('searchParams.get("reviewId")');
