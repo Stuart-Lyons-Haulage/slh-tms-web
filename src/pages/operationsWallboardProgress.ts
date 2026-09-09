@@ -246,7 +246,6 @@ function timeMs(value?: string) {
 function nextStopDeadline(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined) {
   return progress?.nextStop?.plannedArrivalUtc || eta?.deliveryWindowEndUtc;
 }
-
 function nextStopKind(stopName: string) {
   if (/^deliver\b/i.test(stopName)) return { label: "DELIVERY", plan: "delivery plan" };
   if (/^collect\b/i.test(stopName)) return { label: "COLLECTION", plan: "collection plan" };
@@ -355,6 +354,9 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
 }
 
 export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
+  // AVAILABLE means the final operational stop has actually completed (normally a
+  // confirmed geofence exit). Arrival at the final geofence is an ON SITE/ARRIVED
+  // state and must never free the driver for another job.
   const complete = progress?.runState === "Completed"
     || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops
     || Boolean(progress && isFinalDestinationArrived(progress))
@@ -422,7 +424,6 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
         priority: 94,
       };
     }
-
     if (nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
       return { status: "risk", label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
     }
@@ -550,7 +551,7 @@ export function isFinalDestinationArrived(record: RunProgressRecord) {
   const currentStopSequence = record.stopDwell?.find(stop => stop.stopId === record.currentVisit?.loadStopId)?.sequence
     ?? (nextStop && nextStop.id === record.currentVisit.loadStopId ? nextStop.sequence : undefined);
   if (currentStopSequence != null) return currentStopSequence === record.totalStops;
-  return record.completedStops === record.totalStops - 1;
+  return false;
 }
 
 export function finalArrivalUtc(record?: RunProgressRecord) {
