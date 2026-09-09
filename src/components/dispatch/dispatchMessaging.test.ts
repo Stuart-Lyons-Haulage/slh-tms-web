@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
+import type { RunDispatchDto } from "../../types/dto/dispatch";
 import { buildDispatchText, dispatchActionForStatus } from "./dispatchMessaging";
 
-const dispatch = {
-  driver: { displayName: "Dan Driver" },
+const dispatch: RunDispatchDto = {
+  reference: "Run 4 PM",
+  planningDate: "2026-09-10",
+  status: "Allocated",
+  driver: { displayName: "Dan Driver", employeeNumber: "D001" },
   vehicle: { registration: "AB12 CDE" },
   trailer: { trailerNumber: "TRL-01" },
   stops: [
@@ -10,13 +14,13 @@ const dispatch = {
       sequence: 1,
       name: "Collect · Runcton",
       address: "Runcton, Chichester",
-      order: { reference: "PO-123" }
+      order: { reference: "PO-123", customerCode: "NWF" }
     },
     {
       sequence: 2,
       name: "Deliver · Birmingham Market",
       address: "Birmingham",
-      order: { marketName: "Birmingham Wholesale Market", stallNumber: "A12", driverInstructions: "Call on arrival" }
+      order: { reference: "MKT-1", customerCode: "MKT", marketName: "Birmingham Wholesale Market", stallNumber: "A12", driverInstructions: "Call on arrival" }
     }
   ]
 };
