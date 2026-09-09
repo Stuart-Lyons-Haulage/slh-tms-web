@@ -28,8 +28,24 @@ function mappedEtaSource(source?: string): DeliveryEta['source'] | undefined {
   return source === 'Geofence' ? 'Live' : source === 'GeofenceEstimated' ? 'Estimated' : undefined;
 }
 
+function combinedEtaSource(timingSource: DeliveryEta['source'] | undefined, deliverySource: DeliveryEta['source']) {
+  if (timingSource === 'Estimated' || deliverySource === 'Estimated') return 'Estimated' as DeliveryEta['source'];
+  if (timingSource === 'Live' || deliverySource === 'Live') return 'Live' as DeliveryEta['source'];
+  return timingSource || deliverySource;
+}
+
 function cleanStopName(value?: string) {
   return String(value || '').replace(/^Collect\s*[·:-]?\s*|^Deliver\s*[·:-]?\s*/i, '').trim();
+}
+
+function isSyntheticTimingEta(eta: DeliveryEta) {
+  return eta.stopId.startsWith('timing-final-') || eta.sequence === Number.MAX_SAFE_INTEGER;
+}
+
+function addMinutes(value: string, minutes: number) {
+  if (!minutes) return value;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp + minutes * 60_000).toISOString() : value;
 }
 
 /**
@@ -48,9 +64,15 @@ export function enrichRouteFinalDestination(runs: RouteProgressRun[]) {
 }
 
 /**
- * Merge authoritative Run Timing evidence into delivery ETAs. Completed customer delivery
- * evidence is retained even when a later return/depot leg remains active. State is explicit
- * and component-owned; no Response/global-fetch mutation is used.
+ * Build one authoritative customer ETA for every board.
+ *
+ * Run Timing contributes the live RoadTech/geofence route, current-site dwell and
+ * remaining-stop sequence. Delivery ETA contributes the TachoMaster legal-break
+ * calculation and customer delivery window. The same merged value is consumed by the
+ * signed-in Operations wallboard and the paired TV wallboard.
+ *
+ * Synthetic timing rows are only a resilience fallback. When the canonical delivery ETA
+ * exists they are removed so an older timing snapshot cannot replace a newer live ETA.
  */
 export function mergeWallboardTiming(
   incoming: DeliveryEta[],
@@ -70,15 +92,20 @@ export function mergeWallboardTiming(
   const latestTiming = new Map<string, RunTimingRecord>();
   for (const record of timingRecords) latestTiming.set(record.loadId, record);
 
+  const loadsWithCanonicalEta = new Set(
+    incoming.filter(eta => !isSyntheticTimingEta(eta)).map(eta => eta.loadId),
+  );
+  const canonicalIncoming = incoming.filter(eta => !isSyntheticTimingEta(eta) || !loadsWithCanonicalEta.has(eta.loadId));
+
   const highestSequenceByLoad = new Map<string, number>();
   const destinationSequenceByLoad = new Map<string, number>();
-  for (const eta of incoming) {
+  for (const eta of canonicalIncoming) {
     highestSequenceByLoad.set(eta.loadId, Math.max(highestSequenceByLoad.get(eta.loadId) ?? eta.sequence, eta.sequence));
     if (isDeliveryDestination(eta))
       destinationSequenceByLoad.set(eta.loadId, Math.max(destinationSequenceByLoad.get(eta.loadId) ?? eta.sequence, eta.sequence));
   }
 
-  const records: EnrichedEta[] = incoming.map(eta => {
+  const records: EnrichedEta[] = canonicalIncoming.map(eta => {
     const authoritative = latestTiming.get(eta.loadId) || lastTiming.get(eta.loadId);
     const fallbackSequence = destinationSequenceByLoad.get(eta.loadId) ?? highestSequenceByLoad.get(eta.loadId);
     const finalDestination = authoritative?.finalDestinationStopId
@@ -87,8 +114,14 @@ export function mergeWallboardTiming(
     if (!finalDestination) return eta;
     if (!authoritative?.finalEtaUtc) return { ...eta, isFinalDestination: true };
 
+    const timingSource = mappedEtaSource(authoritative.finalEtaSource);
+    const timingMs = Date.parse(authoritative.finalEtaUtc);
+    const futurePrediction = Number.isFinite(timingMs) && timingMs > Date.now() + 30_000;
+    const legalBreakMinutes = futurePrediction ? Math.max(0, Number(eta.breakMinutesIncluded || 0)) : 0;
+    const combinedCandidate = addMinutes(authoritative.finalEtaUtc, legalBreakMinutes);
+
     const acceptedEta = stableFinalEta(
-      authoritative.finalEtaUtc,
+      combinedCandidate,
       eta.etaUtc,
       eta.deliveryWindowEndUtc,
       acceptedFinalEtas.get(eta.loadId),
@@ -99,7 +132,7 @@ export function mergeWallboardTiming(
       ...eta,
       isFinalDestination: true,
       etaUtc: acceptedEta,
-      source: mappedEtaSource(authoritative.finalEtaSource) || eta.source,
+      source: combinedEtaSource(timingSource, eta.source),
     };
   });
 
