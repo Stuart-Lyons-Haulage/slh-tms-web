@@ -168,6 +168,23 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
   const tableRef = useRef<HTMLDivElement | null>(null);
   const liveRefreshInFlight = useRef<Promise<void> | null>(null);
   const latestAssignments = useRef<DriverAssignment[]>([]);
+
+  const mergeAssignments = (incoming: DriverAssignment[]) => {
+    const previous = new Map(latestAssignments.current.map(item => [item.loadId, item]));
+    for (const item of incoming) {
+      const prior = previous.get(item.loadId);
+      previous.set(item.loadId, prior ? {
+        ...prior,
+        ...item,
+        driver: item.driver || prior.driver,
+        vehicle: item.vehicle || prior.vehicle,
+        trailerNumber: item.trailerNumber || prior.trailerNumber,
+      } : item);
+    }
+    const merged = [...previous.values()];
+    latestAssignments.current = merged;
+    return merged;
+  };
   const lastTiming = useRef(new Map<string, { loadId: string; loadReference?: string; completed: boolean; finalEtaUtc?: string; finalEtaSource?: string; finalDestinationStopId?: string; finalDestinationName?: string }>());
   const acceptedFinalEtas = useRef(new Map<string, string>());
 
@@ -181,12 +198,9 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       : api.driverAssignments(from, to, access);
     const [loadsResult, assignmentsResult] = await Promise.allSettled([getLoads(today), getAssignments(today, today)]);
     if (loadsResult.status === "rejected") throw loadsResult.reason;
-    const assignments = assignmentsResult.status === "fulfilled" && assignmentsResult.value.length
-      ? assignmentsResult.value
+    const assignments = assignmentsResult.status === "fulfilled"
+      ? mergeAssignments(assignmentsResult.value)
       : latestAssignments.current;
-    if (assignmentsResult.status === "fulfilled" && assignmentsResult.value.length) {
-      latestAssignments.current = assignmentsResult.value;
-    }
     return {
       loads: loadsResult.value.filter(load => load.status !== "Cancelled"),
       assignments,

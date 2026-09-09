@@ -96,6 +96,24 @@
     }
     return out;
   }
+  function mergeAssignments(previous, incoming) {
+    var out = indexBy(previous || [], 'loadId'), i, item, prior;
+    for (i = 0; i < (incoming || []).length; i += 1) {
+      item = incoming[i]; prior = out[String(item.loadId)];
+      out[String(item.loadId)] = prior ? {
+        loadId: item.loadId,
+        loadReference: item.loadReference || prior.loadReference,
+        status: item.status || prior.status,
+        planningDate: item.planningDate || prior.planningDate,
+        driver: item.driver || prior.driver,
+        vehicle: item.vehicle || prior.vehicle,
+        trailerNumber: item.trailerNumber || prior.trailerNumber,
+        stopCount: item.stopCount || prior.stopCount,
+        finalStop: item.finalStop || prior.finalStop
+      } : item;
+    }
+    return Object.keys(out).map(function (id) { return out[id]; });
+  }
   function finalEta(list) {
     var values = (list || []).slice(0), i, candidate = null;
     values.sort(function (a, b) { return Number(a.sequence || 0) - Number(b.sequence || 0); });
@@ -386,7 +404,7 @@
         else if (name === 'loads' || name === 'assignments') { coreErrors.push(name); }
         else { optionalErrors.push(name); }
       } else if (name === 'loads') { state.loads = data || []; }
-      else if (name === 'assignments') { state.assignments = data || []; }
+      else if (name === 'assignments') { state.assignments = mergeAssignments(state.assignments, data || []); }
       else if (name === 'progress') { if (data && data.records) { state.progress = data.records; } }
       else if (name === 'route') { if (data && data.runs) { state.route = data.runs; } }
       else if (name === 'etas') { if (data && data.records) { state.etas = data.records; } }

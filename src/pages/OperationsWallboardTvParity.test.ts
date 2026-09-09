@@ -42,5 +42,6 @@ describe("Operations wallboard TV parity", () => {
     expect(physicalTv).toContain("var REFRESH_MS = 5 * 60 * 1000");
     expect(physicalTv).not.toContain("HARD_RELOAD_MS");
     expect(physicalTv).toContain("dispatch allocation");
+    expect(physicalTv).toContain("mergeAssignments(state.assignments, data || [])");
   });
 });
