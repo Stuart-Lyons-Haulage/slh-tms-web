@@ -26,14 +26,18 @@ describe("SLH TMS performance policy", () => {
     expect(effectivePollingDelay("/control-centre", 20_000)).toBe(600_000);
   });
 
-  it("makes Planner and Pallet Control event-driven and removes Pallet 2-second polling", () => {
+  it("makes Planner and Pallet Control event-driven without remount refreshes", () => {
     const pallet = source("../pages/PalletPlanningControl.tsx");
-    const planner = source("../pages/PlannerEnhanced.tsx");
+    const plannerShell = source("../pages/PlannerEnhanced.tsx");
+    const planner = source("../pages/RunPlannerLive.tsx");
     expect(pallet).toContain("subscribePlanningChanges");
     expect(pallet).toContain("30_000");
     expect(pallet).not.toContain("2000");
     expect(pallet).not.toContain("2_000");
-    expect(planner).toContain("subscribeServerPlanningChanges");
+    expect(planner).toContain("subscribePlanningChanges");
+    expect(planner).toContain("30_000");
+    expect(plannerShell).not.toContain("serverRevision");
+    expect(plannerShell).not.toContain("subscribeServerPlanningChanges");
   });
 
   it("uses the staging count endpoint for the navigation badge at about 120 seconds", () => {
