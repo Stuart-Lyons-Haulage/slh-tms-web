@@ -560,5 +560,9 @@ export function finalArrivalUtc(record?: RunProgressRecord) {
 }
 
 export function completedJobCount(progress: RunProgressRecord[]) {
-  return progress.reduce((total, record) => total + Math.max(0, record.completedStops || 0), 0);
+  return progress.reduce((total, record) => {
+    const completedStops = Math.max(0, record.completedStops || 0);
+    const finalArrivalAddsStop = completedStops < record.totalStops && isFinalDestinationArrived(record);
+    return total + completedStops + (finalArrivalAddsStop ? 1 : 0);
+  }, 0);
 }

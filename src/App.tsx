@@ -1,34 +1,36 @@
-import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useState } from 'react';
+import { Component, lazy, Suspense, type ErrorInfo, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { DriverAssignments, LiveTracking } from './pages/Pages';
-import { ExportCentre } from './pages/ExportCentre';
-import { FuelCardMigration } from './pages/FuelCardMigration';
-import { Management } from './pages/Management';
-import { NightOutReport } from './pages/NightOutReport';
-import { ControlCentre } from './pages/ControlCentre';
-import { OrderControl } from './pages/OrderControl';
-import { StablePlanner } from './pages/StablePlanner';
-import { PlannerEnhanced } from './pages/PlannerEnhanced';
-import { PalletPlanningControl } from './pages/PalletPlanningControl';
-import { WarehousePlanning } from './pages/WarehousePlanning';
-import { DriverDispatchOperational } from './pages/DriverDispatchOperational';
-import { BetaOptimiser } from './pages/BetaOptimiser';
-import { RunPerformance } from './pages/RunPerformance';
-import { OperationalPlanner } from './pages/OperationalPlanner';
-import { PlannerV2 } from './pages/PlannerV2';
-import { PlannerV3 } from './pages/PlannerV3';
-import { MasterDataHub } from './pages/MasterDataHub';
-import { PlanStability, TimelinePage } from './pages/OperationsIntelligence';
-import { AttentionAndExceptions } from './pages/AttentionAndExceptions';
-import { DashboardOperational } from './pages/DashboardOperational';
-import { OperationsWallboard } from './pages/OperationsWallboard';
-import { PublicTvBoard } from './pages/PublicTvBoard';
-import { TvDisplaySetup } from './pages/TvDisplaySetup';
-import { ImportCentre } from './pages/ImportCentre';
-import { ReportingOperational } from './pages/ReportingOperational';
-import { CustomerCommunications } from './pages/CustomerCommunications';
-import { DailyCompliance } from './pages/DailyCompliance';
+const ExportCentre = lazy(() => import('./pages/ExportCentre').then(module => ({ default: module.ExportCentre })));
+const FuelCardMigration = lazy(() => import('./pages/FuelCardMigration').then(module => ({ default: module.FuelCardMigration })));
+const Management = lazy(() => import('./pages/Management').then(module => ({ default: module.Management })));
+const NightOutReport = lazy(() => import('./pages/NightOutReport').then(module => ({ default: module.NightOutReport })));
+const ControlCentre = lazy(() => import('./pages/ControlCentre').then(module => ({ default: module.ControlCentre })));
+const OrderControl = lazy(() => import('./pages/OrderControl').then(module => ({ default: module.OrderControl })));
+const StablePlanner = lazy(() => import('./pages/StablePlanner').then(module => ({ default: module.StablePlanner })));
+const PlannerEnhanced = lazy(() => import('./pages/PlannerEnhanced').then(module => ({ default: module.PlannerEnhanced })));
+const PalletPlanningControl = lazy(() => import('./pages/PalletPlanningControl').then(module => ({ default: module.PalletPlanningControl })));
+const WarehousePlanning = lazy(() => import('./pages/WarehousePlanning').then(module => ({ default: module.WarehousePlanning })));
+const DriverDispatchOperational = lazy(() => import('./pages/DriverDispatchOperational').then(module => ({ default: module.DriverDispatchOperational })));
+const BetaOptimiser = lazy(() => import('./pages/BetaOptimiser').then(module => ({ default: module.BetaOptimiser })));
+const RunPerformance = lazy(() => import('./pages/RunPerformance').then(module => ({ default: module.RunPerformance })));
+const OperationalPlanner = lazy(() => import('./pages/OperationalPlanner').then(module => ({ default: module.OperationalPlanner })));
+const PlannerV2 = lazy(() => import('./pages/PlannerV2').then(module => ({ default: module.PlannerV2 })));
+const PlannerV3 = lazy(() => import('./pages/PlannerV3').then(module => ({ default: module.PlannerV3 })));
+const MasterDataHub = lazy(() => import('./pages/MasterDataHub').then(module => ({ default: module.MasterDataHub })));
+const PlanStability = lazy(() => import('./pages/OperationsIntelligence').then(module => ({ default: module.PlanStability })));
+const TimelinePage = lazy(() => import('./pages/OperationsIntelligence').then(module => ({ default: module.TimelinePage })));
+const AttentionAndExceptions = lazy(() => import('./pages/AttentionAndExceptions').then(module => ({ default: module.AttentionAndExceptions })));
+const DashboardOperational = lazy(() => import('./pages/DashboardOperational').then(module => ({ default: module.DashboardOperational })));
+const OperationsWallboard = lazy(() => import('./pages/OperationsWallboard').then(module => ({ default: module.OperationsWallboard })));
+const PublicTvBoard = lazy(() => import('./pages/PublicTvBoard').then(module => ({ default: module.PublicTvBoard })));
+const TvDisplaySetup = lazy(() => import('./pages/TvDisplaySetup').then(module => ({ default: module.TvDisplaySetup })));
+const ImportCentre = lazy(() => import('./pages/ImportCentre').then(module => ({ default: module.ImportCentre })));
+const ReportingOperational = lazy(() => import('./pages/ReportingOperational').then(module => ({ default: module.ReportingOperational })));
+const CustomerCommunications = lazy(() => import('./pages/CustomerCommunications').then(module => ({ default: module.CustomerCommunications })));
+const DailyCompliance = lazy(() => import('./pages/DailyCompliance').then(module => ({ default: module.DailyCompliance })));
+const DriverAssignments = lazy(() => import('./pages/Pages').then(module => ({ default: module.DriverAssignments })));
+const LiveTracking = lazy(() => import('./pages/Pages').then(module => ({ default: module.LiveTracking })));
 import { apiScope, useAccessToken } from './lib/auth';
 import { request } from './lib/api';
 import { connectPlanningEventStream } from './lib/planningEvents';
@@ -91,15 +93,16 @@ function Shell() {
     return startVisiblePolling(refreshReviewOrderCount, 120_000);
   }, [authenticated, refreshReviewOrderCount, tvMode]);
 
-  const tvContent = <RouteErrorBoundary key={location.pathname + location.search}><PublicTvBoard /></RouteErrorBoundary>;
+  const loadingContent = <section className="sign-in-panel" aria-live="polite"><p className="eyebrow">Loading</p><h1>Opening TMS screen…</h1></section>;
+  const tvContent = <RouteErrorBoundary key={location.pathname + location.search}><Suspense fallback={loadingContent}><PublicTvBoard /></Suspense></RouteErrorBoundary>;
 
   return <div className={`app-shell ${authenticated && !tvMode ? 'with-system-strip top-navigation-shell' : ''} ${tvMode ? 'tv-public-mode' : ''}`}>
     {!tvMode && <header className="top-app-header"><button className="menu" onClick={() => setOpen(!open)} aria-label="Toggle navigation" aria-expanded={open}>☰</button><NavLink className="brand" to="/dashboard"><span>SLH</span><small>Transport management</small></NavLink>{authenticated ? <div className="top-nav-search"><GlobalSearch /></div> : <div className="header-context"><b>Daily transport control</b></div>}<div className="header-actions">{authenticated ? <><span className="user">{accounts[0]?.name}</span><button onClick={() => instance.logoutRedirect()}>Sign out</button></> : <button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button>}</div></header>}
     {authenticated && !tvMode && <nav className={`top-navigation ${open ? 'mobile-open' : ''}`} aria-label="Primary TMS navigation"><NavLink className="top-nav-direct" to="/dashboard">Daily Dashboard</NavLink>{topNavigation.map(group => <TopNavGroup key={group.label} group={group} current={location.pathname} reviewOrderCount={reviewOrderCount} />)}</nav>}
     {authenticated && !tvMode && <div className="system-strip"><HeaderIntelligence /></div>}
-    <main className={tvMode ? 'tv-main' : undefined}>{tvMode ? tvContent : authenticated ? <>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
+    <main className={tvMode ? 'tv-main' : undefined}>{tvMode ? tvContent : authenticated ? <><Suspense fallback={loadingContent}>{location.pathname === '/management' && <ManagementStabilityBanner />}<RouteErrorBoundary key={location.pathname}><Routes>
       <Route path="/" element={<PlannerEnhanced />} /><Route path="/dashboard" element={<DashboardOperational />} /><Route path="/operations-wallboard" element={<OperationsWallboard />} /><Route path="/live-runs" element={<OperationsWallboard />} /><Route path="/tv-display" element={<TvDisplaySetup />} /><Route path="/order-intake" element={<ImportCentre initialTab="orders" />} /><Route path="/jobs" element={<OrderControl initialTab="live" />} /><Route path="/driver-dispatch" element={<DriverDispatchOperational />} /><Route path="/beta-optimiser" element={<BetaOptimiser />} /><Route path="/loads" element={<DriverDispatchOperational />} /><Route path="/allocation" element={<DriverDispatchOperational />} /><Route path="/pallet-control" element={<PalletPlanningControl />} /><Route path="/warehouse" element={<WarehousePlanning />} /><Route path="/planner-stable" element={<StablePlanner />} /><Route path="/planner-import" element={<ImportCentre />} /><Route path="/planner-lab" element={<OperationalPlanner />} /><Route path="/planner-v2" element={<PlannerV2 />} /><Route path="/planner-v3" element={<PlannerV3 />} /><Route path="/driver-assignments" element={<DriverAssignments />} /><Route path="/tracking" element={<LiveTracking />} /><Route path="/staging" element={<OrderControl />} /><Route path="/attention" element={<AttentionAndExceptions />} /><Route path="/exceptions" element={<AttentionAndExceptions />} /><Route path="/readiness" element={<DashboardOperational />} /><Route path="/plan-stability" element={<PlanStability />} /><Route path="/timeline/run/:id" element={<TimelinePage kind="run" />} /><Route path="/timeline/order/:id" element={<TimelinePage kind="order" />} /><Route path="/management" element={<Management />} /><Route path="/run-performance" element={<RunPerformance />} /><Route path="/night-outs" element={<NightOutReport />} /><Route path="/compliance" element={<DailyCompliance />} /><Route path="/control-centre" element={<ControlCentre />} /><Route path="/operations-control" element={<ControlCentre />} /><Route path="/admin" element={<ControlCentre />} /><Route path="/driver" element={<DriverDispatchOperational />} /><Route path="/communications" element={<CustomerCommunications />} /><Route path="/master-data" element={<MasterDataHub />} /><Route path="/drivers" element={<MasterDataHub initialSection="drivers" />} /><Route path="/fleet-assets" element={<MasterDataHub initialSection="vehicles" />} /><Route path="/fuel-cards" element={<MasterDataHub initialSection="fuel-cards" />} /><Route path="/customers" element={<MasterDataHub initialSection="customers" />} /><Route path="/sites" element={<MasterDataHub initialSection="sites" />} /><Route path="/markets" element={<MasterDataHub initialSection="markets" />} /><Route path="/fuel" element={<MasterDataHub initialSection="fuel-prices" />} /><Route path="/admin/fuel-card-migration" element={<FuelCardMigration />} /><Route path="/reporting" element={<ReportingOperational />} /><Route path="/exports" element={<ExportCentre />} />
-    </Routes></RouteErrorBoundary></> : <section className="sign-in-panel"><p className="eyebrow">Secure operations portal</p><h1>Sign in to Stuart Lyons Haulage TMS</h1><p>Use your Lyons Microsoft account to open live planning, fleet tracking, orders and master data.</p><button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button></section>}</main>
+    </Routes></RouteErrorBoundary></Suspense></> : <section className="sign-in-panel"><p className="eyebrow">Secure operations portal</p><h1>Sign in to Stuart Lyons Haulage TMS</h1><p>Use your Lyons Microsoft account to open live planning, fleet tracking, orders and master data.</p><button className="primary" onClick={signIn} disabled={!apiScope}>Sign in with Microsoft</button></section>}</main>
     {authenticated && !tvMode && <><TmsAssistant /><MobileDock openMenu={() => setOpen(true)} /></>}
   </div>;
 }
