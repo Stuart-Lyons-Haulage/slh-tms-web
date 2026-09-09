@@ -21,6 +21,13 @@ describe("MasterDataCsvImport", () => {
     expect(diff.differences).toContain("fuelPin");
   });
 
+  it("requires explicit review before adding a new master row", () => {
+    const parsed = parseMasterDataCsv("Site Code,Site Name,Aliases\nNEW-SITE,New Site,New Alias\n", "site", "sites.csv");
+    const diff = compareMasterDataRow("site", parsed.requests[0], []);
+    expect(diff.status).toBe("NEW");
+    expect(diff.selected).toBe(false);
+  });
+
   it("marks identical rows unchanged", () => {
     const parsed = parseMasterDataCsv("Route Combination,Pallet Type,Last Despatch\nNWF-Sel-Aldi-Neston,Euro,07:00\n", "sitetimingrule", "timing.csv");
     const diff = compareMasterDataRow("sitetimingrule", parsed.requests[0], [{ routeCombination: "NWF-Sel-Aldi-Neston", palletType: "Euro", lastDespatch: "07:00" }]);
