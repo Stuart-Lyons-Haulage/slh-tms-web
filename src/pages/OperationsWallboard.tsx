@@ -128,13 +128,14 @@ function CompletedExitEvidenceLabel() {
         const departed = cell.querySelectorAll(".ops-progress-marker.done");
         const existing = cell.querySelector<HTMLElement>(".ops-progress-exit-evidence");
         if (markers.length > 0 && departed.length === markers.length) {
+          const evidenceText = `${departed.length} of ${markers.length} geofences exited`;
           if (!existing) {
             const label = document.createElement("small");
             label.className = "ops-progress-exit-evidence";
-            label.textContent = `${departed.length} of ${markers.length} geofences exited`;
+            label.textContent = evidenceText;
             cell.appendChild(label);
-          } else {
-            existing.textContent = `${departed.length} of ${markers.length} geofences exited`;
+          } else if (existing.textContent !== evidenceText) {
+            existing.textContent = evidenceText;
           }
         } else {
           existing?.remove();
