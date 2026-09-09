@@ -30,6 +30,7 @@ describe("Operations wallboard TV parity", () => {
   });
 
   it("keeps the physical Hisense board on the same live progress and timing sources as the signed-in TMS", () => {
+    expect(readFileSync(new URL("../../public/tv.html", import.meta.url), "utf8")).toContain("/tv-wallboard-v4.js");
     expect(physicalTv).toContain("/api/v1/tv-display/wallboard-proxy/run-progress");
     expect(physicalTv).toContain("/api/v1/tv-display/route-progress");
     expect(physicalTv).toContain("/api/v1/tv-display/wallboard-proxy/delivery-etas");
@@ -37,5 +38,10 @@ describe("Operations wallboard TV parity", () => {
     expect(physicalTv).toContain("/api/v1/driver-assignments");
     expect(physicalTv).toContain("Math.max(Number(base.completedStops || 0), Number(route.completedStops || 0))");
     expect(physicalTv).toContain("finalArrivalUtc(progress, timing, load)");
+    expect(physicalTv).toContain("var ROTATE_MS = 60 * 1000");
+    expect(physicalTv).toContain("var REFRESH_MS = 5 * 60 * 1000");
+    expect(physicalTv).not.toContain("HARD_RELOAD_MS");
+    expect(physicalTv).toContain("dispatch allocation");
+    expect(physicalTv).toContain("mergeAssignments(state.assignments, data || [])");
   });
 });
