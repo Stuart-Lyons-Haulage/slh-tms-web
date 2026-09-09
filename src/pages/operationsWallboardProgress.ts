@@ -246,7 +246,6 @@ function timeMs(value?: string) {
 function nextStopDeadline(progress: RunProgressRecord | undefined, eta: DeliveryEta | undefined) {
   return progress?.nextStop?.plannedArrivalUtc || eta?.deliveryWindowEndUtc;
 }
-
 function nextStopKind(stopName: string) {
   if (/^deliver\b/i.test(stopName)) return { label: "DELIVERY", plan: "delivery plan" };
   if (/^collect\b/i.test(stopName)) return { label: "COLLECTION", plan: "collection plan" };
@@ -355,9 +354,11 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
 }
 
 export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
+  // AVAILABLE means the final operational stop has actually completed (normally a
+  // confirmed geofence exit). Arrival at the final geofence is an ON SITE/ARRIVED
+  // state and must never free the driver for another job.
   const complete = progress?.runState === "Completed"
-    || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops
-    || Boolean(progress && isFinalDestinationArrived(progress));
+    || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops;
   if (complete) {
     return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
   }
@@ -426,7 +427,6 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
         priority: 94,
       };
     }
-
     if (nextEta?.source === "Live" && nextEta.risk === "AtRisk") {
       return { status: "risk", label: "AT RISK", detail: `${nextEta.stopName} has limited ETA buffer`, priority: 85 };
     }
@@ -548,17 +548,15 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
 export function isFinalDestinationArrived(record: RunProgressRecord) {
   if (record.totalStops <= 0) return false;
   const finalStop = record.stopDwell?.find(stop => stop.sequence === record.totalStops);
-  // The route-progress feed can lag behind the durable geofence feed: in that
-  // window the final stop is already OnSite/Departed while completedStops is
-  // still one short. Treat that as the same final-arrival evidence as a live
-  // currentVisit so the board cannot show the driver as moving past the finish.
+  // Only explicit final-stop evidence may prove arrival. Completing every earlier
+  // geofence is not proof that the vehicle has reached the final customer.
   if (finalStop?.state === "OnSite" || finalStop?.state === "Departed") return true;
   if (!record.currentVisit) return false;
   const nextStop = record.nextStop;
   const currentStopSequence = record.stopDwell?.find(stop => stop.stopId === record.currentVisit?.loadStopId)?.sequence
     ?? (nextStop && nextStop.id === record.currentVisit.loadStopId ? nextStop.sequence : undefined);
   if (currentStopSequence != null) return currentStopSequence === record.totalStops;
-  return record.completedStops === record.totalStops - 1;
+  return false;
 }
 
 export function finalArrivalUtc(record?: RunProgressRecord) {
