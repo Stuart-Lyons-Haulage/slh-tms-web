@@ -2,7 +2,7 @@ import { useState } from "react";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { formatDateLong, formatDateTime, todayIsoDate } from "../lib/dateUtils";
-import { parsePlannerCsv } from "../lib/plannerCsvImport";
+import { parsePlannerPlanFile } from "../lib/plannerFileImport";
 import {
   type BetaDayPlan,
   type BetaDayPlanComparison,
@@ -173,8 +173,7 @@ export function BetaOptimiser() {
     setBusy(true);
     setMessage(undefined);
     try {
-      const text = await file.text();
-      const payload = parsePlannerCsv(text, file.name);
+      const payload = await parsePlannerPlanFile(file);
       const comparisonRequest = plannerPayloadToBetaComparison(payload);
       if (comparisonRequest.routes.length === 0) throw new Error("The Lyons plan contains no runs marked for inclusion.");
       setPlannerFileName(file.name);
@@ -205,10 +204,11 @@ export function BetaOptimiser() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
           <label><small>Planning date</small><br/><input type="date" value={planningDate} onChange={event => setPlanningDate(event.target.value)} disabled={busy} /></label>
           <button className="primary" type="button" onClick={() => void buildDay()} disabled={busy || !planningDate}>{busy ? "Working…" : "Build day from orders"}</button>
-          <label style={{ display: "inline-flex", alignItems: "center", cursor: busy ? "default" : "pointer" }}><span className="button">Upload Lyons plan CSV</span><input type="file" accept=".csv,text/csv" hidden disabled={busy} onChange={event => { void uploadLyonsPlan(event.target.files?.[0]); event.target.value = ""; }}/></label>
+          <label style={{ display: "inline-flex", alignItems: "center", cursor: busy ? "default" : "pointer" }}><span className="button">Upload Lyons plan</span><input type="file" accept=".csv,.xlsx,.xls,.xlsm,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden disabled={busy} onChange={event => { void uploadLyonsPlan(event.target.files?.[0]); event.target.value = ""; }}/></label>
         </div>
       </div>
-      <p className="notice inline-notice" style={{ marginTop: 12 }}><strong>Routing rule:</strong> Beta and the uploaded Lyons plan are both measured using live Azure Maps HGV/truck routes. Haversine/crow-fly estimates are never substituted to claim a saving.</p>
+      <p className="notice inline-notice" style={{ marginTop: 12 }}><strong>Plan format:</strong> upload the normal Lyons CSV or Excel workbook. Beta scans workbook sheets for Load number, Collection, Delivery, Pallets and Planned dispatch date.</p>
+      <p className="notice inline-notice"><strong>Routing rule:</strong> Beta and the uploaded Lyons plan are both measured using live Azure Maps HGV/truck routes. Haversine/crow-fly estimates are never substituted to claim a saving.</p>
       <p className="notice inline-notice"><strong>Operating rule:</strong> Beta keeps AM/PM work separate, respects pallet capacity, and completes the run's collections before beginning deliveries. Unmapped work stays visible as an exception.</p>
       {message && <p className="notice inline-notice">{message}</p>}
     </div>
