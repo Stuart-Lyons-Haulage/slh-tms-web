@@ -6,7 +6,7 @@ import { ComplianceWarningBanner } from "./ComplianceWarningBanner";
 import { DispatchDriverRow } from "./DispatchDriverRow";
 import { DispatchFilters } from "./DispatchFilters";
 import { DispatchMessageDialog } from "./DispatchMessageDialog";
-import { checkDispatchReadiness, getAvailableTimes, getSmartDispatch, lockDispatchPlan, sendDriverMessage } from "./dispatchApi";
+import { checkDispatchReadiness, getAvailableTimes, getSmartDispatch, lockDispatchPlan, sendDriverMessage, unassignDispatchRun } from "./dispatchApi";
 import {
   applyAvailableTimes,
   availableTimesByDriver,
@@ -284,6 +284,27 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
     setMessage({ runId: selection.runId, reference, text: buildUpdateText(reference), mode: "update", routeMinutes: 0, acknowledgeUnverified: false });
   }
 
+  async function handleUnassign(driver: DispatchDriverDto, selection: DispatchAllocationSelection) {
+    if (!selection.runId || lockedRunId(driver.driverId) !== selection.runId) return;
+    const reference = snapshot?.runs.find(run => run.runId === selection.runId)?.reference || "this run";
+    if (!window.confirm(`Unassign ${reference} from ${driver.name}? This releases the driver, vehicle and trailer.`)) return;
+    setBusyDriverId(driver.driverId);
+    setNotice(undefined);
+    try {
+      await unassignDispatchRun(selection.runId, await token());
+      await refresh();
+      setNotice(`${reference} unassigned. Driver, vehicle and trailer are free to reallocate.`);
+    } catch (exception) {
+      setFailures(current => [...current.filter(failure => failure.driverId !== driver.driverId), {
+        driverId: driver.driverId,
+        runId: selection.runId,
+        reason: exception instanceof Error ? exception.message : "Run could not be unassigned."
+      }]);
+    } finally {
+      setBusyDriverId(undefined);
+    }
+  }
+
   async function handleSendMessage(text: string) {
     if (!message) return;
     setSendingMessage(true);
@@ -385,13 +406,14 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
             onDispatch={(row, selection) => void prepareDispatch(row, selection)}
             onAmend={(row, selection) => void prepareAmendment(row, selection)}
             onUpdate={prepareUpdate}
+            onUnassign={(row, selection) => void handleUnassign(row, selection)}
           />)}
         </tbody>
       </table>
       {visibleDrivers.length === 0 && <div className="smart-dispatch-empty">No drivers match this filter.</div>}
     </div>
 
-    <p className="smart-dispatch-footnote">Select work, use Get Times, then Lock Plan. A locked row immediately exposes Dispatch. Dispatch performs the live HGV route/readiness check before opening the editable SMS preview. Amendments and free-form updates stay on the same row.</p>
+    <p className="smart-dispatch-footnote">Select work, use Get Times, then Lock Plan. A locked row immediately exposes Dispatch. Dispatch performs the live HGV route/readiness check before opening the editable SMS preview. Amendments, free-form updates and Unassign stay on the same row.</p>
 
     {message && <DispatchMessageDialog
       reference={message.reference}
