@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
-import { startVisiblePolling } from "../lib/visiblePolling";
 import { SourceEmailEvidenceDrawer } from "../components/SourceEmailEvidenceDrawer";
 import { JobsOperational } from "./JobsOperational";
 import { OrderReviewBulk } from "./OrderReviewBulk";
@@ -33,8 +32,6 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
     })();
     return () => { active = false; };
   }, [token]);
-
-  useEffect(() => startVisiblePolling(() => setReviewVersion(value => value + 1), 60_000), []);
 
   function closeSourceEmail() {
     const next = new URLSearchParams(searchParams);
