@@ -167,6 +167,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
   const [liveData, setLiveData] = useState<Pick<WallboardData, "etas" | "progress" | "warning" | "geofenceAvailable" | "geofenceCount" | "geofenceConfiguredRuns" | "geofenceLinkedRuns" | "geofenceLinkedStops" | "geofenceTotalStops" | "geofenceHitRuns" | "geofenceHitStops" | "geofenceVisitCount" | "latestTrackingUtc" | "calculatedAtUtc">>();
   const tableRef = useRef<HTMLDivElement | null>(null);
   const liveRefreshInFlight = useRef<Promise<void> | null>(null);
+  const latestAssignments = useRef<DriverAssignment[]>([]);
   const lastTiming = useRef(new Map<string, { loadId: string; loadReference?: string; completed: boolean; finalEtaUtc?: string; finalEtaSource?: string; finalDestinationStopId?: string; finalDestinationName?: string }>());
   const acceptedFinalEtas = useRef(new Map<string, string>());
 
@@ -180,9 +181,15 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       : api.driverAssignments(from, to, access);
     const [loadsResult, assignmentsResult] = await Promise.allSettled([getLoads(today), getAssignments(today, today)]);
     if (loadsResult.status === "rejected") throw loadsResult.reason;
+    const assignments = assignmentsResult.status === "fulfilled" && assignmentsResult.value.length
+      ? assignmentsResult.value
+      : latestAssignments.current;
+    if (assignmentsResult.status === "fulfilled" && assignmentsResult.value.length) {
+      latestAssignments.current = assignmentsResult.value;
+    }
     return {
       loads: loadsResult.value.filter(load => load.status !== "Cancelled"),
-      assignments: assignmentsResult.status === "fulfilled" ? assignmentsResult.value : [],
+      assignments,
       etas: [], progress: [],
       warning: assignmentsResult.status === "rejected"
         ? "Planned runs are visible; driver and vehicle assignment enrichment is temporarily unavailable."
