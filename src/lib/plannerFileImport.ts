@@ -13,7 +13,9 @@ const workbookExtension = /\.(xlsx|xls|xlsm)$/i;
 
 async function workbookRows(file: File): Promise<WorkbookSheetRows> {
   const XLSX = await import("xlsx");
-  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true, raw: true });
+  // Keep Excel dates/times as serial values. Converting workbook dates to JavaScript Date
+  // objects first can shift midnight back one calendar day in BST when later normalised via UTC.
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, raw: true });
   const sheets: WorkbookSheetRows = {};
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
