@@ -357,7 +357,8 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
 export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
   const complete = progress?.runState === "Completed"
     || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops
-    || Boolean(progress && isFinalDestinationArrived(progress));
+    || Boolean(progress && isFinalDestinationArrived(progress))
+    || etas.some(eta => String(eta.loadStatus || "").toLowerCase() === "completed");
   if (complete) {
     return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
   }
@@ -386,9 +387,6 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
     };
   }
 
-  // A future/planned ETA must never make a parked vehicle look active. When Falcon
-  // positively reports ignition off and no driver card, and no geofence progression
-  // has proved departure, the run has not started and remains scheduled.
   if (progress?.trackingFresh && progress.phase === "Next job" && progress.ignitionOn === false && progress.driverCardPresent === false) {
     return {
       status: "scheduled",
@@ -411,8 +409,6 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   const finalAssessment = finalDeliveryAssessment(etas);
   if (finalAssessment.result) return finalAssessment.result;
 
-  // Intermediate milestones remain operational information. Once a healthy cumulative
-  // final-customer ETA and deadline are known they must not recolour the whole run.
   if (!finalAssessment.onTime) {
     const nextTiming = nextStopAdvisory(progress, nextEta, nowMs);
     if (nextTiming) return nextTiming;
@@ -548,10 +544,6 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
 export function isFinalDestinationArrived(record: RunProgressRecord) {
   if (record.totalStops <= 0) return false;
   const finalStop = record.stopDwell?.find(stop => stop.sequence === record.totalStops);
-  // The route-progress feed can lag behind the durable geofence feed: in that
-  // window the final stop is already OnSite/Departed while completedStops is
-  // still one short. Treat that as the same final-arrival evidence as a live
-  // currentVisit so the board cannot show the driver as moving past the finish.
   if (finalStop?.state === "OnSite" || finalStop?.state === "Departed") return true;
   if (!record.currentVisit) return false;
   const nextStop = record.nextStop;
