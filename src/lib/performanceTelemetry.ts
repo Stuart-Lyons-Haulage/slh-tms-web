@@ -41,7 +41,18 @@ export function installPerformanceTelemetry() {
     const input = entry as PerformanceEventTiming;
     return input.processingStart - input.startTime;
   });
-  observe('layout-shift', entry => (entry as PerformanceEntry & { value?: number }).value ?? 0);
+  let cumulativeLayoutShift = 0;
+  try {
+    const clsObserver = new PerformanceObserver(list => {
+      cumulativeLayoutShift += list.getEntries().reduce((total, entry) => total + ((entry as PerformanceEntry & { value?: number }).value ?? 0), 0);
+    });
+    clsObserver.observe({ type: 'layout-shift', buffered: true });
+    const reportCls = () => {
+      if (cumulativeLayoutShift > 0) observeMetric('CLS', cumulativeLayoutShift);
+    };
+    window.addEventListener('pagehide', reportCls, { once: true });
+    window.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') reportCls(); }, { once: true });
+  } catch { /* Browser does not support layout-shift. */ }
 
   let routeStarted = performance.now();
   const reportRoute = () => {
