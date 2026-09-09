@@ -29,10 +29,10 @@ describe("plannerPayloadToBetaComparison", () => {
     expect(request.routes).toHaveLength(1);
     expect(request.routes[0].reference).toBe("Run 1");
     expect(request.routes[0].stops).toEqual([
-      { name: "NWF Drayton", orderKey: "2" },
-      { name: "Runcton", orderKey: "3" },
-      { name: "Darlington", orderKey: "2" },
-      { name: "Leeds", orderKey: "3" }
+      { name: "NWF Drayton", orderKey: "2", reference: undefined, pallets: undefined, role: "Collection" },
+      { name: "Runcton", orderKey: "3", reference: undefined, pallets: undefined, role: "Collection" },
+      { name: "Darlington", orderKey: "2", reference: undefined, pallets: undefined, role: "Delivery" },
+      { name: "Leeds", orderKey: "3", reference: undefined, pallets: undefined, role: "Delivery" }
     ]);
   });
 
