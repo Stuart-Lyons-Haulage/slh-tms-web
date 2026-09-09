@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CustomerLoadPlanActions } from "../components/CustomerLoadPlanActions";
 import { DispatchBoard } from "../components/dispatch/DispatchBoard";
+import "../authoritative-dispatch.css";
 
 function currentDispatchDate() {
   return new URLSearchParams(window.location.search).get("date") || new Date().toISOString().slice(0, 10);
