@@ -9,6 +9,12 @@ export interface DispatchDriverDto {
 export interface DispatchVehicleDto {
   registration: string;
   fleetNumber?: string;
+  fuelProvider?: string;
+  fuelPin?: string;
+  shellCard?: string;
+  bpRedCard?: string;
+  bpPlainCard?: string;
+  fuelCardLastFour?: string;
 }
 
 export interface DispatchTrailerDto {
@@ -19,11 +25,15 @@ export interface DispatchTrailerDto {
 export interface DispatchOrderDto {
   reference: string;
   customerCode: string;
+  pallets?: number;
+  collectionDate?: string;
+  deliveryDate?: string;
   sellerName?: string;
   marketName?: string;
   stallNumber?: string;
   driverInstructions?: string;
   mapLink?: string;
+  deliveryName?: string;
 }
 
 export interface DispatchStopDto {
