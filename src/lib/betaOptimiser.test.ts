@@ -69,4 +69,29 @@ describe("plannerPayloadToBetaComparison", () => {
 
     expect(request.routes.map(route => route.reference)).toEqual(["Run 1"]);
   });
+
+  it("carries PO, pallets and collection/delivery role so the uploaded Lyons plan can be reconciled to TMS orders", () => {
+    const payload: PlannerCsvPayload = {
+      schema: "slh-planner-plan-v1",
+      planningDate: "2026-09-09",
+      exceptions: [],
+      runs: [{
+        runRef: "LYONS-20260909-RUN-001",
+        plannerRun: "Run 1",
+        planningDate: "2026-09-09",
+        includeInImport: true,
+        reconciliationStatus: "CSV direct import",
+        capacityStatus: "Green",
+        mixedUtilisationPercent: 50,
+        stops: [{ sequence: 1, collectionSite: "Runcton", deliverySite: "Leeds", pallets: 9, reference: "PO-7788", sourceRow: 7 }]
+      }]
+    };
+
+    const request = plannerPayloadToBetaComparison(payload);
+
+    expect(request.routes[0].stops).toEqual([
+      { name: "Runcton", orderKey: "7", reference: "PO-7788", pallets: 9, role: "Collection" },
+      { name: "Leeds", orderKey: "7", reference: "PO-7788", pallets: 9, role: "Delivery" }
+    ]);
+  });
 });
