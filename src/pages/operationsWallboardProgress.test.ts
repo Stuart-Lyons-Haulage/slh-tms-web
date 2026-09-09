@@ -101,7 +101,7 @@ describe("wallboard final delivery risk", () => {
     )).toBe("2026-08-28T17:55:00Z");
   });
 
-  it("stops showing a run as on route when the final geofence is already on site", () => {
+  it("does not mark the driver available when the final geofence has only been entered", () => {
     const finalProgress = {
       ...progress(),
       completedStops: 3,
@@ -111,8 +111,8 @@ describe("wallboard final delivery risk", () => {
     };
 
     expect(statusFor(finalProgress, undefined, [])).toMatchObject({
-      status: "complete",
-      label: "AVAILABLE",
+      status: "route",
+      label: "ON ROUTE",
     });
   });
 
