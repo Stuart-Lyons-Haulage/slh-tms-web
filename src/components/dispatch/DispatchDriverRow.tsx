@@ -1,5 +1,5 @@
 import { canDriverTakeRun, dispatchSkills, parseSkillFlags, tachoVehicleId, trailerEligible, ukTime, wtdClass } from "./dispatchRules";
-import { dispatchActionForStatus } from "./dispatchMessaging";
+import { canUnassignDispatchRun, dispatchActionForStatus } from "./dispatchMessaging";
 import type {
   DispatchAllocationSelection,
   DispatchAvailableTimeDto,
@@ -27,6 +27,7 @@ type Props = {
   onDispatch: (driver: DispatchDriverDto, selection: DispatchAllocationSelection) => void;
   onAmend: (driver: DispatchDriverDto, selection: DispatchAllocationSelection) => void;
   onUpdate: (driver: DispatchDriverDto, selection: DispatchAllocationSelection) => void;
+  onUnassign: (driver: DispatchDriverDto, selection: DispatchAllocationSelection) => void;
 };
 
 function employmentLabel(value: string): string {
@@ -65,7 +66,8 @@ export function DispatchDriverRow({
   onSelectionChange,
   onDispatch,
   onAmend,
-  onUpdate
+  onUpdate,
+  onUnassign
 }: Props) {
   const heldSkills = parseSkillFlags(driver.skills);
   const visibleSkills = dispatchSkills.filter(item => heldSkills.has(item.skill));
@@ -83,6 +85,7 @@ export function DispatchDriverRow({
   const lockedToDriver = Boolean(selection.runId && lockedRunId === selection.runId);
   const dispatchStatus = status?.dispatchStatus || (lockedToDriver ? "Awaiting Dispatch" : "No Run");
   const action = dispatchActionForStatus(lockedToDriver, dispatchStatus);
+  const canUnassign = canUnassignDispatchRun(lockedToDriver, dispatchStatus);
 
   function changeRun(runId: string) {
     const nextRun = runs.find(run => run.runId === runId);
@@ -180,6 +183,7 @@ export function DispatchDriverRow({
         <button className="smart-action secondary" type="button" disabled={busy} onClick={() => onAmend(driver, selection)}>{busy ? "Working…" : "Amendment"}</button>
         <button className="smart-action ghost dark" type="button" disabled={busy} onClick={() => onUpdate(driver, selection)}>Update text</button>
       </>}
+      {canUnassign && <button className="smart-unassign" type="button" disabled={busy} onClick={() => onUnassign(driver, selection)}>Unassign</button>}
     </td>
   </tr>;
 }
