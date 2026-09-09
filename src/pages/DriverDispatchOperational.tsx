@@ -1,5 +1,6 @@
 import { type SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { BackloadMatchNotifications } from "../components/BackloadMatchNotifications";
 import { CustomerLoadPlanActions } from "../components/CustomerLoadPlanActions";
 import { DispatchBoard } from "../components/dispatch/DispatchBoard";
 import { request } from "../lib/api";
@@ -151,6 +152,7 @@ export function DriverDispatchOperational() {
 
   return <div ref={rootRef} onClickCapture={observeDispatchInteraction} onChangeCapture={observeDispatchInteraction}>
     <DispatchBoard planningDate={dispatchDate} onLocked={smartPlanLocked} />
+    <BackloadMatchNotifications />
     <DriverDispatch />
     {actionHost && createPortal(<CustomerLoadPlanActions date={dispatchDate} />, actionHost)}
   </div>;
