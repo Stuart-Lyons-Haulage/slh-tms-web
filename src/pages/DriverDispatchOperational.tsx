@@ -1,4 +1,4 @@
-import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CustomerLoadPlanActions } from "../components/CustomerLoadPlanActions";
 import { request } from "../lib/api";
@@ -132,7 +132,7 @@ export function DriverDispatchOperational() {
   // could lose a just-saved allocation, producing the false “driver does not have a run” error.
   // This capture is passive: after the canonical SEND DISPATCH click, re-read operational status so
   // the pill changes to Dispatched promptly without remounting or interrupting the send request.
-  function observeDispatchInteraction(event: MouseEvent<HTMLDivElement>) {
+  function observeDispatchInteraction(event: SyntheticEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement;
     if (target instanceof HTMLInputElement && target.type === "date") {
       setDispatchDate(target.value || currentDispatchDate());
