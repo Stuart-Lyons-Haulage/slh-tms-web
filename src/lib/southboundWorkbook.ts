@@ -27,6 +27,7 @@ function csv(value: unknown) {
   const text = String(value ?? "");
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
+function normalise(value: unknown) { return clean(value).toUpperCase().replace(/[^A-Z0-9]/g, ""); }
 function excelSerialToDate(value: number) {
   if (!Number.isFinite(value) || value < 1) return undefined;
   return new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86400000);
@@ -70,13 +71,42 @@ function splitDelivery(value: string) {
   if (!text) return [];
   return text.split(/\s*\/\s*|\s*,\s*|\s+and\s+/i).map(part => part.trim()).filter(Boolean);
 }
+function words(value: unknown) {
+  return clean(value).toUpperCase().split(/[^A-Z0-9]+/).filter(word => word.length >= 4);
+}
+function withinOneEdit(left: string, right: string) {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (left.length > right.length) i++;
+    else if (right.length > left.length) j++;
+    else { i++; j++; }
+  }
+  if (i < left.length || j < right.length) edits++;
+  return edits <= 1;
+}
+function segmentMatchesDestination(segment: string, destination: string) {
+  const segmentNormal = normalise(segment);
+  const destinationNormal = normalise(destination);
+  if (destinationNormal && segmentNormal.includes(destinationNormal)) return true;
+  const destinationWords = words(destination).filter(word => !["NWF", "SITE", "FARM", "FOODS"].includes(word));
+  const segmentWords = words(segment);
+  return destinationWords.some(destinationWord => segmentWords.some(segmentWord =>
+    destinationWord.length >= 5 && segmentWord.length >= 5 && withinOneEdit(destinationWord, segmentWord)));
+}
 function allocationFromNote(note: string, destinations: string[]) {
   const result = new Map<string, number>();
+  const segments = splitDelivery(note);
   for (const destination of destinations) {
-    const token = destination.split(/\s+/)[0].replace(/[^A-Za-z0-9]/g, "");
-    if (!token) continue;
-    const direct = note.match(new RegExp(`${token}[^0-9]{0,12}(\\d+(?:\\.\\d+)?)\\s*(?:p|plt|pallets?)`, "i"));
-    if (direct) result.set(destination, Number(direct[1]));
+    for (const segment of segments) {
+      const quantity = quantityFromText(segment);
+      if (quantity == null || !segmentMatchesDestination(segment, destination)) continue;
+      result.set(destination, quantity);
+      break;
+    }
   }
   return result;
 }
@@ -97,6 +127,7 @@ export function isLyonsSouthboundWorkbook(sheets: WorkbookSheetRows) {
 
 export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName: string): PlannerCsvPayload {
   const southbound = sheets.Southbound || [];
+  // In the live workbook G1 is the DATE: label and H1 contains the date value.
   const planningDate = isoDate(southbound?.[0]?.[7]);
   if (!planningDate) throw new Error("Southbound planning date could not be read from cell H1.");
 
@@ -150,7 +181,9 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName:
     const chill = from >= 20;
     for (let i = from; i < to; i++) {
       const r = wave3[i] || [];
-      for (const start of [0, 5, 10]) {
+      // WAVE 3 has four five-column destination blocks: Bracknell, Brinklow,
+      // Aylesford and Leyland. Previous parsing stopped at Aylesford.
+      for (const start of [0, 5, 10, 15]) {
         const supplier = clean(r[start]);
         const po = clean(r[start + 1]);
         if (!supplier || !po || !/[A-Za-z]/.test(supplier) || !/[A-Za-z0-9]/.test(po) || /^supplier$/i.test(supplier)) continue;
