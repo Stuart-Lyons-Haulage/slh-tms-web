@@ -354,13 +354,10 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
 }
 
 export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
-  // AVAILABLE means the final operational stop has actually completed (normally a
-  // confirmed geofence exit). Arrival at the final geofence is an ON SITE/ARRIVED
-  // state and must never free the driver for another job.
+  // AVAILABLE is deliberately stricter than ARRIVED/ON SITE. A driver only becomes
+  // available after the final operational stop has a confirmed completion/exit.
   const complete = progress?.runState === "Completed"
-    || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops
-    || Boolean(progress && isFinalDestinationArrived(progress))
-    || etas.some(eta => String(eta.loadStatus || "").toLowerCase() === "completed");
+    || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops;
   if (complete) {
     return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
   }
@@ -508,7 +505,9 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
     routeByLoad.delete(record.loadId);
     const routeNextStop = route.stops.find((stop) => stop.id === route.nextStopId)
       || route.stops.find((stop) => stop.state === "heading" || stop.state === "upcoming");
-    const nextStop = (route.completedStops || 0) > (record.completedStops || 0)
+    const recordNextIsCompleted = Boolean(record.nextStop && route.stops.some(stop =>
+      stop.id === record.nextStop?.id && /completed|departed|exited/i.test(String(stop.state || ""))));
+    const nextStop = (route.completedStops || 0) > (record.completedStops || 0) || recordNextIsCompleted
       ? routeNextStop || record.nextStop
       : record.nextStop || routeNextStop;
     const totalStops = Math.max(record.totalStops || 0, route.totalStops || 0);
@@ -561,9 +560,5 @@ export function finalArrivalUtc(record?: RunProgressRecord) {
 }
 
 export function completedJobCount(progress: RunProgressRecord[]) {
-  return progress.reduce((total, record) => {
-    const completed = Math.max(0, record.completedStops || 0);
-    const finalArrival = isFinalDestinationArrived(record) ? 1 : 0;
-    return total + Math.min(Math.max(0, record.totalStops || completed + finalArrival), completed + finalArrival);
-  }, 0);
+  return progress.reduce((total, record) => total + Math.max(0, record.completedStops || 0), 0);
 }
