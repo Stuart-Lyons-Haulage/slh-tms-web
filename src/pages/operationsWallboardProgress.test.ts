@@ -107,12 +107,14 @@ describe("wallboard final delivery risk", () => {
       completedStops: 3,
       nextStop: { id: "stop-4", sequence: 4, name: "Deliver · Morrisons-Gadbrook" },
       trackingMoving: true,
+      geofenceOnSite: true,
+      focusStop: "Morrisons-Gadbrook",
       stopDwell: [{ stopId: "stop-4", sequence: 4, stopName: "Morrisons-Gadbrook", state: "OnSite" as const }],
     };
 
     expect(statusFor(finalProgress, undefined, [])).toMatchObject({
-      status: "complete",
-      label: "AVAILABLE",
+      status: "onsite",
+      label: "ON SITE",
     });
   });
 
