@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstCollectionStop, runDirection, suggestionRunLabel } from "./DriverDispatchPlanning";
+import { firstCollectionStop, runDirection, sortDispatchDrivers, suggestionRunLabel } from "./DriverDispatchPlanning";
 
 function load(overrides: Record<string, unknown> = {}) {
   return {
@@ -28,5 +28,16 @@ describe("Driver Dispatch planning helpers", () => {
 
   it("uses the first collection stop rather than a later delivery", () => {
     expect(firstCollectionStop(load())?.name).toBe("Collect · NWF-Runcton");
+  });
+
+  it("puts planned drivers above unallocated drivers so the planner can work down", () => {
+    const rows = sortDispatchDrivers([
+      { driverId: "free-b", displayName: "Brian", driverType: "Employed", assignedLoadId: undefined },
+      { driverId: "planned-z", displayName: "Zed", driverType: "Subcontractor", assignedLoadId: "run-2" },
+      { driverId: "free-a", displayName: "Adam", driverType: "Employed", assignedLoadId: undefined },
+      { driverId: "planned-a", displayName: "Alice", driverType: "Employed", assignedLoadId: "run-1" },
+    ]);
+
+    expect(rows.map(row => row.driverId)).toEqual(["planned-a", "planned-z", "free-a", "free-b"]);
   });
 });
