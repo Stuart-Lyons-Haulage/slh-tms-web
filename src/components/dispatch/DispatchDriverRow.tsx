@@ -86,6 +86,10 @@ export function DispatchDriverRow({
   const dispatchStatus = status?.dispatchStatus || (lockedToDriver ? "Awaiting Dispatch" : "No Run");
   const action = dispatchActionForStatus(lockedToDriver, dispatchStatus);
   const canUnassign = canUnassignDispatchRun(lockedToDriver, dispatchStatus);
+  const reducedRestSelected = selection.useReducedDailyRest === true;
+  const reducedRestAvailable = driver.tachoData.reducedDailyRestAvailable === true;
+  const expectedRestHours = reducedRestSelected ? 9 : 11;
+  const restChoiceStale = Boolean(availableTime && availableTime.requiredRestPeriod !== expectedRestHours);
 
   function changeRun(runId: string) {
     const nextRun = runs.find(run => run.runId === runId);
@@ -112,6 +116,7 @@ export function DispatchDriverRow({
 
     <td className="smart-location-cell">
       <strong>{driver.trackingData.lastStopName || "Location unavailable"}</strong>
+      {driver.trackingData.lastPositionAtUtc && <small>Position · {ukTime(driver.trackingData.lastPositionAtUtc)}</small>}
       {driver.distanceToSuggestedCollectionMiles != null && driver.suggestedRunReference &&
         <small>{driver.distanceToSuggestedCollectionMiles.toFixed(1)}mi to suggested collection · {driver.suggestedRunReference}</small>}
       {driver.suggestion && <small className={driver.needsReturn && !driver.backloadCandidate ? "smart-inline-warning" : ""}>{driver.suggestion}</small>}
@@ -154,6 +159,19 @@ export function DispatchDriverRow({
     </>}
 
     <td className="smart-available-cell">
+      <label className="smart-rest-choice" title={reducedRestAvailable ? "Planner override: use a reduced 9h daily rest for this driver." : "Reduced daily rest is not available from the current Tacho evidence."}>
+        <input
+          type="checkbox"
+          checked={reducedRestSelected}
+          disabled={busy || blocked || !reducedRestAvailable || (lockedToDriver && dispatchStatus !== "No Run")}
+          onChange={event => onSelectionChange(driver.driverId, {
+            useReducedDailyRest: event.target.checked,
+            plannedStartTime: undefined
+          })}
+        />
+        <span>Reduced rest (9h)</span>
+      </label>
+      <small>{driver.tachoData.reducedDailyRestsUsed}/3 reduced rests used · {reducedRestSelected ? "Planner selected 9h" : "Regular 11h default"}</small>
       {!availableTime ? <>
         <strong>{status?.earliestStartUtc ? ukTime(status.earliestStartUtc) : "—"}</strong>
         <span className="smart-muted">{status?.earliestStartUtc ? status.earliestStartIsAssumption ? "Assumed start" : "Tacho start" : "Get times"}</span>
@@ -164,6 +182,7 @@ export function DispatchDriverRow({
           <span style={{ width: `${Math.min(100, Math.max(0, availableTime.weeklyWorkingTimeUsed / 60 * 100))}%` }} />
         </div>
         {selection.plannedStartTime && <small>Plan start · {ukTime(selection.plannedStartTime)}</small>}
+        {restChoiceStale && <small className="smart-inline-warning">Rest choice changed · press Get Times again</small>}
         {availableTime.breachDetail && <small className="smart-inline-error">{availableTime.breachDetail}</small>}
       </>}
       {failures.map((failure, index) => <small className="smart-inline-error" key={`${failure.reason}-${index}`}>{failure.reason}</small>)}
