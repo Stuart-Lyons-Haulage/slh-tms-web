@@ -16,8 +16,9 @@
   min-height: 100dvh;
   max-height: 100dvh;
   margin: 0;
-  padding: 14px;
+  padding: 10px;
   overflow: hidden;
+  gap: 8px;
 }
 
 .ops-wallboard-header {
@@ -460,16 +461,38 @@
   }
 }
 
-/* A paired TV is a fixed viewport, not a responsive mobile page. These rules live
-   after the media queries so TV browser scaling cannot trigger the narrow-screen
-   min-width/margin rules and make the board jump or crop horizontally. */
-.ops-wallboard.tv .ops-wallboard-summary {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+/* A paired TV is a fixed operational viewport. It deliberately keeps the compact
+   pre-redirect wallboard presentation: no browser/TMS chrome, no KPI cards and no
+   side attention rail. The data source and ETA/risk logic are still the exact same
+   React wallboard used by the signed-in TMS. */
+.ops-wallboard.tv .ops-wallboard-header,
+.ops-wallboard.tv .ops-wallboard-summary,
+.ops-wallboard.tv .ops-attention-panel,
+.ops-wallboard.tv .ops-wallboard-footer {
+  display: none;
+}
+
+.ops-wallboard.tv .ops-board-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+.ops-wallboard.tv .ops-wallboard-coverage {
+  flex: 0 0 auto;
+  padding: 7px 11px;
+}
+
+.ops-wallboard.tv .ops-wallboard-alert {
+  flex: 0 0 auto;
+  padding: 9px 11px;
 }
 
 .ops-wallboard.tv .ops-board-table {
   width: 100%;
   overflow-x: hidden;
+  overflow-y: hidden;
   scroll-behavior: auto;
 }
 
@@ -477,13 +500,31 @@
 .ops-wallboard.tv .ops-board-row {
   width: 100%;
   min-width: 0;
+  grid-template-columns: 96px minmax(145px, .9fr) minmax(105px, .62fr) minmax(145px, .85fr) minmax(220px, 1.35fr) minmax(170px, 1fr) minmax(160px, .9fr);
 }
 
-.ops-wallboard.tv .ops-wallboard-header {
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
+.ops-wallboard.tv .ops-board-row {
+  min-height: 72px;
 }
 
-.ops-wallboard.tv .ops-wallboard-clock {
-  align-items: flex-end;
+.ops-wallboard.tv .ops-board-row.late,
+.ops-wallboard.tv .ops-board-row.risk {
+  min-height: 76px;
+}
+
+.ops-wallboard.tv .ops-board-head span,
+.ops-wallboard.tv .ops-board-row > span {
+  padding: 5px 8px;
+}
+
+.ops-wallboard.tv .ops-board-row strong {
+  font-size: 16px;
+}
+
+.ops-wallboard.tv .ops-board-row small {
+  font-size: 10px;
+}
+
+.ops-wallboard.tv .time-cell strong {
+  font-size: 22px;
 }
