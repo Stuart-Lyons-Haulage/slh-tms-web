@@ -36,7 +36,6 @@ export function DriverDispatchOperational() {
   const [operationalByDriver, setOperationalByDriver] = useState<Record<string, OperationalDisplay>>({});
   const [dispatchDate, setDispatchDate] = useState(currentDispatchDate);
   const [actionHost, setActionHost] = useState<HTMLElement>();
-  const [legacyRevision, setLegacyRevision] = useState(0);
 
   const refreshOperationalStatuses = useCallback(async () => {
     try {
@@ -147,13 +146,12 @@ export function DriverDispatchOperational() {
   }
 
   function smartPlanLocked() {
-    setLegacyRevision(current => current + 1);
     void refreshOperationalStatuses();
   }
 
   return <div ref={rootRef} onClickCapture={observeDispatchInteraction} onChangeCapture={observeDispatchInteraction}>
     <DispatchBoard planningDate={dispatchDate} onLocked={smartPlanLocked} />
-    <DriverDispatch key={legacyRevision} />
+    <DriverDispatch />
     {actionHost && createPortal(<CustomerLoadPlanActions date={dispatchDate} />, actionHost)}
   </div>;
 }
