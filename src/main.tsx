@@ -10,6 +10,7 @@ import { cacheLocationForRoute, isPublicTvLink, isTvRoute } from './tvBootstrap'
 import { installOrderReviewRecovery } from './orderReviewRecovery';
 import { installOperationalUiEnhancements } from './operationalUiEnhancements';
 import { installPollingPolicy } from './lib/pollingPolicy';
+import { installPerformanceTelemetry } from './lib/performanceTelemetry';
 import './styles.css';
 import './orders.css';
 import './fuel-top.css';
@@ -30,6 +31,7 @@ import './ui-navigation-refresh.css';
 import './table-header-viewport-fix.css';
 
 installPollingPolicy();
+installPerformanceTelemetry();
 installOrderReviewRecovery();
 installOperationalUiEnhancements();
 

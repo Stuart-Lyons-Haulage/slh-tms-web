@@ -1,4 +1,5 @@
 import { z, type ZodType } from 'zod';
+import { trackApiRequest } from '../lib/performanceTelemetry';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/tms-api').replace(/\/$/, '');
 
@@ -78,7 +79,16 @@ export async function apiRequest<TSchema extends ZodType>(
 ): Promise<z.output<TSchema>> {
   if (!apiBaseUrl) throw new ApiError(0, 'Set VITE_API_BASE_URL to connect the TMS API.', path);
 
-  const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers: headersFor(token, init) });
+  const startedAt = performance.now();
+  const method = String(init?.method || 'GET').toUpperCase();
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers: headersFor(token, init) });
+  } catch (error) {
+    trackApiRequest(path, method, performance.now() - startedAt, 0, true);
+    throw error;
+  }
+  trackApiRequest(path, method, performance.now() - startedAt, response.status, !response.ok);
   const finalResponse = await tryPlanLockRetry(path, token, init, response);
   if (!finalResponse.ok) await throwApiError(path, finalResponse);
 
