@@ -18,10 +18,6 @@ function minutes(value?: number) {
   const mins = value % 60;
   return hours ? `${hours}h ${mins}m` : `${mins}m`;
 }
-function quantityLabel(pallets: number, capacity?: number) {
-  if (capacity === 0 || pallets <= 0) return "quantity not stated";
-  return `${pallets} pallets`;
-}
 
 function Metric({ label, value, note }: { label: string; value: string; note?: string }) {
   return <div className="panel" style={{ padding: 12 }}><small>{label}</small><div><strong>{value}</strong></div>{note && <small>{note}</small>}</div>;
