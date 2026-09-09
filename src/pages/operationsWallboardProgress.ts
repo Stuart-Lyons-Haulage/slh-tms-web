@@ -358,7 +358,9 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   // confirmed geofence exit). Arrival at the final geofence is an ON SITE/ARRIVED
   // state and must never free the driver for another job.
   const complete = progress?.runState === "Completed"
-    || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops;
+    || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops
+    || Boolean(progress && isFinalDestinationArrived(progress))
+    || etas.some(eta => String(eta.loadStatus || "").toLowerCase() === "completed");
   if (complete) {
     return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
   }
@@ -387,9 +389,6 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
     };
   }
 
-  // A future/planned ETA must never make a parked vehicle look active. When Falcon
-  // positively reports ignition off and no driver card, and no geofence progression
-  // has proved departure, the run has not started and remains scheduled.
   if (progress?.trackingFresh && progress.phase === "Next job" && progress.ignitionOn === false && progress.driverCardPresent === false) {
     return {
       status: "scheduled",
@@ -412,8 +411,6 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
   const finalAssessment = finalDeliveryAssessment(etas);
   if (finalAssessment.result) return finalAssessment.result;
 
-  // Intermediate milestones remain operational information. Once a healthy cumulative
-  // final-customer ETA and deadline are known they must not recolour the whole run.
   if (!finalAssessment.onTime) {
     const nextTiming = nextStopAdvisory(progress, nextEta, nowMs);
     if (nextTiming) return nextTiming;
@@ -548,8 +545,6 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
 export function isFinalDestinationArrived(record: RunProgressRecord) {
   if (record.totalStops <= 0) return false;
   const finalStop = record.stopDwell?.find(stop => stop.sequence === record.totalStops);
-  // Only explicit final-stop evidence may prove arrival. Completing every earlier
-  // geofence is not proof that the vehicle has reached the final customer.
   if (finalStop?.state === "OnSite" || finalStop?.state === "Departed") return true;
   if (!record.currentVisit) return false;
   const nextStop = record.nextStop;

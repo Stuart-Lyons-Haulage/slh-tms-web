@@ -260,6 +260,9 @@ test('planner → dispatch → geofence arrival/departure → completion stays c
 
   state.geofenceStage = 4;
   await page.reload();
+  console.log('LIFECYCLE_STAGE4_URL', page.url());
+  console.log('LIFECYCLE_STAGE4_ROWS', await page.locator('.ops-board-row').count());
+  console.log('LIFECYCLE_STAGE4_BODY_START\n' + await page.locator('body').innerText() + '\nLIFECYCLE_STAGE4_BODY_END');
   await expect(page.getByText(/Final destination arrived/i).first()).toBeVisible();
   await expect(page.getByText('AVAILABLE').first()).toBeVisible();
 });
