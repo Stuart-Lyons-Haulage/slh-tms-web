@@ -4,6 +4,7 @@ import {
   availableTimesByDriver,
   buildInitialSelections,
   filterDriversByEmploymentType,
+  sortDriversForDispatch,
   validateLockSelections
 } from "./dispatchBoardState";
 import type { DispatchDriverDto, DispatchEquipmentWorkbench, DispatchRunDto } from "./types";
@@ -95,6 +96,25 @@ describe("smart Dispatch board state", () => {
     expect(applyAvailableTimes({ "driver-1": { runId: "run-1", vehicleId: "vehicle-tacho", trailerId: "", plannedStartTime: "2026-09-10T06:00:00Z" } }, calculated)["driver-1"].plannedStartTime)
       .toBe("2026-09-10T06:00:00Z");
     expect(availableTimesByDriver(calculated)["driver-1"].requiredRestPeriod).toBe(11);
+  });
+
+  it("keeps drivers with allocated runs at the top while retaining subcontractors", () => {
+    const drivers = [
+      driver({ driverId: "free-employed", name: "Free Employed", employmentType: "Employed" }),
+      driver({ driverId: "subbie", name: "Subbie Driver", employmentType: "Subcontractor" }),
+      driver({ driverId: "allocated", name: "Allocated Driver", employmentType: "Employed" })
+    ];
+    const selections = {
+      "free-employed": { runId: "", vehicleId: "", trailerId: "" },
+      subbie: { runId: "", vehicleId: "", trailerId: "" },
+      allocated: { runId: "run-1", vehicleId: "vehicle-2", trailerId: "" }
+    };
+
+    expect(sortDriversForDispatch(drivers, selections).map(item => item.driverId)).toEqual([
+      "allocated",
+      "free-employed",
+      "subbie"
+    ]);
   });
 
   it("filters the board by employed, agency, casual and subcontractor", () => {
