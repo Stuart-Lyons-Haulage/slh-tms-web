@@ -11,9 +11,12 @@ type CachedWallboardResponse = {
   status: number;
   statusText: string;
   headers: Array<[string, string]>;
+  fetchedAt: number;
 };
 
+const WALLBOARD_PROVIDER_REFRESH_MS = 5 * 60 * 1000;
 const wallboardResponseCache = new Map<string, CachedWallboardResponse>();
+const wallboardRequestsInFlight = new Set<string>();
 let wallboardFetchInstalled = false;
 
 function installWallboardFetchResilience() {
@@ -54,7 +57,17 @@ function installWallboardFetchResilience() {
     const fetchInput: RequestInfo | URL = input instanceof Request
       ? new Request(url.toString(), input)
       : url.toString();
-    const cacheKey = `${url.pathname}?${url.searchParams.toString()}`;
+
+    // Ignore volatile cache-busting parameters so repeated wallboard polling resolves
+    // to one provider snapshot for five minutes. Operational selectors such as date and
+    // TV key remain part of the cache key, so changing day/display still fetches fresh data.
+    const stableParams = new URLSearchParams(url.searchParams);
+    stableParams.delete("_ts");
+    stableParams.delete("_");
+    stableParams.delete("cacheBust");
+    stableParams.delete("cache_bust");
+    const cacheKey = `${url.pathname}?${stableParams.toString()}`;
+
     const cachedResponse = () => {
       const cached = wallboardResponseCache.get(cacheKey);
       if (!cached) return undefined;
@@ -65,20 +78,37 @@ function installWallboardFetchResilience() {
       });
     };
 
+    const cached = wallboardResponseCache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < WALLBOARD_PROVIDER_REFRESH_MS) {
+      return cachedResponse()!;
+    }
+
+    // If the same wallboard read is already refreshing, retain the last successful
+    // snapshot instead of starting another provider/API request on top of it.
+    if (wallboardRequestsInFlight.has(cacheKey)) {
+      const lastGood = cachedResponse();
+      if (lastGood) return lastGood;
+    }
+
     const resilientInit = init ? { ...init, signal: undefined } : init;
+    wallboardRequestsInFlight.add(cacheKey);
 
     try {
       const response = await originalFetch(fetchInput, resilientInit);
       if (response.ok) {
         const clone = response.clone();
-        void clone.text().then(body => {
+        try {
+          const body = await clone.text();
           wallboardResponseCache.set(cacheKey, {
             body,
             status: response.status,
             statusText: response.statusText,
             headers: Array.from(response.headers.entries()),
+            fetchedAt: Date.now(),
           });
-        }).catch(() => undefined);
+        } catch {
+          // A successful live response is still returned even if browser-side caching fails.
+        }
         return response;
       }
 
@@ -88,6 +118,8 @@ function installWallboardFetchResilience() {
       return response;
     } catch (error) {
       return cachedResponse() || Promise.reject(error);
+    } finally {
+      wallboardRequestsInFlight.delete(cacheKey);
     }
   };
 }
