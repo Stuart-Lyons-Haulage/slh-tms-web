@@ -25,6 +25,7 @@ function employmentLabel(value: string): string {
   if (value === "HalfTramper") return "Half Tramper";
   if (value === "AgencyDay") return "Agency Day";
   if (value === "AgencyLong") return "Agency Long";
+  if (value === "Subcontractor") return "Subbie";
   return value;
 }
 
@@ -46,6 +47,7 @@ export function DispatchDriverRow({
   onSelectionChange
 }: Props) {
   const heldSkills = parseSkillFlags(driver.skills);
+  const visibleSkills = dispatchSkills.filter(item => heldSkills.has(item.skill));
   const selectedRun = runs.find(run => run.runId === selection.runId);
   const legalRuns = runs.filter(run => {
     const owner = runOwnerById[run.runId];
@@ -72,14 +74,7 @@ export function DispatchDriverRow({
       <strong>{driver.name}</strong>
       <div className="smart-driver-meta">
         <span className="employment-badge">{employmentLabel(driver.employmentType)}</span>
-        <small>{driver.driverCode}</small>
-      </div>
-      <div className="smart-skill-strip" aria-label={`${driver.name} skills`}>
-        {dispatchSkills.map(item => <span
-          key={item.skill}
-          className={heldSkills.has(item.skill) ? "smart-skill held" : "smart-skill missing"}
-          title={`${item.label}: ${heldSkills.has(item.skill) ? "held" : "not held"}`}
-        >{item.badge}</span>)}
+        {driver.driverCode?.trim() && <small>{driver.driverCode.trim()}</small>}
       </div>
     </td>
 
@@ -96,9 +91,9 @@ export function DispatchDriverRow({
     </td>
 
     <td className="smart-skills-cell">
-      {dispatchSkills.map(item => <span
+      {visibleSkills.map(item => <span
         key={item.skill}
-        className={heldSkills.has(item.skill) ? "smart-skill held" : "smart-skill missing"}
+        className="smart-skill held"
         title={item.label}
       >{item.badge}</span>)}
     </td>
