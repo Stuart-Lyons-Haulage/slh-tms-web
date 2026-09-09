@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { getDriverDispatchRoute, getRunDispatch } from "../../api/runs";
 import { useAccessToken } from "../../lib/auth";
 import "../../smart-dispatch.css";
 import { ComplianceWarningBanner } from "./ComplianceWarningBanner";
 import { DispatchDriverRow } from "./DispatchDriverRow";
 import { DispatchFilters } from "./DispatchFilters";
-import { getAvailableTimes, getSmartDispatch, lockDispatchPlan } from "./dispatchApi";
+import { DispatchMessageDialog } from "./DispatchMessageDialog";
+import { checkDispatchReadiness, getAvailableTimes, getSmartDispatch, lockDispatchPlan, sendDriverMessage } from "./dispatchApi";
 import {
   applyAvailableTimes,
   availableTimesByDriver,
@@ -20,18 +22,41 @@ import {
   type DispatchAvailableTimeMap,
   type DispatchSelectionMap
 } from "./dispatchBoardState";
-import type { DispatchEmploymentFilter, DispatchFilter, DispatchLockFailure } from "./types";
+import {
+  buildAmendmentText,
+  buildDispatchText,
+  buildUpdateText,
+  plannedStartLocal,
+  routeDrivingMinutes,
+  type DriverMessageMode
+} from "./dispatchMessaging";
+import type { DispatchAllocationSelection, DispatchDriverDto, DispatchEmploymentFilter, DispatchFilter, DispatchLockFailure } from "./types";
 
 type Props = {
   planningDate: string;
+  onPlanningDateChange?: (date: string) => void;
+  extraActions?: ReactNode;
   onLocked?: () => void;
 };
 
 type SmartDispatchSnapshot = Awaited<ReturnType<typeof getSmartDispatch>>;
 type ActionState = "times" | "lock" | "refresh" | undefined;
+type MessageState = {
+  runId: string;
+  reference: string;
+  text: string;
+  mode: DriverMessageMode;
+  routeMinutes: number;
+  acknowledgeUnverified: boolean;
+};
 
 const filterValues: DispatchFilter[] = ["all", "unallocated", "backloads", "warnings", "skills-mismatch"];
 const employmentFilterValues: DispatchEmploymentFilter[] = ["all", "employed", "agency", "casual", "subcontractor"];
+
+function fleetioWarning(status?: string): string | undefined {
+  const value = status?.trim();
+  return value && /(out\s*of\s*service|inactive|vor|off\s*road|maintenance)/i.test(value) ? `Fleetio: ${value}` : undefined;
+}
 
 export function GetTimesButton({ busy, onGetTimes }: { busy: boolean; onGetTimes: () => void }) {
   return <button className="smart-action secondary" type="button" disabled={busy} onClick={onGetTimes}>
@@ -45,7 +70,7 @@ export function LockPlanButton({ busy, disabled, onLock }: { busy: boolean; disa
   </button>;
 }
 
-export function DispatchBoard({ planningDate, onLocked }: Props) {
+export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions, onLocked }: Props) {
   const token = useAccessToken();
   const [snapshot, setSnapshot] = useState<SmartDispatchSnapshot>();
   const [selections, setSelections] = useState<DispatchSelectionMap>({});
@@ -54,6 +79,10 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
   const [filter, setFilter] = useState<DispatchFilter>("all");
   const [employmentFilter, setEmploymentFilter] = useState<DispatchEmploymentFilter>("all");
   const [action, setAction] = useState<ActionState>();
+  const [busyDriverId, setBusyDriverId] = useState<string>();
+  const [message, setMessage] = useState<MessageState>();
+  const [messageError, setMessageError] = useState<string>();
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
 
@@ -68,15 +97,13 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
       setAvailableTimes({});
       setFailures([]);
     } catch (exception) {
-      setError(exception instanceof Error ? exception.message : "Smart Dispatch could not be loaded.");
+      setError(exception instanceof Error ? exception.message : "Driver Dispatch could not be loaded.");
     } finally {
       setAction(undefined);
     }
   }, [planningDate, token]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   const runOwnerById = useMemo(
     () => snapshot ? buildRunOwnerById(selections, snapshot.equipment) : {},
@@ -107,6 +134,10 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
     const driverIds = new Set(snapshot?.drivers.map(driver => driver.driverId) || []);
     return globalFailures(failures, driverIds);
   }, [failures, snapshot]);
+
+  function lockedRunId(driverId: string): string | undefined {
+    return snapshot?.equipment.loads.find(load => load.driverId === driverId)?.id;
+  }
 
   function changeSelection(driverId: string, patch: Partial<DispatchSelectionMap[string]>) {
     setSelections(current => ({
@@ -143,13 +174,11 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
     if (!snapshot) return;
     setError(undefined);
     setNotice(undefined);
-
     const allocations = selectedAllocations(snapshot.drivers, selections);
     if (allocations.length === 0) {
       setFailures([{ driverId: "", reason: "Allocate at least one run before locking the plan." }]);
       return;
     }
-
     const localFailures = validateLockSelections(snapshot.drivers, snapshot.runs, snapshot.equipment, selections, availableTimes);
     if (localFailures.length > 0) {
       setFailures(localFailures);
@@ -167,9 +196,8 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
         setNotice("Plan not locked. Server validation rejected the plan and no allocations were written.");
         return;
       }
-
       await refresh();
-      setNotice(`Plan locked atomically · ${allocations.length} run${allocations.length === 1 ? "" : "s"} allocated.`);
+      setNotice(`Plan locked · ${allocations.length} run${allocations.length === 1 ? "" : "s"} ready for Dispatch.`);
       onLocked?.();
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : "The Dispatch plan could not be locked.");
@@ -178,38 +206,139 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
     }
   }
 
-  if (!snapshot && action === "refresh") {
-    return <section className="smart-dispatch-board"><div className="smart-dispatch-loading">Building smart Dispatch plan…</div></section>;
+  async function prepareDispatch(driver: DispatchDriverDto, selection: DispatchAllocationSelection) {
+    if (!snapshot || !selection.runId || lockedRunId(driver.driverId) !== selection.runId) return;
+    setBusyDriverId(driver.driverId);
+    setMessageError(undefined);
+    setNotice(undefined);
+    try {
+      const vehicle = snapshot.equipment.vehicles.find(item => item.id === selection.vehicleId);
+      const fleetWarning = fleetioWarning(vehicle?.fleetioStatus);
+      if (fleetWarning) throw new Error(`${fleetWarning}. Resolve or change the vehicle before dispatch.`);
+      const access = await token();
+      const route = await getDriverDispatchRoute(selection.runId, access);
+      const minutes = routeDrivingMinutes(route);
+      if (!minutes) throw new Error("The run could not be routed. No HGV driving time was returned.");
+
+      let readiness = await checkDispatchReadiness(selection.runId, minutes, false, access);
+      let acknowledged = false;
+      if (!readiness.canDispatch && readiness.structuralReadiness?.classification === "Unverified" && readiness.structuralReadiness.requiresAcknowledgement) {
+        const warnings = readiness.structuralReadiness.checks.filter(check => !check.passed).map(check => `• ${check.message}`).join("\n");
+        if (!window.confirm(`Pre-dispatch warnings:\n\n${warnings}\n\nAcknowledge and continue?`)) return;
+        acknowledged = true;
+        readiness = await checkDispatchReadiness(selection.runId, minutes, true, access);
+      }
+      if (!readiness.canDispatch) throw new Error(readiness.explanation || "Dispatch readiness did not pass.");
+
+      const dispatch = await getRunDispatch(selection.runId, access);
+      const reference = snapshot.runs.find(run => run.runId === selection.runId)?.reference || dispatch.reference;
+      setMessage({
+        runId: selection.runId,
+        reference,
+        text: buildDispatchText(reference, dispatch, plannedStartLocal(selection.plannedStartTime)),
+        mode: "initial",
+        routeMinutes: minutes,
+        acknowledgeUnverified: acknowledged
+      });
+    } catch (exception) {
+      setFailures(current => [...current.filter(failure => failure.driverId !== driver.driverId), {
+        driverId: driver.driverId,
+        runId: selection.runId,
+        reason: exception instanceof Error ? exception.message : "Dispatch could not be prepared."
+      }]);
+    } finally {
+      setBusyDriverId(undefined);
+    }
   }
 
+  async function prepareAmendment(driver: DispatchDriverDto, selection: DispatchAllocationSelection) {
+    if (!snapshot || !selection.runId) return;
+    setBusyDriverId(driver.driverId);
+    setMessageError(undefined);
+    try {
+      const access = await token();
+      const dispatch = await getRunDispatch(selection.runId, access);
+      const reference = snapshot.runs.find(run => run.runId === selection.runId)?.reference || dispatch.reference;
+      setMessage({
+        runId: selection.runId,
+        reference,
+        text: buildAmendmentText(reference, dispatch, plannedStartLocal(selection.plannedStartTime)),
+        mode: "amendment",
+        routeMinutes: 0,
+        acknowledgeUnverified: false
+      });
+    } catch (exception) {
+      setFailures(current => [...current.filter(failure => failure.driverId !== driver.driverId), {
+        driverId: driver.driverId,
+        runId: selection.runId,
+        reason: exception instanceof Error ? exception.message : "Amendment preview could not be prepared."
+      }]);
+    } finally {
+      setBusyDriverId(undefined);
+    }
+  }
+
+  function prepareUpdate(driver: DispatchDriverDto, selection: DispatchAllocationSelection) {
+    if (!snapshot || !selection.runId) return;
+    const reference = snapshot.runs.find(run => run.runId === selection.runId)?.reference || "Run";
+    setMessage({ runId: selection.runId, reference, text: buildUpdateText(reference), mode: "update", routeMinutes: 0, acknowledgeUnverified: false });
+  }
+
+  async function handleSendMessage(text: string) {
+    if (!message) return;
+    setSendingMessage(true);
+    setMessageError(undefined);
+    try {
+      const access = await token();
+      await sendDriverMessage(
+        message.runId,
+        text,
+        message.mode === "initial",
+        message.mode === "initial" ? message.routeMinutes : null,
+        message.mode === "initial" ? message.acknowledgeUnverified : false,
+        access
+      );
+      const sentMode = message.mode;
+      setMessage(undefined);
+      await refresh();
+      setNotice(sentMode === "initial" ? "Dispatch sent. Waiting for driver confirmation." : sentMode === "amendment" ? "Amendment sent." : "Driver update sent.");
+    } catch (exception) {
+      setMessageError(exception instanceof Error ? exception.message : "Driver text could not be sent.");
+    } finally {
+      setSendingMessage(false);
+    }
+  }
+
+  if (!snapshot && action === "refresh") {
+    return <section className="smart-dispatch-board"><div className="smart-dispatch-loading">Building Driver Dispatch…</div></section>;
+  }
   if (!snapshot) {
     return <section className="smart-dispatch-board">
       <div className="smart-dispatch-error">
-        <strong>Smart Dispatch unavailable</strong>
+        <strong>Driver Dispatch unavailable</strong>
         <span>{error || "The planning data could not be loaded."}</span>
         <button type="button" onClick={() => void refresh()}>Retry</button>
       </div>
     </section>;
   }
 
-  return <section className="smart-dispatch-board" aria-label="Smart Dispatch planning board">
+  return <section className="smart-dispatch-board" aria-label="Driver Dispatch">
     <header className="smart-dispatch-header">
       <div>
-        <span className="smart-eyebrow">Planning intelligence</span>
-        <h2>Smart Dispatch</h2>
-        <p>{planningDate} · Recent Tacho/live drivers, skill-gated allocation and return/backload matching.</p>
+        <span className="smart-eyebrow">Authoritative planning & dispatch</span>
+        <h2>Driver Dispatch</h2>
+        <p>One screen for Tacho/live driver selection, allocation, compliance, SMS dispatch and confirmation.</p>
       </div>
       <div className="smart-dispatch-actions">
-        <button className="smart-action ghost" type="button" disabled={Boolean(action)} onClick={() => void refresh()}>
-          {action === "refresh" ? "Refreshing…" : "Refresh"}
-        </button>
+        {onPlanningDateChange && <label className="smart-date-control">Planning date<input type="date" value={planningDate} onChange={event => onPlanningDateChange(event.target.value)} /></label>}
+        {extraActions}
+        <button className="smart-action ghost" type="button" disabled={Boolean(action)} onClick={() => void refresh()}>{action === "refresh" ? "Refreshing…" : "Refresh"}</button>
         <GetTimesButton busy={action === "times"} onGetTimes={() => void handleGetTimes()} />
         <LockPlanButton busy={action === "lock"} disabled={selectedCount === 0 || Boolean(action && action !== "lock")} onLock={() => void handleLockPlan()} />
       </div>
     </header>
 
     <ComplianceWarningBanner drivers={snapshot.drivers} availableTimes={availableTimes} failures={failures} />
-
     {notice && <div className="smart-dispatch-notice" role="status">{notice}</div>}
     {error && <div className="smart-dispatch-error inline" role="alert">{error}</div>}
     {globalLockFailures.map((failure, index) => <div className="smart-dispatch-error inline" role="alert" key={`${failure.reason}-${index}`}>{failure.reason}</div>)}
@@ -218,7 +347,7 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
       <span><strong>{snapshot.drivers.length}</strong> recent/operational drivers</span>
       <span><strong>{snapshot.visibility.windowDays}</strong> day rolling window</span>
       <span><strong>{snapshot.runs.length}</strong> runs</span>
-      <span><strong>{selectedCount}</strong> allocated in plan</span>
+      <span><strong>{selectedCount}</strong> selected/allocated</span>
       <span><strong>{snapshot.drivers.filter(driver => driver.backloadCandidate).length}</strong> backload candidates</span>
     </div>
 
@@ -232,17 +361,10 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
     />
 
     <div className="smart-dispatch-table-wrap">
-      <table className="smart-dispatch-table">
+      <table className="smart-dispatch-table authoritative">
         <thead>
           <tr>
-            <th>Driver</th>
-            <th>Duty</th>
-            <th>Last location / fit</th>
-            <th>Skills</th>
-            <th>Run</th>
-            <th>Vehicle</th>
-            <th>Trailer</th>
-            <th>Available / WTD</th>
+            <th>Driver</th><th>Duty</th><th>Last location / fit</th><th>Skills</th><th>Run</th><th>Vehicle</th><th>Trailer</th><th>Available / WTD</th><th>Status</th><th>Dispatch</th>
           </tr>
         </thead>
         <tbody>
@@ -255,14 +377,30 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
             runOwnerById={runOwnerById}
             selection={selections[driver.driverId] || emptyDispatchSelection()}
             availableTime={availableTimes[driver.driverId]}
+            status={snapshot.statuses[driver.driverId]}
+            lockedRunId={lockedRunId(driver.driverId)}
             failures={rowFailures(failures, driver.driverId)}
+            busy={busyDriverId === driver.driverId}
             onSelectionChange={changeSelection}
+            onDispatch={(row, selection) => void prepareDispatch(row, selection)}
+            onAmend={(row, selection) => void prepareAmendment(row, selection)}
+            onUpdate={prepareUpdate}
           />)}
         </tbody>
       </table>
       {visibleDrivers.length === 0 && <div className="smart-dispatch-empty">No drivers match this filter.</div>}
     </div>
 
-    <p className="smart-dispatch-footnote">Only drivers with rolling {snapshot.visibility.windowDays}-day Tacho/live operational evidence are shown by default, plus allocated, rostered agency and subcontractor exceptions. Lock Plan validates the complete selection again on the API before any write.</p>
+    <p className="smart-dispatch-footnote">Select work, use Get Times, then Lock Plan. A locked row immediately exposes Dispatch. Dispatch performs the live HGV route/readiness check before opening the editable SMS preview. Amendments and free-form updates stay on the same row.</p>
+
+    {message && <DispatchMessageDialog
+      reference={message.reference}
+      initialText={message.text}
+      mode={message.mode}
+      busy={sendingMessage}
+      error={messageError}
+      onClose={() => { if (!sendingMessage) { setMessage(undefined); setMessageError(undefined); } }}
+      onSend={text => void handleSendMessage(text)}
+    />}
   </section>;
 }
