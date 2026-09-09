@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RunDispatchDto } from "../../types/dto/dispatch";
-import { buildDispatchText, dispatchActionForStatus } from "./dispatchMessaging";
+import { buildDispatchText, canUnassignDispatchRun, dispatchActionForStatus } from "./dispatchMessaging";
 
 const dispatch: RunDispatchDto = {
   reference: "Run 4 PM",
@@ -31,6 +31,13 @@ describe("authoritative Smart Dispatch messaging", () => {
     expect(dispatchActionForStatus(true, "Awaiting Dispatch")).toBe("dispatch");
     expect(dispatchActionForStatus(true, "Sent Awaiting Response")).toBe("amend");
     expect(dispatchActionForStatus(true, "Confirmed")).toBe("amend");
+  });
+
+  it("keeps an explicit unassign option for an allocated run", () => {
+    expect(canUnassignDispatchRun(false, "No Run")).toBe(false);
+    expect(canUnassignDispatchRun(true, "Awaiting Dispatch")).toBe(true);
+    expect(canUnassignDispatchRun(true, "Sent Awaiting Response")).toBe(true);
+    expect(canUnassignDispatchRun(true, "Confirmed")).toBe(true);
   });
 
   it("builds the editable driver text with route, reference and market detail", () => {
