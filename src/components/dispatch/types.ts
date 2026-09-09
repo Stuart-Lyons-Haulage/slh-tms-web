@@ -121,6 +121,9 @@ export interface DispatchEquipmentTrailer {
 
 export interface LegacyDispatchLoad {
   id: string;
+  reference?: string;
+  rawReference?: string;
+  status?: string;
   driverId?: string;
   vehicleId?: string;
   trailerId?: string;
@@ -131,6 +134,27 @@ export interface DispatchEquipmentWorkbench {
   vehicles: DispatchEquipmentVehicle[];
   trailers: DispatchEquipmentTrailer[];
   loads: LegacyDispatchLoad[];
+}
+
+export interface DispatchDriverStatusDto {
+  driverId: string;
+  dispatchStatus: "No Run" | "Awaiting Dispatch" | "Sent Awaiting Response" | "Confirmed" | string;
+  lastDriverReply?: string;
+  lastDriverReplyAtUtc?: string;
+  lastDispatchSentAtUtc?: string;
+  weeklyRestStatus?: "Ready" | "DueSoon" | "Overdue" | "Unverified" | "Unknown" | string;
+  weeklyRestMessage?: string;
+  availabilityStatus?: "Available" | "Unavailable" | "Unverified" | string;
+  availabilityMessage?: string;
+  driveAvailablePlanningDayMinutes?: number;
+  workAvailableWeekMinutes?: number;
+  projectedDayNumber?: number;
+  earliestStartUtc?: string;
+  earliestStartSource?: string;
+  earliestStartIsAssumption?: boolean;
+  operationalStatus?: "No Run" | "Awaiting Dispatch" | "Dispatched" | "Working" | "Completed" | string;
+  driverConfirmed?: boolean;
+  driverConfirmationAtUtc?: string;
 }
 
 export interface DispatchVisibilityItem {
