@@ -95,7 +95,7 @@ export function DriverDispatchOperational() {
   const token = useAccessToken();
   const rootRef = useRef<HTMLDivElement>(null);
   const loadsRef = useRef<WorkbenchLoad[]>([]);
-  const previewRequestRef = useRef<string>();
+  const previewRequestRef = useRef<string | undefined>(undefined);
   const [operationalByDriver, setOperationalByDriver] = useState<Record<string, OperationalDisplay>>({});
 
   const refreshOperationalStatuses = useCallback(async () => {
