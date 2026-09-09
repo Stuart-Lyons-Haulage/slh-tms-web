@@ -44,11 +44,6 @@ function installWallboardFetchResilience() {
 
     if (!isWallboardRead) return originalFetch(input, init);
 
-    // The six-digit pairing flow issues a database-backed TV key. A couple of legacy
-    // wallboard endpoints still accept only the server wallboard key, so paired TVs use
-    // a read-only API proxy that validates the paired key server-side and calls those
-    // feeds with the server credential. Signed-in TMS traffic continues to use the
-    // original endpoints directly.
     if (url.searchParams.has("key")) {
       if (url.pathname.endsWith("/operations/delivery-etas"))
         url.pathname = "/tms-api/api/v1/tv-display/wallboard-proxy/delivery-etas";
@@ -70,10 +65,6 @@ function installWallboardFetchResilience() {
       });
     };
 
-    // The shared request helper uses short client-side abort timers. ETA and geofence
-    // reconstruction can legitimately exceed those while RoadTech/Azure/Tacho are slow.
-    // Do not abort an otherwise healthy server calculation; keep the last confirmed row
-    // visible until this slower read completes and then atomically replace it.
     const resilientInit = init ? { ...init, signal: undefined } : init;
 
     try {
@@ -91,8 +82,6 @@ function installWallboardFetchResilience() {
         return response;
       }
 
-      // Never hide a genuine pairing/authentication problem, but transient service,
-      // timeout and throttling faults must not blank a live operations screen.
       if (response.status === 408 || response.status === 429 || response.status >= 500) {
         return cachedResponse() || response;
       }
@@ -154,6 +143,39 @@ function CompletedExitEvidenceLabel() {
   return null;
 }
 
+function AdvanceFinalStopFocus() {
+  useEffect(() => {
+    const apply = () => {
+      document.querySelectorAll<HTMLElement>(".ops-board-row:not(.final-arrived)").forEach(row => {
+        if (row.classList.contains("onsite") || row.classList.contains("complete")) return;
+        const markers = Array.from(row.querySelectorAll<HTMLElement>(".ops-progress-marker"));
+        const departed = markers.filter(marker => marker.classList.contains("done")).length;
+        if (markers.length < 2 || departed !== markers.length - 1) return;
+
+        const focus = row.querySelector<HTMLElement>(".run-cell small");
+        const etaDetail = row.querySelector<HTMLElement>(".time-cell.eta small")?.textContent?.trim();
+        if (!focus || !etaDetail) return;
+        const finalName = etaDetail.split(" · ")[0]?.trim();
+        if (!finalName) return;
+
+        // When all but the final geofence have been exited, the only operational focus
+        // left is the final customer destination. This prevents a stale collection label
+        // surviving a later confirmed geofence progression snapshot.
+        if (focus.textContent?.trim() !== finalName) focus.textContent = `Deliver · ${finalName}`;
+      });
+    };
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    const timer = window.setInterval(apply, 1000);
+    return () => {
+      observer.disconnect();
+      window.clearInterval(timer);
+    };
+  }, []);
+  return null;
+}
+
 function WallboardStatusClarifier() {
   useEffect(() => {
     const apply = () => {
@@ -181,6 +203,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
   return <>
     <FirstCollectionTimeLabel />
     <CompletedExitEvidenceLabel />
+    <AdvanceFinalStopFocus />
     <WallboardStatusClarifier />
     <EtaLearningBridge />
     {!tvMode && <RunGeofenceLinkagePanel />}
