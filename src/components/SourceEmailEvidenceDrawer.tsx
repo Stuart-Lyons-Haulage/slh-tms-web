@@ -31,15 +31,31 @@ type SourceEmailEvidence = {
   bodyFormat?: string;
   importance?: string;
   webLink?: string;
-  toRecipients?: Recipient[];
-  ccRecipients?: Recipient[];
-  attachments?: Attachment[];
+  toRecipients?: unknown;
+  ccRecipients?: unknown;
+  attachments?: unknown;
   bodyTruncated?: boolean;
   evidenceAvailable?: boolean;
 };
 
 function text(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function normaliseArray<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (value == null || value === "") return [];
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      return normaliseArray<T>(JSON.parse(trimmed));
+    } catch {
+      return [];
+    }
+  }
+  if (typeof value === "object") return [value as T];
+  return [];
 }
 
 function recipientText(recipient: Recipient) {
@@ -53,8 +69,8 @@ function recipientText(recipient: Recipient) {
   return name && address ? `${name} <${address}>` : name || address;
 }
 
-function recipientsText(items?: Recipient[]) {
-  return (items || []).map(recipientText).filter(Boolean).join(", ");
+function recipientsText(items?: unknown) {
+  return normaliseArray<Recipient>(items).map(recipientText).filter(Boolean).join(", ");
 }
 
 function bodyAsText(source?: SourceEmailEvidence) {
@@ -106,7 +122,7 @@ export function SourceEmailEvidenceDrawer({ stagingId, onClose }: { stagingId: s
   }, [stagingId, token]);
 
   const body = bodyAsText(evidence);
-  const attachments = (evidence?.attachments || []).filter((item) => item.isInline !== true);
+  const attachments = normaliseArray<Attachment>(evidence?.attachments).filter((item) => item.isInline !== true);
 
   return <div className="source-email-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <aside className="source-email-drawer" role="dialog" aria-modal="true" aria-label="Source email evidence">
