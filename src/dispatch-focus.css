@@ -1,0 +1,24 @@
+.dispatch-focus-loading,
+.dispatch-focus-warning {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
+.dispatch-focus-loading {
+  border: 1px solid #cbd9e6;
+  background: #f7fafc;
+  color: #34556d;
+}
+
+.dispatch-focus-warning {
+  border: 1px solid #e5bf75;
+  background: #fff7e8;
+  color: #714b08;
+}
+
+/* Coding is optional Driver Master information; absent values should not create visual noise. */
+.dispatch-table .code-badge.code-x {
+  display: none;
+}
