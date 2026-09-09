@@ -19,4 +19,10 @@ export default tseslint.config(
     },
   },
   { files: ['src/pages/RunsCapacityAllocation.tsx'], rules: { 'no-useless-escape': 'off' } },
+  {
+    // JobsOperational intentionally exports two pure market/destination helpers that are
+    // covered independently and reused outside the component. They are not React components.
+    files: ['src/pages/JobsOperational.tsx'],
+    rules: { 'react-refresh/only-export-components': 'off' },
+  },
 );
