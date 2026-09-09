@@ -17,9 +17,12 @@ export function stableFinalEta(candidate: string | undefined, fallback: string |
   if (deadlineDay && candidateDay !== deadlineDay && (fallbackDay === deadlineDay || previousDay === deadlineDay)) {
     return previous && previousDay === deadlineDay ? previous : fallback;
   }
-  // Do not replace a future planned/live ETA with a value already in the past.
+  // If Run Timing briefly serves an old/past candidate while the live delivery-ETA
+  // feed already has a fresh future route, the fresh live route must win. Returning
+  // `previous` here used to pin an expired ETA indefinitely (for example 07:24 at
+  // midday even though the truck had since departed another geofence).
   if (Number.isFinite(fallbackMs) && fallbackMs > now && candidateMs < now - 15 * 60_000) {
-    return previous || fallback;
+    return fallback;
   }
   return candidate;
 }
