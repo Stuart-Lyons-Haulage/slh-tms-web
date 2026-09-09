@@ -23,6 +23,12 @@ type UtilisationView = {
   note?: string;
 };
 
+function isCoreHumanRoute(route: BetaLyonsPlanRoute) { return /^Run\s+\d+/i.test(route.reference); }
+function isSouthboundBackhaulRoute(route: BetaLyonsPlanRoute) { return /^[ST]\d/i.test(route.reference); }
+function isWave3Route(route: BetaLyonsPlanRoute) { return /^W3\b/i.test(route.reference); }
+function isMarketRoute(route: BetaLyonsPlanRoute) { return /^MARKET-/i.test(route.reference); }
+function isCoreBetaRun(run: BetaDayPlanRun) { return run.period !== "W3" && run.capacityPallets > 0; }
+
 function utilisationStatus(value?: number) {
   if (value == null) return "Quantity unknown";
   if (value > 100) return "Over capacity";
@@ -84,8 +90,20 @@ function HumanRunCard({ route }: { route: BetaLyonsPlanRoute }) {
   </article>;
 }
 
-function RunCard({ run }: { run: BetaDayPlanRun }) {
+function BackhaulCard({ route }: { route: BetaLyonsPlanRoute }) {
+  return <article className="panel" style={{ padding: 12, display: "grid", gap: 5, borderLeft: "5px solid #2f6f44" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+      <div><strong>{route.reference}</strong><div><small>{route.orderLineCount} return movement line{route.orderLineCount === 1 ? "" : "s"} · {qty(route.plannedPallets)}</small></div></div>
+      <strong style={{ color: "#2f6f44" }}>BACKHAUL POOL</strong>
+    </div>
+    <div><small><strong>Planning rule:</strong> this is not scored as a separate under-utilised truck. It should be offered to a compatible driver/vehicle already returning south.</small></div>
+    <div><small>{route.stops.join(" → ")}</small></div>
+  </article>;
+}
+
+function BetaRunCard({ run }: { run: BetaDayPlanRun }) {
   const util = betaUtilisation(run);
+  const orderPreview = run.orders.slice(0, 5).map(order => `${order.reference}: ${order.collectionName} → ${order.deliveryName}`).join(" · ");
   return <article className="panel" style={{ padding: 12, display: "grid", gap: 5 }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
       <div><strong>{run.reference}</strong> <small>· {run.period}</small><div><small>{run.orders.length} order line{run.orders.length === 1 ? "" : "s"} · {run.plannedPallets > 0 ? `${run.plannedPallets} pallets` : "quantity not stated"}</small></div></div>
@@ -93,6 +111,8 @@ function RunCard({ run }: { run: BetaDayPlanRun }) {
     </div>
     <UtilisationBar value={util.utilisation}/>
     <div><small><strong>Capacity:</strong> {util.family}</small></div>
+    <div><small><strong>Route:</strong> {run.stops.map(stop => stop.name).join(" → ") || "No mapped route"}</small></div>
+    {orderPreview && <div><small><strong>Contains:</strong> {orderPreview}{run.orders.length > 5 ? ` · +${run.orders.length - 5} more` : ""}</small></div>}
     <div><small>{run.routingAvailable ? miles(run.miles) : "HGV routing unavailable"}</small></div>
   </article>;
 }
@@ -161,23 +181,41 @@ export function BetaOptimiserCombined() {
   }
 
   const reconciliation = comparison?.reconciliation;
-  const utilisationSummary = useMemo(() => comparison ? {
-    human: weightedHumanUtilisation(comparison.lyons.routes),
-    beta: weightedBetaUtilisation(comparison.beta.runs),
-    humanOver: comparison.lyons.routes.filter(route => (humanUtilisation(route).utilisation ?? 0) > 100).length,
-    humanUnder: comparison.lyons.routes.filter(route => {
-      const value = humanUtilisation(route).utilisation;
-      return value != null && value < 65;
-    }).length,
-    betaOver: comparison.beta.runs.filter(run => run.utilisationPercent > 100).length,
-    betaUnder: comparison.beta.runs.filter(run => run.capacityPallets > 0 && run.utilisationPercent < 65).length,
-  } : undefined, [comparison]);
+  const planView = useMemo(() => {
+    if (!comparison) return undefined;
+    const humanCore = comparison.lyons.routes.filter(isCoreHumanRoute);
+    const humanBackhauls = comparison.lyons.routes.filter(isSouthboundBackhaulRoute);
+    const humanWave3 = comparison.lyons.routes.filter(isWave3Route);
+    const humanMarkets = comparison.lyons.routes.filter(isMarketRoute);
+    const betaCore = comparison.beta.runs.filter(isCoreBetaRun);
+    const betaOther = comparison.beta.runs.filter(run => !isCoreBetaRun(run));
+    const humanUtil = weightedHumanUtilisation(humanCore);
+    const betaUtil = weightedBetaUtilisation(betaCore);
+    return {
+      humanCore, humanBackhauls, humanWave3, humanMarkets, betaCore, betaOther,
+      humanUtil, betaUtil,
+      humanOver: humanCore.filter(route => (humanUtilisation(route).utilisation ?? 0) > 100).length,
+      humanUnder: humanCore.filter(route => {
+        const value = humanUtilisation(route).utilisation;
+        return value != null && value < 65;
+      }).length,
+      betaOver: betaCore.filter(run => run.utilisationPercent > 100).length,
+      betaUnder: betaCore.filter(run => run.utilisationPercent < 65).length,
+    };
+  }, [comparison]);
+
+  const utilisationDelta = planView?.humanUtil != null && planView.betaUtil != null ? planView.betaUtil - planView.humanUtil : undefined;
+  const coreRunDelta = planView ? planView.betaCore.length - planView.humanCore.length : undefined;
+  const canClaimImprovement = Boolean(
+    comparison && reconciliation?.orderCoverageComplete && reconciliation.comparableRouting &&
+    (planView?.humanBackhauls.length ?? 0) === 0
+  );
 
   return <section style={{ display: "grid", gap: 14 }}>
     <div className="panel" style={{ padding: 16, borderTop: "5px solid #2f6f44" }}>
       <p className="eyebrow" style={{ marginBottom: 3 }}>Planning lab · read-only</p>
       <h1 style={{ margin: 0 }}>Beta Optimiser</h1>
-      <p>Build the full day from TMS orders, then compare it with both Lyons Collections and Southbound work. Wave 3, markets, trays, crates, trollies and transfers are retained even where no pallet count is stated.</p>
+      <p>Compare the human outbound plan with BETA while treating Southbound work as return/backhaul work, not as extra outbound trucks. Wave 3, markets, trays, crates, trollies and transfers remain visible even where no pallet count is stated.</p>
 
       <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
         <label><small>Planning date</small><br/><input type="date" value={planningDate} onChange={event => setPlanningDate(event.target.value)} disabled={busy}/></label>
@@ -186,10 +224,10 @@ export function BetaOptimiserCombined() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 10, marginTop: 12 }}>
-        <p className="notice inline-notice"><strong>Upload together:</strong> select the Lyons Collections workbook and the Southbound workbook in the same file chooser. Both must be for the same planning date.</p>
-        <p className="notice inline-notice"><strong>Capacity:</strong> BETA uses 26 Standard / 33 Euro pallets from the optimiser. Human runs use a clearly labelled visual capacity basis where the workbook does not explicitly state pallet family.</p>
-        <p className="notice inline-notice"><strong>No invented capacity:</strong> missing pallet counts remain “quantity not stated”. Those movements remain in route/reconciliation evidence but are excluded from pallet-capacity utilisation.</p>
-        <p className="notice inline-notice"><strong>Workbook rules:</strong> Lyons Collections reads only `Collection Plan`. Southbound uses its dedicated `Southbound`, `WAVE 3`, transfers/outbound and current market evidence.</p>
+        <p className="notice inline-notice"><strong>Backhaul rule:</strong> Southbound S/T work is a pool to attach to drivers returning south. It is not scored as a separate low-utilisation truck.</p>
+        <p className="notice inline-notice"><strong>Capacity:</strong> BETA uses 26 Standard / 33 Euro pallets from the optimiser. Core human runs use the same clearly labelled capacity benchmark.</p>
+        <p className="notice inline-notice"><strong>No false win:</strong> BETA only gets an “improved” verdict when coverage, routing and backhaul allocation evidence support it.</p>
+        <p className="notice inline-notice"><strong>Workbook rules:</strong> Lyons Collections reads `Collection Plan`; Southbound is treated as return-work evidence plus Wave 3/market work.</p>
       </div>
 
       {fileNames.length > 0 && <p><small><strong>Selected:</strong> {fileNames.join(" + ")}</small></p>}
@@ -197,37 +235,70 @@ export function BetaOptimiserCombined() {
       {warnings.map((warning, index) => <p className="notice inline-notice" key={`${warning}-${index}`}>{warning}</p>)}
     </div>
 
-    {comparison && <div className="panel" style={{ padding: 16, display: "grid", gap: 12 }}>
-      <h2 style={{ margin: 0 }}>Human vs BETA</h2>
+    {comparison && planView && <div className="panel" style={{ padding: 16, display: "grid", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap" }}>
+        <div><h2 style={{ margin: 0 }}>Human vs BETA · operational comparison</h2><small>Outbound trucks are compared with outbound trucks. Southbound work is assessed as backhaul opportunity.</small></div>
+        <strong style={{ padding: "7px 10px", borderRadius: 999, background: canClaimImprovement ? "#dff3df" : "#fff4d6", color: canClaimImprovement ? "#245c35" : "#725500" }}>
+          {canClaimImprovement ? "IMPROVEMENT PROVEN" : "IMPROVEMENT NOT YET PROVEN"}
+        </strong>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 }}>
         <div className="panel" style={{ padding: 10 }}><small>Movement match</small><div><strong>{reconciliation?.matchedOrderLines}/{reconciliation?.betaOrderLines}</strong></div></div>
-        <div className="panel" style={{ padding: 10 }}><small>Runs</small><div><strong>{comparison.lyons.routeCount} human → {comparison.beta.runCount} BETA</strong></div></div>
-        <div className="panel" style={{ padding: 10 }}><small>Known pallets</small><div><strong>{comparison.lyons.totalPallets} human / {comparison.beta.totalPallets} BETA</strong></div></div>
-        <div className="panel" style={{ padding: 10 }}><small>Utilisation score</small><div><strong>{pct(utilisationSummary?.human)} human → {pct(utilisationSummary?.beta)} BETA</strong></div></div>
-        <div className="panel" style={{ padding: 10 }}><small>Human attention</small><div><strong>{utilisationSummary?.humanUnder ?? 0} under-used · {utilisationSummary?.humanOver ?? 0} over-capacity</strong></div></div>
-        <div className="panel" style={{ padding: 10 }}><small>BETA attention</small><div><strong>{utilisationSummary?.betaUnder ?? 0} under-used · {utilisationSummary?.betaOver ?? 0} over-capacity</strong></div></div>
+        <div className="panel" style={{ padding: 10 }}><small>Core outbound runs</small><div><strong>{planView.humanCore.length} human → {planView.betaCore.length} BETA</strong></div><small>{coreRunDelta === 0 ? "No truck-count reduction" : coreRunDelta != null && coreRunDelta < 0 ? `${Math.abs(coreRunDelta)} fewer core runs` : `${coreRunDelta ?? 0} more core runs`}</small></div>
+        <div className="panel" style={{ padding: 10 }}><small>Southbound return work</small><div><strong>{planView.humanBackhauls.length} backhaul route{planView.humanBackhauls.length === 1 ? "" : "s"}</strong></div><small>Must be paired to returning runs</small></div>
+        <div className="panel" style={{ padding: 10 }}><small>Wave 3 / markets</small><div><strong>{planView.humanWave3.length + planView.humanMarkets.length} route{planView.humanWave3.length + planView.humanMarkets.length === 1 ? "" : "s"}</strong></div></div>
+        <div className="panel" style={{ padding: 10 }}><small>Core utilisation</small><div><strong>{pct(planView.humanUtil)} human → {pct(planView.betaUtil)} BETA</strong></div><small>{utilisationDelta == null ? "Not comparable" : `${utilisationDelta >= 0 ? "+" : ""}${utilisationDelta.toFixed(1)} percentage points`}</small></div>
+        <div className="panel" style={{ padding: 10 }}><small>Core attention</small><div><strong>{planView.humanUnder} under-used · {planView.humanOver} over-capacity</strong></div><small>BETA: {planView.betaUnder} under-used · {planView.betaOver} over-capacity</small></div>
         <div className="panel" style={{ padding: 10 }}><small>HGV mileage</small><div><strong>{miles(comparison.lyons.totalMiles)} human / {miles(comparison.beta.totalMiles)} BETA</strong></div></div>
       </div>
-      {!reconciliation?.comparableRouting && <p className="notice inline-notice"><strong>Mileage comparison withheld:</strong> exact work coverage and complete live HGV routing are required before Beta claims a saving.</p>}
+
+      <div className="panel" style={{ padding: 14, borderLeft: `5px solid ${canClaimImprovement ? "#2f6f44" : "#d69e2e"}`, display: "grid", gap: 7 }}>
+        <strong>Why is BETA better — or not?</strong>
+        <div><small><strong>Capacity:</strong> {utilisationDelta == null ? "not comparable." : utilisationDelta > 0 ? `BETA improves core trailer utilisation by ${utilisationDelta.toFixed(1)} percentage points.` : utilisationDelta === 0 ? "BETA has not improved core trailer utilisation." : `BETA is ${Math.abs(utilisationDelta).toFixed(1)} points worse on core trailer utilisation.`}</small></div>
+        <div><small><strong>Core trucks:</strong> {coreRunDelta === 0 ? "BETA uses the same number of core outbound runs as the human plan." : coreRunDelta != null && coreRunDelta < 0 ? `BETA uses ${Math.abs(coreRunDelta)} fewer core outbound runs.` : `BETA currently uses ${coreRunDelta ?? 0} more core outbound runs.`}</small></div>
+        <div><small><strong>Backhauls:</strong> {planView.humanBackhauls.length > 0 ? `${planView.humanBackhauls.length} Southbound return routes exist. Until BETA shows which parent outbound run/driver each one is attached to, a whole-day improvement claim is not valid.` : "No separate Southbound return routes were found."}</small></div>
+        <div><small><strong>Mileage:</strong> {reconciliation?.comparableRouting ? "Complete live HGV routing is available for comparison." : "Mileage remains unproven because complete live HGV routing and exact work coverage are not yet available."}</small></div>
+      </div>
+
       {reconciliation?.warnings.map((warning, index) => <p className="notice inline-notice" key={`${warning}-${index}`}>{warning}</p>)}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(430px,1fr))", gap: 14, alignItems: "start" }}>
         <section style={{ display: "grid", gap: 8 }}>
-          <div><h3 style={{ marginBottom: 2 }}>Human plan · before</h3><small>Shows where manual planning left capacity unused or exceeded the likely trailer capacity.</small></div>
-          {comparison.lyons.routes.map(route => <HumanRunCard key={route.reference} route={route}/>)}
+          <div><h3 style={{ marginBottom: 2 }}>Human core outbound plan</h3><small>Only the actual Collection Plan runs are scored for outbound trailer utilisation.</small></div>
+          {planView.humanCore.map(route => <HumanRunCard key={route.reference} route={route}/>)}
         </section>
         <section style={{ display: "grid", gap: 8 }}>
-          <div><h3 style={{ marginBottom: 2 }}>BETA plan · after</h3><small>Uses the optimiser's actual Standard/Euro capacity and utilisation score for each generated run.</small></div>
-          {comparison.beta.runs.map(run => <RunCard key={run.reference} run={run}/>)}
+          <div><h3 style={{ marginBottom: 2 }}>BETA core outbound plan</h3><small>Each card shows what BETA combined, its route, Standard/Euro capacity and utilisation.</small></div>
+          {planView.betaCore.map(run => <BetaRunCard key={run.reference} run={run}/>)}
         </section>
       </div>
+
+      {planView.humanBackhauls.length > 0 && <section style={{ display: "grid", gap: 8 }}>
+        <div><h3 style={{ marginBottom: 2 }}>Southbound backhaul pool</h3><small>These are return jobs to be matched to a driver/vehicle already heading south after its northern deliveries — not extra standalone outbound runs.</small></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(360px,1fr))", gap: 8 }}>
+          {planView.humanBackhauls.map(route => <BackhaulCard key={route.reference} route={route}/>)}
+        </div>
+      </section>}
+
+      {(planView.humanWave3.length > 0 || planView.humanMarkets.length > 0) && <section style={{ display: "grid", gap: 8 }}>
+        <div><h3 style={{ marginBottom: 2 }}>Wave 3 and market work</h3><small>Kept separate from the core outbound utilisation score because this work follows different operating rules.</small></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(360px,1fr))", gap: 8 }}>
+          {[...planView.humanWave3, ...planView.humanMarkets].map(route => <BackhaulCard key={route.reference} route={route}/>)}
+        </div>
+      </section>}
+
+      {planView.betaOther.length > 0 && <section style={{ display: "grid", gap: 8 }}>
+        <div><h3 style={{ marginBottom: 2 }}>Other BETA work</h3><small>Unquantified and Wave 3 movements are retained but are not allowed to inflate the core outbound utilisation score.</small></div>
+        {planView.betaOther.map(run => <BetaRunCard key={run.reference} run={run}/>)}
+      </section>}
     </div>}
 
     {dayPlan && !comparison && <div className="panel" style={{ padding: 16, display: "grid", gap: 8 }}>
       <h2 style={{ margin: 0 }}>Beta-built day · {formatDateLong(dayPlan.planningDate)}</h2>
       <p><small>{dayPlan.plannedOrderLines} planned order lines · {dayPlan.runCount} runs · {dayPlan.routingComplete ? "complete HGV routing" : "partial HGV routing"}</small></p>
       {dayPlan.warnings.map((warning, index) => <p className="notice inline-notice" key={`${warning}-${index}`}>{warning}</p>)}
-      {dayPlan.runs.map(run => <RunCard key={run.reference} run={run}/>)}
+      {dayPlan.runs.map(run => <BetaRunCard key={run.reference} run={run}/>)}
     </div>}
   </section>;
 }
