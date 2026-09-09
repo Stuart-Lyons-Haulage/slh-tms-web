@@ -1,0 +1,133 @@
+export type DispatchSkillName =
+  | "DoubleDecker"
+  | "MarketRun"
+  | "HazChem"
+  | "Moffett"
+  | "TailLift"
+  | "RefrigeratedUnit"
+  | "ManualHandling";
+
+export type DispatchFilter = "all" | "unallocated" | "backloads" | "warnings" | "skills-mismatch";
+
+export interface DispatchGeoPointDto {
+  latitude: number;
+  longitude: number;
+}
+
+export interface DispatchCollectionPointDto {
+  name: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface DispatchTachoDataDto {
+  currentDutyDay: number;
+  shiftEndTimeUtc?: string;
+  weeklyWorkingTime: number;
+  dailyDrivingTime: number;
+  breakCompliance: boolean;
+  lastVehicleRegistration?: string;
+  requiredRestPeriod: number;
+  reducedDailyRestsUsed: number;
+  dailyDrivingLimitMinutes?: number;
+  driveAvailablePlanningDayMinutes?: number;
+  workAvailableWeekMinutes?: number;
+}
+
+export interface DispatchTrackingDataDto {
+  lastKnownPosition?: DispatchGeoPointDto;
+  lastStopName?: string;
+  lastPositionAtUtc?: string;
+}
+
+export interface DispatchDriverDto {
+  driverId: string;
+  driverCode: string;
+  name: string;
+  employmentType: "Employed" | "HalfTramper" | "AgencyDay" | "AgencyLong" | string;
+  skills: string;
+  holidayDates: string[];
+  contractedDays: string[];
+  homeDepot?: string;
+  tachoData: DispatchTachoDataDto;
+  trackingData: DispatchTrackingDataDto;
+  needsReturn: boolean;
+  availableFrom?: string;
+  isBlocked: boolean;
+  blockedReason?: string;
+  suggestedRunId?: string;
+  suggestedRunReference?: string;
+  distanceToSuggestedCollectionMiles?: number;
+  backloadCandidate: boolean;
+  deadheadReductionMiles?: number;
+  suggestion?: string;
+}
+
+export interface DispatchRunDto {
+  runId: string;
+  reference: string;
+  collectionPoint: DispatchCollectionPointDto;
+  requiredSkills: string;
+  requiresDoubleDeck: boolean;
+  requiresRefrigerated: boolean;
+  isBackload: boolean;
+  isOvernightMarket: boolean;
+  isSouthbound: boolean;
+}
+
+export interface DispatchAvailableTimeDto {
+  driverId: string;
+  availableFrom?: string;
+  requiredRestPeriod: number;
+  weeklyWorkingTimeUsed: number;
+  dailyDrivingTimeUsed: number;
+  wtdStatus: "ok" | "amber" | "red" | string;
+  breachDetail?: string;
+}
+
+export interface DispatchLockFailure {
+  driverId: string;
+  runId?: string;
+  reason: string;
+}
+
+export interface DispatchLockResponse {
+  success: boolean;
+  failures: DispatchLockFailure[];
+}
+
+export interface DispatchAllocationSelection {
+  runId: string;
+  vehicleId: string;
+  trailerId: string;
+  plannedStartTime?: string;
+}
+
+export interface DispatchEquipmentVehicle {
+  id: string;
+  registration: string;
+  fleetNumber?: string;
+  fleetioStatus?: string;
+  active?: boolean;
+}
+
+export interface DispatchEquipmentTrailer {
+  id: string;
+  trailerNumber: string;
+  type?: string;
+  active?: boolean;
+}
+
+export interface LegacyDispatchLoad {
+  id: string;
+  driverId?: string;
+  vehicleId?: string;
+  trailerId?: string;
+  plannedStartUtc?: string;
+}
+
+export interface DispatchEquipmentWorkbench {
+  vehicles: DispatchEquipmentVehicle[];
+  trailers: DispatchEquipmentTrailer[];
+  loads: LegacyDispatchLoad[];
+}

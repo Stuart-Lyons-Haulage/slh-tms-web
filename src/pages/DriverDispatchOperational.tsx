@@ -1,6 +1,7 @@
 import { type SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CustomerLoadPlanActions } from "../components/CustomerLoadPlanActions";
+import { DispatchBoard } from "../components/dispatch/DispatchBoard";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { DriverDispatch } from "./DriverDispatch";
@@ -144,7 +145,12 @@ export function DriverDispatchOperational() {
     window.setTimeout(() => void refreshOperationalStatuses(), 3500);
   }
 
+  function smartPlanLocked() {
+    void refreshOperationalStatuses();
+  }
+
   return <div ref={rootRef} onClickCapture={observeDispatchInteraction} onChangeCapture={observeDispatchInteraction}>
+    <DispatchBoard planningDate={dispatchDate} onLocked={smartPlanLocked} />
     <DriverDispatch />
     {actionHost && createPortal(<CustomerLoadPlanActions date={dispatchDate} />, actionHost)}
   </div>;
