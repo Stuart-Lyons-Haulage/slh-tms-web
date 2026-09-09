@@ -17,14 +17,27 @@ function tagged(notes: string | undefined, label: string) {
   return notes.split("·").map((part) => part.trim()).find((part) => part.toLowerCase().startsWith(prefix.toLowerCase()))?.slice(prefix.length).trim() || "";
 }
 
-function marketDetail(order: TransportOrder) {
+export function approvedOrderMarketDetail(order: TransportOrder) {
+  const market = tagged(order.driverInstructions, "Market");
   const customer = tagged(order.driverInstructions, "Market customer");
   const stand = tagged(order.driverInstructions, "Stall / stand");
   const salesman = tagged(order.driverInstructions, "Salesman");
-  return { customer, stand, salesman, isMarket: Boolean(customer || stand) };
+  return { market, customer, stand, salesman, isMarket: Boolean(market || customer || stand) };
+}
+
+export function approvedOrderPhysicalDestination(order: TransportOrder) {
+  const detail = approvedOrderMarketDetail(order);
+  if (detail.isMarket) {
+    return detail.market || order.marketName || tagged(order.driverInstructions, "Depot") || "";
+  }
+  // For standard depot/store work the destination is the physical Site. Generic incoming
+  // customer/depot labels (SAINSBURY, WAITROSE, ALDI, etc.) must not become a second Site.
+  return order.stallNumber || tagged(order.driverInstructions, "Depot") || order.marketName || "";
 }
 
 function editable(order: TransportOrder): OrderUpdatePayload {
+  const detail = approvedOrderMarketDetail(order);
+  const physicalDestination = approvedOrderPhysicalDestination(order);
   return {
     reference: order.reference,
     customerCode: order.customerCode,
@@ -32,8 +45,8 @@ function editable(order: TransportOrder): OrderUpdatePayload {
     deliveryDate: order.deliveryDate || order.collectionDate,
     pallets: order.pallets,
     collectionSite: order.sellerName || tagged(order.driverInstructions, "Collection site"),
-    depotId: order.marketName || tagged(order.driverInstructions, "Depot ID"),
-    destination: order.stallNumber || tagged(order.driverInstructions, "Depot"),
+    depotId: physicalDestination,
+    destination: detail.isMarket ? (detail.stand || order.stallNumber || physicalDestination) : physicalDestination,
     deliveryAddress: tagged(order.driverInstructions, "Delivery address"),
     customerRef: tagged(order.driverInstructions, "Customer ref"),
     poRef: tagged(order.driverInstructions, "PO ref"),
@@ -67,9 +80,13 @@ export function JobsOperational() {
       .some((value) => String(value || "").toLowerCase().includes(q));
   }), [orders.data, query]);
 
-  // Only physical collection/delivery Sites participate in geofence coverage. Market customer
-  // and stand details live in DriverInstructions and must never be treated as geofence Sites.
-  const siteLabels = useMemo(() => Array.from(new Set(rows.flatMap(order => [order.sellerName, order.marketName, order.stallNumber]).map(value => String(value || "").trim()).filter(Boolean))), [rows]);
+  // Only physical collection/delivery Sites participate in geofence coverage. For normal work
+  // the Depot is the same canonical Site as Destination. For market work only the physical
+  // Market Site owns the geofence; trader names, stands, stalls, units and arches are detail.
+  const siteLabels = useMemo(() => Array.from(new Set(rows.flatMap(order => [
+    order.sellerName,
+    approvedOrderPhysicalDestination(order),
+  ]).map(value => String(value || "").trim()).filter(Boolean))), [rows]);
   const geofenceCoverage = useSiteGeofenceCoverage(siteLabels);
 
   function begin(order: TransportOrder) {
@@ -197,15 +214,17 @@ export function JobsOperational() {
       <table className="master-table" style={{ minWidth: 1320 }}>
         <thead><tr><th>Order</th><th>Customer</th><th>Collection</th><th>Market / Depot</th><th>Destination / Market detail</th><th>Delivery address</th><th>Quantity</th><th>Unit</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>{rows.map((order) => {
-          const detail = marketDetail(order);
+          const detail = approvedOrderMarketDetail(order);
+          const physicalDestination = approvedOrderPhysicalDestination(order);
+          const destinationCoverage = geofenceCoverage.resultFor(physicalDestination);
           return <tr key={order.id}>
             <td><strong>{order.reference}</strong></td>
             <td>{order.customerCode}</td>
             <td>{order.sellerName || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.sellerName)} /></td>
-            <td>{order.marketName || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.marketName)} /></td>
+            <td>{physicalDestination || "—"}<GeofenceStatusBadge result={destinationCoverage} /></td>
             <td>{detail.isMarket
               ? <><strong>{detail.customer || "Market customer"}</strong>{detail.stand && <small style={{ display: "block", marginTop: 3 }}>Stand / stall: {detail.stand}</small>}{detail.salesman && <small style={{ display: "block", marginTop: 2 }}>Salesman: {detail.salesman}</small>}</>
-              : <>{order.stallNumber || "—"}<GeofenceStatusBadge result={geofenceCoverage.resultFor(order.stallNumber)} /></>}</td>
+              : <>{physicalDestination || "—"}</>}</td>
             <td>{tagged(order.driverInstructions, "Delivery address") || "—"}</td>
             <td>{order.pallets ?? "—"}</td><td>{tagged(order.driverInstructions, "Unit type") || "Pallets"}</td><td>{order.status}</td>
             <td><div style={{ display: "flex", gap: 8 }}><button onClick={() => begin(order)}>Edit</button><button onClick={() => void cancel(order)} disabled={saving || aliasBusy}>Delete</button></div></td>

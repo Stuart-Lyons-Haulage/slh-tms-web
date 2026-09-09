@@ -11,6 +11,7 @@ export interface UseApiResult<T> {
 }
 
 const warmApiCache = new Map<string, unknown>();
+export const SILENT_API_REFRESH_EVENT = 'slh:silent-api-refresh';
 
 function warmCacheKey(load: () => Promise<unknown>) {
   const source = Function.prototype.toString.call(load);
@@ -33,9 +34,8 @@ export function useApi<T>(load: () => Promise<T>): UseApiResult<T> {
     if (inFlight.current) return inFlight.current;
     const request = ++requestNumber.current;
     const operation = (async () => {
-      // Keep an already-rendered wallboard visible while the newest snapshot is fetched.
-      // This module survives React route unmount/remounts, so returning to Operations
-      // Wallboard is instant instead of rebuilding planned runs and assignments from TBC.
+      // Once data is already rendered, refresh it in place. This avoids replacing an
+      // operational screen with a loading shell during normal background reconciliation.
       if (!hasData.current) setLoading(true);
       setError(undefined);
       setDataProblem(undefined);
@@ -72,8 +72,13 @@ export function useApi<T>(load: () => Promise<T>): UseApiResult<T> {
   }, [load]);
   useEffect(() => {
     mounted.current = true;
+    const onSilentRefresh = () => { void refresh(); };
+    window.addEventListener(SILENT_API_REFRESH_EVENT, onSilentRefresh);
     void refresh();
-    return () => { mounted.current = false; };
+    return () => {
+      mounted.current = false;
+      window.removeEventListener(SILENT_API_REFRESH_EVENT, onSilentRefresh);
+    };
   }, [refresh]);
   return { data, error, dataProblem, loading, refresh };
 }
