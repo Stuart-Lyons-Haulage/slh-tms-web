@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { applyMasterDataInChunks, compareMasterDataRow, parseMasterDataCsv, parseCsvRows } from "./MasterDataCsvImport";
+import { applyMasterDataInChunks, bulkSelectMasterRows, compareMasterDataRow, parseMasterDataCsv, parseCsvRows } from "./MasterDataCsvImport";
 import type { MasterApplyResponse, StageBatchRequest } from "../lib/api";
 
 describe("MasterDataCsvImport", () => {
@@ -33,6 +33,28 @@ describe("MasterDataCsvImport", () => {
     const diff = compareMasterDataRow("sitetimingrule", parsed.requests[0], [{ routeCombination: "NWF-Sel-Aldi-Neston", palletType: "Euro", lastDespatch: "07:00" }]);
     expect(diff.status).toBe("UNCHANGED");
     expect(diff.selected).toBe(false);
+  });
+
+  it("selects every non-unchanged row in one bulk action", () => {
+    const request: StageBatchRequest = { entityType: "site", idempotencyKey: "site", payload: { externalCode: "A" } };
+    const rows = [
+      { request, status: "NEW" as const, differences: ["name"], selected: false },
+      { request, status: "UPDATE" as const, differences: ["notes"], selected: false },
+      { request, status: "CRITICAL REVIEW" as const, differences: ["aliases"], selected: false },
+      { request, status: "UNCHANGED" as const, differences: [], selected: false },
+    ];
+    const selected = bulkSelectMasterRows(rows, true, true);
+    expect(selected.map(row => row.selected)).toEqual([true, true, true, false]);
+  });
+
+  it("can bulk-select safe changes without selecting protected rows", () => {
+    const request: StageBatchRequest = { entityType: "vehicle", idempotencyKey: "vehicle", payload: { registration: "BL70RHU" } };
+    const rows = [
+      { request, status: "UPDATE" as const, differences: ["abbreviation"], selected: false },
+      { request, status: "CRITICAL REVIEW" as const, differences: ["fuelPin"], selected: false },
+    ];
+    const selected = bulkSelectMasterRows(rows, true, false);
+    expect(selected.map(row => row.selected)).toEqual([true, false]);
   });
 
   it("applies large imports in bounded chunks and aggregates the result", async () => {

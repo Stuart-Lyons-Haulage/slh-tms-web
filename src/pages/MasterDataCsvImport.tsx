@@ -96,6 +96,14 @@ export function compareMasterDataRow(entity: MasterEntity, request: StageBatchRe
   return { request, current, status: critical ? "CRITICAL REVIEW" : "UPDATE", differences, selected: !critical };
 }
 
+export function bulkSelectMasterRows(rows: DiffRow[], selected: boolean, includeCritical = true): DiffRow[] {
+  return rows.map(row => {
+    if (row.status === "UNCHANGED") return { ...row, selected: false };
+    if (!includeCritical && row.status === "CRITICAL REVIEW") return row;
+    return { ...row, selected };
+  });
+}
+
 export async function applyMasterDataInChunks(records: StageBatchRequest[], applyBatch: (batch: StageBatchRequest[]) => Promise<MasterApplyResponse>, chunkSize = MASTER_IMPORT_CHUNK_SIZE, onProgress?: (completed: number, total: number) => void): Promise<MasterApplyResponse> {
   if (!Number.isInteger(chunkSize) || chunkSize < 1) throw new Error("Import chunk size must be at least 1.");
   const aggregate: MasterApplyResponse = { received: 0, applied: 0, registered: 0, failed: 0, linked: 0, results: [] };
@@ -113,6 +121,8 @@ export function MasterDataCsvImport() {
   const [diffRows, setDiffRows] = useState<DiffRow[]>([]); const [message, setMessage] = useState<string>(); const [error, setError] = useState<string>(); const [saving, setSaving] = useState(false);
   const previewHeaders = useMemo(() => parsed ? Array.from(new Set(parsed.preview.flatMap(row => Object.keys(row)))).slice(0, 10) : [], [parsed]);
   const selected = diffRows.filter(row => row.selected && row.status !== "UNCHANGED");
+  const selectableCount = diffRows.filter(row => row.status !== "UNCHANGED").length;
+  const criticalCount = diffRows.filter(row => row.status === "CRITICAL REVIEW").length;
 
   async function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]; setParsed(undefined); setDiffRows([]); setMessage(undefined); setError(undefined); if (!file) return; setFileName(file.name);
@@ -125,6 +135,22 @@ export function MasterDataCsvImport() {
       const counts = compared.reduce<Record<string, number>>((acc, row) => { acc[row.status] = (acc[row.status] || 0) + 1; return acc; }, {});
       setMessage(`${compared.length} rows compared · ${counts.NEW || 0} new · ${counts.UPDATE || 0} updates · ${counts["CRITICAL REVIEW"] || 0} critical review · ${counts.UNCHANGED || 0} unchanged.`);
     } catch (exception) { setError(exception instanceof Error ? exception.message : "The CSV could not be reconciled."); }
+  }
+
+  function selectAll() {
+    if (criticalCount > 0) {
+      const confirmed = window.confirm(`Select all ${selectableCount} changes? This includes ${criticalCount} protected/critical row${criticalCount === 1 ? "" : "s"} covering fields such as fuel cards, driver compliance, markets or cut-off times. Review the highlighted differences before applying.`);
+      if (!confirmed) return;
+    }
+    setDiffRows(rows => bulkSelectMasterRows(rows, true, true));
+  }
+
+  function selectSafe() {
+    setDiffRows(rows => bulkSelectMasterRows(rows, true, false));
+  }
+
+  function clearAll() {
+    setDiffRows(rows => bulkSelectMasterRows(rows, false, true));
   }
 
   async function apply() {
@@ -147,11 +173,19 @@ export function MasterDataCsvImport() {
       <label>CSV file<input type="file" accept="text/csv,.csv" onChange={event => void chooseFile(event)} /></label>{fileName && <strong>{fileName}</strong>}
     </div>
     {message && <p className="notice ready">{message}</p>}{error && <p className="notice">{error}</p>}{parsed?.warnings.length ? <p className="notice inline-notice">{parsed.warnings.slice(0, 8).join(" · ")}</p> : null}
-    {diffRows.length ? <div className="master-csv-preview"><table className="master-table"><thead><tr><th>Apply</th><th>Status</th><th>Identity</th><th>Changed fields</th><th>Current → Uploaded</th></tr></thead><tbody>{diffRows.map((row, index) => {
-      const payload = row.request.payload as FlatPayload; const identity = identityFields[entity].map(field => payload[field]).filter(Boolean).join(" · ");
-      const detail = row.differences.slice(0, 5).map(field => `${field}: ${String(row.current?.[field] ?? "—")} → ${String(payload[field] ?? "—")}`).join(" | ");
-      return <tr key={`${row.request.idempotencyKey}-${index}`}><td><input type="checkbox" checked={row.selected} disabled={row.status === "UNCHANGED"} onChange={event => setDiffRows(rows => rows.map((item, itemIndex) => itemIndex === index ? { ...item, selected: event.target.checked } : item))} /></td><td><strong>{row.status}</strong></td><td>{identity}</td><td>{row.differences.join(", ") || "None"}</td><td>{detail || "Already identical"}</td></tr>;
-    })}</tbody></table></div> : parsed?.preview.length ? <div className="master-csv-preview"><table className="master-table"><thead><tr>{previewHeaders.map(header => <th key={header}>{header}</th>)}</tr></thead><tbody>{parsed.preview.map((row, index) => <tr key={index}>{previewHeaders.map(header => <td key={header}>{String(row[header] ?? "")}</td>)}</tr>)}</tbody></table></div> : null}
+    {diffRows.length ? <>
+      <div className="actions" style={{ marginBottom: 10 }}>
+        <button type="button" onClick={selectAll} disabled={!selectableCount || saving}>Select all ({selectableCount})</button>
+        {criticalCount > 0 && <button type="button" onClick={selectSafe} disabled={!selectableCount || saving}>Select safe changes</button>}
+        <button type="button" onClick={clearAll} disabled={!selected.length || saving}>Clear all</button>
+        <span className="hint">{selected.length} selected{criticalCount ? ` · ${criticalCount} protected row${criticalCount === 1 ? "" : "s"} require review` : ""}</span>
+      </div>
+      <div className="master-csv-preview"><table className="master-table"><thead><tr><th>Apply</th><th>Status</th><th>Identity</th><th>Changed fields</th><th>Current → Uploaded</th></tr></thead><tbody>{diffRows.map((row, index) => {
+        const payload = row.request.payload as FlatPayload; const identity = identityFields[entity].map(field => payload[field]).filter(Boolean).join(" · ");
+        const detail = row.differences.slice(0, 5).map(field => `${field}: ${String(row.current?.[field] ?? "—")} → ${String(payload[field] ?? "—")}`).join(" | ");
+        return <tr key={`${row.request.idempotencyKey}-${index}`}><td><input type="checkbox" checked={row.selected} disabled={row.status === "UNCHANGED"} onChange={event => setDiffRows(rows => rows.map((item, itemIndex) => itemIndex === index ? { ...item, selected: event.target.checked } : item))} /></td><td><strong>{row.status}</strong></td><td>{identity}</td><td>{row.differences.join(", ") || "None"}</td><td>{detail || "Already identical"}</td></tr>;
+      })}</tbody></table></div>
+    </> : parsed?.preview.length ? <div className="master-csv-preview"><table className="master-table"><thead><tr>{previewHeaders.map(header => <th key={header}>{header}</th>)}</tr></thead><tbody>{parsed.preview.map((row, index) => <tr key={index}>{previewHeaders.map(header => <td key={header}>{String(row[header] ?? "")}</td>)}</tr>)}</tbody></table></div> : null}
     <div className="actions"><button type="button" className="primary" disabled={!selected.length || saving} onClick={() => void apply()}>{saving ? "Applying…" : `Apply ${selected.length} selected change${selected.length === 1 ? "" : "s"}`}</button></div>
   </section>;
 }
