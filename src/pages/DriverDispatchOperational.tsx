@@ -2,9 +2,12 @@ import { type SyntheticEvent, useCallback, useEffect, useRef, useState } from "r
 import { createPortal } from "react-dom";
 import { CustomerLoadPlanActions } from "../components/CustomerLoadPlanActions";
 import { DispatchBoard } from "../components/dispatch/DispatchBoard";
+import { getDispatchVisibility } from "../components/dispatch/dispatchApi";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { DriverDispatch } from "./DriverDispatch";
+import { setDispatchFocusedDriverIds } from "./DriverDispatchPlanning";
+import "../dispatch-focus.css";
 
 type WorkbenchDriver = { driverId: string; employeeNumber?: string; displayName: string };
 type Workbench = { drivers: WorkbenchDriver[] };
@@ -36,6 +39,30 @@ export function DriverDispatchOperational() {
   const [operationalByDriver, setOperationalByDriver] = useState<Record<string, OperationalDisplay>>({});
   const [dispatchDate, setDispatchDate] = useState(currentDispatchDate);
   const [actionHost, setActionHost] = useState<HTMLElement>();
+  const [visibilityReady, setVisibilityReady] = useState(false);
+  const [visibilityError, setVisibilityError] = useState<string>();
+
+  const refreshFocusedDrivers = useCallback(async (date: string) => {
+    try {
+      const access = await token();
+      const visibility = await getDispatchVisibility(date, access);
+      setDispatchFocusedDriverIds(visibility.drivers.map(driver => driver.driverId));
+      setVisibilityError(undefined);
+      setVisibilityReady(true);
+    } catch (exception) {
+      // Dispatch must remain available during a visibility-service outage. Make the fallback explicit
+      // rather than silently hiding every driver or interrupting an in-progress SMS preview.
+      setDispatchFocusedDriverIds(undefined);
+      setVisibilityError(exception instanceof Error ? exception.message : "Recent driver filter is unavailable; showing the full operational list.");
+      setVisibilityReady(true);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void refreshFocusedDrivers(dispatchDate);
+  }, [dispatchDate, refreshFocusedDrivers]);
+
+  useEffect(() => () => setDispatchFocusedDriverIds(undefined), []);
 
   const refreshOperationalStatuses = useCallback(async () => {
     try {
@@ -89,7 +116,7 @@ export function DriverDispatchOperational() {
     const observer = new MutationObserver(locateHost);
     observer.observe(root, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, []);
+  }, [visibilityReady]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -126,7 +153,7 @@ export function DriverDispatchOperational() {
     const observer = new MutationObserver(apply);
     observer.observe(root, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [operationalByDriver]);
+  }, [operationalByDriver, visibilityReady]);
 
   // Do not intercept Dispatch. DriverDispatch owns allocation, route/readiness checks, the editable
   // text preview and the SMS send. The former overlay performed a second workbench read here and
@@ -149,7 +176,12 @@ export function DriverDispatchOperational() {
     void refreshOperationalStatuses();
   }
 
+  if (!visibilityReady) {
+    return <div ref={rootRef} className="dispatch-focus-loading">Loading recent Tacho/live driver population…</div>;
+  }
+
   return <div ref={rootRef} onClickCapture={observeDispatchInteraction} onChangeCapture={observeDispatchInteraction}>
+    {visibilityError && <div className="dispatch-focus-warning" role="alert">Recent driver filtering is temporarily unavailable: {visibilityError}</div>}
     <DispatchBoard planningDate={dispatchDate} onLocked={smartPlanLocked} />
     <DriverDispatch />
     {actionHost && createPortal(<CustomerLoadPlanActions date={dispatchDate} />, actionHost)}
