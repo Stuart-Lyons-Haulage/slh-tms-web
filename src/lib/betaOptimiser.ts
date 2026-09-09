@@ -101,6 +101,19 @@ export type BetaDayPlanComparison = {
   reconciliation: BetaDayPlanReconciliation;
 };
 
+function siteKey(value: string) { return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+
+function groupPhysicalSites(stops: BetaPlannerStopRequest[]) {
+  // Keep every movement stop (and therefore its orderKey/pallet evidence), but group equal
+  // physical locations beside each other. Azure Maps then sees zero-distance duplicate legs
+  // instead of a false Selsey -> Merston -> Selsey bounce while reconciliation still has every line.
+  return [...stops].sort((left, right) => {
+    const site = siteKey(left.name).localeCompare(siteKey(right.name), undefined, { numeric: true, sensitivity: "base" });
+    if (site !== 0) return site;
+    return String(left.orderKey || "").localeCompare(String(right.orderKey || ""), undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
 export function plannerPayloadToBetaComparison(payload: PlannerCsvPayload): BetaPlannerComparisonRequest {
   return {
     planningDate: payload.planningDate,
@@ -117,7 +130,7 @@ export function plannerPayloadToBetaComparison(payload: PlannerCsvPayload): Beta
         }
         return {
           reference: run.plannerRun || run.runRef,
-          stops: [...collections, ...deliveries],
+          stops: [...groupPhysicalSites(collections), ...groupPhysicalSites(deliveries)],
         };
       }),
   };
