@@ -100,6 +100,13 @@ export async function sendDriverMessage(
   }, 90000);
 }
 
+export async function unassignDispatchRun(runId: string, token: string): Promise<void> {
+  await request(`/api/v1/runs/${encodeURIComponent(runId)}/allocation`, token, {
+    method: "PUT",
+    body: JSON.stringify({ driverId: null, vehicleId: null, trailerId: null })
+  }, 90000);
+}
+
 export async function lockDispatchPlan(
   planningDate: string,
   selections: Array<{ driverId: string; selection: DispatchAllocationSelection }>,
