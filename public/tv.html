@@ -7,14 +7,10 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>SLH Live Operations</title>
-  <script>
-    // The physical TV and the signed-in TMS must render the same OperationsWallboard
-    // component so driver/vehicle allocation, geofence progression and final ETA cannot
-    // drift between two separate browser implementations. Preserve the paired display key.
-    window.location.replace('/tv' + window.location.search + window.location.hash);
-  </script>
+  <link rel="stylesheet" href="/tv-wallboard-v2.css?v=20260909-proven-v3-geofence-current">
 </head>
 <body>
-  <noscript>JavaScript is required for the SLH live operations wallboard.</noscript>
+  <div id="root"></div>
+  <script src="/tv-wallboard-v3.js?v=20260909-proven-v3-geofence-current"></script>
 </body>
 </html>
