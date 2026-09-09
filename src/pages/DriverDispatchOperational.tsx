@@ -1,6 +1,7 @@
 import { type SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CustomerLoadPlanActions } from "../components/CustomerLoadPlanActions";
+import { DispatchBoard } from "../components/dispatch/DispatchBoard";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { DriverDispatch } from "./DriverDispatch";
@@ -35,6 +36,7 @@ export function DriverDispatchOperational() {
   const [operationalByDriver, setOperationalByDriver] = useState<Record<string, OperationalDisplay>>({});
   const [dispatchDate, setDispatchDate] = useState(currentDispatchDate);
   const [actionHost, setActionHost] = useState<HTMLElement>();
+  const [legacyRevision, setLegacyRevision] = useState(0);
 
   const refreshOperationalStatuses = useCallback(async () => {
     try {
@@ -144,8 +146,14 @@ export function DriverDispatchOperational() {
     window.setTimeout(() => void refreshOperationalStatuses(), 3500);
   }
 
+  function smartPlanLocked() {
+    setLegacyRevision(current => current + 1);
+    void refreshOperationalStatuses();
+  }
+
   return <div ref={rootRef} onClickCapture={observeDispatchInteraction} onChangeCapture={observeDispatchInteraction}>
-    <DriverDispatch />
+    <DispatchBoard planningDate={dispatchDate} onLocked={smartPlanLocked} />
+    <DriverDispatch key={legacyRevision} />
     {actionHost && createPortal(<CustomerLoadPlanActions date={dispatchDate} />, actionHost)}
   </div>;
 }
