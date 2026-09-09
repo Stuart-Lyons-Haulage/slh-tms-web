@@ -12,6 +12,7 @@ import {
   buildRunOwnerById,
   emptyDispatchSelection,
   filterDispatchDrivers,
+  filterDriversByEmploymentType,
   globalFailures,
   rowFailures,
   selectedAllocations,
@@ -19,7 +20,7 @@ import {
   type DispatchAvailableTimeMap,
   type DispatchSelectionMap
 } from "./dispatchBoardState";
-import type { DispatchFilter, DispatchLockFailure } from "./types";
+import type { DispatchEmploymentFilter, DispatchFilter, DispatchLockFailure } from "./types";
 
 type Props = {
   planningDate: string;
@@ -30,6 +31,7 @@ type SmartDispatchSnapshot = Awaited<ReturnType<typeof getSmartDispatch>>;
 type ActionState = "times" | "lock" | "refresh" | undefined;
 
 const filterValues: DispatchFilter[] = ["all", "unallocated", "backloads", "warnings", "skills-mismatch"];
+const employmentFilterValues: DispatchEmploymentFilter[] = ["all", "employed", "agency", "casual", "subcontractor"];
 
 export function GetTimesButton({ busy, onGetTimes }: { busy: boolean; onGetTimes: () => void }) {
   return <button className="smart-action secondary" type="button" disabled={busy} onClick={onGetTimes}>
@@ -50,6 +52,7 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
   const [availableTimes, setAvailableTimes] = useState<DispatchAvailableTimeMap>({});
   const [failures, setFailures] = useState<DispatchLockFailure[]>([]);
   const [filter, setFilter] = useState<DispatchFilter>("all");
+  const [employmentFilter, setEmploymentFilter] = useState<DispatchEmploymentFilter>("all");
   const [action, setAction] = useState<ActionState>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -80,15 +83,24 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
     [selections, snapshot]
   );
 
-  const visibleDrivers = useMemo(() => snapshot
-    ? filterDispatchDrivers(snapshot.drivers, filter, selections, snapshot.runs, availableTimes, failures)
-    : [],
-  [availableTimes, failures, filter, selections, snapshot]);
+  const visibleDrivers = useMemo(() => {
+    if (!snapshot) return [];
+    const workforce = filterDriversByEmploymentType(snapshot.drivers, employmentFilter);
+    return filterDispatchDrivers(workforce, filter, selections, snapshot.runs, availableTimes, failures);
+  }, [availableTimes, employmentFilter, failures, filter, selections, snapshot]);
 
-  const filterCounts = useMemo(() => Object.fromEntries(filterValues.map(value => [
+  const filterCounts = useMemo(() => {
+    const workforce = snapshot ? filterDriversByEmploymentType(snapshot.drivers, employmentFilter) : [];
+    return Object.fromEntries(filterValues.map(value => [
+      value,
+      snapshot ? filterDispatchDrivers(workforce, value, selections, snapshot.runs, availableTimes, failures).length : 0
+    ])) as Record<DispatchFilter, number>;
+  }, [availableTimes, employmentFilter, failures, selections, snapshot]);
+
+  const employmentCounts = useMemo(() => Object.fromEntries(employmentFilterValues.map(value => [
     value,
-    snapshot ? filterDispatchDrivers(snapshot.drivers, value, selections, snapshot.runs, availableTimes, failures).length : 0
-  ])) as Record<DispatchFilter, number>, [availableTimes, failures, selections, snapshot]);
+    snapshot ? filterDriversByEmploymentType(snapshot.drivers, value).length : 0
+  ])) as Record<DispatchEmploymentFilter, number>, [snapshot]);
 
   const selectedCount = snapshot ? selectedAllocations(snapshot.drivers, selections).length : 0;
   const globalLockFailures = useMemo(() => {
@@ -185,7 +197,7 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
       <div>
         <span className="smart-eyebrow">Planning intelligence</span>
         <h2>Smart Dispatch</h2>
-        <p>{planningDate} · Skill-gated allocation, Tacho availability and return/backload matching.</p>
+        <p>{planningDate} · Recent Tacho/live drivers, skill-gated allocation and return/backload matching.</p>
       </div>
       <div className="smart-dispatch-actions">
         <button className="smart-action ghost" type="button" disabled={Boolean(action)} onClick={() => void refresh()}>
@@ -203,13 +215,21 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
     {globalLockFailures.map((failure, index) => <div className="smart-dispatch-error inline" role="alert" key={`${failure.reason}-${index}`}>{failure.reason}</div>)}
 
     <div className="smart-dispatch-summary">
-      <span><strong>{snapshot.drivers.length}</strong> active drivers</span>
+      <span><strong>{snapshot.drivers.length}</strong> recent/operational drivers</span>
+      <span><strong>{snapshot.visibility.windowDays}</strong> day rolling window</span>
       <span><strong>{snapshot.runs.length}</strong> runs</span>
       <span><strong>{selectedCount}</strong> allocated in plan</span>
       <span><strong>{snapshot.drivers.filter(driver => driver.backloadCandidate).length}</strong> backload candidates</span>
     </div>
 
-    <DispatchFilters value={filter} counts={filterCounts} onChange={setFilter} />
+    <DispatchFilters
+      value={filter}
+      counts={filterCounts}
+      onChange={setFilter}
+      employmentValue={employmentFilter}
+      employmentCounts={employmentCounts}
+      onEmploymentChange={setEmploymentFilter}
+    />
 
     <div className="smart-dispatch-table-wrap">
       <table className="smart-dispatch-table">
@@ -243,6 +263,6 @@ export function DispatchBoard({ planningDate, onLocked }: Props) {
       {visibleDrivers.length === 0 && <div className="smart-dispatch-empty">No drivers match this filter.</div>}
     </div>
 
-    <p className="smart-dispatch-footnote">Lock Plan validates the complete selection again on the API before any write. If one row fails, the entire lock is rejected.</p>
+    <p className="smart-dispatch-footnote">Only drivers with rolling {snapshot.visibility.windowDays}-day Tacho/live operational evidence are shown by default, plus allocated, rostered agency and subcontractor exceptions. Lock Plan validates the complete selection again on the API before any write.</p>
   </section>;
 }
