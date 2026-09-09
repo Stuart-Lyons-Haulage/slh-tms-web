@@ -8,6 +8,10 @@ export function dispatchActionForStatus(lockedToDriver: boolean, status?: string
   return "dispatch";
 }
 
+export function canUnassignDispatchRun(lockedToDriver: boolean, status?: string): boolean {
+  return lockedToDriver && status !== "No Run";
+}
+
 function compactTime(value?: string): string | undefined {
   if (!value) return undefined;
   const date = new Date(value);
