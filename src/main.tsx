@@ -32,6 +32,12 @@ import './table-header-viewport-fix.css';
 
 installPollingPolicy();
 installPerformanceTelemetry();
+
+// Azure Maps styles are needed only by map-capable routes. Keep them out of the
+// login/dashboard critical path while still loading them before a map mounts.
+if (window.location.pathname === '/' || window.location.pathname === '/tracking' || window.location.pathname === '/planner') {
+  void import('azure-maps-control/dist/atlas.min.css');
+}
 installOrderReviewRecovery();
 installOperationalUiEnhancements();
 
