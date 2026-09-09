@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { completedJobCount, shouldDisplayWallboardRow, statusFor } from "./operationsWallboardProgress";
 
 describe("Operations wallboard final-stop arrival completion", () => {
-  it("counts the final job as arrived on final-geofence entry without marking the driver available", () => {
+  it("keeps final-geofence entry as arrived without counting the stop complete or making the driver available", () => {
     const progress = {
       loadId: "load-final",
       loadReference: "Run Final",
@@ -22,7 +22,7 @@ describe("Operations wallboard final-stop arrival completion", () => {
       },
     };
 
-    expect(completedJobCount([progress])).toBe(3);
+    expect(completedJobCount([progress])).toBe(2);
     expect(statusFor(progress, undefined, [])).toMatchObject({ status: "onsite", label: "ARRIVED" });
   });
 
