@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { DataIntegrityError } from '../api/apiClient';
+import { trackFrontendException } from '../lib/performanceTelemetry';
 
 type State = { error?: Error };
 
@@ -12,6 +13,7 @@ export class DataIntegrityBoundary extends Component<{ children: ReactNode }, St
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('TMS data boundary caught an error', error, info);
+    trackFrontendException(error, error instanceof DataIntegrityError ? 'data-integrity-boundary' : 'react-boundary');
   }
 
   render() {

@@ -13,6 +13,11 @@ function track(name: string, properties: Record<string, string> = {}, measuremen
   window.appInsights?.trackEvent?.({ name }, properties, measurements);
 }
 
+export function trackFrontendException(error: unknown, context = 'unknown') {
+  const exception = error instanceof Error ? error : new Error(String(error));
+  window.appInsights?.trackException?.({ exception }, { context, route: window.location.pathname });
+}
+
 export function trackApiRequest(path: string, method: string, durationMs: number, status: number, failed = false) {
   track(failed ? 'tms.api.failure' : 'tms.api.request', { endpoint: path, method, status: String(status) }, { durationMs });
 }
@@ -44,5 +49,7 @@ export function installPerformanceTelemetry() {
     routeStarted = performance.now();
   };
   window.addEventListener('popstate', reportRoute);
+  window.addEventListener('error', event => trackFrontendException(event.error || event.message, 'window.error'));
+  window.addEventListener('unhandledrejection', event => trackFrontendException(event.reason, 'unhandledrejection'));
   track('tms.route.load', { route: window.location.pathname }, { durationMs: performance.now() });
 }
