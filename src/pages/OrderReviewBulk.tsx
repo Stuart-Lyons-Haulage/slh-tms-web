@@ -49,6 +49,19 @@ type BulkApproveResponse = {
   message: string;
 };
 
+type AmendmentChange = {
+  field: string;
+  from: string;
+  to: string;
+};
+
+type ApprovalComparison = {
+  classification: "New order" | "Amendment/update" | "Exact duplicate" | string;
+  reference?: string;
+  liveOrderId?: string;
+  changes?: AmendmentChange[];
+};
+
 type DateSummary = {
   date: string;
   waiting: number;
@@ -206,6 +219,15 @@ function displayReference(payload: Payload) {
   return text(payload.customerPo) || text(payload.poNumber) || "Reference missing";
 }
 
+function amendmentPrompt(items: Array<{ row: ParsedRow; comparison: ApprovalComparison }>) {
+  const sections = items.map(({ row, comparison }) => {
+    const reference = comparison.reference || displayReference(row.payload);
+    const changes = (comparison.changes || []).map((change) => `• ${change.field}: ${change.from || "—"} → ${change.to || "—"}`);
+    return [`Approve amendment for ${reference}?`, ...changes].join("\n");
+  });
+  return `${sections.join("\n\n")}\n\nOK = approve the amendment. Cancel = keep the existing live order unchanged.`;
+}
+
 export function OrderReviewBulk() {
   const token = useAccessToken();
   const [date, setDate] = useState(tomorrowDate());
@@ -346,6 +368,29 @@ export function OrderReviewBulk() {
     setBusy(true);
     setNotice(undefined);
     try {
+      const approvalChecks = await Promise.all(selectedRows.map(async (row) => ({
+        row,
+        comparison: await request<ApprovalComparison>(
+          `/api/v1/order-intake/duplicate-check/staging/${encodeURIComponent(row.item.id)}/comparison`,
+          await token(),
+        ),
+      })));
+
+      const duplicates = approvalChecks.filter(({ comparison }) => comparison.classification === "Exact duplicate");
+      const amendments = approvalChecks.filter(({ comparison }) => comparison.classification === "Amendment/update");
+      const approvable = approvalChecks.filter(({ comparison }) => comparison.classification !== "Exact duplicate");
+
+      if (amendments.length > 0 && !window.confirm(amendmentPrompt(amendments))) {
+        setNotice("Amendment approval cancelled. The existing live order has not been changed. You can review the source email before deciding.");
+        return;
+      }
+
+      if (approvable.length === 0) {
+        setSelectedIds(new Set());
+        setNotice(`${duplicates.length} selected order${duplicates.length === 1 ? " is" : "s are"} already received with no changes to apply.`);
+        return;
+      }
+
       const result = await request<BulkApproveResponse>(
         "/api/v1/staging/orders/bulk-approve",
         await token(),
@@ -353,13 +398,16 @@ export function OrderReviewBulk() {
           method: "POST",
           body: JSON.stringify({
             date,
-            ids: selectedRows.map((row) => row.item.id),
+            ids: approvable.map(({ row }) => row.item.id),
             acknowledgeReviewFlags: true,
           }),
         },
         120000,
       );
-      setNotice(`${result.message}${result.skipped || result.failed ? ` ${result.skipped} skipped and ${result.failed} failed remain for review.` : ""}`);
+      const duplicateNote = duplicates.length > 0
+        ? ` ${duplicates.length} exact duplicate${duplicates.length === 1 ? " was" : "s were"} left unchanged because there were no differences to apply.`
+        : "";
+      setNotice(`${result.message}${result.skipped || result.failed ? ` ${result.skipped} skipped and ${result.failed} failed remain for review.` : ""}${duplicateNote}`);
       setSelectedIds(new Set());
       setEditingId(undefined);
       setDraft(undefined);
@@ -442,7 +490,7 @@ export function OrderReviewBulk() {
       <span className="bulk-selection-count"><strong>{selectedRows.length}</strong> selected · {selectedPallets} pallets</span>
       <button onClick={() => setSelectedIds(new Set())} disabled={busy || Boolean(busyId) || selectedRows.length === 0}>Clear selection</button>
       <button className="primary" onClick={() => void approveSelectedOrders()} disabled={busy || Boolean(busyId) || selectedRows.length === 0}>
-        {busy ? "Approving…" : `Approve selected (${selectedRows.length})`}
+        {busy ? "Checking changes…" : `Approve selected (${selectedRows.length})`}
       </button>
     </div>
 
