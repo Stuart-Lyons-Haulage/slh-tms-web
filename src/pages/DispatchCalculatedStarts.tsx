@@ -23,9 +23,8 @@ export type StartSuggestion = {
   explanation?: string;
 };
 type StartResponse = { rows?: StartSuggestion[] };
-type DispatchLoad = { id: string; driverId?: string; vehicleId?: string };
 type DispatchDriver = { driverId: string; assignedLoadId?: string; onLeave: boolean };
-type Workbench = { loads: DispatchLoad[]; drivers: DispatchDriver[] };
+type Workbench = { drivers: DispatchDriver[] };
 export type CalculatedDriverStatus = {
   driverId: string;
   availabilityStatus?: "Available" | "Unavailable" | "Unverified";
@@ -69,12 +68,12 @@ export function DispatchCalculatedStarts() {
 
       const statusByDriver = new Map(statusResponse.drivers.map((row) => [row.driverId, row]));
       const driverByLoad = new Map(workbench.drivers.filter((driver) => driver.assignedLoadId).map((driver) => [driver.assignedLoadId!, driver]));
-      const loadById = new Map(workbench.loads.map((load) => [load.id, load]));
 
+      // planner-starts is the canonical allocation/start calculation. Do not reject a valid row
+      // merely because a separate workbench load copy is stale and still lacks driver/vehicle IDs.
+      // The workbench driver assignment is retained only for leave/Tacho safety gating.
       const eligible = rows.filter((row) => {
-        if (!row.suggestedStartUtc) return false;
-        const load = loadById.get(row.loadId);
-        if (!load?.driverId || !load.vehicleId) return false;
+        if (!row.suggestedStartUtc || !row.driverName?.trim()) return false;
         const driver = driverByLoad.get(row.loadId);
         if (!driver || driver.onLeave) return false;
         const status = statusByDriver.get(driver.driverId);
@@ -82,7 +81,10 @@ export function DispatchCalculatedStarts() {
       });
 
       if (!eligible.length) {
-        setMessage("Projected driver Day/Start evidence refreshed. No allocated, available run has an authoritative route-based start to apply yet.");
+        const recognised = rows.filter((row) => row.driverName?.trim()).length;
+        setMessage(recognised > 0
+          ? `Projected driver Day/Start evidence refreshed for ${recognised} allocated run${recognised === 1 ? "" : "s"}, but no authoritative start is available to apply yet.`
+          : "Projected driver Day/Start evidence refreshed. No allocated driver was returned by the canonical start calculation.");
         return;
       }
 
@@ -98,7 +100,7 @@ export function DispatchCalculatedStarts() {
   }
 
   return <div className="dispatch-calculated-starts">
-    <button className="primary" type="button" onClick={() => void calculate()} disabled={busy} title="Refresh each driver's projected duty day and earliest start from TachoMaster. Closed duties use actual end-duty/rest evidence; an open duty uses a clearly labelled conservative assumption. Allocated runs additionally use DOT/previous finish, Azure Maps travel time and vehicle evidence.">
+    <button className="primary" type="button" onClick={() => void calculate()} disabled={busy} title="Refresh each driver's projected duty day and earliest start from TachoMaster. Closed duties use actual end-duty/rest evidence; an open duty uses current duty/tracking evidence where a safe start can be established. Allocated runs additionally use DOT/previous finish, Azure Maps travel time and vehicle evidence.">
       {busy ? "Calculating Starts…" : "Calculate Starts"}
     </button>
     {message && <span className="hint" title={message}>{message}</span>}
