@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
-import { startVisiblePolling } from "../lib/visiblePolling";
 import { SourceEmailEvidenceDrawer } from "../components/SourceEmailEvidenceDrawer";
 import { JobsOperational } from "./JobsOperational";
 import { OrderReviewBulk } from "./OrderReviewBulk";
@@ -14,7 +13,6 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
   const token = useAccessToken();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<OrderControlTab>(initialTab);
-  const [reviewVersion, setReviewVersion] = useState(0);
   const [repairNotice, setRepairNotice] = useState<string>();
   const reviewId = searchParams.get("reviewId")?.trim() || undefined;
   const sourceEmailStagingId = searchParams.get("sourceEmail") === "1" ? reviewId : undefined;
@@ -28,13 +26,10 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
         const result = await request<NwfRepairResponse>("/api/v1/staging/orders/repair-nwf-references", await token(), { method: "POST" });
         if (!active || result.repaired <= 0) return;
         setRepairNotice(result.message);
-        setReviewVersion(value => value + 1);
       } catch { /* compatibility repair is optional; normal review loading remains authoritative */ }
     })();
     return () => { active = false; };
   }, [token]);
-
-  useEffect(() => startVisiblePolling(() => setReviewVersion(value => value + 1), 60_000), []);
 
   function closeSourceEmail() {
     const next = new URLSearchParams(searchParams);
@@ -51,7 +46,7 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
       <p className="hint" style={{ marginBottom: 0 }}>{tab === "review" ? "Review, amend, reject or approve staged load instructions. Approval remains mandatory before the work enters live planning." : "Amend or cancel already-approved work without leaving Load Review; the source and audit history are retained."}</p>
       {repairNotice && <p className="notice inline-notice" style={{ marginBottom: 0 }}>{repairNotice}</p>}
     </section>
-    {tab === "review" ? <OrderReviewBulk key={`review-${reviewVersion}`} /> : <JobsOperational key={`live-${reviewVersion}`} />}
+    {tab === "review" ? <OrderReviewBulk /> : <JobsOperational />}
     {sourceEmailStagingId && <SourceEmailEvidenceDrawer stagingId={sourceEmailStagingId} onClose={closeSourceEmail} />}
   </>;
 }
