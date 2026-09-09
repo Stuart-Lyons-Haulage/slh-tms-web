@@ -89,7 +89,7 @@ function identityMatch(entity: MasterEntity, payload: FlatPayload, current: Flat
 export function compareMasterDataRow(entity: MasterEntity, request: StageBatchRequest, currentRecords: FlatPayload[]): DiffRow {
   const payload = request.payload as FlatPayload;
   const current = currentRecords.find(record => identityMatch(entity, payload, record));
-  if (!current) return { request, status: "NEW", differences: Object.keys(payload), selected: true };
+  if (!current) return { request, status: "NEW", differences: Object.keys(payload), selected: false };
   const differences = Object.entries(payload).filter(([, value]) => comparable(value) !== "").filter(([field, value]) => comparable(current[field]) !== comparable(value)).map(([field]) => field);
   if (!differences.length) return { request, current, status: "UNCHANGED", differences: [], selected: false };
   const critical = differences.some(field => protectedFields[entity].includes(field));
