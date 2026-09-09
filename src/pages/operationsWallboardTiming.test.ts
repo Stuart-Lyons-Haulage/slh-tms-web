@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DeliveryEta } from '../lib/api';
+import { statusFor } from './operationsWallboardProgress';
 import { mergeWallboardTiming, type RunTimingRecord } from './operationsWallboardTiming';
 
 function eta(overrides: Partial<DeliveryEta> = {}): DeliveryEta {
@@ -89,5 +90,29 @@ describe('shared wallboard final ETA', () => {
     );
 
     expect(result[0].source).toBe('Estimated');
+  });
+
+  it('keeps the canonical customer window when timing and plan stop ids differ', () => {
+    const result = mergeWallboardTiming(
+      [eta({ etaUtc: '2026-09-09T17:45:00Z', breakMinutesIncluded: 0 })],
+      [timing({
+        finalEtaUtc: '2026-09-09T22:33:00Z',
+        finalDestinationStopId: 'reconciled-final-stop-id',
+      })],
+      new Map(),
+      new Map(),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      stopId: 'final-stop',
+      etaUtc: '2026-09-09T22:33:00Z',
+      deliveryWindowEndUtc: '2026-09-09T18:00:00Z',
+      isFinalDestination: true,
+    });
+    expect(statusFor(undefined, result[0], result)).toMatchObject({
+      status: 'late',
+      label: 'LATE FINAL ETA',
+    });
   });
 });
