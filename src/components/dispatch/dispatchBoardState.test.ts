@@ -3,6 +3,7 @@ import {
   applyAvailableTimes,
   availableTimesByDriver,
   buildInitialSelections,
+  filterDriversByEmploymentType,
   validateLockSelections
 } from "./dispatchBoardState";
 import type { DispatchDriverDto, DispatchEquipmentWorkbench, DispatchRunDto } from "./types";
@@ -94,6 +95,29 @@ describe("smart Dispatch board state", () => {
     expect(applyAvailableTimes({ "driver-1": { runId: "run-1", vehicleId: "vehicle-tacho", trailerId: "", plannedStartTime: "2026-09-10T06:00:00Z" } }, calculated)["driver-1"].plannedStartTime)
       .toBe("2026-09-10T06:00:00Z");
     expect(availableTimesByDriver(calculated)["driver-1"].requiredRestPeriod).toBe(11);
+  });
+
+  it("filters the board by employed, agency, casual and subcontractor", () => {
+    const drivers = [
+      driver({ driverId: "e", employmentType: "Employed" }),
+      driver({ driverId: "a", employmentType: "Agency" }),
+      driver({ driverId: "c", employmentType: "Casual" }),
+      driver({ driverId: "s", employmentType: "Subcontractor" })
+    ];
+
+    expect(filterDriversByEmploymentType(drivers, "all")).toHaveLength(4);
+    expect(filterDriversByEmploymentType(drivers, "employed").map(item => item.driverId)).toEqual(["e"]);
+    expect(filterDriversByEmploymentType(drivers, "agency").map(item => item.driverId)).toEqual(["a"]);
+    expect(filterDriversByEmploymentType(drivers, "casual").map(item => item.driverId)).toEqual(["c"]);
+    expect(filterDriversByEmploymentType(drivers, "subcontractor").map(item => item.driverId)).toEqual(["s"]);
+  });
+
+  it("normalises agency variants into the agency filter", () => {
+    const drivers = [
+      driver({ driverId: "day", employmentType: "AgencyDay" }),
+      driver({ driverId: "long", employmentType: "AgencyLong" })
+    ];
+    expect(filterDriversByEmploymentType(drivers, "agency").map(item => item.driverId)).toEqual(["day", "long"]);
   });
 
   it("surfaces lock validation against the exact driver row before calling the API", () => {
