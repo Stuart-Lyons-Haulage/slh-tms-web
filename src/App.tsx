@@ -1,7 +1,6 @@
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { DriverAssignments, LiveTracking } from './pages/Pages';
 const ExportCentre = lazy(() => import('./pages/ExportCentre').then(module => ({ default: module.ExportCentre })));
 const FuelCardMigration = lazy(() => import('./pages/FuelCardMigration').then(module => ({ default: module.FuelCardMigration })));
 const Management = lazy(() => import('./pages/Management').then(module => ({ default: module.Management })));
@@ -30,6 +29,8 @@ const ImportCentre = lazy(() => import('./pages/ImportCentre').then(module => ({
 const ReportingOperational = lazy(() => import('./pages/ReportingOperational').then(module => ({ default: module.ReportingOperational })));
 const CustomerCommunications = lazy(() => import('./pages/CustomerCommunications').then(module => ({ default: module.CustomerCommunications })));
 const DailyCompliance = lazy(() => import('./pages/DailyCompliance').then(module => ({ default: module.DailyCompliance })));
+const DriverAssignments = lazy(() => import('./pages/Pages').then(module => ({ default: module.DriverAssignments })));
+const LiveTracking = lazy(() => import('./pages/Pages').then(module => ({ default: module.LiveTracking })));
 import { apiScope, useAccessToken } from './lib/auth';
 import { request } from './lib/api';
 import { connectPlanningEventStream } from './lib/planningEvents';
