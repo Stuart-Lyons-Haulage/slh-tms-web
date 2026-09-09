@@ -89,7 +89,6 @@ function parseTransfer(text: string) {
   const simple = cleaned.match(/^(.+?)\s+to\s+(.+?)(?=\s+(?:crate|tray|packag|film|transfer|load|ready|tip|am\b|pm\b|\d{1,2}:\d{2})|$)/i);
   return simple ? { collection: simple[1].trim(), delivery: simple[2].trim() } : undefined;
 }
-function row(values: unknown[]) { return values.map(csv).join(","); }
 
 export function isLyonsSouthboundWorkbook(sheets: WorkbookSheetRows) {
   const southbound = sheets.Southbound || [];
@@ -105,7 +104,6 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName:
   const exceptions: PlannerCsvPayload["exceptions"] = [];
   const push = (values: unknown[]) => output.push(values.map(value => String(value ?? "")));
 
-  // Main SOUTHBOUNDS block (A:H). Pallets are optional: tray/crate/trolley work must not be invented as 1 pallet.
   for (let index = 5; index < southbound.length; index++) {
     const r = southbound[index] || [];
     const job = clean(r[0]);
@@ -129,7 +127,6 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName:
     }
   }
 
-  // Transfers / outbound loads (Q:S). Free text is accepted only where both physical ends can be read safely.
   for (let index = 5; index < southbound.length; index++) {
     const r = southbound[index] || [];
     const job = clean(r[16]);
@@ -147,16 +144,7 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName:
     if (movement.returnTo) push([job, movement.delivery, movement.returnTo, "", planningDate, driver, "", "", `Return leg from ${description} | Source ${fileName}`, "", "", "", planningDate, planningDate, "", unit]);
   }
 
-  // Waitrose Wave 3 is explicit in this workbook. Each PO is a movement even when pallet quantity is absent.
   const wave3 = sheets["WAVE 3"] || [];
-  const waveDestinations = [
-    { start: 0, name: clean(wave3?.[1]?.[0]) },
-    { start: 5, name: clean(wave3?.[1]?.[5]) },
-    { start: 10, name: clean(wave3?.[1]?.[10]) },
-    { start: 0, name: clean(wave3?.[18]?.[0]) },
-    { start: 5, name: clean(wave3?.[18]?.[5]) },
-    { start: 10, name: clean(wave3?.[18]?.[10]) },
-  ];
   const waveRanges = [[3, 18], [20, wave3.length]] as const;
   for (const [from, to] of waveRanges) {
     const chill = from >= 20;
@@ -166,15 +154,14 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName:
         const supplier = clean(r[start]);
         const po = clean(r[start + 1]);
         if (!supplier || !po || !/[A-Za-z]/.test(supplier) || !/[A-Za-z0-9]/.test(po) || /^supplier$/i.test(supplier)) continue;
-        const destination = waveDestinations.find(item => item.start === start && (chill ? item.name.toLowerCase().includes("chill") : !item.name.toLowerCase().includes("chill")))?.name
-          || `${clean(wave3?.[chill ? 18 : 1]?.[start])}${chill ? " Chill" : ""}`;
-        const load = `W3-${start}-${i + 1}-${po}`;
-        push([load, supplier, `Waitrose ${destination}`, "", planningDate, "", "", "", `Wave 3 overnight Waitrose movement | Source ${fileName} · WAVE 3 row ${i + 1}`, "", "", "", planningDate, planningDate, po, "Market / overnight"]);
+        const baseDestination = clean(wave3?.[chill ? 18 : 1]?.[start]);
+        if (!baseDestination) continue;
+        const destination = baseDestination.toLowerCase().includes("chill") || !chill ? baseDestination : `${baseDestination} Chill`;
+        push([`W3-${start}-${i + 1}-${po}`, supplier, `Waitrose ${destination}`, "", planningDate, "", "", "", `Wave 3 overnight Waitrose movement | Source ${fileName} · WAVE 3 row ${i + 1}`, "", "", "", planningDate, planningDate, po, "Market / overnight"]);
       }
     }
   }
 
-  // Detailed market sheets are used only when their embedded delivery date matches this workbook date.
   const marketSheets = ["Covent Garden", "Covent 2", "Covent 3", "Spitalfields", "Spit 2", "Spit 3", "Western Int", "West 3", "Brighton"];
   let currentMarketDetail = 0;
   for (const sheetName of marketSheets) {
@@ -197,7 +184,6 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName:
     }
   }
 
-  // Collection Board is the current operational safety net when detailed market tabs are stale/not populated.
   if (currentMarketDetail === 0) {
     const board = sheets["Collection Board"] || [];
     for (let i = 3; i < board.length; i++) {
@@ -215,7 +201,8 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName:
   }
 
   if (output.length === 1) throw new Error("Southbound workbook contains no recognised current movements.");
-  const payload = parsePlannerCsv(output.map(row).map(row).map(values => values.map(csv).join(",")).join("\n"), fileName);
+  const canonicalCsv = output.map(values => values.map(csv).join(",")).join("\n");
+  const payload = parsePlannerCsv(canonicalCsv, fileName);
   payload.exceptions.push(...exceptions);
   return payload;
 }
