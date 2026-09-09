@@ -13,7 +13,7 @@ function excelDate(value: unknown): string {
   const text = clean(value);
   const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const uk = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+  const uk = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
   if (uk) {
     const year = uk[3].length === 2 ? `20${uk[3]}` : uk[3];
     return `${year}-${uk[2].padStart(2, "0")}-${uk[1].padStart(2, "0")}`;
