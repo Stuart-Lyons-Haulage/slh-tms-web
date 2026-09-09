@@ -5,20 +5,42 @@ import type {
   DispatchDriverDto,
   DispatchEquipmentWorkbench,
   DispatchLockResponse,
-  DispatchRunDto
+  DispatchRunDto,
+  DispatchVisibilitySnapshot
 } from "./types";
+
+export async function getDispatchVisibility(planningDate: string, token: string): Promise<DispatchVisibilitySnapshot> {
+  return request<DispatchVisibilitySnapshot>(
+    `/api/dispatch/driver-visibility?date=${encodeURIComponent(planningDate)}`,
+    token
+  );
+}
 
 export async function getSmartDispatch(
   planningDate: string,
   token: string
-): Promise<{ drivers: DispatchDriverDto[]; runs: DispatchRunDto[]; equipment: DispatchEquipmentWorkbench }> {
+): Promise<{
+  drivers: DispatchDriverDto[];
+  runs: DispatchRunDto[];
+  equipment: DispatchEquipmentWorkbench;
+  visibility: DispatchVisibilitySnapshot;
+}> {
   const encoded = encodeURIComponent(planningDate);
-  const [drivers, runs, equipment] = await Promise.all([
+  const [drivers, runs, equipment, visibility] = await Promise.all([
     request<DispatchDriverDto[]>(`/api/dispatch/drivers?date=${encoded}`, token),
     request<DispatchRunDto[]>(`/api/dispatch/runs?date=${encoded}`, token),
-    request<DispatchEquipmentWorkbench>(`/api/v1/driver-dispatch?date=${encoded}`, token)
+    request<DispatchEquipmentWorkbench>(`/api/v1/driver-dispatch?date=${encoded}`, token),
+    getDispatchVisibility(planningDate, token)
   ]);
-  return { drivers, runs, equipment };
+  const visibilityByDriver = new Map(visibility.drivers.map(item => [item.driverId, item]));
+  const focusedDrivers = drivers
+    .filter(driver => visibilityByDriver.has(driver.driverId))
+    .map(driver => ({
+      ...driver,
+      employmentType: visibilityByDriver.get(driver.driverId)?.employmentType ?? driver.employmentType,
+      skills: visibilityByDriver.get(driver.driverId)?.skills ?? driver.skills
+    }));
+  return { drivers: focusedDrivers, runs, equipment, visibility };
 }
 
 export async function getAvailableTimes(
