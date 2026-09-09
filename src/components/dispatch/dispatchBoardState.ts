@@ -3,6 +3,7 @@ import type {
   DispatchAllocationSelection,
   DispatchAvailableTimeDto,
   DispatchDriverDto,
+  DispatchEmploymentFilter,
   DispatchEquipmentWorkbench,
   DispatchFilter,
   DispatchLockFailure,
@@ -68,6 +69,22 @@ export function buildRunOwnerById(
     if (selection.runId) owners[selection.runId] = driverId;
   }
   return owners;
+}
+
+function employmentBucket(value: string): Exclude<DispatchEmploymentFilter, "all"> {
+  const token = value.toLowerCase().replace(/[^a-z]/g, "");
+  if (token.includes("subcontract") || token.includes("subbie")) return "subcontractor";
+  if (token.includes("agency")) return "agency";
+  if (token.includes("casual") || token.includes("zerohour")) return "casual";
+  return "employed";
+}
+
+export function filterDriversByEmploymentType(
+  drivers: DispatchDriverDto[],
+  filter: DispatchEmploymentFilter
+): DispatchDriverDto[] {
+  if (filter === "all") return drivers;
+  return drivers.filter(driver => employmentBucket(driver.employmentType) === filter);
 }
 
 export function filterDispatchDrivers(

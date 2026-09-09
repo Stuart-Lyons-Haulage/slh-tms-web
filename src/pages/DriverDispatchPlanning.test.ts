@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { firstCollectionStop, runDirection, sortDispatchDrivers, suggestionRunLabel } from "./DriverDispatchPlanning";
+import { afterEach, describe, expect, it } from "vitest";
+import { firstCollectionStop, runDirection, setDispatchFocusedDriverIds, sortDispatchDrivers, suggestionRunLabel } from "./DriverDispatchPlanning";
 
 function load(overrides: Record<string, unknown> = {}) {
   return {
@@ -16,6 +16,8 @@ function load(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as NonNullable<Parameters<typeof suggestionRunLabel>[0]>;
 }
+
+afterEach(() => setDispatchFocusedDriverIds(undefined));
 
 describe("Driver Dispatch planning helpers", () => {
   it("labels an assistant run with its final destination", () => {
@@ -39,5 +41,24 @@ describe("Driver Dispatch planning helpers", () => {
     ]);
 
     expect(rows.map(row => row.driverId)).toEqual(["planned-a", "planned-z", "free-a", "free-b"]);
+  });
+
+  it("only returns drivers admitted by the rolling visibility service", () => {
+    setDispatchFocusedDriverIds(["recent", "subbie"]);
+    const rows = sortDispatchDrivers([
+      { driverId: "recent", displayName: "Recent Driver", driverType: "Employed", assignedLoadId: undefined },
+      { driverId: "stale", displayName: "Stale Driver", driverType: "Employed", assignedLoadId: undefined },
+      { driverId: "subbie", displayName: "Subbie Driver", driverType: "Subcontractor", assignedLoadId: undefined }
+    ]);
+    expect(rows.map(row => row.driverId)).toEqual(["recent", "subbie"]);
+  });
+
+  it("falls back to the full list when visibility is unavailable", () => {
+    setDispatchFocusedDriverIds(undefined);
+    const rows = sortDispatchDrivers([
+      { driverId: "recent", displayName: "Recent Driver", driverType: "Employed", assignedLoadId: undefined },
+      { driverId: "stale", displayName: "Stale Driver", driverType: "Employed", assignedLoadId: undefined }
+    ]);
+    expect(rows).toHaveLength(2);
   });
 });
