@@ -14,6 +14,9 @@ type Workbench = { drivers: WorkbenchDriver[] };
 type OperationalStatus = "No Run" | "Awaiting Dispatch" | "Dispatched" | "Working" | "Completed";
 type OperationalDriverStatus = { driverId: string; operationalStatus?: OperationalStatus; driverConfirmed?: boolean; driverConfirmationAtUtc?: string };
 type OperationalDisplay = { status: OperationalStatus; driverConfirmed: boolean; confirmationAt?: string };
+type WorkforceFilter = "All" | "Employed" | "Agency" | "Casual" | "Subcontractor";
+
+const workforceFilters: WorkforceFilter[] = ["All", "Employed", "Agency", "Casual", "Subcontractor"];
 
 function driverKey(name?: string, employeeNumber?: string) {
   return `${(name || "").trim().toLowerCase()}|${(employeeNumber || "").trim().toLowerCase()}`;
@@ -41,6 +44,7 @@ export function DriverDispatchOperational() {
   const [actionHost, setActionHost] = useState<HTMLElement>();
   const [visibilityReady, setVisibilityReady] = useState(false);
   const [visibilityError, setVisibilityError] = useState<string>();
+  const [legacyEmploymentFilter, setLegacyEmploymentFilter] = useState<WorkforceFilter>("All");
 
   const refreshFocusedDrivers = useCallback(async (date: string) => {
     try {
@@ -172,6 +176,15 @@ export function DriverDispatchOperational() {
     window.setTimeout(() => void refreshOperationalStatuses(), 3500);
   }
 
+  function applyLegacyEmploymentFilter(filter: WorkforceFilter) {
+    setLegacyEmploymentFilter(filter);
+    const input = rootRef.current?.querySelector<HTMLInputElement>('input[aria-label="Filter typeSkills"]');
+    if (!input) return;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(input, filter === "All" ? "" : filter);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   function smartPlanLocked() {
     void refreshOperationalStatuses();
   }
@@ -183,6 +196,16 @@ export function DriverDispatchOperational() {
   return <div ref={rootRef} onClickCapture={observeDispatchInteraction} onChangeCapture={observeDispatchInteraction}>
     {visibilityError && <div className="dispatch-focus-warning" role="alert">Recent driver filtering is temporarily unavailable: {visibilityError}</div>}
     <DispatchBoard planningDate={dispatchDate} onLocked={smartPlanLocked} />
+    <div className="dispatch-focus-workforce" role="group" aria-label="Operational Dispatch employment filters">
+      <strong>Dispatch workforce</strong>
+      {workforceFilters.map(filter => <button
+        type="button"
+        key={filter}
+        className={legacyEmploymentFilter === filter ? "active" : ""}
+        aria-pressed={legacyEmploymentFilter === filter}
+        onClick={() => applyLegacyEmploymentFilter(filter)}
+      >{filter === "Subcontractor" ? "Subbies" : filter}</button>)}
+    </div>
     <DriverDispatch />
     {actionHost && createPortal(<CustomerLoadPlanActions date={dispatchDate} />, actionHost)}
   </div>;
