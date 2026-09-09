@@ -311,9 +311,10 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
       const nextEta = pickNextEta(etas, progress);
       const finalEta = finalEtaFor(etas);
       const status = statusFor(progress, nextEta, etas);
-      const complete = status.status === "complete";
+      const canonicalComplete = String(load?.status || "").toLowerCase() === "completed";
+      const complete = status.status === "complete" || canonicalComplete;
       const finalArrival = finalArrivalUtc(progress);
-      const finalDestinationArrived = Boolean(finalArrival) || status.status === "complete";
+      const finalDestinationArrived = Boolean(finalArrival) || complete;
       const liveEtaUtc = finalEta?.source === "Live" ? finalEta.etaUtc : undefined;
       const estimatedEtaUtc = finalEta?.source === "Estimated" ? finalEta.etaUtc : undefined;
       const scheduledUtc = firstStop(load)?.plannedArrivalUtc || progress?.nextStop?.plannedArrivalUtc;
@@ -330,9 +331,9 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
         displayTimeLabel: finalArrival ? "ARRIVED" : complete ? "AVAILABLE" : liveEtaUtc ? "LIVE FINAL ETA" : estimatedEtaUtc ? "ESTIMATED FINAL ETA" : "FINAL ETA PENDING",
         finalDestinationArrived,
         focusStop: finalArrival ? (finalStop?.name || "Final destination").replace(/^Collect · |^Deliver · /i, "") : complete ? "Available for next job" : progress?.currentVisit?.geofenceName || progress?.nextStop?.name || nextEta?.stopName || "Next stop TBC",
-        status: status.status,
-        statusLabel: finalArrival ? "ARRIVED" : status.label,
-        statusDetail: finalArrival ? `Final destination reached ${formatTime(finalArrival)}` : status.detail,
+        status: complete ? "complete" : status.status,
+        statusLabel: finalArrival ? "ARRIVED" : complete ? "AVAILABLE" : status.label,
+        statusDetail: finalArrival ? `Final destination reached ${formatTime(finalArrival)}` : complete ? "Final stop complete · driver available for next work" : status.detail,
         tacho: progress?.tacho,
       };
     }).filter(row => row.load?.status !== "Cancelled");
