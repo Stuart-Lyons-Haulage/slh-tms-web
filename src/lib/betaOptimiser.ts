@@ -10,81 +10,6 @@ export type BetaPlannerStopRequest = {
 export type BetaPlannerRouteRequest = { reference: string; stops: BetaPlannerStopRequest[] };
 export type BetaPlannerComparisonRequest = { planningDate: string; routes: BetaPlannerRouteRequest[] };
 
-export type BetaOptimiserStop = { sequence: number; name: string; orderId?: string };
-export type BetaOptimiserRoute = {
-  loadId: string;
-  reference: string;
-  status: string;
-  isProtected: boolean;
-  driver?: string;
-  tachoDriveAvailableMinutes?: number;
-  lastTachoSyncUtc?: string;
-  vehicle?: string;
-  fleetioStatus?: string;
-  trailer?: string;
-  stopCount: number;
-  routingAvailable: boolean;
-  routingSource: string;
-  currentMiles?: number;
-  currentDriveMinutes?: number;
-  proposedMiles?: number;
-  proposedDriveMinutes?: number;
-  savingMiles?: number;
-  savingDriveMinutes?: number;
-  before: BetaOptimiserStop[];
-  after: BetaOptimiserStop[];
-  rationale: string;
-  warnings: string[];
-};
-
-export type BetaOptimiserDay = {
-  planningDate: string;
-  analysedAtUtc: string;
-  routingPolicy: string;
-  runCount: number;
-  routedRunCount: number;
-  unroutedRunCount: number;
-  currentMiles: number;
-  currentDriveMinutes: number;
-  projectedMiles: number;
-  projectedDriveMinutes: number;
-  savingMiles: number;
-  savingDriveMinutes: number;
-  routes: BetaOptimiserRoute[];
-  warnings: string[];
-};
-
-export type BetaPlannerRouteComparison = {
-  reference: string;
-  stopCount: number;
-  routingAvailable: boolean;
-  currentMiles?: number;
-  currentDriveMinutes?: number;
-  proposedMiles?: number;
-  proposedDriveMinutes?: number;
-  savingMiles?: number;
-  savingDriveMinutes?: number;
-  before: string[];
-  after: string[];
-  rationale: string;
-  warnings: string[];
-};
-
-export type BetaPlannerComparison = {
-  planningDate: string;
-  analysedAtUtc: string;
-  routeCount: number;
-  routedRouteCount: number;
-  currentMiles: number;
-  currentDriveMinutes: number;
-  projectedMiles: number;
-  projectedDriveMinutes: number;
-  savingMiles: number;
-  savingDriveMinutes: number;
-  routes: BetaPlannerRouteComparison[];
-  warnings: string[];
-};
-
 export type BetaDayPlanOrder = {
   orderId: string;
   sourceLineId: string;
@@ -108,7 +33,7 @@ export type BetaDayPlanRun = {
   miles?: number;
   driveMinutes?: number;
   orders: BetaDayPlanOrder[];
-  stops: Array<{ name: string }>;
+  stops: Array<{ sequence: number; name: string }>;
   warnings: string[];
 };
 
@@ -129,6 +54,32 @@ export type BetaDayPlan = {
   warnings: string[];
 };
 
+export type BetaLyonsPlanRoute = {
+  reference: string;
+  stopCount: number;
+  orderLineCount: number;
+  plannedPallets: number;
+  routingAvailable: boolean;
+  miles?: number;
+  driveMinutes?: number;
+  stops: string[];
+  warnings: string[];
+};
+
+export type BetaLyonsPlan = {
+  planningDate: string;
+  analysedAtUtc: string;
+  routeCount: number;
+  routedRouteCount: number;
+  orderLineCount: number;
+  totalPallets: number;
+  totalMiles?: number;
+  totalDriveMinutes?: number;
+  routingComplete: boolean;
+  routes: BetaLyonsPlanRoute[];
+  warnings: string[];
+};
+
 export type BetaDayPlanReconciliation = {
   betaOrderLines: number;
   lyonsOrderLines: number;
@@ -146,7 +97,7 @@ export type BetaDayPlanReconciliation = {
 export type BetaDayPlanComparison = {
   planningDate: string;
   beta: BetaDayPlan;
-  lyons: BetaPlannerComparison;
+  lyons: BetaLyonsPlan;
   reconciliation: BetaDayPlanReconciliation;
 };
 
