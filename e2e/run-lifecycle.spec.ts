@@ -26,7 +26,7 @@ function runPayload(state: State) {
     reference: runReference(state.planningDate),
     rawReference: runReference(state.planningDate),
     planningDate: state.planningDate,
-    status: state.geofenceStage === 3 ? 'Completed' : state.geofenceStage > 0 ? 'InProgress' : 'Planned',
+    status: state.geofenceStage >= 4 ? 'Completed' : state.geofenceStage > 0 ? 'InProgress' : 'Planned',
     palletSpacesUsed: state.allocatedPallets,
     totalPalletSpaces: 26,
     capacityType: 'Standard pallets',
@@ -92,7 +92,7 @@ async function installApi(page: Page, state: State) {
     if (path === '/api/v1/driver-dispatch-status' && method === 'GET') return json(route, { planningDate: state.planningDate, drivers: [{
       driverId,
       dispatchStatus: state.driverAssigned ? 'Awaiting Dispatch' : 'No Run',
-      operationalStatus: state.geofenceStage === 3 ? 'Completed' : state.geofenceStage > 0 ? 'Working' : state.driverAssigned ? 'Awaiting Dispatch' : 'No Run',
+      operationalStatus: state.geofenceStage >= 4 ? 'Completed' : state.geofenceStage > 0 ? 'Working' : state.driverAssigned ? 'Awaiting Dispatch' : 'No Run',
       driverConfirmed: false,
       weeklyRestStatus: 'Ready', weeklyRestMessage: 'Ready', availabilityStatus: 'Available', availabilityMessage: 'Available', projectedDayNumber: 1
     }] });
@@ -145,8 +145,13 @@ async function installApi(page: Page, state: State) {
     if (path === '/api/v1/operations/delivery-etas' && method === 'GET') return json(route, { planningDate: state.planningDate, calculatedAtUtc: new Date().toISOString(), records: [] });
 
     if (path === '/api/v1/run-progress' && method === 'GET') {
-      const completedStops = state.geofenceStage === 0 ? 0 : state.geofenceStage === 1 ? 0 : state.geofenceStage === 2 ? 1 : 2;
-      const runState = state.geofenceStage === 3 ? 'Completed' : state.geofenceStage === 1 ? 'OnSiteConfirmed' : state.geofenceStage > 1 ? 'InProgress' : 'Planned';
+      const completedStops = state.geofenceStage < 2 ? 0 : state.geofenceStage < 4 ? 1 : 2;
+      const runState = state.geofenceStage >= 4 ? 'Completed' : state.geofenceStage === 1 || state.geofenceStage === 3 ? 'OnSiteConfirmed' : state.geofenceStage > 1 ? 'InProgress' : 'Planned';
+      const currentVisit = state.geofenceStage === 1
+        ? { geofenceName: 'Hall Hunter', loadStopId: collectionStopId, enteredAtUtc: atOffset(25), siteArrivalUtc: atOffset(25), dwellMinutes: 5, isDelayed: false, status: 'OnSite' }
+        : state.geofenceStage === 3
+          ? { geofenceName: 'Leyland', loadStopId: deliveryStopId, enteredAtUtc: atOffset(75), siteArrivalUtc: atOffset(75), dwellMinutes: 5, isDelayed: false, status: 'OnSite' }
+          : undefined;
       return json(route, {
         planningDate: state.planningDate,
         calculatedAtUtc: new Date().toISOString(),
@@ -160,30 +165,30 @@ async function installApi(page: Page, state: State) {
         records: state.runCreated ? [{
           loadId: runId,
           loadReference: runReference(state.planningDate),
-          loadStatus: state.geofenceStage === 3 ? 'Completed' : state.geofenceStage > 0 ? 'InProgress' : 'Planned',
+          loadStatus: state.geofenceStage >= 4 ? 'Completed' : state.geofenceStage > 0 ? 'InProgress' : 'Planned',
           runState,
-          progressPercent: state.geofenceStage === 0 ? 0 : state.geofenceStage === 1 ? 25 : state.geofenceStage === 2 ? 50 : 100,
+          progressPercent: state.geofenceStage === 0 ? 0 : state.geofenceStage === 1 ? 25 : state.geofenceStage === 2 ? 50 : state.geofenceStage === 3 ? 75 : 100,
           completedStops,
           totalStops: 2,
           nextStop: state.geofenceStage < 2
             ? { id: collectionStopId, sequence: 1, name: 'Hall Hunter', plannedArrivalUtc: atOffset(30) }
-            : state.geofenceStage === 2
+            : state.geofenceStage < 4
               ? { id: deliveryStopId, sequence: 2, name: 'Leyland', plannedArrivalUtc: atOffset(80) }
               : undefined,
-          currentVisit: state.geofenceStage === 1 ? { geofenceName: 'Hall Hunter', loadStopId: collectionStopId, enteredAtUtc: atOffset(25), dwellMinutes: 5, isDelayed: false, status: 'OnSite' } : undefined,
-          geofenceOnSite: state.geofenceStage === 1,
+          currentVisit,
+          geofenceOnSite: state.geofenceStage === 1 || state.geofenceStage === 3,
           trackingFresh: true,
-          trackingMoving: state.geofenceStage === 0 ? false : state.geofenceStage !== 1 && state.geofenceStage !== 3,
+          trackingMoving: state.geofenceStage === 2,
           speedKph: state.geofenceStage === 2 ? 30 : 0,
           stopDwell: [
             { stopId: collectionStopId, sequence: 1, stopName: 'Hall Hunter', state: state.geofenceStage >= 2 ? 'Departed' : state.geofenceStage === 1 ? 'OnSite' : 'EnRoute', siteArrivalUtc: state.geofenceStage >= 1 ? atOffset(25) : undefined, siteDepartureUtc: state.geofenceStage >= 2 ? atOffset(35) : undefined },
-            { stopId: deliveryStopId, sequence: 2, stopName: 'Leyland', state: state.geofenceStage === 3 ? 'Departed' : 'EnRoute', siteArrivalUtc: state.geofenceStage === 3 ? atOffset(75) : undefined, siteDepartureUtc: state.geofenceStage === 3 ? atOffset(85) : undefined }
+            { stopId: deliveryStopId, sequence: 2, stopName: 'Leyland', state: state.geofenceStage >= 4 ? 'Departed' : state.geofenceStage === 3 ? 'OnSite' : 'EnRoute', siteArrivalUtc: state.geofenceStage >= 3 ? atOffset(75) : undefined, siteDepartureUtc: state.geofenceStage >= 4 ? atOffset(85) : undefined }
           ]
         }] : []
       });
     }
     if (path === '/api/v1/tv-display/route-progress' && method === 'GET') return json(route, { planningDate: state.planningDate, runs: [] });
-    if (path === '/api/v1/tv-display/live-runs' && method === 'GET') return json(route, { planningDate: state.planningDate, generatedAtUtc: new Date().toISOString(), refreshSeconds: 20, runCount: state.geofenceStage === 3 ? 0 : state.runCreated ? 1 : 0, runs: state.geofenceStage === 3 ? [] : state.runCreated ? [{
+    if (path === '/api/v1/tv-display/live-runs' && method === 'GET') return json(route, { planningDate: state.planningDate, generatedAtUtc: new Date().toISOString(), refreshSeconds: 20, runCount: state.geofenceStage >= 3 ? 0 : state.runCreated ? 1 : 0, runs: state.geofenceStage >= 3 ? [] : state.runCreated ? [{
       id: runId,
       reference: runReference(state.planningDate),
       status: state.geofenceStage > 0 ? 'InProgress' : 'Planned',
@@ -200,8 +205,8 @@ async function installApi(page: Page, state: State) {
     }] : [] });
     if (path === '/api/v1/run-timing' && method === 'GET') return json(route, {
       planningDate: state.planningDate, records: state.runCreated ? [{
-        loadId: runId, loadReference: runReference(state.planningDate), completed: state.geofenceStage === 3,
-        finalEtaUtc: atOffset(80), finalEtaSource: 'GeofenceEstimated', finalDestinationStopId: deliveryStopId, finalDestinationName: 'Leyland',
+        loadId: runId, loadReference: runReference(state.planningDate), completed: state.geofenceStage >= 4,
+        finalEtaUtc: state.geofenceStage >= 3 ? atOffset(75) : atOffset(80), finalEtaSource: state.geofenceStage >= 3 ? 'Geofence' : 'GeofenceEstimated', finalDestinationStopId: deliveryStopId, finalDestinationName: 'Leyland',
       }] : [],
     });
 
@@ -252,4 +257,9 @@ test('planner → dispatch → geofence arrival/departure → completion stays c
   state.geofenceStage = 3;
   await page.reload();
   await expect(page.getByText(/Final destination arrived/i).first()).toBeVisible();
+
+  state.geofenceStage = 4;
+  await page.reload();
+  await expect(page.getByText(/Final destination arrived/i).first()).toBeVisible();
+  await expect(page.getByText('AVAILABLE').first()).toBeVisible();
 });
