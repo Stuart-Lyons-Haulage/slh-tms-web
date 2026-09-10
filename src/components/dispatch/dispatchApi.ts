@@ -46,8 +46,7 @@ export async function getSmartDispatch(
     getDispatchVisibility(planningDate, token)
   ]);
   const visibilityByDriver = new Map(visibility.drivers.map(item => [item.driverId, item]));
-  const focusedDrivers = drivers
-    .filter(driver => visibilityByDriver.has(driver.driverId))
+  const enrichedDrivers = drivers
     .map(driver => ({
       ...driver,
       employmentType: visibilityByDriver.get(driver.driverId)?.employmentType ?? driver.employmentType,
@@ -55,12 +54,16 @@ export async function getSmartDispatch(
       driverCode: visibilityByDriver.get(driver.driverId)?.coding?.trim() || driver.driverCode
     }));
   return {
-    drivers: focusedDrivers,
+    drivers: enrichedDrivers,
     runs,
     equipment,
     statuses: Object.fromEntries(statusResponse.drivers.map(status => [status.driverId, status])),
     visibility
   };
+}
+
+export async function syncDispatchDrivers(token: string): Promise<void> {
+  await request("/api/v1/driver-master/tachomaster/sync", token, { method: "POST" }, 180000);
 }
 
 export async function getAvailableTimes(
