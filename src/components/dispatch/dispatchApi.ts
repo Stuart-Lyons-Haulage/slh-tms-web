@@ -35,6 +35,32 @@ export async function getDispatchHistory(planningDate: string, token: string): P
   );
 }
 
+function cleanStopName(value?: string): string | undefined {
+  const cleaned = value?.replace(/^(?:Collect|Deliver)\s*[·:-]\s*/i, "").replace(/-/g, " ").trim();
+  return cleaned || undefined;
+}
+
+function runDetail(run: DispatchRunDto, equipment: DispatchEquipmentWorkbench): DispatchRunDto {
+  const load = equipment.loads.find(item => item.id === run.runId);
+  if (!load) return run;
+  const ordered = [...(load.stops || [])].sort((left, right) => left.sequence - right.sequence);
+  const collection = ordered.find(stop => /^collect\b/i.test(stop.name)) || ordered[0];
+  const delivery = [...ordered].reverse().find(stop => /^deliver\b/i.test(stop.name)) || ordered.at(-1);
+  const notes = [load.plannerNotes, ...(ordered.map(stop => stop.plannerNote))].filter(Boolean).join(" ");
+  const trailerSwapRequested = /(?:trailer\s*(?:swap|change)|swap\s*trailer|change\s*trailer|drop\s*trailer|pick\s*up\s*(?:a\s*)?(?:different|new)\s*trailer)/i.test(notes);
+  return {
+    ...run,
+    firstCollectionTimeUtc: collection?.plannedArrivalUtc || load.plannedStartUtc,
+    finalDeliveryPoint: delivery ? {
+      name: cleanStopName(delivery.name) || delivery.name,
+      latitude: delivery.latitude,
+      longitude: delivery.longitude
+    } : undefined,
+    plannerNotes: load.plannerNotes,
+    trailerSwapRequested
+  };
+}
+
 export async function getSmartDispatch(
   planningDate: string,
   token: string
@@ -85,7 +111,7 @@ export async function getSmartDispatch(
   });
   return {
     drivers: enrichedDrivers,
-    runs,
+    runs: runs.map(run => runDetail(run, equipment)),
     equipment,
     statuses: Object.fromEntries(statusResponse.drivers.map(status => [status.driverId, status])),
     visibility
