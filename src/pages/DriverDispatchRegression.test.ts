@@ -4,9 +4,13 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(new URL("./DriverDispatch.tsx", import.meta.url), "utf8");
 const operationalSource = readFileSync(new URL("./DriverDispatchOperational.tsx", import.meta.url), "utf8");
 const authoritativeSource = readFileSync(new URL("../components/dispatch/DispatchBoard.tsx", import.meta.url), "utf8");
+const rowSource = readFileSync(new URL("../components/dispatch/DispatchDriverRow.tsx", import.meta.url), "utf8");
+const apiSource = readFileSync(new URL("../components/dispatch/dispatchApi.ts", import.meta.url), "utf8");
+const stateSource = readFileSync(new URL("../components/dispatch/dispatchBoardState.ts", import.meta.url), "utf8");
 const filterSource = readFileSync(new URL("../components/dispatch/DispatchFilters.tsx", import.meta.url), "utf8");
 const calculatedStartsSource = readFileSync(new URL("./DispatchCalculatedStarts.tsx", import.meta.url), "utf8");
 const authoritativeCss = readFileSync(new URL("../authoritative-dispatch.css", import.meta.url), "utf8");
+const loadPlanCss = readFileSync(new URL("../customer-load-plans.css", import.meta.url), "utf8");
 
 describe("Driver Dispatch UI contract", () => {
   it("keeps status visible and puts the calculated Start column beside the driver", () => {
@@ -19,7 +23,7 @@ describe("Driver Dispatch UI contract", () => {
     expect(source).not.toContain("<input type=\"time\"");
   });
 
-  it("shows only unallocated runs in the pool above the driver table", () => {
+  it("shows only unallocated runs in the legacy pool above the legacy driver table", () => {
     expect(source).toContain("data-testid=\"built-runs-queue\"");
     expect(source).toContain("Built runs ready to allocate");
     expect(source).toContain("filter(load => !load.driverId)");
@@ -49,8 +53,8 @@ describe("Driver Dispatch UI contract", () => {
     expect(operationalSource).not.toContain("does not currently have an allocated run");
     expect(operationalSource).not.toContain("event.preventDefault()");
     expect(operationalSource).not.toContain("event.stopPropagation()");
-    expect(authoritativeSource).toContain("getDriverDispatchRoute(selection.runId");
-    expect(authoritativeSource).toContain("checkDispatchReadiness(selection.runId");
+    expect(authoritativeSource).toContain("getDriverDispatchRoute(effectiveSelection.runId");
+    expect(authoritativeSource).toContain("checkDispatchReadiness(effectiveSelection.runId");
     expect(authoritativeSource).toContain("sendDriverMessage(");
     expect(authoritativeSource).toContain("<DispatchMessageDialog");
   });
@@ -75,13 +79,47 @@ describe("Driver Dispatch UI contract", () => {
     expect(authoritativeCss).toContain("visibility: visible !important");
   });
 
-  it("does not clip the complete Smart Dispatch driver payload to the smaller visibility evidence set", () => {
-    expect(authoritativeSource).toContain("snapshot.drivers.length");
-    expect(readFileSync(new URL("../components/dispatch/dispatchApi.ts", import.meta.url), "utf8"))
-      .not.toContain(".filter(driver => visibilityByDriver.has(driver.driverId))");
+  it("exposes Dispatch immediately for a selected row and atomically locks it before the SMS preview", () => {
+    expect(rowSource).toContain('action === "allocate" && selection.runId');
+    expect(rowSource).toContain('{busy ? "Allocating…" : "Dispatch"}');
+    expect(authoritativeSource).toContain("lockDispatchPlan(planningDate, [{ driverId: driver.driverId, selection: effectiveSelection }], access)");
+    expect(authoritativeSource.indexOf("lockDispatchPlan(planningDate, [{ driverId: driver.driverId, selection: effectiveSelection }], access)")).toBeLessThan(authoritativeSource.indexOf("getDriverDispatchRoute(effectiveSelection.runId"));
   });
 
-  it("makes the Dispatch action available from the locally committed allocation", () => {
+  it("restores the run sidebar with first collection time, first collection, final delivery and fit suggestions", () => {
+    expect(authoritativeSource).toContain('className="smart-run-sidebar"');
+    expect(authoritativeSource).toContain("run.firstCollectionTimeUtc");
+    expect(authoritativeSource).toContain("run.collectionPoint.name");
+    expect(authoritativeSource).toContain("run.finalDeliveryPoint?.name");
+    expect(authoritativeSource).toContain("drivers.filter(driver => driver.suggestedRunId === run.runId)");
+    expect(apiSource).toContain("firstCollectionTimeUtc: collection?.plannedArrivalUtc || load.plannedStartUtc");
+    expect(apiSource).toContain("finalDeliveryPoint: delivery ?");
+    expect(authoritativeCss).toContain(".smart-dispatch-workspace");
+    expect(authoritativeCss).toContain(".smart-run-card-list");
+  });
+
+  it("uses previous-trailer continuity unless the run planner notes explicitly request a trailer swap", () => {
+    expect(stateSource).toContain("driver.previousTrailerId");
+    expect(stateSource).toContain("!assignedRun?.trailerSwapRequested");
+    expect(rowSource).toContain("!nextRun?.trailerSwapRequested");
+    expect(rowSource).toContain("Last used / continuity");
+    expect(rowSource).toContain("Planner note requests a trailer swap");
+    expect(apiSource).toContain("trailerSwapRequested");
+    expect(apiSource).toContain("swap\\s*trailer");
+  });
+
+  it("keeps Customer Load Plans closable above the app header", () => {
+    expect(loadPlanCss).toContain(".load-plan-modal-backdrop .load-plan-head-actions button:last-child");
+    expect(loadPlanCss).toContain("position: fixed");
+    expect(loadPlanCss).toContain("z-index: 1305");
+  });
+
+  it("does not clip the complete Smart Dispatch driver payload to the smaller visibility evidence set", () => {
+    expect(authoritativeSource).toContain("snapshot.drivers.length");
+    expect(apiSource).not.toContain(".filter(driver => visibilityByDriver.has(driver.driverId))");
+  });
+
+  it("makes the Dispatch action available from the locally committed legacy allocation", () => {
     expect(source).toContain('dispatchStatus: "Awaiting Dispatch"');
     expect(source).toContain('driver.assignedLoadId === selected.id && effectiveStatus === "Awaiting Dispatch"');
     expect(source).toContain('{busy ? "Preparing…" : "Dispatch"}</button>');

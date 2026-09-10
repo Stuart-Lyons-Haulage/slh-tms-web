@@ -32,7 +32,7 @@ import {
   routeDrivingMinutes,
   type DriverMessageMode
 } from "./dispatchMessaging";
-import type { DispatchAllocationSelection, DispatchDriverDto, DispatchEmploymentFilter, DispatchFilter, DispatchLockFailure } from "./types";
+import type { DispatchAllocationSelection, DispatchDriverDto, DispatchEmploymentFilter, DispatchFilter, DispatchLockFailure, DispatchRunDto } from "./types";
 
 type Props = {
   planningDate: string;
@@ -58,6 +58,47 @@ const employmentFilterValues: DispatchEmploymentFilter[] = ["all", "employed", "
 function fleetioWarning(status?: string): string | undefined {
   const value = status?.trim();
   return value && /(out\s*of\s*service|inactive|vor|off\s*road|maintenance)/i.test(value) ? `Fleetio: ${value}` : undefined;
+}
+
+function runTime(value?: string): string {
+  if (!value) return "Time not set";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Time not set" : date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+}
+
+function RunSidebar({ runs, owners, drivers }: {
+  runs: DispatchRunDto[];
+  owners: Record<string, string | undefined>;
+  drivers: DispatchDriverDto[];
+}) {
+  return <aside className="smart-run-sidebar" aria-label="Runs ready for driver allocation">
+    <div className="smart-run-sidebar-head">
+      <strong>Runs</strong>
+      <span>{runs.length}</span>
+    </div>
+    <p>First collection → final delivery. Best-fit suggestions use the driver’s last known position plus first collection proximity, skills and continuity.</p>
+    <div className="smart-run-card-list">
+      {runs.map(run => {
+        const ownerId = owners[run.runId];
+        const owner = ownerId ? drivers.find(driver => driver.driverId === ownerId) : undefined;
+        const suggested = drivers.filter(driver => driver.suggestedRunId === run.runId).slice(0, 2);
+        return <article className={`smart-run-card ${owner ? "allocated" : "available"}`} key={run.runId}>
+          <div className="smart-run-card-title">
+            <strong>{run.reference}</strong>
+            <span>{owner ? "Selected" : run.isBackload ? "Backload" : "Available"}</span>
+          </div>
+          <div className="smart-run-time">{runTime(run.firstCollectionTimeUtc)}</div>
+          <div className="smart-run-route">
+            <span><b>Collect</b>{run.collectionPoint.name}</span>
+            <span><b>Deliver</b>{run.finalDeliveryPoint?.name || "Final stop not set"}</span>
+          </div>
+          {owner && <small>Allocated/selected · {owner.name}</small>}
+          {!owner && suggested.length > 0 && <small className="smart-run-fit">Suggested · {suggested.map(driver => driver.name).join(" / ")}</small>}
+          {run.trailerSwapRequested && <small className="smart-run-warning">Planner note: trailer swap requested</small>}
+        </article>;
+      })}
+    </div>
+  </aside>;
 }
 
 export function GetTimesButton({ busy, onGetTimes }: { busy: boolean; onGetTimes: () => void }) {
@@ -232,45 +273,72 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
   }
 
   async function prepareDispatch(driver: DispatchDriverDto, selection: DispatchAllocationSelection) {
-    if (!snapshot || !selection.runId || lockedRunId(driver.driverId) !== selection.runId) return;
+    if (!snapshot || !selection.runId) return;
     setBusyDriverId(driver.driverId);
     setMessageError(undefined);
     setNotice(undefined);
+    setFailures(current => current.filter(failure => failure.driverId !== driver.driverId));
     try {
       const vehicle = snapshot.equipment.vehicles.find(item => item.id === selection.vehicleId);
       const fleetWarning = fleetioWarning(vehicle?.fleetioStatus);
       if (fleetWarning) throw new Error(`${fleetWarning}. Resolve or change the vehicle before dispatch.`);
+      if (!selection.vehicleId) throw new Error("Select a vehicle before Dispatch.");
+
       const access = await token();
-      const route = await getDriverDispatchRoute(selection.runId, access);
+      let effectiveSelection = { ...selection };
+      if (!effectiveSelection.plannedStartTime) {
+        const [time] = await getAvailableTimes(
+          planningDate,
+          [driver.driverId],
+          access,
+          effectiveSelection.useReducedDailyRest ? [driver.driverId] : []
+        );
+        if (!time?.availableFrom) throw new Error(time?.breachDetail || "A legal Tacho available time could not be calculated for this driver.");
+        if (time.breachDetail) throw new Error(time.breachDetail);
+        effectiveSelection = { ...effectiveSelection, plannedStartTime: time.availableFrom };
+        setAvailableTimes(current => ({ ...current, [driver.driverId]: time }));
+        setSelections(current => ({ ...current, [driver.driverId]: effectiveSelection }));
+      }
+
+      if (lockedRunId(driver.driverId) !== effectiveSelection.runId) {
+        const result = await lockDispatchPlan(planningDate, [{ driverId: driver.driverId, selection: effectiveSelection }], access);
+        if (!result.success) {
+          setFailures(current => [...current.filter(failure => failure.driverId !== driver.driverId), ...result.failures]);
+          throw new Error(result.failures[0]?.reason || "This allocation could not be locked for Dispatch.");
+        }
+        setNotice(`${snapshot.runs.find(run => run.runId === effectiveSelection.runId)?.reference || "Run"} allocated to ${driver.name}. Preparing Dispatch text…`);
+        onLocked?.();
+      }
+
+      const route = await getDriverDispatchRoute(effectiveSelection.runId, access);
       const minutes = routeDrivingMinutes(route);
       if (!minutes) throw new Error("The run could not be routed. No HGV driving time was returned.");
 
-      let readiness = await checkDispatchReadiness(selection.runId, minutes, false, access);
+      let readiness = await checkDispatchReadiness(effectiveSelection.runId, minutes, false, access);
       let acknowledged = false;
       if (!readiness.canDispatch && readiness.structuralReadiness?.classification === "Unverified" && readiness.structuralReadiness.requiresAcknowledgement) {
         const warnings = readiness.structuralReadiness.checks.filter(check => !check.passed).map(check => `• ${check.message}`).join("\n");
         if (!window.confirm(`Pre-dispatch warnings:\n\n${warnings}\n\nAcknowledge and continue?`)) return;
         acknowledged = true;
-        readiness = await checkDispatchReadiness(selection.runId, minutes, true, access);
+        readiness = await checkDispatchReadiness(effectiveSelection.runId, minutes, true, access);
       }
       if (!readiness.canDispatch) throw new Error(readiness.explanation || "Dispatch readiness did not pass.");
 
-      const dispatch = await getRunDispatch(selection.runId, access);
-      const reference = snapshot.runs.find(run => run.runId === selection.runId)?.reference || dispatch.reference;
+      const dispatch = await getRunDispatch(effectiveSelection.runId, access);
+      const reference = snapshot.runs.find(run => run.runId === effectiveSelection.runId)?.reference || dispatch.reference;
       setMessage({
-        runId: selection.runId,
+        runId: effectiveSelection.runId,
         reference,
-        text: buildDispatchText(reference, dispatch, plannedStartLocal(selection.plannedStartTime)),
+        text: buildDispatchText(reference, dispatch, plannedStartLocal(effectiveSelection.plannedStartTime)),
         mode: "initial",
         routeMinutes: minutes,
         acknowledgeUnverified: acknowledged
       });
     } catch (exception) {
-      setFailures(current => [...current.filter(failure => failure.driverId !== driver.driverId), {
-        driverId: driver.driverId,
-        runId: selection.runId,
-        reason: exception instanceof Error ? exception.message : "Dispatch could not be prepared."
-      }]);
+      const reason = exception instanceof Error ? exception.message : "Dispatch could not be prepared.";
+      setFailures(current => current.some(failure => failure.driverId === driver.driverId && failure.reason === reason)
+        ? current
+        : [...current.filter(failure => failure.driverId !== driver.driverId), { driverId: driver.driverId, runId: selection.runId, reason }]);
     } finally {
       setBusyDriverId(undefined);
     }
@@ -409,39 +477,42 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
       onDriverSearchChange={setDriverSearch}
     />
 
-    <div className="smart-dispatch-table-wrap">
-      <table className="smart-dispatch-table authoritative">
-        <thead>
-          <tr>
-            <th>Driver</th><th>Duty</th><th>Last location / fit</th><th>Skills</th><th>Run</th><th>Vehicle</th><th>Trailer</th><th>Available / WTD</th><th>Status</th><th>Dispatch</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visibleDrivers.map(driver => <DispatchDriverRow
-            key={driver.driverId}
-            driver={driver}
-            runs={snapshot.runs}
-            vehicles={snapshot.equipment.vehicles}
-            trailers={snapshot.equipment.trailers}
-            runOwnerById={runOwnerById}
-            selection={selections[driver.driverId] || emptyDispatchSelection()}
-            availableTime={availableTimes[driver.driverId]}
-            status={snapshot.statuses[driver.driverId]}
-            lockedRunId={lockedRunId(driver.driverId)}
-            failures={rowFailures(failures, driver.driverId)}
-            busy={busyDriverId === driver.driverId}
-            onSelectionChange={changeSelection}
-            onDispatch={(row, selection) => void prepareDispatch(row, selection)}
-            onAmend={(row, selection) => void prepareAmendment(row, selection)}
-            onUpdate={prepareUpdate}
-            onUnassign={(row, selection) => void handleUnassign(row, selection)}
-          />)}
-        </tbody>
-      </table>
-      {visibleDrivers.length === 0 && <div className="smart-dispatch-empty">No drivers match this filter.</div>}
+    <div className="smart-dispatch-workspace">
+      <RunSidebar runs={snapshot.runs} owners={runOwnerById} drivers={snapshot.drivers} />
+      <div className="smart-dispatch-table-wrap">
+        <table className="smart-dispatch-table authoritative">
+          <thead>
+            <tr>
+              <th>Driver</th><th>Duty</th><th>Last location / fit</th><th>Skills</th><th>Run</th><th>Vehicle</th><th>Trailer</th><th>Available / WTD</th><th>Status</th><th>Dispatch</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleDrivers.map(driver => <DispatchDriverRow
+              key={driver.driverId}
+              driver={driver}
+              runs={snapshot.runs}
+              vehicles={snapshot.equipment.vehicles}
+              trailers={snapshot.equipment.trailers}
+              runOwnerById={runOwnerById}
+              selection={selections[driver.driverId] || emptyDispatchSelection()}
+              availableTime={availableTimes[driver.driverId]}
+              status={snapshot.statuses[driver.driverId]}
+              lockedRunId={lockedRunId(driver.driverId)}
+              failures={rowFailures(failures, driver.driverId)}
+              busy={busyDriverId === driver.driverId}
+              onSelectionChange={changeSelection}
+              onDispatch={(row, selection) => void prepareDispatch(row, selection)}
+              onAmend={(row, selection) => void prepareAmendment(row, selection)}
+              onUpdate={prepareUpdate}
+              onUnassign={(row, selection) => void handleUnassign(row, selection)}
+            />)}
+          </tbody>
+        </table>
+        {visibleDrivers.length === 0 && <div className="smart-dispatch-empty">No drivers match this filter.</div>}
+      </div>
     </div>
 
-    <p className="smart-dispatch-footnote">Select work, use Get Times, then Lock Plan. Regular 11h daily rest is the default; choose Reduced rest (9h) on a driver only when the planner intends to use that concession, then recalculate Get Times. A locked row immediately exposes Dispatch. Dispatch performs the live HGV route/readiness check before opening the editable SMS preview. Amendments, free-form updates and Unassign stay on the same row.</p>
+    <p className="smart-dispatch-footnote">Select work and press Dispatch on the row to validate/lock that allocation and open the editable SMS preview; Get Times can still be run across the whole board and Lock Plan remains available for batch locking. Regular 11h daily rest is the default; choose Reduced rest (9h) only when the planner intends to use that concession. Trailer continuity follows the driver's last-used trailer unless the selected run contains a planner trailer-swap instruction. Amendments, free-form updates and Unassign stay on the same row.</p>
 
     {message && <DispatchMessageDialog
       reference={message.reference}
