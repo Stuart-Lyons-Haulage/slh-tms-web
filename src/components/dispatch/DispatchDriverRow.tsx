@@ -117,6 +117,7 @@ export function DispatchDriverRow({
     <td className="smart-location-cell">
       <strong>{driver.trackingData.lastStopName || "Location unavailable"}</strong>
       {driver.trackingData.lastPositionAtUtc && <small>Position · {ukTime(driver.trackingData.lastPositionAtUtc)}</small>}
+      {!driver.trackingData.lastPositionAtUtc && driver.previousPlanningDate && driver.trackingData.lastStopName && <small>Last executed run · {driver.previousPlanningDate}</small>}
       {driver.distanceToSuggestedCollectionMiles != null && driver.suggestedRunReference &&
         <small>{driver.distanceToSuggestedCollectionMiles.toFixed(1)}mi to suggested collection · {driver.suggestedRunReference}</small>}
       {driver.suggestion && <small className={driver.needsReturn && !driver.backloadCandidate ? "smart-inline-warning" : ""}>{driver.suggestion}</small>}
@@ -151,8 +152,11 @@ export function DispatchDriverRow({
       <td>
         <select aria-label={`Trailer for ${driver.name}`} value={selection.trailerId} onChange={event => onSelectionChange(driver.driverId, { trailerId: event.target.value })} disabled={lockedToDriver && dispatchStatus !== "No Run"}>
           <option value="">Trailer…</option>
-          {legalTrailers.map(trailer => <option key={trailer.id} value={trailer.id}>{trailer.trailerNumber}{trailer.type ? ` · ${trailer.type}` : ""}</option>)}
+          {legalTrailers.map(trailer => <option key={trailer.id} value={trailer.id}>
+            {trailer.trailerNumber}{trailer.id === driver.previousTrailerId ? " · Last used" : trailer.type ? ` · ${trailer.type}` : ""}
+          </option>)}
         </select>
+        {driver.previousTrailerNumber && <small>Last used · {driver.previousTrailerNumber}{driver.previousTrailerPlanningDate ? ` · ${driver.previousTrailerPlanningDate}` : ""}</small>}
         {selectedRun?.requiresDoubleDeck && <small>Double-deck only</small>}
         {selectedRun?.requiresRefrigerated && <small>Refrigerated only</small>}
       </td>
