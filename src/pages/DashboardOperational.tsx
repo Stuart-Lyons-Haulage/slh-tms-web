@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { intelligenceApi } from "../lib/intelligenceApi";
 import { request } from "../lib/api";
