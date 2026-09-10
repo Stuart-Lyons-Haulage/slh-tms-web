@@ -16,9 +16,9 @@ jobs:
     environment: production
     env:
       DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
-    permissions: 
-      id-token: write #This is required for requesting the OIDC JWT Token
-      contents: read #Required when GH token is used to authenticate with private repo
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout to the branch
@@ -33,6 +33,11 @@ jobs:
           test "${{ github.event.workflow_run.head_branch }}" = "main"
           test "${{ github.event.workflow_run.head_sha }}" = "$DEPLOY_SHA"
           test "${{ github.event.workflow_run.conclusion }}" = "success"
+
+      - name: Stamp release marker
+        run: |
+          set -euo pipefail
+          printf '{"sha":"%s"}\n' "$DEPLOY_SHA" > public/release.json
 
       - name: Azure Login
         uses: azure/login@v2
@@ -67,17 +72,51 @@ jobs:
             --resource-group slh-tms-prod-rg \
             --image "slhtmsacrprod.azurecr.io/slh-tms-portal-prod:${DEPLOY_SHA}"
 
-      - name: Verify portal revision is serving
+      - name: Verify exact portal revision is ready and serving
         run: |
           set -euo pipefail
-          for attempt in {1..36}; do
-            status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-              --max-time 10 \
-              https://slh-tms-portal-prod.gentlepond-08dba66b.uksouth.azurecontainerapps.io/ || true)"
-            if test "$status" = "200"; then exit 0; fi
-            echo "Portal returned HTTP ${status}; retrying ($attempt/36)..."
+          expected_image="slhtmsacrprod.azurecr.io/slh-tms-portal-prod:${DEPLOY_SHA}"
+          app_url="https://slh-tms-portal-prod.gentlepond-08dba66b.uksouth.azurecontainerapps.io"
+
+          for attempt in {1..60}; do
+            latest_revision="$(az containerapp show \
+              --name slh-tms-portal-prod \
+              --resource-group slh-tms-prod-rg \
+              --query properties.latestRevisionName \
+              --output tsv)"
+            ready_revision="$(az containerapp show \
+              --name slh-tms-portal-prod \
+              --resource-group slh-tms-prod-rg \
+              --query properties.latestReadyRevisionName \
+              --output tsv)"
+            revision_image="$(az containerapp revision show \
+              --name slh-tms-portal-prod \
+              --resource-group slh-tms-prod-rg \
+              --revision "$latest_revision" \
+              --query 'properties.template.containers[0].image' \
+              --output tsv 2>/dev/null || true)"
+            health_state="$(az containerapp revision show \
+              --name slh-tms-portal-prod \
+              --resource-group slh-tms-prod-rg \
+              --revision "$latest_revision" \
+              --query properties.healthState \
+              --output tsv 2>/dev/null || true)"
+            release_sha="$(curl --silent --fail --max-time 10 \
+              -H 'Cache-Control: no-cache' \
+              "$app_url/release.json?ts=$(date +%s)" \
+              | jq -r '.sha // empty' 2>/dev/null || true)"
+
+            if test "$latest_revision" = "$ready_revision" \
+              -a "$revision_image" = "$expected_image" \
+              -a "$health_state" = "Healthy" \
+              -a "$release_sha" = "$DEPLOY_SHA"; then
+              echo "Verified $latest_revision is healthy and serving $DEPLOY_SHA."
+              exit 0
+            fi
+
+            echo "Waiting for exact portal revision: latest=${latest_revision:-unknown}, ready=${ready_revision:-unknown}, health=${health_state:-unknown}, image=${revision_image:-unknown}, served=${release_sha:-unknown} ($attempt/60)"
             sleep 10
           done
+
+          echo "::error::Portal did not serve the exact tested revision $DEPLOY_SHA."
           exit 1
-
-
