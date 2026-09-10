@@ -5,9 +5,8 @@
   if (!root) { return; }
 
   var PAGE_SIZE = 8;
-  var ROTATE_MS = 30000;
-  var REFRESH_MS = 20000;
-  var HARD_RELOAD_MS = 30 * 60 * 1000;
+  var ROTATE_MS = 60 * 1000;
+  var REFRESH_MS = 5 * 60 * 1000;
   var pageIndex = 0;
   var state = {
     loads: [], assignments: [], progress: [], route: [], etas: [], timing: [],
@@ -96,6 +95,24 @@
       out[id].push(items[i]);
     }
     return out;
+  }
+  function mergeAssignments(previous, incoming) {
+    var out = indexBy(previous || [], 'loadId'), i, item, prior;
+    for (i = 0; i < (incoming || []).length; i += 1) {
+      item = incoming[i]; prior = out[String(item.loadId)];
+      out[String(item.loadId)] = prior ? {
+        loadId: item.loadId,
+        loadReference: item.loadReference || prior.loadReference,
+        status: item.status || prior.status,
+        planningDate: item.planningDate || prior.planningDate,
+        driver: item.driver || prior.driver,
+        vehicle: item.vehicle || prior.vehicle,
+        trailerNumber: item.trailerNumber || prior.trailerNumber,
+        stopCount: item.stopCount || prior.stopCount,
+        finalStop: item.finalStop || prior.finalStop
+      } : item;
+    }
+    return Object.keys(out).map(function (id) { return out[id]; });
   }
   function finalEta(list) {
     var values = (list || []).slice(0), i, candidate = null;
@@ -322,6 +339,8 @@
         trailer: assignment && assignment.trailerNumber ? assignment.trailerNumber : '',
         driver: assignment && assignment.driver ? assignment.driver.displayName : 'DRIVER TBC',
         finalName: cleanStop((timing && timing.finalDestinationName) || (eta && eta.stopName) || (last && last.name) || 'Final delivery'),
+        currentStop: cleanStop(prog && prog.currentVisit && (prog.currentVisit.geofenceName || prog.currentVisit.stopName) || ''),
+        nextStop: cleanStop(prog && prog.nextStop && prog.nextStop.name || prog && prog.focusStop || ''),
         finalTime: finalTime, finalLabel: finalLabel, total: total, completed: completed,
         percent: total > 0 ? Math.round((completed / total) * 100) : 0
       });
@@ -363,9 +382,11 @@
     var html = '<table class="tv2-table"><thead><tr><th>FIRST COLLECTION</th><th>RUN</th><th>VEHICLE</th><th>DRIVER</th><th>PROGRESS</th><th>FINAL DELIVERY / ETA</th><th>STATUS</th></tr></thead><tbody>';
     for (i = 0; i < shown.length; i += 1) {
       var row = shown[i], focus = row.progress && (row.progress.focusStop || (row.progress.nextStop && row.progress.nextStop.name));
+      var stopSummary = row.currentStop ? 'Current: ' + row.currentStop : (row.nextStop ? 'Next: ' + row.nextStop : 'Planned route');
+      if (row.currentStop && row.nextStop && row.currentStop !== row.nextStop) { stopSummary += ' · Next: ' + row.nextStop; }
       html += '<tr class="' + esc(row.status.kind) + '">' +
         '<td><b class="tv2-main tv2-time">' + esc(formatTime(row.firstUtc)) + '</b><small class="tv2-sub">first collection</small></td>' +
-        '<td><b class="tv2-main">' + esc(row.run) + '</b><small class="tv2-sub">' + esc(cleanStop(focus || 'Planned route')) + '</small></td>' +
+        '<td><b class="tv2-main">' + esc(row.run) + '</b><small class="tv2-sub">' + esc(stopSummary) + '</small></td>' +
         '<td><b class="tv2-main">' + esc(row.vehicle) + '</b><small class="tv2-sub">' + esc(row.trailer ? 'Trailer ' + row.trailer : 'vehicle') + '</small></td>' +
         '<td><b class="tv2-main">' + esc(row.driver) + '</b><small class="tv2-sub">dispatch allocation</small></td>' +
         '<td><div class="tv2-progress"><i style="width:' + esc(row.percent) + '%"></i></div><b class="tv2-main">' + esc(row.completed + ' / ' + row.total) + '</b><small class="tv2-sub">' + esc(row.completed + ' of ' + row.total + ' geofences exited') + '</small></td>' +
@@ -383,7 +404,7 @@
         else if (name === 'loads' || name === 'assignments') { coreErrors.push(name); }
         else { optionalErrors.push(name); }
       } else if (name === 'loads') { state.loads = data || []; }
-      else if (name === 'assignments') { state.assignments = data || []; }
+      else if (name === 'assignments') { state.assignments = mergeAssignments(state.assignments, data || []); }
       else if (name === 'progress') { if (data && data.records) { state.progress = data.records; } }
       else if (name === 'route') { if (data && data.runs) { state.route = data.runs; } }
       else if (name === 'etas') { if (data && data.records) { state.etas = data.records; } }
@@ -407,13 +428,7 @@
     var rows = buildRows(), pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
     pageIndex = pages > 1 ? (pageIndex + 1) % pages : 0; render();
   }
-  function hardReload() {
-    var target = '/tv.html?key=' + encodeURIComponent(key) + '&_reload=' + new Date().getTime();
-    try { window.location.replace(target); } catch (ignore) { window.location.href = target; }
-  }
-
   updateClock(); window.setInterval(updateClock, 1000);
   refresh(); window.setInterval(refresh, REFRESH_MS);
   window.setInterval(rotate, ROTATE_MS);
-  window.setInterval(hardReload, HARD_RELOAD_MS);
 }());

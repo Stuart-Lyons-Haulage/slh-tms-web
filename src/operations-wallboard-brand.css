@@ -1,64 +1,72 @@
-/* SLH wallboard - simple operational display.
-   One attention prompt, then full-width run rows. KPI cards are deliberately removed. */
+/* SLH live operations wallboard.
+   Clean high-contrast transport control theme shared by the signed-in board and TV. */
 :root {
-  --slh-blue-950: #031f43;
-  --slh-blue-900: #052b58;
-  --slh-blue-800: #073a78;
-  --slh-blue-700: #0b4f8a;
-  --slh-green: #99d332;
-  --slh-green-soft: #d9f4a7;
-  --slh-white: #f7fbff;
-  --slh-muted: #bdd2e5;
-  --slh-line: rgba(189, 210, 229, .18);
+  --slh-navy: #08345f;
+  --slh-navy-dark: #052640;
+  --slh-blue: #0c5a91;
+  --slh-blue-soft: #e8f2f8;
+  --slh-green: #83bd2b;
+  --slh-green-dark: #5f9319;
+  --slh-green-soft: #eef7df;
+  --slh-bg: #edf2f5;
+  --slh-card: #ffffff;
+  --slh-text: #17324a;
+  --slh-muted: #6f8292;
+  --slh-line: #d7e1e8;
+  --slh-danger: #c93d3d;
+  --slh-warning: #d69020;
+  --slh-onsite: #1c83bd;
 }
 
 .ops-wallboard {
   font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-  background: linear-gradient(145deg, var(--slh-blue-950), #06172d 62%, #03172c);
-  color: var(--slh-white);
+  background: var(--slh-bg);
+  color: var(--slh-text);
   gap: 10px;
 }
 
 .ops-wallboard-header {
-  min-height: 62px;
+  min-height: 68px;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  border-bottom: 2px solid rgba(153, 211, 50, .62);
-  padding: 0 2px 10px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--slh-navy);
+  box-shadow: 0 3px 10px rgba(5, 38, 64, .12);
 }
 
 .ops-wallboard-logo { width: 78px; height: 48px; object-fit: contain; }
-.ops-wallboard-header p { color: var(--slh-green); font-size: 11px; letter-spacing: 1.2px; }
+.ops-wallboard-header p { color: #b8dc79; font-size: 11px; font-weight: 700; letter-spacing: 1.2px; }
 .ops-wallboard-header h1 { color: #fff; font-size: 28px; font-weight: 760; letter-spacing: -.35px; }
-.ops-wallboard-clock strong { font: 760 32px/1 "Segoe UI", Arial, sans-serif; font-variant-numeric: tabular-nums; }
-.ops-wallboard-clock span { color: var(--slh-muted); font-size: 11px; }
-.ops-wallboard-header button { background: var(--slh-blue-800); color: #fff; border: 1px solid rgba(153, 211, 50, .48); border-radius: 7px; }
+.ops-wallboard-clock strong { color: #fff; font: 760 32px/1 "Segoe UI", Arial, sans-serif; font-variant-numeric: tabular-nums; }
+.ops-wallboard-clock span { color: #c7d8e6; font-size: 11px; }
+.ops-wallboard-header button { background: rgba(255,255,255,.10); color: #fff; border: 1px solid rgba(255,255,255,.24); border-radius: 7px; }
 
-/* The six KPI cards consumed too much height and duplicated the run table. */
+/* The run table is the operational view; duplicated KPI cards stay hidden. */
 .ops-wallboard-summary { display: none; }
 
 .ops-wallboard-coverage {
-  min-height: 30px;
+  min-height: 32px;
   padding: 7px 11px;
-  border: 1px solid rgba(153, 211, 50, .30);
+  border: 1px solid #cbdbe6;
   border-radius: 8px;
-  background: rgba(7, 58, 120, .34);
+  background: #f7fbfd;
   color: var(--slh-muted);
   font-size: 10px;
 }
-.ops-wallboard-coverage strong { color: var(--slh-green); }
-.ops-wallboard-coverage span { color: #fff; }
-.ops-wallboard-coverage em { color: #ffd885; }
+.ops-wallboard-coverage strong { color: var(--slh-navy); }
+.ops-wallboard-coverage span { color: var(--slh-text); }
+.ops-wallboard-coverage em { color: #9a650f; }
 
 .ops-wallboard-alert {
   padding: 8px 11px;
   border-radius: 8px;
-  border: 1px solid rgba(240, 187, 70, .55);
-  background: rgba(93, 63, 12, .46);
-  color: #ffe1a2;
+  border: 1px solid #e9c78a;
+  background: #fff7e9;
+  color: #795114;
   font-size: 12px;
 }
 
-/* Attention is now the single prompt above the runs rather than a narrow right column. */
 .ops-board-layout {
   display: flex;
   flex-direction: column;
@@ -73,12 +81,12 @@
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-columns: 180px minmax(0, 1fr);
   align-items: stretch;
-  border: 1px solid rgba(153, 211, 50, .28);
+  border: 1px solid var(--slh-line);
   border-radius: 9px;
-  background: rgba(7, 58, 120, .42);
-  box-shadow: none;
+  background: var(--slh-card);
+  box-shadow: 0 2px 7px rgba(8, 52, 95, .06);
 }
 
 .ops-attention-panel h2 {
@@ -86,28 +94,24 @@
   align-items: center;
   margin: 0;
   padding: 10px 12px;
-  background: rgba(7, 58, 120, .95);
+  background: var(--slh-navy);
   color: #fff;
-  border-right: 1px solid var(--slh-line);
+  border-right: 0;
   font-size: 12px;
   letter-spacing: .4px;
 }
 
 .ops-attention-list { padding: 7px; overflow: hidden; }
 .ops-attention-card,
-.ops-attention-clear {
-  min-height: 48px;
-  margin: 0;
-  border-radius: 7px;
-}
+.ops-attention-clear { min-height: 48px; margin: 0; border-radius: 7px; }
 .ops-attention-card { grid-template-columns: 28px minmax(0, 1fr) auto; padding: 6px 8px; }
 .ops-attention-list .ops-attention-card:not(:first-child) { display: none; }
 .ops-attention-card b,
 .ops-attention-card strong { font-size: 12px; }
 .ops-attention-card small,
 .ops-attention-card em { font-size: 10px; }
-.ops-attention-card em { color: #8bdcff; }
-.ops-attention-clear { display: flex; align-items: center; justify-content: flex-start; gap: 10px; padding: 8px 12px; background: rgba(45, 95, 28, .26); color: var(--slh-green-soft); text-align: left; }
+.ops-attention-card em { color: var(--slh-blue); }
+.ops-attention-clear { display: flex; align-items: center; justify-content: flex-start; gap: 10px; padding: 8px 12px; background: var(--slh-green-soft); color: #456a17; text-align: left; }
 .ops-attention-clear small { font-size: 10px; }
 
 .ops-board-table {
@@ -116,70 +120,92 @@
   flex: 1;
   min-height: 0;
   border: 1px solid var(--slh-line);
-  border-radius: 9px;
-  background: rgba(2, 22, 44, .72);
-  box-shadow: none;
+  border-radius: 10px;
+  background: var(--slh-card);
+  box-shadow: 0 3px 12px rgba(8, 52, 95, .07);
   overflow-y: auto;
   overflow-x: hidden;
 }
 
 .ops-board-head,
 .ops-board-row {
-  grid-template-columns: 96px minmax(145px, .9fr) minmax(105px, .55fr) minmax(150px, .78fr) minmax(220px, 1.2fr) minmax(170px, .82fr) minmax(135px, .72fr);
+  grid-template-columns: 96px minmax(145px, .9fr) minmax(120px, .62fr) minmax(165px, .82fr) minmax(220px, 1.2fr) minmax(180px, .86fr) minmax(145px, .76fr);
 }
 
 .ops-board-head {
-  background: var(--slh-blue-800);
-  color: #dceaf5;
+  background: #dfeaf1;
+  color: var(--slh-navy-dark);
   font-size: 10px;
-  letter-spacing: .4px;
+  font-weight: 800;
+  letter-spacing: .5px;
+  text-transform: uppercase;
 }
 .ops-board-head span,
-.ops-board-row > span { padding: 7px 9px; border-right-color: rgba(189, 210, 229, .12); }
+.ops-board-row > span { padding: 8px 10px; border-right-color: #e4ebf0; }
 
 .ops-board-row {
-  min-height: 64px;
-  border-top-color: rgba(189, 210, 229, .10);
-  background: rgba(5, 43, 88, .25);
+  min-height: 66px;
+  border-top-color: #e3ebf0;
+  background: #fff;
 }
-.ops-board-row:nth-child(odd) { background: rgba(7, 58, 120, .16); }
+.ops-board-row:nth-child(odd) { background: #f8fbfd; }
 .ops-board-row.route { box-shadow: inset 5px 0 0 var(--slh-green); }
-.ops-board-row.onsite { box-shadow: inset 5px 0 0 #62c6f4; }
+.ops-board-row.onsite { box-shadow: inset 5px 0 0 var(--slh-onsite); background: #f1f9fd; }
 .ops-board-row.late,
-.ops-board-row.risk { box-shadow: inset 6px 0 0 #f06060; }
-.ops-board-row.present { outline: 1px solid rgba(153, 211, 50, .72); outline-offset: -1px; }
+.ops-board-row.risk { box-shadow: inset 6px 0 0 var(--slh-danger); background: #fff7f7; }
+.ops-board-row.complete { box-shadow: inset 5px 0 0 #6f8292; opacity: .86; }
+.ops-board-row.present { outline: 2px solid rgba(131, 189, 43, .55); outline-offset: -2px; }
 
-.ops-board-row strong { color: #fff; font-size: 16px; font-weight: 720; line-height: 1.15; }
+.ops-board-row strong { color: var(--slh-text); font-size: 16px; font-weight: 760; line-height: 1.15; }
 .ops-board-row small { color: var(--slh-muted); font-size: 10px; line-height: 1.25; margin-top: 3px; }
 .time-cell { font-family: "Segoe UI", Arial, sans-serif; font-variant-numeric: tabular-nums; font-weight: 780; }
-.time-cell strong { font-size: 21px; }
-.time-cell.eta { color: #8bdcff; }
-.run-cell strong { font-size: 17px; }
+.time-cell strong { color: var(--slh-navy); font-size: 21px; }
+.time-cell.eta strong { color: var(--slh-blue); }
+.run-cell strong { color: var(--slh-navy-dark); font-size: 18px; }
 .status-cell strong { font-size: 14px; }
+.ops-board-row.route .status-cell strong { color: var(--slh-green-dark); }
+.ops-board-row.onsite .status-cell strong { color: var(--slh-onsite); }
+.ops-board-row.late .status-cell strong,
+.ops-board-row.risk .status-cell strong { color: var(--slh-danger); }
 
-.ops-progress-bar { height: 11px; background: rgba(189, 210, 229, .16); }
+/* Vehicle and driver are deliberately prominent: these are operational allocation fields. */
+.ops-board-row > span:nth-child(3) strong,
+.ops-board-row > span:nth-child(4) strong {
+  color: var(--slh-navy-dark);
+  font-size: 17px;
+  font-weight: 800;
+}
+.ops-board-row > span:nth-child(3) small,
+.ops-board-row > span:nth-child(4) small { color: #718596; }
+
+.ops-progress-bar { height: 11px; background: #dfe8ee; }
 .ops-progress-bar i,
 .ops-progress-marker.done { background: var(--slh-green); }
-.ops-progress-marker.done { border-color: var(--slh-green-soft); }
-.ops-progress-marker { background: var(--slh-blue-950); }
+.ops-progress-marker.done { border-color: #dff0bc; }
+.ops-progress-marker { background: #97a8b4; }
+.ops-progress-marker.onsite { background: var(--slh-onsite); border-color: #bfe5f5; }
 
-.ops-wallboard-footer { color: #98b6cd; font-size: 9px; }
+.ops-wallboard-footer { color: #718596; font-size: 9px; }
 
-.ops-wallboard.tv { padding: 12px 14px 9px; }
-.ops-wallboard.tv .ops-wallboard-header { min-height: 56px; }
-.ops-wallboard.tv .ops-wallboard-header h1 { font-size: 26px; }
-.ops-wallboard.tv .ops-wallboard-clock strong { font-size: 30px; }
-.ops-wallboard.tv .ops-board-row { min-height: 62px; }
-.ops-wallboard.tv .ops-board-row strong { font-size: 17px; }
-.ops-wallboard.tv .time-cell strong { font-size: 22px; }
+/* TV uses the same design but with stronger sizing and no desktop chrome. */
+.ops-wallboard.tv { padding: 12px 14px 9px; background: #e8eef2; }
+.ops-wallboard.tv .ops-wallboard-header { min-height: 64px; }
+.ops-wallboard.tv .ops-wallboard-header h1 { font-size: 28px; }
+.ops-wallboard.tv .ops-wallboard-clock strong { font-size: 32px; }
+.ops-wallboard.tv .ops-board-row { min-height: 68px; }
+.ops-wallboard.tv .ops-board-row strong { font-size: 18px; }
+.ops-wallboard.tv .ops-board-row > span:nth-child(3) strong,
+.ops-wallboard.tv .ops-board-row > span:nth-child(4) strong { font-size: 19px; }
+.ops-wallboard.tv .time-cell strong { font-size: 23px; }
+.ops-wallboard.tv .run-cell strong { font-size: 19px; }
 
 @media (max-width: 1250px) {
   .ops-wallboard:not(.tv) .ops-board-head,
-  .ops-wallboard:not(.tv) .ops-board-row { min-width: 1000px; }
+  .ops-wallboard:not(.tv) .ops-board-row { min-width: 1030px; }
   .ops-wallboard:not(.tv) .ops-board-table { overflow-x: auto; }
 }
 
 @media (max-width: 760px) {
   .ops-attention-panel { grid-template-columns: 1fr; }
-  .ops-attention-panel h2 { border-right: 0; border-bottom: 1px solid var(--slh-line); }
+  .ops-attention-panel h2 { border-bottom: 1px solid var(--slh-line); }
 }

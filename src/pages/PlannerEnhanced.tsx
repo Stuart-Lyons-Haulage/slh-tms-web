@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { subscribeServerPlanningChanges } from "../lib/planningEvents";
+import { useState } from "react";
 import { RunPlannerLive } from "./RunPlannerLive";
 
 function localDate() {
@@ -15,11 +14,6 @@ function clickPlannerButton(pattern: RegExp) {
 
 export function PlannerEnhanced() {
   const [date, setDate] = useState(localDate());
-  const [serverRevision, setServerRevision] = useState(0);
-
-  useEffect(() => subscribeServerPlanningChanges(() => {
-    if (document.visibilityState === "visible") setServerRevision(value => value + 1);
-  }), []);
 
   return <section className="planner-enhanced-page">
     <div className="panel planner-action-bar">
@@ -29,6 +23,6 @@ export function PlannerEnhanced() {
       <span className="planner-action-spacer" />
       <span className="planner-highlight-dot" title="Warnings and planning guidance are shown on the item they relate to rather than taking permanent screen space.">!</span>
     </div>
-    <RunPlannerLive key={`${date}-${serverRevision}`} planningDate={date} />
+    <RunPlannerLive planningDate={date} />
   </section>;
 }

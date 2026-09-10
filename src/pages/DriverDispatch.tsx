@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { request, type LoadDispatch, type Trailer, type Vehicle } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { getDriverDispatchRoute, getRunDispatch } from "../api/runs";
-import { firstCollectionStop, runDirection, suggestionRunLabel } from "./DriverDispatchPlanning";
+import { firstCollectionStop, runDirection, sortDispatchDrivers, suggestionRunLabel } from "./DriverDispatchPlanning";
 import { dispatchStartsCalculatedEvent, type StartSuggestion } from "./DispatchCalculatedStarts";
 import "../driver-dispatch.css";
 import "../driver-dispatch-compact.css";
@@ -41,7 +41,7 @@ type DispatchDriver = {
   driverId: string;
   employeeNumber: string;
   displayName: string;
-  driverType: "Employed" | "Casual" | "Agency";
+  driverType: "Employed" | "Casual" | "Agency" | "Subcontractor";
   driverGroup?: string;
   skills?: string;
   coding?: string;
@@ -356,7 +356,7 @@ export function DriverDispatch() {
 
   const filteredDrivers = useMemo(() => {
     if (!data) return [];
-    return data.drivers.filter(driver => {
+    return sortDispatchDrivers(data.drivers.filter(driver => {
       const status = statuses[driver.driverId];
       const assigned = data.loads.find(load => load.id === driver.assignedLoadId);
       const vehicle = assigned?.vehicleId ? data.vehicles.find(item => item.id === assigned.vehicleId) : undefined;
@@ -375,7 +375,7 @@ export function DriverDispatch() {
         dispatch: `${dispatchStatus} ${knownUnavailable(driver, status) ? "warning unavailable" : "available"}`
       };
       return filterKeys.every(key => !filters[key].trim() || values[key].toLowerCase().includes(filters[key].trim().toLowerCase()));
-    });
+    }));
   }, [data, filters, statuses]);
 
   const warningDrivers = useMemo(() => {
@@ -494,7 +494,7 @@ export function DriverDispatch() {
     </div>
 
     {showDriverTools && <div className="dispatch-driver-tools">
-      <div><strong>Add or roster a driver</strong><p className="hint">Agency drivers can be added directly; employed/casual drivers should normally come from TachoMaster/Sage HR.</p></div>
+      <div><strong>Add or roster a driver</strong><p className="hint">Agency drivers can be added directly; employed/casual drivers should normally come from TachoMaster/Sage HR. Subcontractors are maintained through the subcontractor resource master.</p></div>
       <label>Driver name<input value={driverForm.displayName} onChange={event => setDriverForm(current => ({ ...current, displayName: event.target.value }))} /></label>
       <label>Type<select value={driverForm.driverType} onChange={event => setDriverForm(current => ({ ...current, driverType: event.target.value as DriverType }))}><option>Agency</option><option>Employed</option><option>Casual</option></select></label>
       {driverForm.driverType !== "Agency" && <label>Employee number<input value={driverForm.employeeNumber} onChange={event => setDriverForm(current => ({ ...current, employeeNumber: event.target.value }))} /></label>}
@@ -540,7 +540,7 @@ export function DriverDispatch() {
           />)}</tbody>
         </table>
       </div>
-      <p className="hint dispatch-footer-note">All active drivers remain visible, including leave/Tacho exceptions. Warning rows stay visible for planning awareness but only proven current unavailability blocks allocation/dispatch. Start is projected from Tacho duty/rest evidence; a ~ time is an assumption because today's duty is still open. Final Dispatch still performs the authoritative live route-and-hours check.</p>
+      <p className="hint dispatch-footer-note">Planned/allocated drivers stay at the top so the planner can work down through the remaining list. Active subcontractors remain visible as external resources. Warning rows stay visible for planning awareness but only proven current unavailability blocks allocation/dispatch. Final Dispatch still performs the authoritative live route-and-hours check.</p>
     </>}
 
     {message && <MessageDialog
@@ -837,9 +837,11 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
   const persistedStatus = status?.dispatchStatus;
   const effectiveStatus: DispatchStatus = selected && persistedStatus === "No Run" ? "Awaiting Dispatch" : persistedStatus || (selected ? "Awaiting Dispatch" : "No Run");
   const unavailableAssigned = Boolean(driver.assignedLoadId && availabilityWarning);
+  const groupLabel = driver.driverType === "Subcontractor" ? "SUBCONTRACTOR" : driver.driverType === "Agency" ? "AGENCY" : driver.driverType === "Casual" ? "CASUAL" : "EMPLOYED";
+  const typeBadge = driver.driverType === "Subcontractor" ? "S" : driver.driverType === "Agency" ? "A" : driver.driverType === "Casual" ? "C" : "E";
 
   return <>
-    {showGroup && <tr className="dispatch-group"><td colSpan={11}>{driver.driverType === "Agency" ? "AGENCY" : driver.driverType === "Casual" ? "CASUAL" : "EMPLOYED"}</td></tr>}
+    {showGroup && <tr className="dispatch-group"><td colSpan={11}>{groupLabel}</td></tr>}
     <tr className={availabilityWarning ? "weekly-rest-blocked" : ""}>
       <td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}</td>
       <td className="dispatch-start-cell" title={couldStartTitle || "Click Calculate Starts or refresh Tacho status."}>
@@ -852,7 +854,7 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
         {!couldStartUtc && calculatedStart?.explanation && <small>Hover for reason</small>}
         {fleetWarning && <small>⚠ Fleetio</small>}
       </td>
-      <td><div className="badge-line"><span className={`driver-type type-${driver.driverType.toLowerCase()}`} title={driver.agencyName || driver.driverType}>{driver.driverType === "Agency" ? "A" : driver.driverType === "Casual" ? "C" : "E"}</span>{(driver.skills || "").split(/[,;|/]+/).map(skill => skill.trim()).filter(Boolean).slice(0, 3).map(skill => <span className="skill-badge" key={skill}>{skill}</span>)}</div><small>{driver.driverType === "Agency" ? driver.agencyName || "Agency" : driver.driverGroup || ""}</small></td>
+      <td><div className="badge-line"><span className={`driver-type type-${driver.driverType.toLowerCase()}`} title={driver.driverGroup || driver.agencyName || driver.driverType}>{typeBadge}</span>{(driver.skills || "").split(/[,;|/]+/).map(skill => skill.trim()).filter(Boolean).slice(0, 3).map(skill => <span className="skill-badge" key={skill}>{skill}</span>)}</div><small>{driver.driverType === "Agency" ? driver.agencyName || "Agency" : driver.driverGroup || ""}</small></td>
       <td><span className={`code-badge code-${driver.coding || "x"}`} title={codeTitle(driver.coding)}>{driver.coding || "—"}</span></td>
       <td><span className={`day-bubble ${dayClass(displayDay)}`} title={`Projected Day ${displayDay}`}>{displayDay}</span></td>
       <td>
@@ -872,7 +874,7 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
         {initial && <small title={`Allocated run ${initial.reference}`}>Allocated · {compactRun(initial)}</small>}
         {selected && persistedStatus === "No Run" && <small>Selection ready to allocate</small>}
         {status?.availabilityStatus === "Unavailable" && <small title={status.availabilityMessage}>⚠ Tacho: Unavailable</small>}
-        {status?.availabilityStatus === "Unverified" && <small title={status.availabilityMessage}>Tacho: Check before dispatch</small>}
+        {status?.availabilityStatus === "Unverified" && <small title={status.availabilityMessage}>{driver.driverType === "Subcontractor" ? "External compliance: Check before dispatch" : "Tacho: Check before dispatch"}</small>}
         {status?.weeklyRestStatus === "Overdue" && status?.availabilityStatus === "Unavailable" && <small title={status.weeklyRestMessage}>⚠ Weekly rest overdue</small>}
         {status?.availabilityStatus === "Available" && status.weeklyRestStatus === "DueSoon" && <small title={status.weeklyRestMessage}>Tacho: Rest due soon</small>}
         {status?.driveAvailablePlanningDayMinutes != null && <small title="TachoMaster planning-day driving availability">Drive left: {Math.max(0, Math.round(status.driveAvailablePlanningDayMinutes / 60 * 10) / 10)}h</small>}

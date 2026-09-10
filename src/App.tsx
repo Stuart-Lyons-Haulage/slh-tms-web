@@ -45,7 +45,7 @@ type NavItem = [string, string];
 type NavGroup = { label: string; items: NavItem[] };
 
 const topNavigation: NavGroup[] = [
-  { label: 'Planning', items: [['/staging', 'Load Review'], ['/', 'Planner'], ['/pallet-control', 'Pallet Order'], ['/driver-dispatch', 'Driver Dispatch'], ['/beta-optimiser', 'Beta Optimiser'], ['/warehouse', 'Warehouse Loads'], ['/communications', 'Customer Communication'], ['/operations-wallboard', 'Live Operations'], ['/exports', 'Exports']] },
+  { label: 'Planning', items: [['/staging', 'Load Review'], ['/', 'Planner'], ['/pallet-control', 'Pallet Order'], ['/driver-dispatch', 'Driver Dispatch'], ['/beta-optimiser', 'Beta Optimiser'], ['/warehouse', 'Warehouse Loads'], ['/operations-wallboard', 'Live Operations']] },
   { label: 'Compliance', items: [['/night-outs', 'Driver Hours'], ['/compliance', 'Compliance'], ['/driver-assignments', 'Driver History']] },
   { label: 'Management', items: [['/management', 'Transport Performance'], ['/run-performance', 'Run Performance / Timeline'], ['/plan-stability', 'Plan Stability'], ['/reporting', 'Reporting']] },
   { label: 'Admin', items: [['/control-centre', 'Control Centre'], ['/master-data', 'Master Data'], ['/planner-import', 'Imports']] },

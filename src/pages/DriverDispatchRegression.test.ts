@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./DriverDispatch.tsx", import.meta.url), "utf8");
 const operationalSource = readFileSync(new URL("./DriverDispatchOperational.tsx", import.meta.url), "utf8");
+const authoritativeSource = readFileSync(new URL("../components/dispatch/DispatchBoard.tsx", import.meta.url), "utf8");
 const calculatedStartsSource = readFileSync(new URL("./DispatchCalculatedStarts.tsx", import.meta.url), "utf8");
 
 describe("Driver Dispatch UI contract", () => {
@@ -33,20 +34,23 @@ describe("Driver Dispatch UI contract", () => {
     expect(source.slice(saveStart, dispatchStart)).not.toContain("await refresh()");
   });
 
-  it("does not remount the entire Dispatch screen on a timer or after send", () => {
+  it("renders one authoritative Dispatch surface instead of mounting the legacy table underneath", () => {
     expect(operationalSource).not.toContain("startVisiblePolling");
     expect(operationalSource).not.toContain("60_000");
     expect(operationalSource).not.toContain("refreshKey");
-    expect(operationalSource).toContain("<DriverDispatch />");
+    expect(operationalSource).toContain("<DispatchBoard");
+    expect(operationalSource).not.toContain("<DriverDispatch />");
   });
 
-  it("does not intercept Dispatch with a second stale workbench allocation lookup", () => {
+  it("keeps allocation, readiness and SMS dispatch inside the authoritative board without a stale overlay lookup", () => {
     expect(operationalSource).not.toContain("openDispatchPreview");
     expect(operationalSource).not.toContain("does not currently have an allocated run");
     expect(operationalSource).not.toContain("event.preventDefault()");
     expect(operationalSource).not.toContain("event.stopPropagation()");
-    expect(operationalSource).toContain('toLowerCase() !== "send dispatch"');
-    expect(operationalSource).toContain("refreshOperationalStatuses()");
+    expect(authoritativeSource).toContain("getDriverDispatchRoute(selection.runId");
+    expect(authoritativeSource).toContain("checkDispatchReadiness(selection.runId");
+    expect(authoritativeSource).toContain("sendDriverMessage(");
+    expect(authoritativeSource).toContain("<DispatchMessageDialog");
   });
 
   it("makes the Dispatch action available from the locally committed allocation", () => {
