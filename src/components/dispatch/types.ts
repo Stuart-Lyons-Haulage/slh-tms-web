@@ -42,6 +42,19 @@ export interface DispatchTrackingDataDto {
   lastPositionAtUtc?: string;
 }
 
+export interface DispatchHistoryItem {
+  driverId: string;
+  previousRunId?: string;
+  previousRunReference?: string;
+  previousPlanningDate?: string;
+  previousTrailerId?: string;
+  previousTrailerNumber?: string;
+  previousTrailerPlanningDate?: string;
+  previousFinalStopName?: string;
+  previousFinalLatitude?: number;
+  previousFinalLongitude?: number;
+}
+
 export interface DispatchDriverDto {
   driverId: string;
   driverCode: string;
@@ -63,6 +76,11 @@ export interface DispatchDriverDto {
   backloadCandidate: boolean;
   deadheadReductionMiles?: number;
   suggestion?: string;
+  previousRunReference?: string;
+  previousPlanningDate?: string;
+  previousTrailerId?: string;
+  previousTrailerNumber?: string;
+  previousTrailerPlanningDate?: string;
 }
 
 export interface DispatchRunDto {
