@@ -93,6 +93,10 @@ export interface DispatchRunDto {
   isBackload: boolean;
   isOvernightMarket: boolean;
   isSouthbound: boolean;
+  firstCollectionTimeUtc?: string;
+  finalDeliveryPoint?: DispatchCollectionPointDto;
+  plannerNotes?: string;
+  trailerSwapRequested?: boolean;
 }
 
 export interface DispatchAvailableTimeDto {
