@@ -7,6 +7,8 @@ type Props = {
   employmentValue: DispatchEmploymentFilter;
   employmentCounts: Record<DispatchEmploymentFilter, number>;
   onEmploymentChange: (filter: DispatchEmploymentFilter) => void;
+  driverSearch: string;
+  onDriverSearchChange: (value: string) => void;
 };
 
 const filters: Array<{ value: DispatchFilter; label: string }> = [
@@ -31,9 +33,20 @@ export function DispatchFilters({
   onChange,
   employmentValue,
   employmentCounts,
-  onEmploymentChange
+  onEmploymentChange,
+  driverSearch,
+  onDriverSearchChange
 }: Props) {
   return <div className="smart-dispatch-filter-groups">
+    <label className="smart-dispatch-search">
+      <span>Driver search</span>
+      <input
+        aria-label="Search drivers"
+        value={driverSearch}
+        onChange={event => onDriverSearchChange(event.target.value)}
+        placeholder="Name, code, skill, vehicle, run or location"
+      />
+    </label>
     <div className="smart-dispatch-filters" role="group" aria-label="Dispatch filters">
       {filters.map(filter => <button
         key={filter.value}

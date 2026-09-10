@@ -6,13 +6,14 @@ import { ComplianceWarningBanner } from "./ComplianceWarningBanner";
 import { DispatchDriverRow } from "./DispatchDriverRow";
 import { DispatchFilters } from "./DispatchFilters";
 import { DispatchMessageDialog } from "./DispatchMessageDialog";
-import { checkDispatchReadiness, getAvailableTimes, getSmartDispatch, lockDispatchPlan, sendDriverMessage, unassignDispatchRun } from "./dispatchApi";
+import { checkDispatchReadiness, getAvailableTimes, getSmartDispatch, lockDispatchPlan, sendDriverMessage, syncDispatchDrivers, unassignDispatchRun } from "./dispatchApi";
 import {
   applyAvailableTimes,
   availableTimesByDriver,
   buildInitialSelections,
   buildRunOwnerById,
   emptyDispatchSelection,
+  filterDriversByDriverSearch,
   filterDispatchDrivers,
   filterDriversByEmploymentType,
   globalFailures,
@@ -79,6 +80,7 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
   const [failures, setFailures] = useState<DispatchLockFailure[]>([]);
   const [filter, setFilter] = useState<DispatchFilter>("all");
   const [employmentFilter, setEmploymentFilter] = useState<DispatchEmploymentFilter>("all");
+  const [driverSearch, setDriverSearch] = useState("");
   const [action, setAction] = useState<ActionState>();
   const [busyDriverId, setBusyDriverId] = useState<string>();
   const [message, setMessage] = useState<MessageState>();
@@ -114,16 +116,18 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
   const visibleDrivers = useMemo(() => {
     if (!snapshot) return [];
     const workforce = filterDriversByEmploymentType(snapshot.drivers, employmentFilter);
-    return filterDispatchDrivers(workforce, filter, selections, snapshot.runs, availableTimes, failures);
-  }, [availableTimes, employmentFilter, failures, filter, selections, snapshot]);
+    const searched = filterDriversByDriverSearch(workforce, driverSearch);
+    return filterDispatchDrivers(searched, filter, selections, snapshot.runs, availableTimes, failures);
+  }, [availableTimes, driverSearch, employmentFilter, failures, filter, selections, snapshot]);
 
   const filterCounts = useMemo(() => {
     const workforce = snapshot ? filterDriversByEmploymentType(snapshot.drivers, employmentFilter) : [];
+    const searched = filterDriversByDriverSearch(workforce, driverSearch);
     return Object.fromEntries(filterValues.map(value => [
       value,
-      snapshot ? filterDispatchDrivers(workforce, value, selections, snapshot.runs, availableTimes, failures).length : 0
+      snapshot ? filterDispatchDrivers(searched, value, selections, snapshot.runs, availableTimes, failures).length : 0
     ])) as Record<DispatchFilter, number>;
-  }, [availableTimes, employmentFilter, failures, selections, snapshot]);
+  }, [availableTimes, driverSearch, employmentFilter, failures, selections, snapshot]);
 
   const employmentCounts = useMemo(() => Object.fromEntries(employmentFilterValues.map(value => [
     value,
@@ -147,6 +151,21 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
     }));
     setFailures(current => current.filter(failure => failure.driverId !== driverId));
     setNotice(undefined);
+  }
+
+  async function handleSyncDrivers() {
+    setAction("refresh");
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      await syncDispatchDrivers(await token());
+      await refresh();
+      setNotice("Driver Master sync completed.");
+    } catch (exception) {
+      setError(exception instanceof Error ? exception.message : "Driver Master sync failed.");
+    } finally {
+      setAction(undefined);
+    }
   }
 
   async function handleGetTimes() {
@@ -359,6 +378,7 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
       <div className="smart-dispatch-actions">
         {onPlanningDateChange && <label className="smart-date-control">Planning date<input type="date" value={planningDate} onChange={event => onPlanningDateChange(event.target.value)} /></label>}
         {extraActions}
+        <button className="smart-action secondary" type="button" disabled={Boolean(action)} onClick={() => void handleSyncDrivers()}>{action === "refresh" ? "Syncing…" : "Sync Drivers"}</button>
         <button className="smart-action ghost" type="button" disabled={Boolean(action)} onClick={() => void refresh()}>{action === "refresh" ? "Refreshing…" : "Refresh"}</button>
         <GetTimesButton busy={action === "times"} onGetTimes={() => void handleGetTimes()} />
         <LockPlanButton busy={action === "lock"} disabled={selectedCount === 0 || Boolean(action && action !== "lock")} onLock={() => void handleLockPlan()} />
@@ -385,6 +405,8 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
       employmentValue={employmentFilter}
       employmentCounts={employmentCounts}
       onEmploymentChange={setEmploymentFilter}
+      driverSearch={driverSearch}
+      onDriverSearchChange={setDriverSearch}
     />
 
     <div className="smart-dispatch-table-wrap">

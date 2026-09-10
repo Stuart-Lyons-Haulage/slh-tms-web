@@ -94,6 +94,26 @@ export function filterDriversByEmploymentType(
   return drivers.filter(driver => employmentBucket(driver.employmentType) === filter);
 }
 
+export function filterDriversByDriverSearch(
+  drivers: DispatchDriverDto[],
+  search: string
+): DispatchDriverDto[] {
+  const query = search.trim().toLowerCase();
+  if (!query) return drivers;
+  return drivers.filter(driver => [
+    driver.name,
+    driver.driverCode,
+    driver.employmentType,
+    driver.skills,
+    driver.homeDepot,
+    driver.trackingData.lastStopName,
+    driver.suggestedRunReference,
+    driver.suggestion,
+    driver.tachoData.lastVehicleRegistration,
+    driver.blockedReason
+  ].filter(Boolean).join(" ").toLowerCase().includes(query));
+}
+
 export function sortDriversForDispatch(
   drivers: DispatchDriverDto[],
   selections: DispatchSelectionMap

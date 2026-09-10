@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(new URL("./DriverDispatch.tsx", import.meta.url), "utf8");
 const operationalSource = readFileSync(new URL("./DriverDispatchOperational.tsx", import.meta.url), "utf8");
 const authoritativeSource = readFileSync(new URL("../components/dispatch/DispatchBoard.tsx", import.meta.url), "utf8");
+const filterSource = readFileSync(new URL("../components/dispatch/DispatchFilters.tsx", import.meta.url), "utf8");
 const calculatedStartsSource = readFileSync(new URL("./DispatchCalculatedStarts.tsx", import.meta.url), "utf8");
 
 describe("Driver Dispatch UI contract", () => {
@@ -51,6 +52,20 @@ describe("Driver Dispatch UI contract", () => {
     expect(authoritativeSource).toContain("checkDispatchReadiness(selection.runId");
     expect(authoritativeSource).toContain("sendDriverMessage(");
     expect(authoritativeSource).toContain("<DispatchMessageDialog");
+  });
+
+  it("keeps driver search, sync and customer exports on the routed Driver Dispatch surface", () => {
+    expect(operationalSource).toContain("CustomerLoadPlanActions");
+    expect(filterSource).toContain('aria-label="Search drivers"');
+    expect(authoritativeSource).toContain("Sync Drivers");
+    expect(authoritativeSource).toContain("syncDispatchDrivers");
+    expect(authoritativeSource).toContain("filterDriversByDriverSearch");
+  });
+
+  it("does not clip the complete Smart Dispatch driver payload to the smaller visibility evidence set", () => {
+    expect(authoritativeSource).toContain("snapshot.drivers.length");
+    expect(readFileSync(new URL("../components/dispatch/dispatchApi.ts", import.meta.url), "utf8"))
+      .not.toContain(".filter(driver => visibilityByDriver.has(driver.driverId))");
   });
 
   it("makes the Dispatch action available from the locally committed allocation", () => {
