@@ -167,6 +167,22 @@ export async function unassignDispatchRun(runId: string, token: string): Promise
   }, 90000);
 }
 
+export async function allocateDispatchRun(
+  runId: string,
+  driverId: string,
+  selection: DispatchAllocationSelection,
+  token: string
+): Promise<void> {
+  await request(`/api/v1/runs/${encodeURIComponent(runId)}/allocation`, token, {
+    method: "PUT",
+    body: JSON.stringify({
+      driverId,
+      vehicleId: selection.vehicleId,
+      trailerId: selection.trailerId || null
+    })
+  }, 90000);
+}
+
 export async function lockDispatchPlan(
   planningDate: string,
   selections: Array<{ driverId: string; selection: DispatchAllocationSelection }>,

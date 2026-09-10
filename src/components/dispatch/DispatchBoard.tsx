@@ -6,7 +6,7 @@ import { ComplianceWarningBanner } from "./ComplianceWarningBanner";
 import { DispatchDriverRow } from "./DispatchDriverRow";
 import { DispatchFilters } from "./DispatchFilters";
 import { DispatchMessageDialog } from "./DispatchMessageDialog";
-import { checkDispatchReadiness, getAvailableTimes, getSmartDispatch, lockDispatchPlan, sendDriverMessage, syncDispatchDrivers, unassignDispatchRun } from "./dispatchApi";
+import { allocateDispatchRun, checkDispatchReadiness, getAvailableTimes, getSmartDispatch, sendDriverMessage, syncDispatchDrivers, unassignDispatchRun } from "./dispatchApi";
 import {
   applyAvailableTimes,
   availableTimesByDriver,
@@ -20,7 +20,6 @@ import {
   reducedRestDriverIds,
   rowFailures,
   selectedAllocations,
-  validateLockSelections,
   type DispatchAvailableTimeMap,
   type DispatchSelectionMap
 } from "./dispatchBoardState";
@@ -104,12 +103,6 @@ function RunSidebar({ runs, owners, drivers }: {
 export function GetTimesButton({ busy, onGetTimes }: { busy: boolean; onGetTimes: () => void }) {
   return <button className="smart-action secondary" type="button" disabled={busy} onClick={onGetTimes}>
     {busy ? "Getting Tacho times…" : "Get Times"}
-  </button>;
-}
-
-export function LockPlanButton({ busy, disabled, onLock }: { busy: boolean; disabled: boolean; onLock: () => void }) {
-  return <button className="smart-action primary" type="button" disabled={busy || disabled} onClick={onLock}>
-    {busy ? "Validating & locking…" : "Lock Plan"}
   </button>;
 }
 
@@ -245,42 +238,6 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
     }
   }
 
-  async function handleLockPlan() {
-    if (!snapshot) return;
-    setError(undefined);
-    setNotice(undefined);
-    const allocations = selectedAllocations(snapshot.drivers, selections);
-    if (allocations.length === 0) {
-      setFailures([{ driverId: "", reason: "Allocate at least one run before locking the plan." }]);
-      return;
-    }
-    const localFailures = validateLockSelections(snapshot.drivers, snapshot.runs, snapshot.equipment, selections, availableTimes);
-    if (localFailures.length > 0) {
-      setFailures(localFailures);
-      setNotice("Plan not locked. Resolve the highlighted rows; no allocations were written.");
-      return;
-    }
-
-    setAction("lock");
-    setFailures([]);
-    try {
-      const access = await token();
-      const result = await lockDispatchPlan(planningDate, allocations, access);
-      if (!result.success) {
-        setFailures(result.failures);
-        setNotice("Plan not locked. Server validation rejected the plan and no allocations were written.");
-        return;
-      }
-      await refresh();
-      setNotice(`Plan locked · ${allocations.length} run${allocations.length === 1 ? "" : "s"} ready for Dispatch.`);
-      onLocked?.();
-    } catch (exception) {
-      setError(exception instanceof Error ? exception.message : "The Dispatch plan could not be locked.");
-    } finally {
-      setAction(undefined);
-    }
-  }
-
   async function prepareDispatch(driver: DispatchDriverDto, selection: DispatchAllocationSelection) {
     if (!snapshot || !selection.runId) return;
     setBusyDriverId(driver.driverId);
@@ -310,11 +267,7 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
       }
 
       if (lockedRunId(driver.driverId) !== effectiveSelection.runId) {
-        const result = await lockDispatchPlan(planningDate, [{ driverId: driver.driverId, selection: effectiveSelection }], access);
-        if (!result.success) {
-          setFailures(current => [...current.filter(failure => failure.driverId !== driver.driverId), ...result.failures]);
-          throw new Error(result.failures[0]?.reason || "This allocation could not be locked for Dispatch.");
-        }
+        await allocateDispatchRun(effectiveSelection.runId, driver.driverId, effectiveSelection, access);
         setNotice(`${snapshot.runs.find(run => run.runId === effectiveSelection.runId)?.reference || "Run"} allocated to ${driver.name}. Preparing Dispatch text…`);
         onLocked?.();
       }
@@ -407,15 +360,15 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
     }
   }
 
-  async function handleSendMessage(text: string) {
+  async function handleSendMessage(text: string, reason?: string) {
     if (!message) return;
     setSendingMessage(true);
     setMessageError(undefined);
     try {
       const access = await token();
-      await sendDriverMessage(
-        message.runId,
-        text,
+       await sendDriverMessage(
+         message.runId,
+         reason ? `${text}\n\nReason for amendment: ${reason}` : text,
         message.mode === "initial",
         message.mode === "initial" ? message.routeMinutes : null,
         message.mode === "initial" ? message.acknowledgeUnverified : false,
@@ -458,7 +411,6 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
         <button className="smart-action secondary" type="button" disabled={Boolean(action)} onClick={() => void handleSyncDrivers()}>{action === "refresh" ? "Syncing…" : "Sync Drivers"}</button>
         <button className="smart-action ghost" type="button" disabled={Boolean(action)} onClick={() => void refresh()}>{action === "refresh" ? "Refreshing…" : "Refresh"}</button>
         <GetTimesButton busy={action === "times"} onGetTimes={() => void handleGetTimes()} />
-        <LockPlanButton busy={action === "lock"} disabled={selectedCount === 0 || Boolean(action && action !== "lock")} onLock={() => void handleLockPlan()} />
       </div>
     </header>
 
@@ -521,7 +473,7 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
       </div>
     </div>
 
-    <p className="smart-dispatch-footnote">Select work and press Dispatch on the row to validate/lock that allocation and open the editable SMS preview; Get Times can still be run across the whole board and Lock Plan remains available for batch locking. Regular 11h daily rest is the default; choose Reduced rest (9h) only when the planner intends to use that concession. Trailer continuity follows the driver's last-used trailer unless the selected run contains a planner trailer-swap instruction. Amendments, free-form updates and Unassign stay on the same row.</p>
+     <p className="smart-dispatch-footnote">Select work and press Dispatch on the row to validate and allocate it, then open the editable SMS preview. The Planner owns the built-run Lock Plan step. Regular 11h daily rest is the default; choose Reduced rest (9h) only when the planner intends to use that concession. Trailer continuity follows the driver's last-used trailer unless the selected run contains a planner trailer-swap instruction. Amendments, free-form updates and Unassign stay on the same row and are audited after the plan is locked.</p>
 
     {message && <DispatchMessageDialog
       reference={message.reference}

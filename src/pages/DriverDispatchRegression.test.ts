@@ -79,10 +79,11 @@ describe("Driver Dispatch UI contract", () => {
     expect(authoritativeCss).toContain("visibility: visible !important");
   });
 
-  it("exposes Dispatch immediately for a selected row and atomically locks it before the SMS preview", () => {
+  it("exposes Dispatch immediately for a selected row and allocates it before the SMS preview", () => {
     expect(rowSource).toContain('action === "allocate" && selection.runId');
     expect(rowSource).toContain('{busy ? "Allocating…" : "Dispatch"}');
-    expect(authoritativeSource).toContain("lockDispatchPlan(planningDate, [{ driverId: driver.driverId, selection: effectiveSelection }], access)");
+    expect(authoritativeSource).toContain("allocateDispatchRun(effectiveSelection.runId, driver.driverId, effectiveSelection, access)");
+    expect(authoritativeSource).not.toContain("lockDispatchPlan(");
     expect(authoritativeSource.indexOf("lockDispatchPlan(planningDate, [{ driverId: driver.driverId, selection: effectiveSelection }], access)")).toBeLessThan(authoritativeSource.indexOf("getDriverDispatchRoute(effectiveSelection.runId"));
   });
 
