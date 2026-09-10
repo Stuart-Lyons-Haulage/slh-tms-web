@@ -55,6 +55,7 @@ type BoardRow = {
   displayTimeUtc?: string;
   displayTimeLabel: string;
   finalDestinationArrived: boolean;
+  finalDestinationExited: boolean;
   focusStop: string;
   status: "late" | "risk" | "onsite" | "route" | "scheduled" | "complete";
   statusLabel: string;
@@ -82,7 +83,9 @@ type WallboardData = {
 
 const UK_TIME_ZONE = "Europe/London";
 const TV_ROWS_PER_PAGE = 8;
-const TV_ROTATE_MS = 30000;
+const TV_ROTATE_MS = 60 * 1000;
+const TV_REFRESH_MS = 5 * 60 * 1000;
+const OPS_REFRESH_MS = 20 * 1000;
 const timeFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: UK_TIME_ZONE, weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
@@ -101,6 +104,11 @@ function firstStop(load?: Load) { return [...(load?.stops || [])].sort((a, b) =>
 function finalDestinationStop(load?: Load) {
   const stops = [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence);
   return [...stops].reverse().find(stop => /^Deliver\b/i.test(stop.name || "") || Boolean(stop.orderId)) || stops.at(-1);
+}
+function finalDestinationExited(progress?: RunProgressRecord) {
+  if (!progress || progress.totalStops <= 0) return false;
+  const finalStop = progress.stopDwell?.find(stop => stop.sequence === progress.totalStops);
+  return finalStop?.state === "Departed" || Boolean(finalStop?.siteDepartureUtc);
 }
 function routeText(load: Load | undefined, etas: DeliveryEta[]) {
   const stops = [...(load?.stops || [])].sort((a, b) => a.sequence - b.sequence);
@@ -307,10 +315,10 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
     const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
     const refreshTimer = window.setInterval(() => {
       void Promise.allSettled([refresh(), refreshLiveData()]).then(() => setLastRefresh(new Date()));
-    }, 20000);
+    }, tvMode ? TV_REFRESH_MS : OPS_REFRESH_MS);
     void refreshLiveData().then(() => setLastRefresh(new Date()));
     return () => { window.clearInterval(clockTimer); window.clearInterval(refreshTimer); };
-  }, [refresh, refreshLiveData]);
+  }, [refresh, refreshLiveData, tvMode]);
 
   const boardData = useMemo<WallboardData | undefined>(() => data ? liveData ? { ...data, ...liveData, warning: liveData.warning || data.warning } : data : undefined, [data, liveData]);
 
@@ -351,6 +359,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
         displayTimeUtc: finalArrival || liveEtaUtc || estimatedEtaUtc,
         displayTimeLabel: finalArrival ? "ARRIVED" : complete ? "AVAILABLE" : liveEtaUtc ? "LIVE FINAL ETA" : estimatedEtaUtc ? "ESTIMATED FINAL ETA" : "FINAL ETA PENDING",
         finalDestinationArrived,
+        finalDestinationExited: finalDestinationExited(progress),
         focusStop: finalArrival ? (finalStop?.name || "Final destination").replace(/^Collect · |^Deliver · /i, "") : complete ? "Available for next job" : progress?.currentVisit?.geofenceName || progress?.nextStop?.name || nextEta?.stopName || "Next stop TBC",
         status: complete ? "complete" : status.status,
         statusLabel: finalArrival ? "ARRIVED" : complete ? "AVAILABLE" : status.label,
@@ -361,7 +370,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
     return sortWallboardRowsByCollection(mappedRows);
   }, [boardData]);
 
-  const visibleRows = useMemo(() => rows.filter(row => shouldDisplayWallboardRow(row, tvMode, clock.getTime())), [clock, rows, tvMode]);
+  const visibleRows = useMemo(() => rows.filter(row => (!tvMode || !row.finalDestinationExited) && shouldDisplayWallboardRow(row, false, clock.getTime())), [clock, rows, tvMode]);
   const tvPageCount = Math.max(1, Math.ceil(visibleRows.length / TV_ROWS_PER_PAGE));
   const displayedRows = useMemo(() => {
     if (!tvMode) return visibleRows;
@@ -475,6 +484,6 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey: suppliedTvAcc
         </div>
       </aside>
     </div>
-    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps HGV traffic + TachoMaster</span><span>Final customer ETA/deadline drives run risk · intermediate stops are progress</span><span>Final geofence arrival locks the arrival time</span><span>{tvMode && tvPageCount > 1 ? `Page ${tvPage + 1}/${tvPageCount} · rotates every 30s · ` : ""}Refresh every 20 seconds · {formatAge(lastRefresh, clock)}</span></footer>
+    <footer className="ops-wallboard-footer"><span>RoadTech + geofences + Azure Maps HGV traffic + TachoMaster</span><span>Final customer ETA/deadline drives run risk · intermediate stops are progress</span><span>Final geofence arrival locks the arrival time</span><span>{tvMode && tvPageCount > 1 ? `Page ${tvPage + 1}/${tvPageCount} · rotates every 60s · ` : ""}{tvMode ? "Refresh every 5 minutes" : "Refresh every 20 seconds"} · {formatAge(lastRefresh, clock)}</span></footer>
   </section>;
 }
