@@ -353,14 +353,16 @@ function finalDeliveryAssessment(etas: DeliveryEta[]): FinalDeliveryAssessment {
   return { onTime: true, bufferMinutes };
 }
 
+function finalStopDepartureConfirmed(progress?: RunProgressRecord) {
+  if (!progress || progress.totalStops <= 0) return false;
+  const finalStop = progress.stopDwell?.find(stop => stop.sequence === progress.totalStops);
+  return finalStop?.state === "Departed" || Boolean(finalStop?.siteDepartureUtc);
+}
+
 export function statusFor(progress: RunProgressRecord | undefined, nextEta: DeliveryEta | undefined, etas: DeliveryEta[], nowMs = Date.now()): WallboardStatusResult {
-  // AVAILABLE is deliberately stricter than ARRIVED/ON SITE. A driver only becomes
-  // available after the final operational stop has a confirmed completion/exit.
-  const complete = progress?.runState === "Completed"
-    || (progress?.totalStops || 0) > 0 && progress?.completedStops === progress?.totalStops;
-  if (complete) {
-    return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
-  }
+  // Active geofence evidence always wins over a retained/stale terminal snapshot.
+  // This prevents a split refresh from briefly showing AVAILABLE while the truck is
+  // still on site or still has a final operational stop remaining.
   if (progress?.currentVisit?.isDelayed) {
     return {
       status: "late",
@@ -384,6 +386,13 @@ export function statusFor(progress: RunProgressRecord | undefined, nextEta: Deli
       detail: progress.focusStop || "Matched geofence",
       priority: 70,
     };
+  }
+
+  // AVAILABLE must come from authoritative completion, never from merged counters.
+  // Explicit final-stop departure is accepted as equivalent completion evidence.
+  const complete = progress?.runState === "Completed" || finalStopDepartureConfirmed(progress);
+  if (complete) {
+    return { status: "complete", label: "AVAILABLE", detail: "Final stop complete · driver available for next work", priority: 10 };
   }
 
   if (progress?.trackingFresh && progress.phase === "Next job" && progress.ignitionOn === false && progress.driverCardPresent === false) {
@@ -512,14 +521,21 @@ export function mergeRouteProgress(progress: RunProgressRecord[], routeRuns: Rou
       : record.nextStop || routeNextStop;
     const totalStops = Math.max(record.totalStops || 0, route.totalStops || 0);
     const completedStops = Math.max(record.completedStops || 0, route.completedStops || 0);
+    const routeShowsActiveJourney = Boolean(route.currentVisit || route.geofenceOnSite || route.trackingMoving)
+      || route.completedStops > 0
+      || route.phase === "Heading to"
+      || route.phase === "On site";
+    const runState = route.phase === "Complete"
+      ? "Completed"
+      : routeShowsActiveJourney
+        ? routeRunState(route, record.runState === "Completed" ? undefined : record.runState)
+        : record.runState;
     return {
       ...record,
       totalStops,
       completedStops,
       progressPercent: Math.max(record.progressPercent || 0, route.truckPositionPercent || 0),
-      runState: record.runState === "Completed" || totalStops > 0 && completedStops === totalStops
-        ? "Completed"
-        : routeRunState(route, record.runState),
+      runState,
       nextStop,
       ...routeFields(route, record),
     };

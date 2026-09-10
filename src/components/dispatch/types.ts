@@ -8,6 +8,7 @@ export type DispatchSkillName =
   | "ManualHandling";
 
 export type DispatchFilter = "all" | "unallocated" | "backloads" | "warnings" | "skills-mismatch";
+export type DispatchEmploymentFilter = "all" | "employed" | "agency" | "casual" | "subcontractor";
 
 export interface DispatchGeoPointDto {
   latitude: number;
@@ -32,6 +33,7 @@ export interface DispatchTachoDataDto {
   dailyDrivingLimitMinutes?: number;
   driveAvailablePlanningDayMinutes?: number;
   workAvailableWeekMinutes?: number;
+  reducedDailyRestAvailable?: boolean;
 }
 
 export interface DispatchTrackingDataDto {
@@ -101,6 +103,7 @@ export interface DispatchAllocationSelection {
   vehicleId: string;
   trailerId: string;
   plannedStartTime?: string;
+  useReducedDailyRest?: boolean;
 }
 
 export interface DispatchEquipmentVehicle {
@@ -120,6 +123,9 @@ export interface DispatchEquipmentTrailer {
 
 export interface LegacyDispatchLoad {
   id: string;
+  reference?: string;
+  rawReference?: string;
+  status?: string;
   driverId?: string;
   vehicleId?: string;
   trailerId?: string;
@@ -130,4 +136,46 @@ export interface DispatchEquipmentWorkbench {
   vehicles: DispatchEquipmentVehicle[];
   trailers: DispatchEquipmentTrailer[];
   loads: LegacyDispatchLoad[];
+}
+
+export interface DispatchDriverStatusDto {
+  driverId: string;
+  dispatchStatus: "No Run" | "Awaiting Dispatch" | "Sent Awaiting Response" | "Confirmed" | string;
+  lastDriverReply?: string;
+  lastDriverReplyAtUtc?: string;
+  lastDispatchSentAtUtc?: string;
+  weeklyRestStatus?: "Ready" | "DueSoon" | "Overdue" | "Unverified" | "Unknown" | string;
+  weeklyRestMessage?: string;
+  availabilityStatus?: "Available" | "Unavailable" | "Unverified" | string;
+  availabilityMessage?: string;
+  driveAvailablePlanningDayMinutes?: number;
+  workAvailableWeekMinutes?: number;
+  projectedDayNumber?: number;
+  earliestStartUtc?: string;
+  earliestStartSource?: string;
+  earliestStartIsAssumption?: boolean;
+  operationalStatus?: "No Run" | "Awaiting Dispatch" | "Dispatched" | "Working" | "Completed" | string;
+  driverConfirmed?: boolean;
+  driverConfirmationAtUtc?: string;
+}
+
+export interface DispatchVisibilityItem {
+  driverId: string;
+  employmentType: "Employed" | "Agency" | "Casual" | "Subcontractor" | string;
+  skills?: string;
+  coding?: string;
+  lastTachoRead?: string;
+  lastLiveActivity?: string;
+  lastExecutedRun?: string;
+  currentlyAllocated: boolean;
+  rosteredAgency: boolean;
+  subcontractor: boolean;
+  evidence: string;
+}
+
+export interface DispatchVisibilitySnapshot {
+  planningDate: string;
+  windowDays: number;
+  cutoffDate: string;
+  drivers: DispatchVisibilityItem[];
 }

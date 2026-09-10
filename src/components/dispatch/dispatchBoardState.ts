@@ -3,6 +3,7 @@ import type {
   DispatchAllocationSelection,
   DispatchAvailableTimeDto,
   DispatchDriverDto,
+  DispatchEmploymentFilter,
   DispatchEquipmentWorkbench,
   DispatchFilter,
   DispatchLockFailure,
@@ -13,7 +14,7 @@ export type DispatchSelectionMap = Record<string, DispatchAllocationSelection>;
 export type DispatchAvailableTimeMap = Record<string, DispatchAvailableTimeDto>;
 
 export function emptyDispatchSelection(): DispatchAllocationSelection {
-  return { runId: "", vehicleId: "", trailerId: "" };
+  return { runId: "", vehicleId: "", trailerId: "", useReducedDailyRest: false };
 }
 
 export function buildInitialSelections(
@@ -30,11 +31,18 @@ export function buildInitialSelections(
       runId: assigned?.id || "",
       vehicleId: assigned?.vehicleId || tachoVehicleId(driver, equipment.vehicles),
       trailerId: assigned?.trailerId || "",
-      plannedStartTime: assigned?.plannedStartUtc || driver.availableFrom
+      plannedStartTime: assigned?.plannedStartUtc || driver.availableFrom,
+      useReducedDailyRest: false
     };
   }
 
   return result;
+}
+
+export function reducedRestDriverIds(selections: DispatchSelectionMap): string[] {
+  return Object.entries(selections)
+    .filter(([, selection]) => selection.useReducedDailyRest === true)
+    .map(([driverId]) => driverId);
 }
 
 export function applyAvailableTimes(
@@ -70,6 +78,54 @@ export function buildRunOwnerById(
   return owners;
 }
 
+function employmentBucket(value: string): Exclude<DispatchEmploymentFilter, "all"> {
+  const token = value.toLowerCase().replace(/[^a-z]/g, "");
+  if (token.includes("subcontract") || token.includes("subbie")) return "subcontractor";
+  if (token.includes("agency")) return "agency";
+  if (token.includes("casual") || token.includes("zerohour")) return "casual";
+  return "employed";
+}
+
+export function filterDriversByEmploymentType(
+  drivers: DispatchDriverDto[],
+  filter: DispatchEmploymentFilter
+): DispatchDriverDto[] {
+  if (filter === "all") return drivers;
+  return drivers.filter(driver => employmentBucket(driver.employmentType) === filter);
+}
+
+export function filterDriversByDriverSearch(
+  drivers: DispatchDriverDto[],
+  search: string
+): DispatchDriverDto[] {
+  const query = search.trim().toLowerCase();
+  if (!query) return drivers;
+  return drivers.filter(driver => [
+    driver.name,
+    driver.driverCode,
+    driver.employmentType,
+    driver.skills,
+    driver.homeDepot,
+    driver.trackingData.lastStopName,
+    driver.suggestedRunReference,
+    driver.suggestion,
+    driver.tachoData.lastVehicleRegistration,
+    driver.blockedReason
+  ].filter(Boolean).join(" ").toLowerCase().includes(query));
+}
+
+export function sortDriversForDispatch(
+  drivers: DispatchDriverDto[],
+  selections: DispatchSelectionMap
+): DispatchDriverDto[] {
+  return [...drivers].sort((left, right) => {
+    const leftHasRun = Boolean(selections[left.driverId]?.runId);
+    const rightHasRun = Boolean(selections[right.driverId]?.runId);
+    if (leftHasRun !== rightHasRun) return leftHasRun ? -1 : 1;
+    return left.name.localeCompare(right.name, "en-GB", { sensitivity: "base" });
+  });
+}
+
 export function filterDispatchDrivers(
   drivers: DispatchDriverDto[],
   filter: DispatchFilter,
@@ -78,9 +134,7 @@ export function filterDispatchDrivers(
   times: DispatchAvailableTimeMap,
   failures: DispatchLockFailure[]
 ): DispatchDriverDto[] {
-  if (filter === "all") return drivers;
-
-  return drivers.filter(driver => {
+  const filtered = filter === "all" ? drivers : drivers.filter(driver => {
     const selection = selections[driver.driverId] || emptyDispatchSelection();
     const selectedRun = runs.find(run => run.runId === selection.runId);
     const suggestedRun = runs.find(run => run.runId === driver.suggestedRunId);
@@ -96,6 +150,8 @@ export function filterDispatchDrivers(
     }
     return true;
   });
+
+  return sortDriversForDispatch(filtered, selections);
 }
 
 export function validateLockSelections(
@@ -166,6 +222,16 @@ export function validateLockSelections(
       failures.push({ driverId: driver.driverId, runId: run.runId, reason: "Get Tacho available times before locking this driver." });
     } else if (available?.availableFrom && new Date(selection.plannedStartTime).getTime() < new Date(available.availableFrom).getTime()) {
       failures.push({ driverId: driver.driverId, runId: run.runId, reason: "The planned start is earlier than the Tacho-derived available-from time." });
+    }
+    if (available) {
+      const expectedRest = selection.useReducedDailyRest === true ? 9 : 11;
+      if (available.requiredRestPeriod !== expectedRest) {
+        failures.push({
+          driverId: driver.driverId,
+          runId: run.runId,
+          reason: "Rest choice changed after Get Times. Recalculate Tacho available times before locking this driver."
+        });
+      }
     }
     if (available?.breachDetail) {
       failures.push({ driverId: driver.driverId, runId: run.runId, reason: available.breachDetail });

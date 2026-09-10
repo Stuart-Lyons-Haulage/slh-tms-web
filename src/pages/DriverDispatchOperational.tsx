@@ -3,65 +3,14 @@ import { createPortal } from "react-dom";
 import { BackloadMatchNotifications } from "../components/BackloadMatchNotifications";
 import { CustomerLoadPlanActions } from "../components/CustomerLoadPlanActions";
 import { DispatchBoard } from "../components/dispatch/DispatchBoard";
-import { request } from "../lib/api";
-import { useAccessToken } from "../lib/auth";
-import { DriverDispatch } from "./DriverDispatch";
-
-type WorkbenchDriver = { driverId: string; employeeNumber?: string; displayName: string };
-type Workbench = { drivers: WorkbenchDriver[] };
-type OperationalStatus = "No Run" | "Awaiting Dispatch" | "Dispatched" | "Working" | "Completed";
-type OperationalDriverStatus = { driverId: string; operationalStatus?: OperationalStatus; driverConfirmed?: boolean; driverConfirmationAtUtc?: string };
-type OperationalDisplay = { status: OperationalStatus; driverConfirmed: boolean; confirmationAt?: string };
-
-function driverKey(name?: string, employeeNumber?: string) {
-  return `${(name || "").trim().toLowerCase()}|${(employeeNumber || "").trim().toLowerCase()}`;
-}
-
-function statusClass(status: OperationalStatus) {
-  return status === "Working" || status === "Completed"
-    ? "confirmed"
-    : status === "Dispatched"
-      ? "awaiting"
-      : status === "Awaiting Dispatch"
-        ? "ready"
-        : "empty";
-}
+import "../authoritative-dispatch.css";
 
 function currentDispatchDate() {
   return new URLSearchParams(window.location.search).get("date") || new Date().toISOString().slice(0, 10);
 }
 
 export function DriverDispatchOperational() {
-  const token = useAccessToken();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [operationalByDriver, setOperationalByDriver] = useState<Record<string, OperationalDisplay>>({});
   const [dispatchDate, setDispatchDate] = useState(currentDispatchDate);
-  const [actionHost, setActionHost] = useState<HTMLElement>();
-
-  const refreshOperationalStatuses = useCallback(async () => {
-    try {
-      const access = await token();
-      const date = currentDispatchDate();
-      const [workbench, response] = await Promise.all([
-        request<Workbench>(`/api/v1/driver-dispatch?date=${encodeURIComponent(date)}`, access, undefined, 90000),
-        request<{ drivers: OperationalDriverStatus[] }>(`/api/v1/driver-dispatch-status?date=${encodeURIComponent(date)}`, access, undefined, 90000)
-      ]);
-      const byId = Object.fromEntries(response.drivers.map(item => [item.driverId, item]));
-      const next: Record<string, OperationalDisplay> = {};
-      for (const driver of workbench.drivers) {
-        const status = byId[driver.driverId];
-        if (!status?.operationalStatus) continue;
-        next[driverKey(driver.displayName, driver.employeeNumber)] = {
-          status: status.operationalStatus,
-          driverConfirmed: Boolean(status.driverConfirmed),
-          confirmationAt: status.driverConfirmationAtUtc
-        };
-      }
-      setOperationalByDriver(current => JSON.stringify(current) === JSON.stringify(next) ? current : next);
-    } catch {
-      // The main Dispatch screen remains usable if the lightweight operational mirror is unavailable.
-    }
-  }, [token]);
 
   useEffect(() => {
     void refreshOperationalStatuses();
