@@ -6,6 +6,7 @@ const operationalSource = readFileSync(new URL("./DriverDispatchOperational.tsx"
 const authoritativeSource = readFileSync(new URL("../components/dispatch/DispatchBoard.tsx", import.meta.url), "utf8");
 const filterSource = readFileSync(new URL("../components/dispatch/DispatchFilters.tsx", import.meta.url), "utf8");
 const calculatedStartsSource = readFileSync(new URL("./DispatchCalculatedStarts.tsx", import.meta.url), "utf8");
+const authoritativeCss = readFileSync(new URL("../authoritative-dispatch.css", import.meta.url), "utf8");
 
 describe("Driver Dispatch UI contract", () => {
   it("keeps status visible and puts the calculated Start column beside the driver", () => {
@@ -60,6 +61,18 @@ describe("Driver Dispatch UI contract", () => {
     expect(authoritativeSource).toContain("Sync Drivers");
     expect(authoritativeSource).toContain("syncDispatchDrivers");
     expect(authoritativeSource).toContain("filterDriversByDriverSearch");
+  });
+
+  it("keeps the authoritative Smart Dispatch toolbar visibly rendered in production", () => {
+    expect(authoritativeSource).toContain('className="smart-dispatch-header"');
+    expect(authoritativeSource).toContain("Planning date");
+    expect(authoritativeSource).toContain("Sync Drivers");
+    expect(authoritativeSource).toContain("Refresh");
+    expect(authoritativeSource).toContain("Get Times");
+    expect(authoritativeSource).toContain("Lock Plan");
+    expect(authoritativeCss).toContain(".smart-dispatch-board > .smart-dispatch-header");
+    expect(authoritativeCss).toContain("display: flex !important");
+    expect(authoritativeCss).toContain("visibility: visible !important");
   });
 
   it("does not clip the complete Smart Dispatch driver payload to the smaller visibility evidence set", () => {
