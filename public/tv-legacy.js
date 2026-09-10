@@ -7,7 +7,7 @@
 
   var MAX_ROWS = 10;
   var ROTATE_MS = 15000;
-  var REFRESH_MS = 60000;
+  var REFRESH_MS = 20000;
   var normalOffset = 0;
 
   function esc(value) {
@@ -95,6 +95,14 @@
       var planned = plannedUtc ? ukDate(plannedUtc) : null;
       var isPm = direct >= 50 || (planned && planned.getUTCHours() >= 15);
       return 'Run ' + direct + ' ' + (isPm ? 'PM' : 'AM');
+    }
+    // Current API resilient copies may expose the historical generated
+    // reference. Keep the TV label identical to the planner label.
+    match = /^RUN-\d{8}-(\d+)$/i.exec(raw);
+    if (match) {
+      var generated = parseInt(match[1], 10) || 1;
+      var generatedDate = plannedUtc ? ukDate(plannedUtc) : null;
+      return 'Run ' + generated + ' ' + (generatedDate && generatedDate.getUTCHours() >= 15 ? 'PM' : 'AM');
     }
     return raw || 'Run TBC';
   }
@@ -407,8 +415,9 @@
   function request(path, callback) {
     var xhr;
     var requestPath = path;
-    var isTvDisplay = requestPath.indexOf('/api/v1/tv-display/') === 0;
-    if (key && isTvDisplay) {
+    // Hisense/Vewd can silently discard custom headers. Put the same paired
+    // read-only key on every compatibility feed, not just /tv-display/*.
+    if (key) {
       requestPath += (requestPath.indexOf('?') >= 0 ? '&' : '?') + 'key=' + encodeURIComponent(key);
     }
     try { xhr = new XMLHttpRequest(); } catch (e) { callback(e); return; }
@@ -585,7 +594,7 @@
     var source = document.getElementById('legacy-source');
     if (source) { source.innerHTML = esc(state.trackingSource ? 'Tracking: ' + state.trackingSource : 'Tracking connected'); }
     var refreshed = document.getElementById('legacy-refresh');
-    if (refreshed) { refreshed.innerHTML = 'Updated ' + esc(formatClock(new Date())) + ' · ETAs refresh 60s'; }
+    if (refreshed) { refreshed.innerHTML = 'Updated ' + esc(formatClock(new Date())) + ' · live refresh 20s'; }
   }
 
   function rotateRows() {
