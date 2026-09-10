@@ -7,6 +7,7 @@ import linkage from "./RunGeofenceLinkagePanel.tsx?raw";
 const css = readFileSync(new URL("../operations-wallboard.css", import.meta.url), "utf8");
 const physicalTv = readFileSync(new URL("../../public/tv-wallboard-v4.js", import.meta.url), "utf8");
 const physicalTvHtml = readFileSync(new URL("../../public/tv.html", import.meta.url), "utf8");
+const bootstrapHtml = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
 
 describe("Operations wallboard TV parity", () => {
   it("renders the same per-run geofence linkage strip on a paired TV", () => {
@@ -55,5 +56,12 @@ describe("Operations wallboard TV parity", () => {
     expect(physicalTv).toContain("mergeAssignments(state.assignments, data || [])");
     expect(physicalTv).toContain("stateName === 'departed' || stateName === 'exited'");
     expect(physicalTv).not.toContain("if (finalArrivalUtc(progress, timing, load)) { return true; }");
+  });
+
+  it("uses the same v4 compatibility renderer when module loading falls back", () => {
+    expect(bootstrapHtml).toContain("/tv-wallboard-v4.js?v=20260910-wallboard-v10");
+    expect(bootstrapHtml).toContain("/tv-wallboard-v2.css?v=20260910-wallboard-v10");
+    expect(bootstrapHtml).not.toContain("tv-legacy.js");
+    expect(bootstrapHtml).not.toContain("tv-final-timing-patch.js");
   });
 });
