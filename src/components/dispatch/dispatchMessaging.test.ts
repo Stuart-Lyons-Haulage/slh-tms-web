@@ -7,14 +7,14 @@ const dispatch: RunDispatchDto = {
   planningDate: "2026-09-10",
   status: "Allocated",
   driver: { displayName: "Dan Driver", employeeNumber: "D001" },
-  vehicle: { registration: "AB12 CDE" },
+  vehicle: { registration: "AB12 CDE", fuelPin: "4826" },
   trailer: { trailerNumber: "TRL-01" },
   stops: [
     {
       sequence: 1,
       name: "Collect · Runcton",
       address: "Runcton, Chichester",
-      order: { reference: "PO-123", customerCode: "NWF" }
+      order: { reference: "PO-123", customerCode: "NWF", pallets: 18 }
     },
     {
       sequence: 2,
@@ -46,8 +46,10 @@ describe("authoritative Smart Dispatch messaging", () => {
     expect(text).toContain("Driver: Dan Driver");
     expect(text).toContain("Planned start: 17:30");
     expect(text).toContain("Vehicle: AB12 CDE");
+    expect(text).toContain("Fuel PIN: 4826");
     expect(text).toContain("Trailer: TRL-01");
     expect(text).toContain("Ref: PO-123");
+    expect(text).toContain("Pallets: 18");
     expect(text).toContain("Market: Birmingham Wholesale Market · Stall A12");
     expect(text).toContain("Notes: Call on arrival");
     expect(text).toContain("Please reply to confirm receipt.");

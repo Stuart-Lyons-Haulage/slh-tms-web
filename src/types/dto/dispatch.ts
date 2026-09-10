@@ -9,6 +9,7 @@ export interface DispatchDriverDto {
 export interface DispatchVehicleDto {
   registration: string;
   fleetNumber?: string;
+  fuelPin?: string;
 }
 
 export interface DispatchTrailerDto {
@@ -23,6 +24,7 @@ export interface DispatchOrderDto {
   marketName?: string;
   stallNumber?: string;
   driverInstructions?: string;
+  pallets?: number;
   mapLink?: string;
 }
 
