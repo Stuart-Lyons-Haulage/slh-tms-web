@@ -27,10 +27,15 @@ export function buildInitialSelections(
 
   for (const driver of drivers) {
     const assigned = equipment.loads.find(load => load.driverId === driver.driverId && runIds.has(load.id));
+    const assignedRun = runs.find(run => run.runId === assigned?.id);
+    const previousTrailer = equipment.trailers.find(trailer => trailer.id === driver.previousTrailerId);
+    const continuityTrailerId = previousTrailer && !assignedRun?.trailerSwapRequested && trailerEligible(assignedRun, previousTrailer)
+      ? previousTrailer.id
+      : "";
     result[driver.driverId] = {
       runId: assigned?.id || "",
       vehicleId: assigned?.vehicleId || tachoVehicleId(driver, equipment.vehicles),
-      trailerId: assigned?.trailerId || "",
+      trailerId: assigned?.trailerId || continuityTrailerId,
       plannedStartTime: assigned?.plannedStartUtc || driver.availableFrom,
       useReducedDailyRest: false
     };
@@ -110,6 +115,7 @@ export function filterDriversByDriverSearch(
     driver.suggestedRunReference,
     driver.suggestion,
     driver.tachoData.lastVehicleRegistration,
+    driver.previousTrailerNumber,
     driver.blockedReason
   ].filter(Boolean).join(" ").toLowerCase().includes(query));
 }
