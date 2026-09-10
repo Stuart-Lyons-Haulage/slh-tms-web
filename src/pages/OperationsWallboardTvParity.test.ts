@@ -64,4 +64,10 @@ describe("Operations wallboard TV parity", () => {
     expect(bootstrapHtml).not.toContain("tv-legacy.js");
     expect(bootstrapHtml).not.toContain("tv-final-timing-patch.js");
   });
+
+  it("does not let the location-quality observer self-trigger forever", () => {
+    const operations = readFileSync(new URL("./OperationsWallboard.tsx", import.meta.url), "utf8");
+    expect(operations).toContain('if (etaValue && etaValue.textContent !== "ETA UNAVAILABLE") etaValue.textContent = "ETA UNAVAILABLE";');
+    expect(operations).toContain('if (etaDetail.textContent !== detailText) etaDetail.textContent = detailText;');
+  });
 });

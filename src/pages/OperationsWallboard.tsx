@@ -204,9 +204,10 @@ function LocationQualityClarifier() {
         const destination = (record?.finalDestinationName || record?.etaUnavailableStopName || "Final delivery")
           .replace(/^Collect\s*[·:-]?\s*|^Deliver\s*[·:-]?\s*/i, "")
           .trim();
-        if (etaValue) etaValue.textContent = "ETA UNAVAILABLE";
+        if (etaValue && etaValue.textContent !== "ETA UNAVAILABLE") etaValue.textContent = "ETA UNAVAILABLE";
         if (etaDetail) {
-          etaDetail.textContent = `${destination} · SITE LOCATION NEEDS ATTENTION`;
+          const detailText = `${destination} · SITE LOCATION NEEDS ATTENTION`;
+          if (etaDetail.textContent !== detailText) etaDetail.textContent = detailText;
           etaDetail.title = record?.etaUnavailableReason || "Add/link the physical site location in Site Master.";
         }
         if (etaCell) etaCell.title = "Add a physical address/postcode or link the correct geofence in Site Master. SLH Assistant can help identify the missing location data.";
