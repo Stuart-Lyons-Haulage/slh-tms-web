@@ -286,7 +286,7 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
 
       const access = await token();
       let effectiveSelection = { ...selection };
-      if (!effectiveSelection.plannedStartTime) {
+      if (!effectiveSelection.plannedStartTime || availableTimes[driver.driverId]?.requiredRestPeriod !== (effectiveSelection.useReducedDailyRest ? 9 : 11)) {
         const [time] = await getAvailableTimes(
           planningDate,
           [driver.driverId],
