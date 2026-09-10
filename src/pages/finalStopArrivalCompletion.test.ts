@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { completedJobCount, shouldDisplayWallboardRow, statusFor } from "./operationsWallboardProgress";
+import { completedJobCount, mergeRouteProgress, shouldDisplayWallboardRow, statusFor } from "./operationsWallboardProgress";
 
 describe("Operations wallboard final-stop arrival completion", () => {
   it("counts the final job as arrived on final-geofence entry without marking the driver available", () => {
@@ -97,6 +97,76 @@ describe("Operations wallboard final-stop arrival completion", () => {
     const status = statusFor(progress, undefined, [], now);
     expect(status).toMatchObject({ status: "onsite", label: "ON SITE" });
     expect(shouldDisplayWallboardRow({ id: "load-rest", status: status.status, finalDestinationArrived: true }, true, now)).toBe(false);
+  });
+
+  it("does not make the driver available from split-refresh counters alone", () => {
+    const record = {
+      loadId: "run-6",
+      loadReference: "Run 6",
+      loadStatus: "InProgress",
+      runState: "BetweenStops",
+      totalStops: 5,
+      completedStops: 4,
+      progressPercent: 80,
+      nextStop: { id: "stop-5", sequence: 5, name: "Deliver · Aldi-Goldthorpe" },
+      stopDwell: [
+        { stopId: "stop-1", sequence: 1, stopName: "Collect · Runcton", state: "Departed" as const },
+        { stopId: "stop-2", sequence: 2, stopName: "Collect · Merston", state: "Departed" as const },
+        { stopId: "stop-3", sequence: 3, stopName: "Collect · Drayton", state: "Departed" as const },
+        { stopId: "stop-4", sequence: 4, stopName: "Collect · Barfoots", state: "Departed" as const },
+        { stopId: "stop-5", sequence: 5, stopName: "Deliver · Aldi-Goldthorpe", state: "EnRoute" as const },
+      ],
+      trackingFresh: true,
+      trackingMoving: true,
+      focusStop: "Aldi-Goldthorpe",
+    };
+    const route = {
+      loadId: "run-6",
+      reference: "Run 6",
+      totalStops: 5,
+      completedStops: 5,
+      phase: "Heading to",
+      truckPositionPercent: 96,
+      focusStop: "Aldi-Goldthorpe",
+      nextStopId: "stop-5",
+      trackingFresh: true,
+      trackingMoving: true,
+      stops: [
+        { id: "stop-1", sequence: 1, name: "Collect · Runcton", state: "completed" },
+        { id: "stop-2", sequence: 2, name: "Collect · Merston", state: "completed" },
+        { id: "stop-3", sequence: 3, name: "Collect · Drayton", state: "completed" },
+        { id: "stop-4", sequence: 4, name: "Collect · Barfoots", state: "completed" },
+        { id: "stop-5", sequence: 5, name: "Deliver · Aldi-Goldthorpe", state: "heading" },
+      ],
+    };
+
+    const merged = mergeRouteProgress([record], [route])[0];
+    expect(merged.runState).not.toBe("Completed");
+    expect(statusFor(merged, undefined, [])).toMatchObject({ status: "route", label: "ON ROUTE" });
+  });
+
+  it("active final-stop evidence overrides a stale completed snapshot", () => {
+    const progress = {
+      loadId: "run-1",
+      loadReference: "Run 1",
+      loadStatus: "Completed",
+      runState: "Completed",
+      totalStops: 5,
+      completedStops: 5,
+      progressPercent: 100,
+      currentVisit: {
+        geofenceName: "Final customer",
+        loadStopId: "stop-5",
+        enteredAtUtc: "2026-09-10T06:30:00Z",
+        dwellMinutes: 5,
+        isDelayed: false,
+        status: "OnSite",
+      },
+      geofenceOnSite: true,
+      focusStop: "Final customer",
+    };
+
+    expect(statusFor(progress, undefined, [])).toMatchObject({ status: "onsite" });
   });
 
   it("marks the driver available only after the final stop has completed", () => {
