@@ -21,6 +21,9 @@ type Payload = Record<string, unknown> & {
   sellerName?: string;
   stallNumber?: string;
   requestedTime?: string;
+  overnightRoute?: boolean;
+  wave?: number | string;
+  routeTiming?: string;
   jobType?: string;
   driverInstructions?: string;
   plannerReady?: boolean;
@@ -169,6 +172,8 @@ function needsDriverReference(payload: Payload) {
 
 function isPmOvernightCarryIn(payload: Payload, planningDate: string) {
   if (text(payload.deliveryDate) !== planningDate || !text(payload.collectionDate)) return false;
+
+  if (payload.overnightRoute === true) return true;
 
   const collection = new Date(`${text(payload.collectionDate)}T12:00:00`);
   collection.setDate(collection.getDate() + 1);
@@ -554,6 +559,7 @@ export function OrderReviewBulk() {
               <label>Collection site<input value={text(payload.sellerName)} onChange={(event) => setDraft((current) => ({ ...(current || payload), sellerName: event.target.value }))} /></label>
               <label>Destination<input value={text(payload.stallNumber)} onChange={(event) => setDraft((current) => ({ ...(current || payload), stallNumber: event.target.value }))} /></label>
               <label>Requested time<input value={text(payload.requestedTime)} onChange={(event) => setDraft((current) => ({ ...(current || payload), requestedTime: event.target.value }))} /></label>
+              <label className="checkbox-field"><span>Overnight route</span><input type="checkbox" checked={payload.overnightRoute === true} onChange={(event) => setDraft((current) => ({ ...(current || payload), overnightRoute: event.target.checked, routeTiming: event.target.checked ? "Overnight" : "SameDay", requestedTime: event.target.checked ? (text(payload.requestedTime) || "17:00") : payload.requestedTime }))} /></label>
               <label>Job type<input value={text(payload.jobType)} onChange={(event) => setDraft((current) => ({ ...(current || payload), jobType: event.target.value }))} /></label>
             </div>
             <label className="bulk-editor-notes">Driver / planner notes<textarea rows={3} value={text(payload.driverInstructions)} onChange={(event) => setDraft((current) => ({ ...(current || payload), driverInstructions: event.target.value }))} /></label>
