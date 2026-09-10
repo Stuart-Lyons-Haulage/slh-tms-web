@@ -117,3 +117,30 @@
   gap: 8px;
   margin-top: 12px;
 }
+
+/* Production guard: the authoritative Smart Dispatch toolbar must remain visible.
+   A later stylesheet must not be able to collapse the operational controls. */
+.smart-dispatch-board > .smart-dispatch-header {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 72px !important;
+  overflow: visible !important;
+  clip: auto !important;
+  clip-path: none !important;
+}
+
+.smart-dispatch-board > .smart-dispatch-header .smart-dispatch-actions {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.smart-dispatch-board > .smart-dispatch-header .smart-date-control,
+.smart-dispatch-board > .smart-dispatch-header .smart-action {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
