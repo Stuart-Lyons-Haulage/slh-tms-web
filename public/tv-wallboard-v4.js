@@ -244,12 +244,20 @@
     return null;
   }
   function isCompleted(progress, timing, load) {
-    if (finalArrivalUtc(progress, timing, load)) { return true; }
-    if (timing && timing.completed === true) { return true; }
     if (!progress) { return false; }
-    if (/complete/i.test(String(progress.phase || progress.runState || progress.loadStatus || ''))) { return true; }
-    var total = Number(progress.totalStops || 0), completed = Number(progress.completedStops || 0);
-    return total > 0 && completed >= total;
+    var total = Number(progress.totalStops || 0);
+    var final = finalStop(load);
+    var dwell = progress.stopDwell || [];
+    var i, stop, sequence, stateName;
+    for (i = 0; i < dwell.length; i += 1) {
+      stop = dwell[i];
+      sequence = Number(stop.sequence || 0);
+      stateName = String(stop.state || '').toLowerCase();
+      if ((total > 0 && sequence === total) || (final && String(stop.stopId || '') === String(final.id || ''))) {
+        if (stateName === 'departed' || stateName === 'exited') { return true; }
+      }
+    }
+    return false;
   }
   function statusFor(load, assignment, progress, eta) {
     if (eta && String(eta.risk || '').toLowerCase() === 'late') { return { kind: 'late', label: 'LATE', detail: cleanStop(eta.stopName), priority: 100 }; }
@@ -287,7 +295,7 @@
   }
   if (!key) { pairScreen(); return; }
 
-  root.innerHTML = '<div class="tv2"><header class="tv2-head"><img class="tv2-logo" src="/lyons-logo.svg" alt="Lyons"><div class="tv2-brand"><small>SLH OPERATIONS WALLBOARD</small><h1>Arrivals &amp; Departures</h1></div><div class="tv2-clock"><b id="tv2-clock"></b><span id="tv2-date"></span></div></header><section class="tv2-attention"><div class="tv2-attention-title">ATTENTION · NEEDS ACTION</div><div id="tv2-attention" class="tv2-attention-copy ok"><strong>Checking live operations…</strong></div></section><div id="tv2-error"></div><div id="tv2-coverage" class="tv2-coverage"></div><main id="tv2-table" class="tv2-table-wrap"></main><footer class="tv2-foot"><span><b>LIVE OPERATIONS</b> · earliest runs first · next rows every 30 seconds</span><span id="tv2-page"></span><span id="tv2-refresh"></span></footer></div>';
+  root.innerHTML = '<div class="tv2"><header class="tv2-head"><img class="tv2-logo" src="/lyons-logo.svg" alt="Lyons"><div class="tv2-brand"><small>SLH OPERATIONS WALLBOARD</small><h1>Arrivals &amp; Departures</h1></div><div class="tv2-clock"><b id="tv2-clock"></b><span id="tv2-date"></span></div></header><section class="tv2-attention"><div class="tv2-attention-title">ATTENTION · NEEDS ACTION</div><div id="tv2-attention" class="tv2-attention-copy ok"><strong>Checking live operations…</strong></div></section><div id="tv2-error"></div><div id="tv2-coverage" class="tv2-coverage"></div><main id="tv2-table" class="tv2-table-wrap"></main><footer class="tv2-foot"><span><b>LIVE OPERATIONS</b> · earliest runs first · next rows every 60 seconds</span><span id="tv2-page"></span><span id="tv2-refresh"></span></footer></div>';
   function updateClock() {
     var now = new Date(), clock = document.getElementById('tv2-clock'), date = document.getElementById('tv2-date');
     if (clock) { clock.innerHTML = esc(formatTime(now)); }
@@ -320,7 +328,7 @@
     var rows = [], i;
     for (i = 0; i < state.loads.length; i += 1) {
       var load = state.loads[i], prog = progress[String(load.id)] || null, timing = timings[String(load.id)] || null;
-      if (/cancelled|completed/i.test(String(load.status || '')) || isCompleted(prog, timing, load)) { continue; }
+      if (/cancelled/i.test(String(load.status || '')) || isCompleted(prog, timing, load)) { continue; }
       var first = firstStop(load), last = finalStop(load), assignment = assignments[String(load.id)] || null;
       var eta = finalEta(etaByLoad[String(load.id)]), status = statusFor(load, assignment, prog, eta);
       var total = Math.max(Number(prog && prog.totalStops || 0), Number(load.stops && load.stops.length || 0));
@@ -373,7 +381,7 @@
     }
     if (coverage) {
       var stopCount = 0; for (i = 0; i < rows.length; i += 1) { stopCount += Number(rows[i].total || 0); }
-      coverage.innerHTML = '<b>RUN VIEW</b><span>' + esc(rows.length + ' active runs') + '</span><span>' + esc(stopCount + ' physical stops') + '</span><span>Same live progress feed as the TMS · completed final destinations removed automatically</span>';
+      coverage.innerHTML = '<b>RUN VIEW</b><span>' + esc(rows.length + ' active runs') + '</span><span>' + esc(stopCount + ' physical stops') + '</span><span>Same live progress feed as the TMS · runs leave this TV only after the final destination geofence is exited</span>';
     }
     if (page) { page.innerHTML = pages > 1 ? 'Rows ' + (start + 1) + '–' + Math.min(start + PAGE_SIZE, rows.length) + ' of ' + rows.length : rows.length + ' active runs'; }
     if (refreshed) { refreshed.innerHTML = state.refreshedAt ? 'Updated ' + esc(formatTime(state.refreshedAt)) : 'Updating…'; }
@@ -381,7 +389,7 @@
     if (!shown.length) { table.innerHTML = '<div class="tv2-empty">No active runs to display.</div>'; return; }
     var html = '<table class="tv2-table"><thead><tr><th>FIRST COLLECTION</th><th>RUN</th><th>VEHICLE</th><th>DRIVER</th><th>PROGRESS</th><th>FINAL DELIVERY / ETA</th><th>STATUS</th></tr></thead><tbody>';
     for (i = 0; i < shown.length; i += 1) {
-      var row = shown[i], focus = row.progress && (row.progress.focusStop || (row.progress.nextStop && row.progress.nextStop.name));
+      var row = shown[i];
       var stopSummary = row.currentStop ? 'Current: ' + row.currentStop : (row.nextStop ? 'Next: ' + row.nextStop : 'Planned route');
       if (row.currentStop && row.nextStop && row.currentStop !== row.nextStop) { stopSummary += ' · Next: ' + row.nextStop; }
       html += '<tr class="' + esc(row.status.kind) + '">' +
