@@ -1,7 +1,7 @@
 // SLH TMS Service Worker - network-first strategy
 // Does not cache authenticated API responses
-const CACHE_NAME = 'slh-tms-v9';
-const STATIC_ASSETS = ['/', '/manifest.json'];
+const CACHE_NAME = 'slh-tms-v10';
+const STATIC_ASSETS = ['/manifest.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -28,17 +28,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Always prefer the deployed application shell so a new release is visible immediately.
+  // Authenticated TMS navigation must always come from the active deployment.
+  // Do not retain an old SPA document: stale navigation shells were able to keep
+  // removed Driver Dispatch controls on screen after a successful Container Apps deploy.
   if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return response;
-        })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
-    );
+    event.respondWith(fetch(request, { cache: 'no-store' }));
     return;
   }
 
@@ -48,8 +42,6 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Never cache a failed/missing bundle response. This matters on wallboard TVs
-          // that can stay open across deployments and briefly request an expired hash.
           if (!response.ok) return response;
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
