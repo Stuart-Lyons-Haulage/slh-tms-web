@@ -48,6 +48,21 @@
 .load-plan-head-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
 .load-plan-head-actions button { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.35); color: #fff; }
 
+/* The modal close action must remain reachable even if the application header or a
+   short viewport overlaps the modal's sticky header. */
+.load-plan-modal-backdrop .load-plan-head-actions button:last-child {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 1305;
+  min-width: 82px;
+  background: #fff;
+  color: #123b62;
+  border: 1px solid rgba(18,59,98,.28);
+  box-shadow: 0 6px 22px rgba(4,20,34,.24);
+  font-weight: 850;
+}
+
 .load-plan-warning {
   margin: 8px 0;
   border: 1px solid #e4ba65;
@@ -165,4 +180,5 @@
   .load-plan-mini-table { overflow-x: auto; }
   .load-plan-mini-head, .load-plan-mini-row { min-width: 810px; }
   .load-plan-card-actions { align-items: stretch; flex-direction: column; }
+  .load-plan-modal-backdrop .load-plan-head-actions button:last-child { top: 8px; right: 8px; }
 }
