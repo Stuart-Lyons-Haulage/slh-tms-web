@@ -13,6 +13,18 @@ type CachedWallboardResponse = {
   headers: Array<[string, string]>;
 };
 
+type CachedRunTimingRecord = {
+  loadId?: string;
+  finalEtaUtc?: string;
+  finalDestinationName?: string;
+  etaUnavailableStopName?: string;
+  etaUnavailableReason?: string;
+};
+
+type CachedRunTimingResponse = {
+  records?: CachedRunTimingRecord[];
+};
+
 const wallboardResponseCache = new Map<string, CachedWallboardResponse>();
 let wallboardFetchInstalled = false;
 
@@ -154,6 +166,65 @@ function CompletedExitEvidenceLabel() {
   return null;
 }
 
+function locationQualityRecords() {
+  const records = new Map<string, CachedRunTimingRecord>();
+  for (const [key, cached] of wallboardResponseCache.entries()) {
+    if (!key.includes("/run-timing")) continue;
+    try {
+      const payload = JSON.parse(cached.body) as CachedRunTimingResponse;
+      for (const record of payload.records || []) {
+        if (record.loadId) records.set(record.loadId, record);
+      }
+    } catch {
+      // Keep the wallboard usable if a stale/corrupt cache entry cannot be parsed.
+    }
+  }
+  return records;
+}
+
+function isLocationQualityFailure(record?: CachedRunTimingRecord) {
+  if (!record || record.finalEtaUtc || !record.etaUnavailableReason) return false;
+  return /coordinate|routable|site master|geofence|address|postcode|route origin|route provider/i.test(record.etaUnavailableReason);
+}
+
+function LocationQualityClarifier() {
+  useEffect(() => {
+    const apply = () => {
+      const timing = locationQualityRecords();
+      document.querySelectorAll<HTMLElement>(".ops-board-row").forEach(row => {
+        const loadId = row.dataset.rowId;
+        const record = loadId ? timing.get(loadId) : undefined;
+        const failed = isLocationQualityFailure(record);
+        row.classList.toggle("location-attention", failed);
+        if (!failed) return;
+
+        const etaCell = row.querySelector<HTMLElement>(".time-cell.eta");
+        const etaValue = etaCell?.querySelector<HTMLElement>("strong");
+        const etaDetail = etaCell?.querySelector<HTMLElement>("small");
+        const destination = (record?.finalDestinationName || record?.etaUnavailableStopName || "Final delivery")
+          .replace(/^Collect\s*[·:-]?\s*|^Deliver\s*[·:-]?\s*/i, "")
+          .trim();
+        if (etaValue) etaValue.textContent = "ETA UNAVAILABLE";
+        if (etaDetail) {
+          etaDetail.textContent = `${destination} · SITE LOCATION NEEDS ATTENTION`;
+          etaDetail.title = record?.etaUnavailableReason || "Add/link the physical site location in Site Master.";
+        }
+        if (etaCell) etaCell.title = "Add a physical address/postcode or link the correct geofence in Site Master. SLH Assistant can help identify the missing location data.";
+      });
+    };
+
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    const timer = window.setInterval(apply, 1000);
+    return () => {
+      observer.disconnect();
+      window.clearInterval(timer);
+    };
+  }, []);
+  return null;
+}
+
 function WallboardStatusClarifier() {
   useEffect(() => {
     const apply = () => {
@@ -181,6 +252,7 @@ export function OperationsWallboard({ tvMode = false, tvAccessKey }: { tvMode?: 
   return <>
     <FirstCollectionTimeLabel />
     <CompletedExitEvidenceLabel />
+    <LocationQualityClarifier />
     <WallboardStatusClarifier />
     <EtaLearningBridge />
     {!tvMode && <RunGeofenceLinkagePanel />}
