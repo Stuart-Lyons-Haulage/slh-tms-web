@@ -94,9 +94,15 @@ export function DispatchDriverRow({
   function changeRun(runId: string) {
     const nextRun = runs.find(run => run.runId === runId);
     const currentTrailer = trailers.find(trailer => trailer.id === selection.trailerId);
+    const previousTrailer = trailers.find(trailer => trailer.id === driver.previousTrailerId);
+    const currentIsContinuityTrailer = Boolean(currentTrailer && currentTrailer.id === driver.previousTrailerId);
+    const keepCurrent = Boolean(currentTrailer && trailerEligible(nextRun, currentTrailer) && !(nextRun?.trailerSwapRequested && currentIsContinuityTrailer));
+    const continuityTrailer = previousTrailer && !nextRun?.trailerSwapRequested && trailerEligible(nextRun, previousTrailer)
+      ? previousTrailer.id
+      : "";
     onSelectionChange(driver.driverId, {
       runId,
-      trailerId: currentTrailer && trailerEligible(nextRun, currentTrailer) ? currentTrailer.id : ""
+      trailerId: keepCurrent ? currentTrailer!.id : continuityTrailer
     });
   }
 
@@ -153,10 +159,11 @@ export function DispatchDriverRow({
         <select aria-label={`Trailer for ${driver.name}`} value={selection.trailerId} onChange={event => onSelectionChange(driver.driverId, { trailerId: event.target.value })} disabled={lockedToDriver && dispatchStatus !== "No Run"}>
           <option value="">Trailer…</option>
           {legalTrailers.map(trailer => <option key={trailer.id} value={trailer.id}>
-            {trailer.trailerNumber}{trailer.id === driver.previousTrailerId ? " · Last used" : trailer.type ? ` · ${trailer.type}` : ""}
+            {trailer.trailerNumber}{trailer.id === driver.previousTrailerId ? " · Last used / continuity" : trailer.type ? ` · ${trailer.type}` : ""}
           </option>)}
         </select>
         {driver.previousTrailerNumber && <small>Last used · {driver.previousTrailerNumber}{driver.previousTrailerPlanningDate ? ` · ${driver.previousTrailerPlanningDate}` : ""}</small>}
+        {selectedRun?.trailerSwapRequested && <small className="smart-inline-warning">Planner note requests a trailer swap · continuity trailer not auto-selected</small>}
         {selectedRun?.requiresDoubleDeck && <small>Double-deck only</small>}
         {selectedRun?.requiresRefrigerated && <small>Refrigerated only</small>}
       </td>
@@ -200,7 +207,10 @@ export function DispatchDriverRow({
     </td>
 
     <td className="smart-dispatch-action-cell">
-      {action === "allocate" && selection.runId && <small>Lock Plan to allocate and enable Dispatch.</small>}
+      {action === "allocate" && selection.runId && <>
+        <button className="smart-action primary" type="button" disabled={busy || blocked || !selection.vehicleId} onClick={() => onDispatch(driver, selection)}>{busy ? "Allocating…" : "Dispatch"}</button>
+        <small>Validates and locks this row, then opens the editable text preview.</small>
+      </>}
       {action === "dispatch" && lockedToDriver && <button className="smart-action primary" type="button" disabled={busy || blocked || status?.availabilityStatus === "Unavailable"} onClick={() => onDispatch(driver, selection)}>{busy ? "Preparing…" : "Dispatch"}</button>}
       {action === "amend" && lockedToDriver && <>
         <button className="smart-action secondary" type="button" disabled={busy} onClick={() => onAmend(driver, selection)}>{busy ? "Working…" : "Amendment"}</button>
