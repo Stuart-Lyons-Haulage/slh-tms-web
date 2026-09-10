@@ -52,7 +52,7 @@ export async function getSmartDispatch(
     request<DispatchEquipmentWorkbench>(`/api/v1/driver-dispatch?date=${encoded}`, token),
     request<{ drivers: DispatchDriverStatusDto[] }>(`/api/v1/driver-dispatch-status?date=${encoded}`, token),
     getDispatchVisibility(planningDate, token),
-    getDispatchHistory(planningDate, token)
+    getDispatchHistory(planningDate, token).catch(() => [] as DispatchHistoryItem[])
   ]);
   const visibilityByDriver = new Map(visibility.drivers.map(item => [item.driverId, item]));
   const historyByDriver = new Map(history.map(item => [item.driverId, item]));
