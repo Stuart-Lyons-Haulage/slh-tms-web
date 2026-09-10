@@ -139,6 +139,17 @@ export interface DispatchEquipmentTrailer {
   active?: boolean;
 }
 
+export interface LegacyDispatchStop {
+  id: string;
+  sequence: number;
+  name: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  plannedArrivalUtc?: string;
+  plannerNote?: string;
+}
+
 export interface LegacyDispatchLoad {
   id: string;
   reference?: string;
@@ -148,6 +159,9 @@ export interface LegacyDispatchLoad {
   vehicleId?: string;
   trailerId?: string;
   plannedStartUtc?: string;
+  plannerNotes?: string;
+  southbound?: boolean;
+  stops?: LegacyDispatchStop[];
 }
 
 export interface DispatchEquipmentWorkbench {
