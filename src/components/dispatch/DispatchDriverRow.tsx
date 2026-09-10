@@ -16,6 +16,7 @@ type Props = {
   runs: DispatchRunDto[];
   vehicles: DispatchEquipmentVehicle[];
   trailers: DispatchEquipmentTrailer[];
+  loads: Array<{ id: string; vehicleId?: string; trailerId?: string; plannedStartUtc?: string; stops?: Array<{ plannedArrivalUtc?: string; sequence: number }> }>;
   runOwnerById: Record<string, string | undefined>;
   selection: DispatchAllocationSelection;
   availableTime?: DispatchAvailableTimeDto;
@@ -56,6 +57,7 @@ export function DispatchDriverRow({
   runs,
   vehicles,
   trailers,
+  loads,
   runOwnerById,
   selection,
   availableTime,
@@ -76,7 +78,17 @@ export function DispatchDriverRow({
     const owner = runOwnerById[run.runId];
     return canDriverTakeRun(driver, run) && (!owner || owner === driver.driverId);
   });
-  const legalTrailers = trailers.filter(trailer => trailerEligible(selectedRun, trailer));
+  const start = selection.plannedStartTime ? new Date(selection.plannedStartTime).getTime() : undefined;
+  const overlaps = (resourceId: string, kind: "vehicleId" | "trailerId") => loads.some(load => {
+    if (load.id === selection.runId || load[kind] !== resourceId) return false;
+    const previousStart = load.plannedStartUtc ? new Date(load.plannedStartUtc).getTime() : undefined;
+    const endValue = load.stops?.slice().sort((a, b) => b.sequence - a.sequence).find(stop => stop.plannedArrivalUtc)?.plannedArrivalUtc;
+    const previousEnd = endValue ? new Date(endValue).getTime() : undefined;
+    if (start == null || previousStart == null || previousEnd == null) return true;
+    return start < previousEnd && previousStart < start;
+  });
+  const serviceableVehicles = vehicles.filter(vehicle => vehicle.active !== false && !/(vor|out\s*of\s*service|off\s*road|inactive|maintenance)/i.test(vehicle.fleetioStatus || "") && !overlaps(vehicle.id, "vehicleId"));
+  const legalTrailers = trailers.filter(trailer => trailer.active !== false && trailerEligible(selectedRun, trailer) && !overlaps(trailer.id, "trailerId"));
   const tachoVehicle = tachoVehicleId(driver, vehicles);
   const wtdHours = availableTime?.weeklyWorkingTimeUsed ?? driver.tachoData.weeklyWorkingTime;
   const wtdTone = availableTime?.wtdStatus || wtdClass(wtdHours);
@@ -149,7 +161,7 @@ export function DispatchDriverRow({
       <td>
         <select aria-label={`Vehicle for ${driver.name}`} value={selection.vehicleId} onChange={event => onSelectionChange(driver.driverId, { vehicleId: event.target.value })} disabled={lockedToDriver && dispatchStatus !== "No Run"}>
           <option value="">Vehicle…</option>
-          {vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>
+          {serviceableVehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>
             {vehicle.registration}{vehicle.id === tachoVehicle ? " · Tacho: last used" : ""}
           </option>)}
         </select>

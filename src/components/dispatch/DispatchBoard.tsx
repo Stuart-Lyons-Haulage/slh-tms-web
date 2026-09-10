@@ -454,6 +454,7 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
               runs={snapshot.runs}
               vehicles={snapshot.equipment.vehicles}
               trailers={snapshot.equipment.trailers}
+              loads={snapshot.equipment.loads}
               runOwnerById={runOwnerById}
               selection={selections[driver.driverId] || emptyDispatchSelection()}
               availableTime={availableTimes[driver.driverId]}

@@ -178,7 +178,8 @@ export async function allocateDispatchRun(
     body: JSON.stringify({
       driverId,
       vehicleId: selection.vehicleId,
-      trailerId: selection.trailerId || null
+      trailerId: selection.trailerId || null,
+      plannedStartUtc: selection.plannedStartTime || null
     })
   }, 90000);
 }
