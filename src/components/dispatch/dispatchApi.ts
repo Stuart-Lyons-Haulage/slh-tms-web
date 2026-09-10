@@ -66,11 +66,12 @@ export async function getSmartDispatch(
 export async function getAvailableTimes(
   planningDate: string,
   driverIds: string[],
-  token: string
+  token: string,
+  reducedRestDriverIds: string[] = []
 ): Promise<DispatchAvailableTimeDto[]> {
   return request<DispatchAvailableTimeDto[]>("/api/dispatch/available-times", token, {
     method: "POST",
-    body: JSON.stringify({ planningDate, driverIds })
+    body: JSON.stringify({ planningDate, driverIds, reducedRestDriverIds })
   });
 }
 
@@ -126,7 +127,8 @@ export async function lockDispatchPlan(
         vehicleId: selection.vehicleId,
         trailerId: selection.trailerId || null,
         runId: selection.runId,
-        plannedStartTime: selection.plannedStartTime
+        plannedStartTime: selection.plannedStartTime,
+        useReducedDailyRest: selection.useReducedDailyRest === true
       }))
     })
   });

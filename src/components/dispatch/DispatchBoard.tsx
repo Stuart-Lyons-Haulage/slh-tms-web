@@ -16,6 +16,7 @@ import {
   filterDispatchDrivers,
   filterDriversByEmploymentType,
   globalFailures,
+  reducedRestDriverIds,
   rowFailures,
   selectedAllocations,
   validateLockSelections,
@@ -156,7 +157,12 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
     setFailures([]);
     try {
       const access = await token();
-      const rows = await getAvailableTimes(planningDate, snapshot.drivers.map(driver => driver.driverId), access);
+      const rows = await getAvailableTimes(
+        planningDate,
+        snapshot.drivers.map(driver => driver.driverId),
+        access,
+        reducedRestDriverIds(selections)
+      );
       setAvailableTimes(availableTimesByDriver(rows));
       setSelections(current => applyAvailableTimes(current, rows));
       const warnings = rows.filter(row => Boolean(row.breachDetail)).length;
@@ -413,7 +419,7 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
       {visibleDrivers.length === 0 && <div className="smart-dispatch-empty">No drivers match this filter.</div>}
     </div>
 
-    <p className="smart-dispatch-footnote">Select work, use Get Times, then Lock Plan. A locked row immediately exposes Dispatch. Dispatch performs the live HGV route/readiness check before opening the editable SMS preview. Amendments, free-form updates and Unassign stay on the same row.</p>
+    <p className="smart-dispatch-footnote">Select work, use Get Times, then Lock Plan. Regular 11h daily rest is the default; choose Reduced rest (9h) on a driver only when the planner intends to use that concession, then recalculate Get Times. A locked row immediately exposes Dispatch. Dispatch performs the live HGV route/readiness check before opening the editable SMS preview. Amendments, free-form updates and Unassign stay on the same row.</p>
 
     {message && <DispatchMessageDialog
       reference={message.reference}

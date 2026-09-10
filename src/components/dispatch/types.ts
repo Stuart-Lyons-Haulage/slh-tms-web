@@ -33,6 +33,7 @@ export interface DispatchTachoDataDto {
   dailyDrivingLimitMinutes?: number;
   driveAvailablePlanningDayMinutes?: number;
   workAvailableWeekMinutes?: number;
+  reducedDailyRestAvailable?: boolean;
 }
 
 export interface DispatchTrackingDataDto {
@@ -102,6 +103,7 @@ export interface DispatchAllocationSelection {
   vehicleId: string;
   trailerId: string;
   plannedStartTime?: string;
+  useReducedDailyRest?: boolean;
 }
 
 export interface DispatchEquipmentVehicle {

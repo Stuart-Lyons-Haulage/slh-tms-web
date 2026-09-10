@@ -14,7 +14,7 @@ export type DispatchSelectionMap = Record<string, DispatchAllocationSelection>;
 export type DispatchAvailableTimeMap = Record<string, DispatchAvailableTimeDto>;
 
 export function emptyDispatchSelection(): DispatchAllocationSelection {
-  return { runId: "", vehicleId: "", trailerId: "" };
+  return { runId: "", vehicleId: "", trailerId: "", useReducedDailyRest: false };
 }
 
 export function buildInitialSelections(
@@ -31,11 +31,18 @@ export function buildInitialSelections(
       runId: assigned?.id || "",
       vehicleId: assigned?.vehicleId || tachoVehicleId(driver, equipment.vehicles),
       trailerId: assigned?.trailerId || "",
-      plannedStartTime: assigned?.plannedStartUtc || driver.availableFrom
+      plannedStartTime: assigned?.plannedStartUtc || driver.availableFrom,
+      useReducedDailyRest: false
     };
   }
 
   return result;
+}
+
+export function reducedRestDriverIds(selections: DispatchSelectionMap): string[] {
+  return Object.entries(selections)
+    .filter(([, selection]) => selection.useReducedDailyRest === true)
+    .map(([driverId]) => driverId);
 }
 
 export function applyAvailableTimes(
@@ -195,6 +202,16 @@ export function validateLockSelections(
       failures.push({ driverId: driver.driverId, runId: run.runId, reason: "Get Tacho available times before locking this driver." });
     } else if (available?.availableFrom && new Date(selection.plannedStartTime).getTime() < new Date(available.availableFrom).getTime()) {
       failures.push({ driverId: driver.driverId, runId: run.runId, reason: "The planned start is earlier than the Tacho-derived available-from time." });
+    }
+    if (available) {
+      const expectedRest = selection.useReducedDailyRest === true ? 9 : 11;
+      if (available.requiredRestPeriod !== expectedRest) {
+        failures.push({
+          driverId: driver.driverId,
+          runId: run.runId,
+          reason: "Rest choice changed after Get Times. Recalculate Tacho available times before locking this driver."
+        });
+      }
     }
     if (available?.breachDetail) {
       failures.push({ driverId: driver.driverId, runId: run.runId, reason: available.breachDetail });
