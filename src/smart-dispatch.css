@@ -134,6 +134,39 @@
   padding: 10px 16px 12px;
 }
 
+.smart-dispatch-filter-groups {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+}
+
+.smart-dispatch-search {
+  display: grid;
+  gap: 4px;
+  padding: 0 16px 4px;
+  max-width: 520px;
+  color: #29485f;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.smart-dispatch-search input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cdd8e2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  color: #173b57;
+  font: inherit;
+  font-weight: 600;
+}
+
+.smart-dispatch-search input:focus {
+  outline: 2px solid #75a9ce;
+  outline-offset: 1px;
+}
+
 .smart-dispatch-filters button {
   border: 1px solid #cdd8e2;
   background: #fff;
