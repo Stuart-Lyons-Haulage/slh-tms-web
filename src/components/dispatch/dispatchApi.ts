@@ -5,6 +5,7 @@ import type {
   DispatchDriverDto,
   DispatchDriverStatusDto,
   DispatchEquipmentWorkbench,
+  DispatchHistoryItem,
   DispatchLockResponse,
   DispatchRunDto,
   DispatchVisibilitySnapshot
@@ -27,6 +28,13 @@ export async function getDispatchVisibility(planningDate: string, token: string)
   );
 }
 
+export async function getDispatchHistory(planningDate: string, token: string): Promise<DispatchHistoryItem[]> {
+  return request<DispatchHistoryItem[]>(
+    `/api/dispatch/history?date=${encodeURIComponent(planningDate)}`,
+    token
+  );
+}
+
 export async function getSmartDispatch(
   planningDate: string,
   token: string
@@ -38,21 +46,43 @@ export async function getSmartDispatch(
   visibility: DispatchVisibilitySnapshot;
 }> {
   const encoded = encodeURIComponent(planningDate);
-  const [drivers, runs, equipment, statusResponse, visibility] = await Promise.all([
+  const [drivers, runs, equipment, statusResponse, visibility, history] = await Promise.all([
     request<DispatchDriverDto[]>(`/api/dispatch/drivers?date=${encoded}`, token),
     request<DispatchRunDto[]>(`/api/dispatch/runs?date=${encoded}`, token),
     request<DispatchEquipmentWorkbench>(`/api/v1/driver-dispatch?date=${encoded}`, token),
     request<{ drivers: DispatchDriverStatusDto[] }>(`/api/v1/driver-dispatch-status?date=${encoded}`, token),
-    getDispatchVisibility(planningDate, token)
+    getDispatchVisibility(planningDate, token),
+    getDispatchHistory(planningDate, token)
   ]);
   const visibilityByDriver = new Map(visibility.drivers.map(item => [item.driverId, item]));
-  const enrichedDrivers = drivers
-    .map(driver => ({
+  const historyByDriver = new Map(history.map(item => [item.driverId, item]));
+  const enrichedDrivers = drivers.map(driver => {
+    const historical = historyByDriver.get(driver.driverId);
+    const hasAuthoritativePosition = Boolean(driver.trackingData.lastKnownPosition);
+    const fallbackPosition = historical?.previousFinalLatitude != null && historical?.previousFinalLongitude != null
+      ? { latitude: historical.previousFinalLatitude, longitude: historical.previousFinalLongitude }
+      : undefined;
+    return {
       ...driver,
       employmentType: visibilityByDriver.get(driver.driverId)?.employmentType ?? driver.employmentType,
       skills: visibilityByDriver.get(driver.driverId)?.skills ?? driver.skills,
-      driverCode: visibilityByDriver.get(driver.driverId)?.coding?.trim() || driver.driverCode
-    }));
+      driverCode: visibilityByDriver.get(driver.driverId)?.coding?.trim() || driver.driverCode,
+      trackingData: {
+        ...driver.trackingData,
+        lastKnownPosition: driver.trackingData.lastKnownPosition || fallbackPosition,
+        lastStopName: driver.trackingData.lastStopName || historical?.previousFinalStopName,
+        lastPositionAtUtc: driver.trackingData.lastPositionAtUtc
+      },
+      previousRunReference: historical?.previousRunReference,
+      previousPlanningDate: historical?.previousPlanningDate,
+      previousTrailerId: historical?.previousTrailerId,
+      previousTrailerNumber: historical?.previousTrailerNumber,
+      previousTrailerPlanningDate: historical?.previousTrailerPlanningDate,
+      suggestion: driver.suggestion || (!hasAuthoritativePosition && historical?.previousFinalStopName
+        ? `Last known operational stop · ${historical.previousFinalStopName}`
+        : undefined)
+    };
+  });
   return {
     drivers: enrichedDrivers,
     runs,
