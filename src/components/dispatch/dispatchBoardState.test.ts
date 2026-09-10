@@ -77,7 +77,8 @@ describe("smart Dispatch board state", () => {
       runId: "run-1",
       vehicleId: "vehicle-2",
       trailerId: "trailer-1",
-      plannedStartTime: "2026-09-10T05:00:00Z"
+      plannedStartTime: "2026-09-10T05:00:00Z",
+      useReducedDailyRest: false
     });
   });
 
