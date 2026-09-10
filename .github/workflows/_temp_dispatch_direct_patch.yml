@@ -1,0 +1,42 @@
+name: Temporary direct Dispatch patch
+
+on:
+  push:
+    branches:
+      - fix/dispatch-direct-lock-recalc-20260910
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/dispatch-direct-lock-recalc-20260910
+          fetch-depth: 0
+      - name: Patch direct Dispatch stale-rest recalculation
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/components/dispatch/DispatchBoard.tsx')
+          s = p.read_text()
+          old = '      if (!effectiveSelection.plannedStartTime) {'
+          new = '      if (!effectiveSelection.plannedStartTime || availableTimes[driver.driverId]?.requiredRestPeriod !== (effectiveSelection.useReducedDailyRest ? 9 : 11)) {'
+          if old not in s:
+              if new in s:
+                  raise SystemExit(0)
+              raise SystemExit('Direct Dispatch planned-start condition not found')
+          p.write_text(s.replace(old, new, 1))
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/dispatch/DispatchBoard.tsx
+          if git diff --cached --quiet; then
+            echo "No patch changes to commit"
+            exit 0
+          fi
+          git commit -m "Recalculate stale rest before direct Dispatch"
+          git push origin HEAD:fix/dispatch-direct-lock-recalc-20260910
