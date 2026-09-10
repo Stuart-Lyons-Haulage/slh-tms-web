@@ -191,6 +191,15 @@ export function DispatchBoard({ planningDate, onPlanningDateChange, extraActions
       [driverId]: { ...(current[driverId] || emptyDispatchSelection()), ...patch }
     }));
     setFailures(current => current.filter(failure => failure.driverId !== driverId));
+    // Run/equipment changes do not alter legal rest. Only an explicit rest
+    // choice change invalidates this driver's Tacho timing result.
+    if (Object.prototype.hasOwnProperty.call(patch, "useReducedDailyRest")) {
+      setAvailableTimes(current => {
+        const next = { ...current };
+        delete next[driverId];
+        return next;
+      });
+    }
     setNotice(undefined);
   }
 

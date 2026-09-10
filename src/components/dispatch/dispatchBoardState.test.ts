@@ -84,7 +84,7 @@ describe("smart Dispatch board state", () => {
     });
   });
 
-  it("reactively applies available-from to rows without overwriting a persisted start", () => {
+  it("replaces the persisted start when Get Times recomputes legal availability", () => {
     const calculated = [{
       driverId: "driver-1",
       availableFrom: "2026-09-10T04:00:00Z",
@@ -96,9 +96,23 @@ describe("smart Dispatch board state", () => {
 
     expect(applyAvailableTimes({ "driver-1": { runId: "run-1", vehicleId: "vehicle-tacho", trailerId: "" } }, calculated)["driver-1"].plannedStartTime)
       .toBe("2026-09-10T04:00:00Z");
-    expect(applyAvailableTimes({ "driver-1": { runId: "run-1", vehicleId: "vehicle-tacho", trailerId: "", plannedStartTime: "2026-09-10T06:00:00Z" } }, calculated)["driver-1"].plannedStartTime)
-      .toBe("2026-09-10T06:00:00Z");
+    expect(applyAvailableTimes({ "driver-1": { runId: "run-5", vehicleId: "vehicle-tacho", trailerId: "", plannedStartTime: "2026-09-10T06:00:00Z" } }, calculated)["driver-1"].plannedStartTime)
+      .toBe("2026-09-10T04:00:00Z");
     expect(availableTimesByDriver(calculated)["driver-1"].requiredRestPeriod).toBe(11);
+  });
+
+  it("does not report a stale rest choice after Run 5 is selected and Get Times is rerun", () => {
+    const regularTimes = availableTimesByDriver([{
+      driverId: "driver-1", availableFrom: "2026-09-10T04:00:00Z", requiredRestPeriod: 11,
+      weeklyWorkingTimeUsed: 30, dailyDrivingTimeUsed: 5, wtdStatus: "ok"
+    }]);
+    const selection = applyAvailableTimes({
+      "driver-1": { runId: "run-5", vehicleId: "vehicle-tacho", trailerId: "", useReducedDailyRest: false,
+        plannedStartTime: "2026-09-10T06:00:00Z" }
+    }, Object.values(regularTimes));
+
+    expect(validateLockSelections([driver()], [run({ runId: "run-5", reference: "Run 5" })], equipment(), selection, regularTimes))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.stringContaining("Rest choice changed") })]));
   });
 
   it("keeps drivers with allocated runs at the top while retaining subcontractors", () => {

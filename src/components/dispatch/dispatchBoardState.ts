@@ -59,7 +59,9 @@ export function applyAvailableTimes(
     const current = next[row.driverId] || emptyDispatchSelection();
     next[row.driverId] = {
       ...current,
-      plannedStartTime: current.plannedStartTime || row.availableFrom
+      // Get Times is the authoritative recomputation.  Do not retain a start
+      // from the previously selected run (or from the opposite rest choice).
+      plannedStartTime: row.availableFrom || undefined
     };
   }
   return next;
