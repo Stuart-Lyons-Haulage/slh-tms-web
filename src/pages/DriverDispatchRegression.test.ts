@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(new URL("./DriverDispatch.tsx", import.meta.url), "utf8");
 const operationalSource = readFileSync(new URL("./DriverDispatchOperational.tsx", import.meta.url), "utf8");
 const authoritativeSource = readFileSync(new URL("../components/dispatch/DispatchBoard.tsx", import.meta.url), "utf8");
+const filterSource = readFileSync(new URL("../components/dispatch/DispatchFilters.tsx", import.meta.url), "utf8");
 const calculatedStartsSource = readFileSync(new URL("./DispatchCalculatedStarts.tsx", import.meta.url), "utf8");
 
 describe("Driver Dispatch UI contract", () => {
@@ -55,7 +56,7 @@ describe("Driver Dispatch UI contract", () => {
 
   it("keeps driver search, sync and customer exports on the routed Driver Dispatch surface", () => {
     expect(operationalSource).toContain("CustomerLoadPlanActions");
-    expect(authoritativeSource).toContain('aria-label="Search drivers"');
+    expect(filterSource).toContain('aria-label="Search drivers"');
     expect(authoritativeSource).toContain("Sync Drivers");
     expect(authoritativeSource).toContain("syncDispatchDrivers");
     expect(authoritativeSource).toContain("filterDriversByDriverSearch");
