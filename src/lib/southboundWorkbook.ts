@@ -66,9 +66,9 @@ function run(
   const hour = first ? Number(first.slice(0, 2)) : 0;
   const overnight = stops.some(stop => stop.collectionDate !== planningDate || stop.deliveryDate !== planningDate) || (period === "PM" && /overnight|o\/n/i.test(note));
   return {
-    runRef: `SOUTH-${planningDate.replace(/-/g, "")}-${ref.replace(/[^A-Za-z0-9_-]+/g, "-")}`,
+    runRef: `SOUTH-${planningDate.replace(/-/g, "")}-${period || (hour >= 17 ? "PM" : "AM")}-${ref.replace(/[^A-Za-z0-9_-]+/g, "-")}`,
     plannerRun: ref,
-    runType: period || (hour >= 17 ? "PM" : "AM"),
+    runType: period || (overnight ? "PM" : hour >= 17 ? "PM" : "AM"),
     overnight,
     planningDate,
     driver,
