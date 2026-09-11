@@ -7,6 +7,16 @@ type Exception = PlannerCsvPayload["exceptions"][number];
 
 const clean = (value: unknown) => String(value ?? "").trim();
 const norm = (value: unknown) => clean(value).toUpperCase().replace(/\s+/g, " ");
+const plannerSiteName = (value: unknown) => clean(value)
+  .replace(/\s+wave\s*\d+\b/gi, "")
+  .replace(/\s{2,}/g, " ")
+  .trim();
+
+function addDays(value: string, days: number): string {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
 function excelDate(value: unknown): string {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
@@ -137,7 +147,7 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName 
   for (let index = 5; index < (south?.length ?? 0); index++) {
     const row = south[index] ?? [];
     const job = clean(row[0]);
-    const collection = clean(row[1]);
+    const collection = plannerSiteName(row[1]);
     const deliveryText = clean(row[2]);
     if (/^S\d+/i.test(job) && collection && deliveryText) {
       const reference = clean(row[3]) || job;
@@ -208,13 +218,13 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName 
           if (/^\d+(?:\.\d+)?$/.test(supplier) && !/[A-Za-z]/.test(po)) continue;
           stops.push({
             sequence: ++sourceRow,
-            collectionSite: supplier,
+            collectionSite: plannerSiteName(supplier),
             deliverySite: `Waitrose ${destination}`,
             reference: po,
             palletType: "Market",
             sourceRow,
             collectionDate: planningDate,
-            deliveryDate: planningDate,
+            deliveryDate: wave.period === "PM" ? addDays(planningDate, 1) : planningDate,
           });
         }
         if (stops.length) {
@@ -244,18 +254,18 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName 
       const ref = `PM-${index + 1}`;
       const stop: PlannerCsvStop = {
         sequence: ++sourceRow,
-        collectionSite: collection || description,
+        collectionSite: plannerSiteName(collection || description),
         deliverySite: "Collection Board · destination TBC",
         pallets: qty && qty > 0 ? qty : undefined,
         palletType: "Market",
         reference: ref,
         sourceRow,
         collectionDate: planningDate,
-        deliveryDate: planningDate,
+        deliveryDate: addDays(planningDate, 1),
       };
       const planned = clean(board[index]?.[4]);
       const namedDriver = planned && !/^(on route|night driver|driver informed|collected|on site)$/i.test(planned) ? planned : undefined;
-      runs.push(run(planningDate, ref, [stop], `PM O/N · Collection Board: ${description}. Destination/stall and explicit collection window require completion before dispatch.`, namedDriver, "PM", "Collection Board"));
+      runs.push(run(planningDate, ref, [stop], `PM O/N · Collection Board: ${plannerSiteName(description)}. Destination/stall and explicit collection window require completion before dispatch.`, namedDriver, "PM", "Collection Board"));
       exceptions.push({ severity: "warning", runRef: ref, code: "CollectionBoardNeedsCompletion", detail: `${description}: PM board item retained, but destination/stall and current-day timing evidence are unavailable.` });
     }
     if (Object.keys(sheets).some(name => /^(Covent|Spit|Spitalfields|Western|West 3|Brighton)/i.test(name))) {
