@@ -41,9 +41,10 @@ function runPayload(state: State) {
 }
 
 async function installApi(page: Page, state: State) {
-  await page.route('**/api/v1/**', async route => {
+  await page.route('**/*', async route => {
     const req = route.request();
     const url = new URL(req.url());
+    if (!url.pathname.includes('/api/v1/') && !url.pathname.includes('/api/master/')) return route.continue();
     const path = url.pathname.replace(/^\/tms-api/, '');
     const method = req.method();
 
@@ -111,6 +112,14 @@ async function installApi(page: Page, state: State) {
     if (path === '/api/v1/drivers' && method === 'GET') return json(route, [{ id: driverId, employeeNumber: 'D001', displayName: 'Test Driver', active: true }]);
     if (path === '/api/v1/vehicles' && method === 'GET') return json(route, [{ id: vehicleId, registration: 'AB12 CDE', active: true }]);
     if (path === '/api/v1/trailers' && method === 'GET') return json(route, [{ id: trailerId, trailerNumber: 'TRL-101', active: true }]);
+    // Driver Dispatch also enriches its workbench from the governed master-data
+    // projection. Keep this workflow test self-contained by mocking those reads.
+    if (path === '/api/master/drivers' && method === 'GET') return json(route, [{ driverId: 'D001', fullName: 'Test Driver', preferredName: 'Test Driver' }]);
+    if (path === '/api/master/vehicles' && method === 'GET') return json(route, [{ vehicleId, registration: 'AB12 CDE' }]);
+    if (path === '/api/master/trailers' && method === 'GET') return json(route, [{ trailerId, trailerNumber: 'TRL-101' }]);
+    if (path === '/api/master/customers' && method === 'GET') return json(route, []);
+    if (path === '/api/master/sites' && method === 'GET') return json(route, []);
+    if (path.startsWith('/api/master/')) return json(route, []);
     if (path === '/api/v1/sites' && method === 'GET') return json(route, []);
     if (path === '/api/v1/orders' && method === 'GET') return json(route, []);
     if (path === '/api/v1/loads' && method === 'GET') return json(route, []);
