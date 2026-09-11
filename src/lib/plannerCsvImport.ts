@@ -17,6 +17,7 @@ export type PlannerCsvRun = {
   runRef: string;
   plannerRun: string;
   runType?: "AM" | "PM";
+  overnight?: boolean;
   planningDate: string;
   driver?: string;
   vehicle?: string;

@@ -48,18 +48,28 @@ function unitFromText(text: string): string | undefined {
   if (value.includes("CRATE")) return "Crates";
   if (value.includes("TRAY")) return "Trays";
   if (value.includes("PACKAG")) return "Packaging";
-  if (value.includes("MARKET") || value.includes("WAVE 3")) return "Market / overnight";
+  if (value.includes("MARKET")) return "Market";
   return undefined;
 }
 
-function run(planningDate: string, ref: string, stops: PlannerCsvStop[], note: string, driver?: string): PlannerCsvRun {
+function run(
+  planningDate: string,
+  ref: string,
+  stops: PlannerCsvStop[],
+  note: string,
+  driver?: string,
+  period?: "AM" | "PM",
+  sourceSheet = "Southbound",
+): PlannerCsvRun {
   const total = stops.reduce((sum, stop) => sum + (stop.pallets ?? 0), 0);
   const first = stops.map(stop => stop.collectFrom).find(Boolean);
   const hour = first ? Number(first.slice(0, 2)) : 0;
+  const overnight = stops.some(stop => stop.collectionDate !== planningDate || stop.deliveryDate !== planningDate) || (period === "PM" && /overnight|o\/n/i.test(note));
   return {
     runRef: `SOUTH-${planningDate.replace(/-/g, "")}-${ref.replace(/[^A-Za-z0-9_-]+/g, "-")}`,
     plannerRun: ref,
-    runType: hour >= 17 ? "PM" : "AM",
+    runType: period || (hour >= 17 ? "PM" : "AM"),
+    overnight,
     planningDate,
     driver,
     plannerNote: note,
@@ -67,7 +77,7 @@ function run(planningDate: string, ref: string, stops: PlannerCsvStop[], note: s
     reconciliationStatus: "Southbound workbook evidence",
     capacityStatus: "Amber",
     mixedUtilisationPercent: total > 0 ? Math.round(total / 26 * 1000) / 10 : 0,
-    source: { workbook: "Southbound", sheet: "Southbound" },
+    source: { workbook: "Southbound", sheet: sourceSheet },
     stops,
   };
 }
@@ -178,31 +188,47 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName 
     }
   }
 
-  const wave3 = sheets["WAVE 3"] ?? [];
+  // Normalize the workbook source tabs to the planner-facing AM/PM model.
   const destinationColumns = [0, 5, 10, 15];
-  const sections = [{ header: 1, start: 3, end: 18 }, { header: 18, start: 20, end: wave3.length }];
-  for (const section of sections) {
-    for (const column of destinationColumns) {
-      const destination = clean(wave3[section.header]?.[column]);
-      if (!destination) continue;
-      const stops: PlannerCsvStop[] = [];
-      for (let index = section.start; index < Math.min(section.end, wave3.length); index++) {
-        const supplier = clean(wave3[index]?.[column]);
-        const po = clean(wave3[index]?.[column + 1]);
-        if (!supplier || !po || norm(supplier) === "SUPPLIER") continue;
-        if (/^\d+(?:\.\d+)?$/.test(supplier) && !/[A-Za-z]/.test(po)) continue;
-        stops.push({
-          sequence: ++sourceRow,
-          collectionSite: supplier,
-          deliverySite: `Waitrose ${destination}`,
-          reference: po,
-          palletType: "Market / overnight",
-          sourceRow,
-          collectionDate: planningDate,
-          deliveryDate: planningDate,
-        });
+  for (const wave of [
+    { sheet: "WAVE 1", period: "AM" as const, label: "AM" },
+    { sheet: "WAVE 3", period: "PM" as const, label: "PM O/N" },
+  ]) {
+    const rows = sheets[wave.sheet] ?? [];
+    const sections = [{ header: 1, start: 3, end: 18 }, { header: 18, start: 20, end: rows.length }];
+    for (const section of sections) {
+      for (const column of destinationColumns) {
+        const destination = clean(rows[section.header]?.[column]);
+        if (!destination) continue;
+        const stops: PlannerCsvStop[] = [];
+        for (let index = section.start; index < Math.min(section.end, rows.length); index++) {
+          const supplier = clean(rows[index]?.[column]);
+          const po = clean(rows[index]?.[column + 1]);
+          if (!supplier || !po || norm(supplier) === "SUPPLIER") continue;
+          if (/^\d+(?:\.\d+)?$/.test(supplier) && !/[A-Za-z]/.test(po)) continue;
+          stops.push({
+            sequence: ++sourceRow,
+            collectionSite: supplier,
+            deliverySite: `Waitrose ${destination}`,
+            reference: po,
+            palletType: "Market",
+            sourceRow,
+            collectionDate: planningDate,
+            deliveryDate: planningDate,
+          });
+        }
+        if (stops.length) {
+          runs.push(run(
+            planningDate,
+            `Waitrose ${destination}`,
+            stops,
+            `${wave.label} Waitrose ${destination}; ${stops.length} PO line(s) retained from ${fileName}.`,
+            undefined,
+            wave.period,
+            wave.sheet,
+          ));
+        }
       }
-      if (stops.length) runs.push(run(planningDate, `W3 ${destination}`, stops, `Wave 3 overnight Waitrose ${destination}; ${stops.length} PO line(s) retained from ${fileName}.`));
     }
   }
 
@@ -212,23 +238,25 @@ export function southboundWorkbookToPayload(sheets: WorkbookSheetRows, fileName 
     for (let index = 3; index < board.length; index++) {
       const required = norm(board[index]?.[1]);
       const description = clean(board[index]?.[2]);
-      if (required !== "YES" || !/market/i.test(description)) continue;
+      if (required !== "YES") continue;
       const collection = description.replace(/\s+market.*$/i, "").trim();
       const qty = numberFrom(board[index]?.[3]);
-      const ref = `MARKET-${index + 1}`;
+      const ref = `PM-${index + 1}`;
       const stop: PlannerCsvStop = {
         sequence: ++sourceRow,
         collectionSite: collection || description,
-        deliverySite: "Market destination unresolved",
+        deliverySite: "Collection Board · destination TBC",
         pallets: qty && qty > 0 ? qty : undefined,
-        palletType: "Market / overnight",
+        palletType: "Market",
         reference: ref,
         sourceRow,
         collectionDate: planningDate,
         deliveryDate: planningDate,
       };
-      runs.push(run(planningDate, ref, [stop], `Current Collection Board market requirement: ${description}. Detailed market tabs are not dated ${planningDate}; destination/stall has not been invented.`, clean(board[index]?.[4]) || undefined));
-      exceptions.push({ severity: "warning", runRef: ref, code: "MarketDestinationNeedsReview", detail: `${description}: current market requirement retained, but current-day destination/stall evidence is unavailable.` });
+      const planned = clean(board[index]?.[4]);
+      const namedDriver = planned && !/^(on route|night driver|driver informed|collected|on site)$/i.test(planned) ? planned : undefined;
+      runs.push(run(planningDate, ref, [stop], `PM O/N · Collection Board: ${description}. Destination/stall and explicit collection window require completion before dispatch.`, namedDriver, "PM", "Collection Board"));
+      exceptions.push({ severity: "warning", runRef: ref, code: "CollectionBoardNeedsCompletion", detail: `${description}: PM board item retained, but destination/stall and current-day timing evidence are unavailable.` });
     }
     if (Object.keys(sheets).some(name => /^(Covent|Spit|Spitalfields|Western|West 3|Brighton)/i.test(name))) {
       exceptions.push({ severity: "warning", code: "StaleMarketSheetIgnored", detail: `Detailed market tabs were not dated ${planningDate}, so they were not treated as current work.` });

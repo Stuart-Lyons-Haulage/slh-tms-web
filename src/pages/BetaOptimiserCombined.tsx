@@ -215,7 +215,7 @@ export function BetaOptimiserCombined() {
     <div className="panel" style={{ padding: 16, borderTop: "5px solid #2f6f44" }}>
       <p className="eyebrow" style={{ marginBottom: 3 }}>Planning lab · read-only</p>
       <h1 style={{ margin: 0 }}>Beta Optimiser</h1>
-      <p>Compare the human outbound plan with BETA while treating Southbound work as return/backhaul work, not as extra outbound trucks. Wave 3, markets, trays, crates, trollies and transfers remain visible even where no pallet count is stated.</p>
+      <p>Compare the human outbound plan with BETA while treating Southbound work as return/backhaul work, not as extra outbound trucks. PM / O/N, markets, trays, crates, trollies and transfers remain visible even where no pallet count is stated.</p>
 
       <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
         <label><small>Planning date</small><br/><input type="date" value={planningDate} onChange={event => setPlanningDate(event.target.value)} disabled={busy}/></label>
@@ -227,7 +227,7 @@ export function BetaOptimiserCombined() {
         <p className="notice inline-notice"><strong>Backhaul rule:</strong> Southbound S/T work is a pool to attach to drivers returning south. It is not scored as a separate low-utilisation truck.</p>
         <p className="notice inline-notice"><strong>Capacity:</strong> BETA uses 26 Standard / 33 Euro pallets from the optimiser. Core human runs use the same clearly labelled capacity benchmark.</p>
         <p className="notice inline-notice"><strong>No false win:</strong> BETA only gets an “improved” verdict when coverage, routing and backhaul allocation evidence support it.</p>
-        <p className="notice inline-notice"><strong>Workbook rules:</strong> Lyons Collections reads `Collection Plan`; Southbound is treated as return-work evidence plus Wave 3/market work.</p>
+        <p className="notice inline-notice"><strong>Workbook rules:</strong> Lyons Collections reads `Collection Plan`; Southbound is treated as return-work evidence plus PM / O/N and market work.</p>
       </div>
 
       {fileNames.length > 0 && <p><small><strong>Selected:</strong> {fileNames.join(" + ")}</small></p>}
@@ -247,7 +247,7 @@ export function BetaOptimiserCombined() {
         <div className="panel" style={{ padding: 10 }}><small>Movement match</small><div><strong>{reconciliation?.matchedOrderLines}/{reconciliation?.betaOrderLines}</strong></div></div>
         <div className="panel" style={{ padding: 10 }}><small>Core outbound runs</small><div><strong>{planView.humanCore.length} human → {planView.betaCore.length} BETA</strong></div><small>{coreRunDelta === 0 ? "No truck-count reduction" : coreRunDelta != null && coreRunDelta < 0 ? `${Math.abs(coreRunDelta)} fewer core runs` : `${coreRunDelta ?? 0} more core runs`}</small></div>
         <div className="panel" style={{ padding: 10 }}><small>Southbound return work</small><div><strong>{planView.humanBackhauls.length} backhaul route{planView.humanBackhauls.length === 1 ? "" : "s"}</strong></div><small>Must be paired to returning runs</small></div>
-        <div className="panel" style={{ padding: 10 }}><small>Wave 3 / markets</small><div><strong>{planView.humanWave3.length + planView.humanMarkets.length} route{planView.humanWave3.length + planView.humanMarkets.length === 1 ? "" : "s"}</strong></div></div>
+        <div className="panel" style={{ padding: 10 }}><small>PM / O/N and markets</small><div><strong>{planView.humanWave3.length + planView.humanMarkets.length} route{planView.humanWave3.length + planView.humanMarkets.length === 1 ? "" : "s"}</strong></div></div>
         <div className="panel" style={{ padding: 10 }}><small>Core utilisation</small><div><strong>{pct(planView.humanUtil)} human → {pct(planView.betaUtil)} BETA</strong></div><small>{utilisationDelta == null ? "Not comparable" : `${utilisationDelta >= 0 ? "+" : ""}${utilisationDelta.toFixed(1)} percentage points`}</small></div>
         <div className="panel" style={{ padding: 10 }}><small>Core attention</small><div><strong>{planView.humanUnder} under-used · {planView.humanOver} over-capacity</strong></div><small>BETA: {planView.betaUnder} under-used · {planView.betaOver} over-capacity</small></div>
         <div className="panel" style={{ padding: 10 }}><small>HGV mileage</small><div><strong>{miles(comparison.lyons.totalMiles)} human / {miles(comparison.beta.totalMiles)} BETA</strong></div></div>
@@ -282,14 +282,14 @@ export function BetaOptimiserCombined() {
       </section>}
 
       {(planView.humanWave3.length > 0 || planView.humanMarkets.length > 0) && <section style={{ display: "grid", gap: 8 }}>
-        <div><h3 style={{ marginBottom: 2 }}>Wave 3 and market work</h3><small>Kept separate from the core outbound utilisation score because this work follows different operating rules.</small></div>
+        <div><h3 style={{ marginBottom: 2 }}>PM / O/N and market work</h3><small>Kept separate from the core outbound utilisation score because this work follows different operating rules.</small></div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(360px,1fr))", gap: 8 }}>
           {[...planView.humanWave3, ...planView.humanMarkets].map(route => <BackhaulCard key={route.reference} route={route}/>)}
         </div>
       </section>}
 
       {planView.betaOther.length > 0 && <section style={{ display: "grid", gap: 8 }}>
-        <div><h3 style={{ marginBottom: 2 }}>Other BETA work</h3><small>Unquantified and Wave 3 movements are retained but are not allowed to inflate the core outbound utilisation score.</small></div>
+        <div><h3 style={{ marginBottom: 2 }}>Other BETA work</h3><small>Unquantified and PM / O/N movements are retained but are not allowed to inflate the core outbound utilisation score.</small></div>
         {planView.betaOther.map(run => <BetaRunCard key={run.reference} run={run}/>)}
       </section>}
     </div>}

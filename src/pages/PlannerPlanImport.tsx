@@ -2,6 +2,7 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { useAccessToken } from "../lib/auth";
 import { formatDate, todayIsoDate } from "../lib/dateUtils";
 import { parsePlannerCsv } from "../lib/plannerCsvImport";
+import { parsePlannerPlanFile } from "../lib/plannerFileImport";
 import { displayPlannerRunChoice } from "../lib/runDisplay";
 import { importPlannerPlanInChunks, type PlannerImportSummary as ImportSummary } from "../lib/plannerImportChunking";
 
@@ -25,10 +26,11 @@ type ImportStop = {
   deliveryDepartTime?: string;
   reasonForLate?: string;
 };
-type ImportRun = { runRef?: string; plannerRun?: string; runType?: string; planningDate?: string; driver?: string; vehicle?: string; trailer?: string; includeInImport?: boolean; reconciliationStatus?: string; capacityStatus?: string; mixedUtilisationPercent?: number; stops?: ImportStop[] };
+type ImportRun = { runRef?: string; plannerRun?: string; runType?: string; overnight?: boolean; planningDate?: string; driver?: string; vehicle?: string; trailer?: string; includeInImport?: boolean; reconciliationStatus?: string; capacityStatus?: string; mixedUtilisationPercent?: number; stops?: ImportStop[] };
 type PlannerPlanPayload = { schema?: string; planningDate?: string; runs?: ImportRun[]; exceptions?: Array<{ severity?: string; runRef?: string; code?: string; detail?: string }> };
 type ResourceReconciliation = { changed?: number; unresolvedDrivers?: string[]; unresolvedVehicles?: string[]; unresolvedTrailers?: string[] };
 type SiteReconciliation = { changedStops?: number; unresolved?: string[]; ambiguous?: string[] };
+type PeriodFilter = "ALL" | "AM" | "PM";
 
 function safeRuns(payload?: PlannerPlanPayload) { return Array.isArray(payload?.runs) ? payload!.runs! : []; }
 function clean(value?: string) { return String(value || "").trim(); }
@@ -79,6 +81,7 @@ export function PlannerPlanImport() {
   const [resetMessage, setResetMessage] = useState<string>();
   const [summary, setSummary] = useState<ImportSummary>();
   const [reconcileMessage, setReconcileMessage] = useState<string>();
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("ALL");
 
   const preview = useMemo(() => {
     const runs = safeRuns(payload);
@@ -95,9 +98,10 @@ export function PlannerPlanImport() {
     setError(undefined); setSummary(undefined); setReconcileMessage(undefined); setPayload(undefined);
     const file = event.target.files?.[0]; if (!file) return; setFileName(file.name);
     try {
-      const raw = await file.text();
       const isCsv = file.name.toLowerCase().endsWith(".csv") || file.type.toLowerCase().includes("csv");
-      const parsed = (isCsv ? parsePlannerCsv(raw, file.name) : JSON.parse(raw)) as PlannerPlanPayload;
+      const parsed = (isCsv
+        ? parsePlannerCsv(await file.text(), file.name)
+        : await parsePlannerPlanFile(file)) as PlannerPlanPayload;
       if (!parsed?.planningDate || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.planningDate)) throw new Error("The planner file needs a valid planningDate (YYYY-MM-DD). It will display as DD/MM/YYYY after upload.");
       if (!Array.isArray(parsed.runs) || parsed.runs.length === 0) throw new Error("The planner file contains no runs.");
       const refs = parsed.runs.map((run) => String(run.runRef || "").trim().toUpperCase());
@@ -105,6 +109,7 @@ export function PlannerPlanImport() {
       const duplicate = refs.find((ref, index) => refs.indexOf(ref) !== index); if (duplicate) throw new Error(`Duplicate run reference in file: ${duplicate}.`);
       if (parsed.runs.some((run) => run.planningDate && run.planningDate !== parsed.planningDate)) throw new Error("One or more runs use a different planning date from the file header.");
       setPayload(parsed);
+      setPeriodFilter("ALL");
       setResetDate(parsed.planningDate);
     } catch (exception) { setError(exception instanceof Error ? exception.message : "The planner file could not be read."); }
   }
@@ -180,6 +185,10 @@ export function PlannerPlanImport() {
     finally { setBusy(false); }
   }
 
+  const visibleRuns = safeRuns(payload).filter((run) => periodFilter === "ALL" || String(run.runType || "").toUpperCase() === periodFilter);
+  const amRuns = safeRuns(payload).filter((run) => String(run.runType || "").toUpperCase() === "AM").length;
+  const pmRuns = safeRuns(payload).filter((run) => String(run.runType || "").toUpperCase() === "PM").length;
+
   return <section><div className="page-heading"><div><p className="eyebrow">Planner control</p><h1>Import planner plan</h1><p>Load a planner JSON or collection-plan CSV, review the control totals, then confirm the authenticated import into the TMS.</p></div></div>
     <div className="card" style={{ maxWidth: 1100, display: "grid", gap: 18 }}>
       <div className="notice inline-notice" style={{ display: "grid", gap: 10 }}>
@@ -189,12 +198,13 @@ export function PlannerPlanImport() {
         <button type="button" className="danger" onClick={() => void resetPlanningDay()} disabled={busy || resetBusy}>{resetBusy ? "Resetting…" : `Reset ${formatDate(resetDate)} planning day`}</button>
         {resetMessage && <span style={{ whiteSpace: "pre-wrap" }}>{resetMessage}</span>}
       </div>
-      <label style={{ display: "grid", gap: 8, maxWidth: 560 }}><strong>Planner JSON or collection-plan CSV</strong><input type="file" accept="application/json,.json,text/csv,.csv" onChange={(event) => void chooseFile(event)} disabled={busy || resetBusy} /></label>
-      <p className="hint">CSV rows are grouped by <strong>Load number</strong>. Driver, vehicle and trailer must be consistent within each load. The converted plan uses the same authenticated JSON import and wallboard run references as the existing Planner import.</p>
+      <label style={{ display: "grid", gap: 8, maxWidth: 560 }}><strong>Planner workbook, JSON or collection-plan CSV</strong><input type="file" accept="application/json,.json,text/csv,.csv,.xlsx,.xls,.xlsm" onChange={(event) => void chooseFile(event)} disabled={busy || resetBusy} /></label>
+      <p className="hint">Upload the familiar Lyons Collections or Southbound workbook directly. Collection Plan rows are grouped by <strong>Load number</strong>; AM and PM are retained, with cross-date PM movements shown as O/N. Driver, vehicle and trailer are retained for review rather than guessed.</p>
       {fileName && <p><strong>Selected:</strong> {fileName}</p>}
       {payload && <><div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}><span className="badge"><strong>{formatDate(payload.planningDate)}</strong> planning date</span><span className="badge"><strong>{preview.total}</strong> source runs</span><span className="badge"><strong>{preview.included}</strong> to import</span><span className="badge"><strong>{preview.held}</strong> held / excluded</span><span className="badge"><strong>{preview.stops}</strong> source lines</span><span className="badge"><strong>{preview.actuals}</strong> manual actual/ETA lines</span><span className="badge"><strong>{preview.red}</strong> red</span><span className="badge"><strong>{preview.amber}</strong> amber</span></div>
       <p className="hint">Run names below are the operational names that will be shown on Runs and TV views. The dated TMS reference remains internal only.</p>
-      <div style={{ overflowX: "auto" }}><table><thead><tr><th>Run</th><th>Type</th><th>Driver</th><th>Vehicle</th><th>Trailer</th><th>Source lines</th><th>First collect window</th><th>Deliver by</th><th>Manual actuals/ETAs</th><th>Capacity</th><th>Import</th><th>Reconciliation</th></tr></thead><tbody>{safeRuns(payload).map((run, index) => <tr key={`${run.runRef}-${index}`}><td><strong>{displayPlannerRunChoice(run.plannerRun, run.runType, run.runRef, firstCollectTime(run))}</strong></td><td>{run.runType || "—"}</td><td>{run.driver || "Unallocated"}</td><td>{run.vehicle || "—"}</td><td>{run.trailer || "—"}</td><td>{run.stops?.length || 0}</td><td>{firstCollect(run)}</td><td>{finalDeadline(run)}</td><td>{manualActualCount(run)}</td><td>{run.capacityStatus || "—"}{typeof run.mixedUtilisationPercent === "number" ? ` · ${run.mixedUtilisationPercent.toFixed(1)}%` : ""}</td><td>{run.includeInImport === false ? "Held" : "Yes"}</td><td>{run.reconciliationStatus || "—"}</td></tr>)}</tbody></table></div>
+      <div className="actions" role="tablist" aria-label="Planner period filter" style={{ marginBottom: 10 }}><button type="button" className={periodFilter === "ALL" ? "primary" : ""} onClick={() => setPeriodFilter("ALL")}>All ({safeRuns(payload).length})</button><button type="button" className={periodFilter === "AM" ? "primary" : ""} onClick={() => setPeriodFilter("AM")}>AM ({amRuns})</button><button type="button" className={periodFilter === "PM" ? "primary" : ""} onClick={() => setPeriodFilter("PM")}>PM / O/N ({pmRuns})</button></div>
+      <div style={{ overflowX: "auto" }}><table><thead><tr><th>Run</th><th>Type</th><th>Driver</th><th>Vehicle</th><th>Trailer</th><th>Source lines</th><th>First collect window</th><th>Deliver by</th><th>Manual actuals/ETAs</th><th>Capacity</th><th>Import</th><th>Reconciliation</th></tr></thead><tbody>{visibleRuns.map((run, index) => <tr key={`${run.runRef}-${index}`}><td><strong>{displayPlannerRunChoice(run.plannerRun, run.runType, run.runRef, firstCollectTime(run), run.overnight)}</strong></td><td>{run.runType || "—"}</td><td>{run.driver || "Unallocated"}</td><td>{run.vehicle || "—"}</td><td>{run.trailer || "—"}</td><td>{run.stops?.length || 0}</td><td>{firstCollect(run)}</td><td>{finalDeadline(run)}</td><td>{manualActualCount(run)}</td><td>{run.capacityStatus || "—"}{typeof run.mixedUtilisationPercent === "number" ? ` · ${run.mixedUtilisationPercent.toFixed(1)}%` : ""}</td><td>{run.includeInImport === false ? "Held" : "Yes"}</td><td>{run.reconciliationStatus || "—"}</td></tr>)}</tbody></table></div>
       <button className="primary" disabled={busy || resetBusy || preview.included === 0} onClick={() => void importPlan()}>{busy ? "Importing…" : `Confirm import of ${preview.included} runs`}</button></>}
       {error && <div className="notice inline-notice"><strong>Import failed</strong><div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{error}</div></div>}
       {summary && <div style={{ display: "grid", gap: 12 }}><h2>Import complete · {formatDate(summary.planningDate)}</h2><div>{summary.created} created · {summary.updated} updated · {summary.unchanged} unchanged · {summary.held} held</div>{summary.unresolvedDrivers.length > 0 && <div>Drivers: {summary.unresolvedDrivers.join(", ")}</div>}{summary.unresolvedVehicles.length > 0 && <div>Vehicles: {summary.unresolvedVehicles.join(", ")}</div>}{summary.unresolvedTrailers.length > 0 && <div>Trailers: {summary.unresolvedTrailers.join(", ")}</div>}{summary.warnings.length > 0 && <ul>{summary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}{reconcileMessage && <div className="notice inline-notice" style={{ whiteSpace: "pre-wrap" }}><strong>Master Data reconciliation</strong><div style={{ marginTop: 6 }}>{reconcileMessage}</div></div>}</div>}

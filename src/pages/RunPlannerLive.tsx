@@ -8,6 +8,7 @@ import "../simple-planner.css";
 import { createRun, listRuns, updateRunStops } from '../api/runs';
 
 type Period = "" | "AM" | "PM";
+type PeriodFilter = "ALL" | "AM" | "PM";
 type Allocation = { loadId: string; loadReference?: string; pallets: number };
 type PlanningOrder = {
   id: string;
@@ -84,6 +85,7 @@ const periodFromLoad = (load: Load): Period => {
   const period = tagged(load.plannerNotes, "Planner period").toUpperCase();
   return period === "AM" || period === "PM" ? period : "";
 };
+const overnightFromLoad = (load: Load) => Boolean(load.overnight || load.nightOutRequired || plannerBoolean(load.plannerNotes, "Night out") || /\b(?:O\/N|overnight)\b/i.test(load.plannerNotes || ""));
 const withPlannerPeriod = (notes: string | undefined, period: Period) => {
   const parts = (notes || "").split("·").map((part) => part.trim()).filter(Boolean)
     .filter((part) => !part.toLowerCase().startsWith("planner period:"))
@@ -204,6 +206,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
   const [busyKey, setBusyKey] = useState<string>();
   const [message, setMessage] = useState<string>();
   const [query, setQuery] = useState("");
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("ALL");
   const saveTimers = useRef<Record<string, number>>({});
   const mutationCounter = useRef(0);
 
@@ -270,7 +273,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
         key: load.id,
         loadId: load.id,
         period: periodFromLoad(load),
-        nightOut: plannerBoolean(load.plannerNotes, "Night out"),
+        nightOut: overnightFromLoad(load),
         operationalAmendment: tagged(load.plannerNotes, "Operational amendment"),
         lines: lines.length ? lines : [blankLine()],
       } satisfies RunDraft;
@@ -367,6 +370,17 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
   }).filter((cluster) => cluster.movements.length > 0), [marketNames, movements, sites]);
 
   const active = runs.find((run) => run.key === activeKey) || runs[0];
+  const visibleRuns = useMemo(
+    () => periodFilter === "ALL" ? runs : runs.filter((run) => run.period === periodFilter || !run.period),
+    [periodFilter, runs],
+  );
+  const amRunCount = runs.filter((run) => run.period === "AM").length;
+  const pmRunCount = runs.filter((run) => run.period === "PM").length;
+  const newDraft = () => {
+    const draft = blankRun(`shell-${date}-${crypto.randomUUID()}`);
+    if (periodFilter !== "ALL") draft.period = periodFilter;
+    return draft;
+  };
   const updateRun = (key: string, updater: (run: RunDraft) => RunDraft) => setRuns((current) => current.map((run) => run.key === key ? updater(run) : run));
   const updateLine = (runKey: string, lineKey: string, patch: Partial<RunLine>) => updateRun(runKey, (run) => ({ ...run, lines: run.lines.map((line) => line.key === lineKey ? { ...line, ...patch } : line) }));
   const runTotal = (run: RunDraft) => run.lines.reduce((sum, line) => sum + (validPallets(line.pallets) || 0), 0);
@@ -574,7 +588,8 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
     <div className="simple-planner-toolbar">
       {dateIsExternallyControlled ? <span><strong>{date}</strong><small> plan date</small></span> : <label>Plan date <input type="date" value={date} onChange={(event) => resetForDate(event.target.value)} /></label>}
       <button onClick={() => void refreshAll()} disabled={Boolean(busyKey)}>Refresh</button>
-      <button className="primary" onClick={() => { const draft = blankRun(`shell-${date}-${crypto.randomUUID()}`); setRuns((current) => [...current, draft]); setActiveKey(draft.key); }}>+ Add run</button>
+      <button className="primary" onClick={() => { const draft = newDraft(); setRuns((current) => [...current, draft]); setActiveKey(draft.key); }}>+ Add run</button>
+      <div className="run-period-selector" role="tablist" aria-label="Planner period"><span>View</span><button type="button" className={periodFilter === "ALL" ? "selected" : ""} onClick={() => setPeriodFilter("ALL")}>All ({runs.length})</button><button type="button" className={periodFilter === "AM" ? "selected" : ""} onClick={() => setPeriodFilter("AM")}>AM ({amRunCount})</button><button type="button" className={periodFilter === "PM" ? "selected" : ""} onClick={() => setPeriodFilter("PM")}>PM / O/N ({pmRunCount})</button></div>
       <div className="simple-planner-summary"><span><strong>{summary.planned}</strong><small>planned</small></span><span><strong>{summary.outstanding}</strong><small>remaining</small></span></div>
     </div>
 
@@ -582,13 +597,14 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
 
     <div className="simple-planner-layout">
       <div className="simple-run-builder">
-        <div className="simple-section-heading"><div><p className="eyebrow">Run builder</p><h2>{runs.length} run{runs.length === 1 ? "" : "s"}</h2></div><small>Same collection/delivery movements are consolidated. Quantity changes auto-save.</small></div>
-        {runs.map((run, index) => {
+        <div className="simple-section-heading"><div><p className="eyebrow">Run builder</p><h2>{visibleRuns.length} run{visibleRuns.length === 1 ? "" : "s"}</h2></div><small>AM is daytime work. PM / O/N covers routes that continue past midnight. Same collection/delivery movements are consolidated.</small></div>
+        {visibleRuns.map((run) => {
+          const index = runs.indexOf(run);
           const saving = busyKey === run.key || busyKey?.startsWith(`${run.key}:`);
           const load = loads.find((item) => item.id === run.loadId);
           return <article key={run.key} className={`simple-run-card ${activeKey === run.key ? "active" : ""}`} onClick={() => setActiveKey(run.key)}>
-            <div className="simple-run-header"><div><strong>RUN {index + 1}{run.period ? ` ${run.period}` : ""}</strong><small>{run.loadId ? "Live" : "New"}</small></div><div className="run-period-selector"><span>Period</span>{(["AM", "PM"] as const).map((period) => <button key={period} type="button" className={run.period === period ? "selected" : ""} onClick={(event) => { event.stopPropagation(); updateRun(run.key, (current) => ({ ...current, period })); void persistRunDetails(run, { period }); }}>{period}</button>)}</div></div>
-            <div className="simple-run-details"><label className="simple-night-out"><input type="checkbox" checked={run.nightOut} onChange={(event) => { const nightOut = event.target.checked; updateRun(run.key, (current) => ({ ...current, nightOut })); void persistRunDetails(run, { nightOut }); }} /> Night out confirmed</label><label>Operational amendment<input value={run.operationalAmendment} placeholder="e.g. swap to trailer 123 / breakdown" onChange={(event) => updateRun(run.key, (current) => ({ ...current, operationalAmendment: event.target.value }))} onBlur={() => void persistRunDetails(run, { operationalAmendment: run.operationalAmendment })} /></label></div>
+            <div className="simple-run-header"><div><strong>RUN {index + 1}{run.period ? ` ${run.period}` : ""}{run.nightOut ? " O/N" : ""}</strong><small>{run.loadId ? "Live" : "New"}</small></div><div className="run-period-selector"><span>Period</span>{(["AM", "PM"] as const).map((period) => <button key={period} type="button" className={run.period === period ? "selected" : ""} onClick={(event) => { event.stopPropagation(); updateRun(run.key, (current) => ({ ...current, period })); void persistRunDetails(run, { period }); }}>{period}</button>)}</div></div>
+            <div className="simple-run-details"><label className="simple-night-out"><input type="checkbox" checked={run.nightOut} onChange={(event) => { const nightOut = event.target.checked; updateRun(run.key, (current) => ({ ...current, nightOut })); void persistRunDetails(run, { nightOut }); }} /> Overnight / night-out confirmed</label><label>Operational amendment<input value={run.operationalAmendment} placeholder="e.g. swap to trailer 123 / breakdown" onChange={(event) => updateRun(run.key, (current) => ({ ...current, operationalAmendment: event.target.value }))} onBlur={() => void persistRunDetails(run, { operationalAmendment: run.operationalAmendment })} /></label></div>
             <div className="simple-run-columns"><span>Collection</span><span>Pallets</span><span>Delivery</span><span>Line note</span><span /></div>
             <div className="simple-run-lines">{run.lines.map((line, lineIndex) => {
               const refs = lineOrderIds(line).map((id) => effectiveOrders.find((order) => order.id === id)?.reference).filter(Boolean);
@@ -605,7 +621,7 @@ export function RunPlannerLive({ planningDate }: { planningDate?: string } = {})
             {load && activeKey === run.key && <RunJobSuggestions lines={run.lines} orders={effectiveOrders} sites={sites} remainingCapacity={Math.max((load.totalPalletSpaces ?? 26) - runTotal(run), 0)} busy={poolBlocked} onAdd={(orderId) => { const order = effectiveOrders.find((item) => item.id === orderId); if (order) void addOrder(order); }} />}
           </article>;
         })}
-        <button className="simple-add-run" type="button" onClick={() => { const draft = blankRun(`shell-${date}-${crypto.randomUUID()}`); setRuns((current) => [...current, draft]); setActiveKey(draft.key); }}>+ Add another run</button>
+        <button className="simple-add-run" type="button" onClick={() => { const draft = newDraft(); setRuns((current) => [...current, draft]); setActiveKey(draft.key); }}>+ Add another run</button>
       </div>
 
       <aside className="simple-order-pool">

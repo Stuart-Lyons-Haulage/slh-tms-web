@@ -25,4 +25,8 @@ describe("displayRunReference", () => {
 
     expect(label).toBe("Run 1 AM");
   });
+
+  it("shows O/N when a PM run crosses the operating date", () => {
+    expect(displayRunReference("PLAN-20260912-5", "Planner run: Run 5 PM | Run type: PM | O/N: Yes", "2026-09-12T18:00:00Z")).toBe("Run 5 PM O/N");
+  });
 });

@@ -67,25 +67,25 @@ function legacyOperationalRunNumber(source: string) {
   return Number.isInteger(legacyNumber) && legacyNumber > 0 ? legacyNumber : undefined;
 }
 
-function formatChoice(source: string, period?: string) {
+function formatChoice(source: string, period?: string, overnight?: boolean) {
   const clean = source.trim();
   const resolvedPeriod = period || explicitPeriod(clean);
   const legacyNumber = legacyOperationalRunNumber(clean);
   if (legacyNumber != null) {
-    return `Run ${legacyNumber}${resolvedPeriod ? ` ${resolvedPeriod}` : ""}`;
+    return `Run ${legacyNumber}${resolvedPeriod ? ` ${resolvedPeriod}` : ""}${overnight ? " O/N" : ""}`;
   }
 
   const numeric = clean.match(NUMERIC_RUN);
   if (numeric) {
     const number = String(Number(numeric[1]));
     const numericPeriod = period || explicitPeriod(numeric[2]) || resolvedPeriod;
-    return `Run ${number}${numericPeriod ? ` ${numericPeriod}` : ""}`;
+    return `Run ${number}${numericPeriod ? ` ${numericPeriod}` : ""}${overnight ? " O/N" : ""}`;
   }
 
   const embeddedPeriod = explicitPeriod(clean);
   const withoutRun = clean.replace(/^RUN[\s:_-]*/i, "").replace(/[-_]+/g, " ").trim() || "TBC";
   const withoutPeriod = embeddedPeriod ? withoutRun.replace(PERIOD, "").trim() : withoutRun;
-  return `Run ${withoutPeriod}${resolvedPeriod ? ` ${resolvedPeriod}` : ""}`;
+  return `Run ${withoutPeriod}${resolvedPeriod ? ` ${resolvedPeriod}` : ""}${overnight ? " O/N" : ""}`;
 }
 
 function operationalSource(source: string, plannedPeriod?: string) {
@@ -93,18 +93,22 @@ function operationalSource(source: string, plannedPeriod?: string) {
   return source.replace(PERIOD, "").trim();
 }
 
-export function displayRunReference(reference: string, plannerNotes?: string, firstPlannedUtc?: string) {
+function explicitOvernight(value?: string) {
+  return Boolean(value && /\b(?:O\/N|overnight|night[ -]?out)\b/i.test(value) && !/\bnight[ -]?out:\s*(?:no|false)\b/i.test(value));
+}
+
+export function displayRunReference(reference: string, plannerNotes?: string, firstPlannedUtc?: string, overnight?: boolean) {
   const plannerRun = noteValue(plannerNotes, "Planner run");
   const runType = noteValue(plannerNotes, "Run type");
   const plannedPeriod = periodFromPlannedUtc(firstPlannedUtc);
   const source = operationalSource(plannerRun || stripInternalReference(reference), plannedPeriod);
   const period = plannedPeriod || explicitPeriod(source) || explicitPeriod(runType);
-  return formatChoice(source, period);
+  return formatChoice(source, period, overnight ?? explicitOvernight(plannerNotes));
 }
 
-export function displayPlannerRunChoice(plannerRun?: string, runType?: string, fallbackReference?: string, firstPlannedUtc?: string) {
+export function displayPlannerRunChoice(plannerRun?: string, runType?: string, fallbackReference?: string, firstPlannedUtc?: string, overnight?: boolean) {
   const plannedPeriod = periodFromPlannedUtc(firstPlannedUtc);
   const source = operationalSource(plannerRun?.trim() || (fallbackReference ? stripInternalReference(fallbackReference) : "TBC"), plannedPeriod);
   const period = plannedPeriod || explicitPeriod(source) || explicitPeriod(runType);
-  return formatChoice(source, period);
+  return formatChoice(source, period, overnight ?? explicitOvernight(runType));
 }

@@ -117,15 +117,17 @@ export function lyonsCollectionsWorkbookToPayload(sheets: WorkbookSheetRows, fil
     const first = stops.map(stop => stop.collectFrom).filter(Boolean).sort()[0];
     const hour = first ? Number(first.slice(0, 2)) : 0;
     const total = stops.reduce((sum, stop) => sum + (stop.pallets ?? 0), 0);
+    const overnight = stops.some(stop => stop.collectionDate !== planningDate || stop.deliveryDate !== planningDate);
     return {
       runRef: `LYONS-${planningDate.replace(/-/g, "")}-RUN-${String(load).padStart(3, "0")}`,
       plannerRun: `Run ${Number(load) || load}`,
       runType: hour >= 17 ? "PM" : "AM",
+      overnight,
       planningDate,
       driver: clean(group[0]?.[driverCol]) || undefined,
       vehicle: clean(group[0]?.[vehicleCol]) || undefined,
       trailer: clean(group[0]?.[trailerCol]) || undefined,
-      plannerNote: `Collection Plan import from ${fileName}`,
+      plannerNote: `Collection Plan import from ${fileName}${overnight ? " | O/N: Yes" : ""}`,
       includeInImport: true,
       reconciliationStatus: "Collection Plan direct import",
       capacityStatus: total > 33 ? "Red" : total > 26 ? "Amber" : "Green",
