@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, type Vehicle } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
+import { MasterDataExportButton } from "../components/MasterDataExportButton";
 
 function text(value: unknown) { return String(value ?? "").trim(); }
 function maskCard(value?: string) {
@@ -49,7 +50,7 @@ export function FuelCardsOperational() {
       </div>
       <div className="title-actions">
         <span className="status approved">Live TMS Master Database</span>
-        <button onClick={() => void vehicles.refresh()}>Refresh</button>
+        <button onClick={() => void vehicles.refresh()}>Refresh</button><MasterDataExportButton section="fuel-cards" label="Fuel cards" rows={(vehicles.data || []) as unknown as Record<string, unknown>[]} />
         <Link className="button-like" to="/admin/fuel-card-migration">Legacy fuel migration</Link>
       </div>
     </div>
