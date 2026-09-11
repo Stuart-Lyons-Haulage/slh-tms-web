@@ -52,7 +52,7 @@ export function MarketsMasterClean() {
     <section>
       <div className="title-row">
         <div><p className="eyebrow">Master data</p><h1>Markets &amp; senders</h1></div>
-        <button onClick={() => void contacts.refresh()}>Refresh</button>
+        <div className="title-actions"><button onClick={() => void contacts.refresh()}>Refresh</button><MasterDataExportButton section="markets" label="Markets" rows={(rows) as unknown as Record<string, unknown>[]} /></div>
       </div>
       <p className="intro">Market orders use this list for sellers, stall details, salesman and sender dropdowns. Choose a market below to work with one list at a time.</p>
 

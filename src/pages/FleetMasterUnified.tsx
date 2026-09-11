@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { request } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
+import { MasterDataExportButton } from "../components/MasterDataExportButton";
 
 type Kind = "vehicles" | "trailers";
 type MasterRow = Record<string, unknown> & { id: string; active: boolean };
@@ -266,7 +267,7 @@ export function FleetMasterUnified({ kind }: { kind: Kind }) {
         <p className="hint">The TMS row is the planning identity. Fleetio maintenance, compliance, specification, defects and work orders are joined onto that same record.</p>
       </div>
       <div className="title-actions">
-        <button onClick={() => void load()} disabled={loading}>Refresh</button>
+        <button onClick={() => void load()} disabled={loading}>Refresh</button><MasterDataExportButton section={kind} label={kind === "vehicles" ? "Vehicles" : "Trailers"} rows={(masters) as unknown as Record<string, unknown>[]} />
         <button className="primary" onClick={() => void syncFleetio()} disabled={syncing}>{syncing ? "Syncing…" : "Sync Fleetio into TMS"}</button>
       </div>
     </div>

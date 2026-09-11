@@ -8,7 +8,6 @@ import { MasterDataOperational, type MasterDataTab } from './MasterDataOperation
 import { GeofenceOperational } from './GeofenceOperational';
 import { MasterDataAddPanel, type AddableMasterSection } from './MasterDataAddPanel';
 import { DotGeofenceImport } from './DotGeofenceImport';
-import { MasterDataExportButton, type MasterExportSection } from '../components/MasterDataExportButton';
 
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
 
@@ -46,7 +45,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
         <h1>Master data</h1>
         <p className="intro">One place to add and maintain the records used throughout planning, tracking and integrations. The TMS is the live master; integrations enrich those same records rather than creating competing registers.</p>
       </div>
-      <div className="title-actions"><span className="status approved">Live TMS Master Database</span><MasterDataExportButton section={section as MasterExportSection} label={active.label} /></div>
+      <span className="status approved">Live TMS Master Database</span>
     </div>
 
 
