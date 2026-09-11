@@ -133,7 +133,7 @@ describe("Driver Dispatch UI contract", () => {
     expect(source).toContain("Allocated but unavailable · reassign this run");
     expect(source).toContain('const tachoUnavailable = status?.availabilityStatus === "Unavailable";');
     expect(source).not.toContain('status?.availabilityStatus === "Unavailable" || status?.weeklyRestStatus === "Overdue"');
-    expect(source).toContain("disabled={busy || driver.onLeave || tachoUnavailable || !vehicleId}");
+    expect(source).toContain("disabled={busy || driver.onLeave || tachoUnavailable || complianceBlocked || !vehicleId}");
   });
 
   it("continues to prevent a run already allocated to another driver being offered for duplicate allocation", () => {
