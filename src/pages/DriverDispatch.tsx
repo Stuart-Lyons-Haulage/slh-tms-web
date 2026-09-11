@@ -5,6 +5,7 @@ import { useAccessToken } from "../lib/auth";
 import { getDriverDispatchRoute, getRunDispatch } from "../api/runs";
 import { firstCollectionStop, runDirection, sortDispatchDrivers, suggestionRunLabel } from "./DriverDispatchPlanning";
 import { dispatchStartsCalculatedEvent, type StartSuggestion } from "./DispatchCalculatedStarts";
+import { getMasterDispatchData, type MasterVehicle } from "../api/master";
 import "../driver-dispatch.css";
 import "../driver-dispatch-compact.css";
 
@@ -67,8 +68,14 @@ type DispatchDriver = {
   suggestion?: string;
   agencyBookedFrom?: string;
   agencyBookedThrough?: string;
+  masterDriverId?: string;
+  licenceExpiry?: string;
+  cpcExpiry?: string;
+  digitalTachoCardExpiry?: string;
+  medicalExpiry?: string;
 };
 
+type DispatchVehicle = Vehicle & { masterCompliance?: MasterVehicle };
 type Workbench = {
   planningDate: string;
   weekStart?: string;
@@ -76,7 +83,7 @@ type Workbench = {
   leaveSource: string;
   assistantSource?: string;
   drivers: DispatchDriver[];
-  vehicles: Vehicle[];
+  vehicles: DispatchVehicle[];
   trailers: Trailer[];
   loads: DispatchLoad[];
 };
@@ -227,6 +234,30 @@ function statusClass(status?: DispatchStatus) {
 function knownUnavailable(driver: DispatchDriver, status?: DriverDispatchStatus) {
   return driver.onLeave || status?.availabilityStatus === "Unavailable";
 }
+function complianceDates(driver: DispatchDriver, vehicle?: DispatchVehicle) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const threshold = new Date(today);
+  threshold.setDate(threshold.getDate() + 30);
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  const check = (value: string | undefined, label: string) => {
+    if (!value) return;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return;
+    date.setHours(0, 0, 0, 0);
+    if (date < today) errors.push(`${label} expired ${date.toLocaleDateString("en-GB")}`);
+    else if (date <= threshold) warnings.push(`${label} expires ${date.toLocaleDateString("en-GB")}`);
+  };
+  check(driver.licenceExpiry, "Licence");
+  check(driver.cpcExpiry, "CPC");
+  check(driver.digitalTachoCardExpiry, "Digital tacho card");
+  check(driver.medicalExpiry, "Medical");
+  check(vehicle?.masterCompliance?.motExpiry, "Vehicle MOT");
+  check(vehicle?.masterCompliance?.tachoCalibrationExpiry, "Tacho calibration");
+  return { warnings, errors };
+}
+
 function fleetioWarning(vehicle?: Vehicle) {
   const value = vehicle?.fleetioStatus?.trim();
   if (!value) return undefined;
@@ -319,8 +350,33 @@ export function DriverDispatch() {
     setStatusError(undefined);
     try {
       const access = await token();
-      const workbench = await request<Workbench>(`/api/v1/driver-dispatch?date=${encodeURIComponent(date)}`, access, undefined, 90000);
-      setData(workbench);
+      const [workbench, master] = await Promise.all([
+        request<Workbench>(`/api/v1/driver-dispatch?date=${encodeURIComponent(date)}`, access, undefined, 90000),
+        getMasterDispatchData(access)
+      ]);
+      const masterDriver = (driver: DispatchDriver) => master.drivers.find(item =>
+        item.driverId === driver.employeeNumber ||
+        item.fullName.localeCompare(driver.displayName, undefined, { sensitivity: "base" }) === 0 ||
+        (item.preferredName && item.preferredName.localeCompare(driver.displayName, undefined, { sensitivity: "base" }) === 0));
+      const masterVehicle = (vehicle: Vehicle) => master.vehicles.find(item =>
+        item.registration.localeCompare(vehicle.registration, undefined, { sensitivity: "base" }) === 0 ||
+        item.vehicleId === vehicle.id);
+      setData({
+        ...workbench,
+        drivers: workbench.drivers.map(driver => {
+          const item = masterDriver(driver);
+          return item ? {
+            ...driver,
+            masterDriverId: item.driverId,
+            displayName: item.preferredName || item.fullName || driver.displayName,
+            licenceExpiry: item.licenceExpiry,
+            cpcExpiry: item.cpcExpiry,
+            digitalTachoCardExpiry: item.digitalTachoCardExpiry,
+            medicalExpiry: item.medicalExpiry
+          } : driver;
+        }),
+        vehicles: workbench.vehicles.map(vehicle => ({ ...vehicle, masterCompliance: masterVehicle(vehicle) }))
+      });
       try {
         const statusResponse = await request<{ planningDate: string; drivers: DriverDispatchStatus[] }>(`/api/v1/driver-dispatch-status?date=${encodeURIComponent(date)}`, access, undefined, 90000);
         setStatuses(Object.fromEntries(statusResponse.drivers.map(item => [item.driverId, item])));
@@ -601,6 +657,8 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
   const tachoUnavailable = status?.availabilityStatus === "Unavailable";
   const selectedVehicle = vehicleId ? data.vehicles.find(vehicle => vehicle.id === vehicleId) : undefined;
   const fleetWarning = fleetioWarning(selectedVehicle);
+  const compliance = complianceDates(driver, selectedVehicle as DispatchVehicle);
+  const complianceBlocked = compliance.errors.length > 0;
   const availabilityWarning = knownUnavailable(driver, status);
   const displayDay = status?.projectedDayNumber || driver.dayNumber;
   const couldStartUtc = calculatedStart?.suggestedStartUtc || status?.earliestStartUtc || initial?.plannedStartUtc;
@@ -675,6 +733,10 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
       setNotice(status?.availabilityMessage || status?.weeklyRestMessage || "This driver is visible for planning but is not currently available for allocation.");
       return;
     }
+    if (complianceBlocked) {
+      setNotice(`Allocation blocked: ${compliance.errors.join("; ")}.`);
+      return;
+    }
     if (!loadId) {
       setNotice("Choose a run first.");
       return;
@@ -741,6 +803,10 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
   }
 
   async function prepareDispatch() {
+    if (complianceBlocked) {
+      setNotice(`Dispatch blocked: ${compliance.errors.join("; ")}.`);
+      return;
+    }
     if (!loadId || !vehicleId) {
       setNotice("Choose a run and vehicle first.");
       return;
@@ -843,7 +909,7 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
   return <>
     {showGroup && <tr className="dispatch-group"><td colSpan={11}>{groupLabel}</td></tr>}
     <tr className={availabilityWarning ? "weekly-rest-blocked" : ""}>
-      <td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}</td>
+      <td><strong>{driver.displayName}</strong><small>{driver.employeeNumber}</small>{driver.onLeave && <em>{driver.leaveType || "Sage HR leave"}</em>}{compliance.warnings.map(item => <small key={item} className="dispatch-compliance-warning">⚠ {item}</small>)}{compliance.errors.map(item => <small key={item} className="dispatch-compliance-error">⛔ {item}</small>)}</td>
       <td className="dispatch-start-cell" title={couldStartTitle || "Click Calculate Starts or refresh Tacho status."}>
         <strong>{couldStartUtc ? `${couldStartAssumption ? "~" : ""}${localTime(couldStartUtc)}` : "—"}</strong>
         {calculatedStart?.restType
@@ -860,7 +926,7 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
       <td>
         <TypeaheadSelect disabled={driver.onLeave || tachoUnavailable} value={vehicleId} onChange={setVehicleId} options={vehicleOptions} placeholder="Vehicle…" listId={`vehicle-${driver.driverId}`} />
         {driver.previousVehicleRegistration && <small title={`Driver was in ${driver.previousVehicleRegistration} yesterday`}>In yesterday · {driver.previousVehicleRegistration}</small>}
-        {fleetWarning && <small title={fleetWarning}>⚠ {fleetWarning}</small>}
+        {fleetWarning && <small title={fleetWarning}>⚠ {fleetWarning}</small>}{compliance.warnings.filter(item => /Vehicle|Tacho calibration/.test(item)).map(item => <small key={item} className="dispatch-compliance-warning">⚠ {item}</small>)}{compliance.errors.filter(item => /Vehicle|Tacho calibration/.test(item)).map(item => <small key={item} className="dispatch-compliance-error">⛔ {item}</small>)}
       </td>
       <td><TypeaheadSelect disabled={driver.onLeave || tachoUnavailable} value={trailerId} onChange={setTrailerId} options={trailerOptions} placeholder="Trailer…" listId={`trailer-${driver.driverId}`} /></td>
       <td><div className="run-cell"><TypeaheadSelect disabled={driver.onLeave || tachoUnavailable} value={loadId} onChange={setLoadId} options={runOptions} placeholder="Run…" listId={`run-${driver.driverId}`} />{selected && <RunHover load={selected} />}</div></td>
@@ -888,9 +954,9 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
                 <button type="button" onClick={prepareUpdate} disabled={busy}>Update text</button>
               </>
             : selected && driver.assignedLoadId === selected.id && effectiveStatus === "Awaiting Dispatch"
-              ? <button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave || tachoUnavailable || Boolean(fleetWarning)}>{busy ? "Preparing…" : "Dispatch"}</button>
+              ? <button className="primary" type="button" onClick={() => void prepareDispatch()} disabled={busy || driver.onLeave || tachoUnavailable || complianceBlocked || Boolean(fleetWarning)}>{busy ? "Preparing…" : "Dispatch"}</button>
               : null}
-          {selected && <button className={driver.assignedLoadId === selected.id ? undefined : "primary"} type="button" onClick={() => void save()} disabled={busy || driver.onLeave || tachoUnavailable || !vehicleId}>{busy ? "Working…" : driver.assignedLoadId === selected.id ? "Save allocation" : "Allocate"}</button>}
+          {selected && <button className={driver.assignedLoadId === selected.id ? undefined : "primary"} type="button" onClick={() => void save()} disabled={busy || driver.onLeave || tachoUnavailable || complianceBlocked || !vehicleId}>{busy ? "Working…" : driver.assignedLoadId === selected.id ? "Save allocation" : "Allocate"}</button>}
           {driver.assignedLoadId && <button type="button" onClick={() => void unassign()} disabled={busy}>Unassign run</button>}
           {unavailableAssigned && <span className="dispatch-blocked-note">Allocated but unavailable · reassign this run</span>}
           {!driver.assignedLoadId && availabilityWarning && <span className="dispatch-blocked-note">Visible for planning · allocation currently blocked</span>}
