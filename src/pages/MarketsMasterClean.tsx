@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { api, type MarketContact } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 import { useApi } from "../lib/useApi";
@@ -75,45 +75,7 @@ export function MarketsMasterClean() {
         </table>
       </div>}
 
-      <MarketQuickAdd onSaved={contacts.refresh} />
     </section>
     <style>{`.market-subtabs{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 18px}.market-subtabs button{display:inline-flex;align-items:center;gap:7px}.market-subtabs button span{opacity:.72;font-size:.85em}`}</style>
   </div>;
-}
-
-function MarketQuickAdd({ onSaved }: { onSaved: () => void }) {
-  const token = useAccessToken();
-  const [form, setForm] = useState({ market: "Covent", name: "", standOrLocation: "", salesman: "", sender: "" });
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const update = (name: keyof typeof form, value: string) => setForm(current => ({ ...current, [name]: value }));
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    setMessage(undefined);
-    try {
-      await api.stageRecord("marketcontact", { ...form, active: true }, `web-market:${form.market}:${form.name}`, await token());
-      setMessage("Market record sent to staging review.");
-      setForm(current => ({ market: current.market, name: "", standOrLocation: "", salesman: "", sender: "" }));
-      onSaved();
-    } catch (exception) {
-      setMessage(exception instanceof Error ? exception.message : "Market record could not be saved.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return <form className="quick-order master-edit-form" onSubmit={event => void submit(event)}>
-    <h2>Add market seller or sender</h2>
-    <p className="hint">This is the single place to add an individual market record. Bulk workbook imports remain available from the main Master Data import area.</p>
-    <div className="field-grid">
-      <label>Market<select value={form.market} onChange={event => update("market", event.target.value)}><option>Covent</option><option>Spit</option><option>Western</option><option>Sender</option></select></label>
-      <label>{form.market === "Sender" ? "Sender" : "Seller"}<input required value={form.name} onChange={event => update("name", event.target.value)} /></label>
-      <label>Stall / stand<input value={form.standOrLocation} onChange={event => update("standOrLocation", event.target.value)} /></label>
-      <label>Salesman<input value={form.salesman} onChange={event => update("salesman", event.target.value)} /></label>
-      <label>Sender<input value={form.sender} onChange={event => update("sender", event.target.value)} /></label>
-    </div>
-    <button className="primary" disabled={saving}>{saving ? "Saving…" : "Send for review"}</button>
-    {message && <p className="hint">{message}</p>}
-  </form>;
 }

@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
-import { useAccessToken } from '../lib/auth';
 import { FuelMaster } from './Pages';
 import { DriversMasterCompact } from './DriversMasterCompact';
 import { FleetMasterUnified } from './FleetMasterUnified';
@@ -8,7 +6,6 @@ import { FuelCardsOperational } from './FuelCardsOperational';
 import { MarketsMasterClean } from './MarketsMasterClean';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
 import { GeofenceOperational } from './GeofenceOperational';
-import { MasterDataAddPanel, type AddableMasterSection } from './MasterDataAddPanel';
 import { DotGeofenceImport } from './DotGeofenceImport';
 
 type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices';
@@ -31,12 +28,9 @@ function canonicalSection(value: MasterSection): MasterSection {
 }
 
 export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?: MasterSection }) {
-  const token = useAccessToken();
   const [section, setSection] = useState<MasterSection>(() => canonicalSection(initialSection));
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [sharePointMessage, setSharePointMessage] = useState<string>();
-  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => { setSection(canonicalSection(initialSection)); setCleanupOpen(false); }, [initialSection]);
 
@@ -46,22 +40,12 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
   return <section>
     <div className="title-row">
       <div>
-        <p className="eyebrow">Live TMS master database</p>
+        <p className="eyebrow">Microsoft Lists CRM · TMS operational copy</p>
         <h1>Master data</h1>
-        <p className="intro">One place to add and maintain the records used throughout planning, tracking and integrations. The TMS is the live master; integrations enrich those same records rather than creating competing registers.</p>
+        <p className="intro">Maintain drivers, sites, vehicles, trailers, markets and customer records in Microsoft Lists. This page is the fast operational copy used by planning and dispatch, refreshed hourly.</p>
       </div>
       <div>
-        <span className="status approved">Live TMS Master Database</span>
-        <button style={{ display: 'block', marginTop: 10 }} disabled={publishing} onClick={async () => {
-          setPublishing(true); setSharePointMessage(undefined);
-          try {
-            const result = await api.publishSharePointMasterData(await token());
-            setSharePointMessage(`${result.message} ${result.rowsWritten} rows written.`);
-          } catch (error) {
-            setSharePointMessage(error instanceof Error ? error.message : 'SharePoint mirror could not be completed.');
-          } finally { setPublishing(false); }
-        }}>{publishing ? 'Mirroring to SharePoint…' : 'Mirror master data to SharePoint Lists'}</button>
-        {sharePointMessage && <p className="hint" style={{ maxWidth: 280 }}>{sharePointMessage}</p>}
+        <span className="status approved">Lists-managed CRM</span>
       </div>
     </div>
 
@@ -72,8 +56,6 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       </div>
       <p className="hint master-section-hint"><strong>{active.label}:</strong> {active.detail}</p>
     </div>
-
-    <MasterDataAddPanel section={section as AddableMasterSection} onAdded={() => setRefreshKey(value => value + 1)} />
 
     <div key={`${section}-${refreshKey}`}>
       {section === 'drivers' && <DriversMasterCompact />}
