@@ -947,6 +947,8 @@ function DispatchRow({ driver, data, status, calculatedStart, showGroup, token, 
         {status?.lastDriverReply && effectiveStatus === "Confirmed" && <small title={status.lastDriverReply}>{status.lastDriverReply.length > 72 ? `${status.lastDriverReply.slice(0, 72)}…` : status.lastDriverReply}</small>}
       </td>
       <td>
+        {compliance.warnings.length > 0 && <div className="dispatch-compliance-banner warning" role="status">Compliance warning: {compliance.warnings.join(" · ")}</div>}
+        {compliance.errors.length > 0 && <div className="dispatch-compliance-banner error" role="alert">Assignment blocked: {compliance.errors.join(" · ")}</div>}
         <div className="dispatch-buttons">
           {selected && (effectiveStatus === "Sent Awaiting Response" || effectiveStatus === "Confirmed")
             ? <>
