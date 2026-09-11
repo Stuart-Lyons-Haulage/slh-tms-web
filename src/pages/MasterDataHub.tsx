@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { api } from '../lib/api';
+import { useAccessToken } from '../lib/auth';
 import { FuelMaster } from './Pages';
 import { DriversMasterCompact } from './DriversMasterCompact';
 import { FleetMasterUnified } from './FleetMasterUnified';
@@ -29,9 +31,12 @@ function canonicalSection(value: MasterSection): MasterSection {
 }
 
 export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?: MasterSection }) {
+  const token = useAccessToken();
   const [section, setSection] = useState<MasterSection>(() => canonicalSection(initialSection));
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [sharePointMessage, setSharePointMessage] = useState<string>();
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => { setSection(canonicalSection(initialSection)); setCleanupOpen(false); }, [initialSection]);
 
@@ -45,7 +50,19 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
         <h1>Master data</h1>
         <p className="intro">One place to add and maintain the records used throughout planning, tracking and integrations. The TMS is the live master; integrations enrich those same records rather than creating competing registers.</p>
       </div>
-      <span className="status approved">Live TMS Master Database</span>
+      <div>
+        <span className="status approved">Live TMS Master Database</span>
+        <button style={{ display: 'block', marginTop: 10 }} disabled={publishing} onClick={async () => {
+          setPublishing(true); setSharePointMessage(undefined);
+          try {
+            const result = await api.publishSharePointMasterData(await token());
+            setSharePointMessage(`${result.message} ${result.rowsWritten} rows written.`);
+          } catch (error) {
+            setSharePointMessage(error instanceof Error ? error.message : 'SharePoint mirror could not be completed.');
+          } finally { setPublishing(false); }
+        }}>{publishing ? 'Mirroring to SharePoint…' : 'Mirror master data to SharePoint Lists'}</button>
+        {sharePointMessage && <p className="hint" style={{ maxWidth: 280 }}>{sharePointMessage}</p>}
+      </div>
     </div>
 
 

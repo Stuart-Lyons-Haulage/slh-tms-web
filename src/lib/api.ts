@@ -155,6 +155,7 @@ export interface TmsApi {
   stageBatch(records: StageBatchRequest[], token?: string): Promise<StageBatchResponse>;
   applyMasterData(records: StageBatchRequest[], token?: string): Promise<MasterApplyResponse>;
   linkMasterRegister(token?: string): Promise<{ linked: number; message: string }>;
+  publishSharePointMasterData(token?: string): Promise<{ listsWritten: number; rowsWritten: number; rowsByList: Record<string, number>; message: string }>;
   telemetry(token?: string): Promise<Telemetry>;
   fleetStatus(token?: string): Promise<FleetStatus>;
   trackingHistory(date: string, token?: string): Promise<Telemetry>;
@@ -206,6 +207,7 @@ export const api: TmsApi = {
   stageBatch: (records, token) => request<StageBatchResponse>('/api/v1/staging/batch', token, { method: 'POST', body: JSON.stringify(normaliseMarketMasterRecords(records)) }),
   applyMasterData: (records, token) => request<MasterApplyResponse>('/api/v1/master-data/apply', token, { method: 'POST', body: JSON.stringify(normaliseMarketMasterRecords(records)) }),
   linkMasterRegister: token => request<{ linked: number; message: string }>('/api/v1/master-data/register/link', token, { method: 'POST' }),
+  publishSharePointMasterData: token => request<{ listsWritten: number; rowsWritten: number; rowsByList: Record<string, number>; message: string }>('/api/v1/sharepoint/master-data/publish', token, { method: 'POST' }),
   telemetry: token => request<Telemetry>('/api/v1/tracking/dot/telemetry', token),
   fleetStatus: token => request<FleetStatus>('/api/v1/tracking/dot/fleet-status', token),
   trackingHistory: (date, token) => request<Telemetry>(`/api/v1/tracking/dot/history?date=${encodeURIComponent(date)}`, token),
