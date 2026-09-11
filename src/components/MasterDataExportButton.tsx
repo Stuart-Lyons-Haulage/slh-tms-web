@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { api } from "../lib/api";
-import { useAccessToken } from "../lib/auth";
 
 export type MasterExportSection =
   | "drivers"
@@ -52,23 +50,7 @@ function downloadCsv(section: MasterExportSection, rows: Record<string, unknown>
   URL.revokeObjectURL(url);
 }
 
-async function loadSection(section: MasterExportSection, token: string): Promise<Record<string, unknown>[]> {
-  const data = section === "drivers"
-    ? await api.drivers(token)
-    : section === "vehicles" || section === "fuel-cards"
-      ? await api.vehicles(token)
-      : section === "trailers"
-        ? await api.trailers(token)
-        : section === "sites"
-          ? await api.sites(token)
-          : section === "markets"
-            ? await api.marketContacts(token)
-            : await api.fuelPrices(token);
-  return data as unknown as Record<string, unknown>[];
-}
-
-export function MasterDataExportButton({ section, label }: { section: MasterExportSection; label: string }) {
-  const token = useAccessToken();
+export function MasterDataExportButton({ section, label, rows }: { section: MasterExportSection; label: string; rows: Record<string, unknown>[] }) {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -76,7 +58,6 @@ export function MasterDataExportButton({ section, label }: { section: MasterExpo
     setExporting(true);
     setError(undefined);
     try {
-      const rows = await loadSection(section, await token());
       downloadCsv(section, rows);
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : `Could not export ${label.toLowerCase()}.`);
