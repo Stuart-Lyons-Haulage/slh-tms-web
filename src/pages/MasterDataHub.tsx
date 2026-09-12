@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { api } from '../lib/api';
+import { useAccessToken } from '../lib/auth';
 import { FuelMaster } from './Pages';
 import { DriversMasterCompact } from './DriversMasterCompact';
 import { FleetMasterUnified } from './FleetMasterUnified';
@@ -31,6 +33,9 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
   const [section, setSection] = useState<MasterSection>(() => canonicalSection(initialSection));
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const token = useAccessToken();
+  const [publishing, setPublishing] = useState(false);
+  const [publishMessage, setPublishMessage] = useState<string>();
 
   useEffect(() => { setSection(canonicalSection(initialSection)); setCleanupOpen(false); }, [initialSection]);
 
@@ -46,6 +51,16 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       </div>
       <div>
         <span className="status approved">Lists-managed CRM</span>
+        <button style={{ display: 'block', marginTop: 10 }} disabled={publishing} onClick={async () => {
+          setPublishing(true); setPublishMessage(undefined);
+          try {
+            const result = await api.publishSharePointMasterData(await token());
+            setPublishMessage(`${result.rowsWritten} master rows published to SharePoint Lists.`);
+          } catch (error) {
+            setPublishMessage(error instanceof Error ? error.message : 'SharePoint publish failed.');
+          } finally { setPublishing(false); }
+        }}>{publishing ? 'Publishing master data…' : 'Publish SQL master data to Lists'}</button>
+        {publishMessage && <p className="hint" style={{ maxWidth: 280 }}>{publishMessage}</p>}
       </div>
     </div>
 
