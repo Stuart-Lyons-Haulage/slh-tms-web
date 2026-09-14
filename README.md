@@ -226,6 +226,40 @@ provider/allocation and PIN or secret-reference state; and market/sender/stall
 CRM mappings. Actual fuel PINs and any provider credentials must never be
 rendered, exported or stored in a `VITE_` variable.
 
+### Master-data retention rules
+
+The historical master-data work makes the intent unambiguous: a name-only List
+is not an acceptable migration. Retain the complete record and its identity/audit
+metadata for every driver, site, vehicle, trailer, fuel card, customer, contact
+and market route.
+
+- Drivers retain email, mobile, grade/coding, employment or agency status,
+  skills, licence/compliance detail, TachoMaster ID, unique tachograph card and
+  allocated vehicle. Never merge two people merely because their names match.
+- A delivery/collection site is a distinct physical location. Keep individual
+  Aldi, Amazon, Waitrose and Morrisons locations, their address, aliases,
+  coordinates/geofence, map link, booking/timing/cut-off and driver instruction.
+  An alias must not turn several sites into one generic customer row.
+- Vehicles, trailers and fuel cards retain their identifiers, capacity,
+  compliance/tracking state, allocation and notes. Full fuel PINs may be held
+  in the access-controlled Fuel Cards/Vehicle Lists because operations requires
+  them, but they must never be exposed by the portal, VITE configuration, logs,
+  CI output or ordinary exports.
+- Customer contacts and inbound sender routes are related but different:
+  addresses learned from order intake are candidates; a planner-approved
+  `ReceivesEtaUpdates` contact is an outbound communication recipient.
+
+The UI should expose freshness, review and reconciliation state, but not become
+an alternate master-data editor. If a required field is missing from a List
+projection, surface it as a data-quality exception rather than hiding it behind
+a title-only card or a made-up default.
+
+The current API source polls the governed Lists every ten minutes. Earlier
+operational discussion called for a once-hourly office-master refresh; confirm
+the intended cadence with operations rather than assuming the historic choice
+is still deployed. In either case, planning and dispatch continue against the
+SQL projection and must not wait for SharePoint.
+
 ## Business rules that must survive UI work
 
 - Order intake is approval-first: manual, spreadsheet and mailbox work goes to
