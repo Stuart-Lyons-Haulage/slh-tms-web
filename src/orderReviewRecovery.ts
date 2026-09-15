@@ -20,8 +20,12 @@ export function normaliseListPayload(value: unknown): unknown[] {
   return [];
 }
 
+export function isPagedStagingQueueRequest(url: string) {
+  return url.includes("/api/v1/staging/queue");
+}
+
 function isListRequest(url: string) {
-  return LIST_ENDPOINTS.some((endpoint) => url.includes(endpoint));
+  return !isPagedStagingQueueRequest(url) && LIST_ENDPOINTS.some((endpoint) => url.includes(endpoint));
 }
 
 function reviewIdFromLocation() {
@@ -268,7 +272,19 @@ export function installOrderReviewRecovery() {
     const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
     if (url.includes("/api/v1/staging")) captureStagingRequest(url, input, init);
     const response = await originalFetch(...args);
-    if (!response.ok || !isListRequest(url)) return response;
+    if (!response.ok) return response;
+
+    if (isPagedStagingQueueRequest(url)) {
+      try {
+        const payload = await response.clone().json();
+        captureTargetReview(normaliseListPayload(payload));
+      } catch {
+        // Preserve the API response exactly; this recovery layer must never change the queue contract.
+      }
+      return response;
+    }
+
+    if (!isListRequest(url)) return response;
 
     try {
       const payload = await response.clone().json();
