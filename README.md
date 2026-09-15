@@ -1,6 +1,6 @@
 # SLH TMS Web
 
-Production React and TypeScript operations portal for the [SLH TMS API](https://github.com/Stuart-Lyons-Haulage/slh-tms-api). The API and Azure SQL database remain the system of record. This repository owns the user-facing portal, planner, operations wallboard, TV wallboard, live runs, staging review, imports, reporting and operational screens.
+Production React and TypeScript operations portal for the [SLH TMS API](https://github.com/Stuart-Lyons-Haulage/slh-tms-api). The API and Azure SQL database remain the system of record for transactional operations; Microsoft Lists governs business master data and is synchronised into the API's operational projection. This repository owns the user-facing portal, planner, operations wallboard, TV wallboard, live runs, staging review, imports, reporting and operational screens.
 
 The production portal runs in Azure Container Apps and publishes automatically when `main` changes.
 
@@ -202,3 +202,133 @@ After a wallboard or integration-facing release, verify:
 - `docs/DRIVER_SMS_DELIVERY.md` - secure Azure Communication Services driver-message setup.
 - `docs/CUSTOMER_ETA_UPDATES.md` - customer ETA update behaviour.
 - `docs/portal-deployment-resilience.md` - Container Apps release recovery rules.
+
+## Master Data: read-only in TMS, governed in Microsoft Lists
+
+The current portal must present Master Data as a read-only operational view.
+Microsoft Lists is the business-maintained governance surface for customers,
+contacts, sites/geofences, drivers, vehicles, trailers, fuel cards, markets and
+email-route CRM mappings. The API maintains the synchronised SQL projection
+needed for fast, resilient operational reads; it remains the transaction store
+for orders, plans, runs, allocations, tracking, ETAs and audit history. This is
+not a conflict: Lists governs master-data changes, SQL supports live operations.
+
+Do not add client-side Graph writes, parallel editable master screens or browser
+credentials. A master-data change belongs in the governed List and reconciliation
+workflow; the UI should expose freshness, warning and reconciliation state.
+
+The master view is expected to make the following operational fields visible
+where authorised: customer/account/contact and ETA-recipient detail; site
+address, aliases, instructions, map/geofence and region; drivers' employment,
+grade/type/group/agency/skills/contact and unique tachograph card/TachoMaster
+identity; vehicles/trailers, compliance and allocation detail; fuel-card
+provider/allocation and PIN or secret-reference state; and market/sender/stall
+CRM mappings. Actual fuel PINs and any provider credentials must never be
+rendered, exported or stored in a `VITE_` variable.
+
+### Master-data retention rules
+
+The historical master-data work makes the intent unambiguous: a name-only List
+is not an acceptable migration. Retain the complete record and its identity/audit
+metadata for every driver, site, vehicle, trailer, fuel card, customer, contact
+and market route.
+
+- Drivers retain email, mobile, grade/coding, employment or agency status,
+  skills, licence/compliance detail, TachoMaster ID, unique tachograph card and
+  allocated vehicle. Never merge two people merely because their names match.
+- A delivery/collection site is a distinct physical location. Keep individual
+  Aldi, Amazon, Waitrose and Morrisons locations, their address, aliases,
+  coordinates/geofence, map link, booking/timing/cut-off and driver instruction.
+  An alias must not turn several sites into one generic customer row.
+- Vehicles, trailers and fuel cards retain their identifiers, capacity,
+  compliance/tracking state, allocation and notes. Full fuel PINs may be held
+  in the access-controlled Fuel Cards/Vehicle Lists because operations requires
+  them, but they must never be exposed by the portal, VITE configuration, logs,
+  CI output or ordinary exports.
+- Customer contacts and inbound sender routes are related but different:
+  addresses learned from order intake are candidates; a planner-approved
+  `ReceivesEtaUpdates` contact is an outbound communication recipient.
+
+The UI should expose freshness, review and reconciliation state, but not become
+an alternate master-data editor. If a required field is missing from a List
+projection, surface it as a data-quality exception rather than hiding it behind
+a title-only card or a made-up default.
+
+The current API source polls the governed Lists every ten minutes. Earlier
+operational discussion called for a once-hourly office-master refresh; confirm
+the intended cadence with operations rather than assuming the historic choice
+is still deployed. In either case, planning and dispatch continue against the
+SQL projection and must not wait for SharePoint.
+
+## Business rules that must survive UI work
+
+- Order intake is approval-first: manual, spreadsheet and mailbox work goes to
+  staging, then a planner reviews it before promotion. Keep the source-email
+  preview/evidence links useful; do not turn a preview/replay action into a
+  direct live-order write.
+- The API handles email body, non-inline attachments and specialist workbooks;
+  the Power Automate definition retains message and attachment identity. Exact
+  sender routes beat domains, subject-specific routes beat generic routes, and
+  conflicts require review. UI labels must not imply an automatic match is safe.
+- Barfoots/Barefoots and Summer Berry are never allowed to fall into NWF,
+  Drayton or a generic depot default. Surface ambiguous mapping as an exception,
+  even if a similar customer/site is available. Preserve this negative rule in
+  import, review, picker and bulk-edit features.
+- Markets are governed data, including Covent Garden and New Spitalfields,
+  sender and stall/contact context. Do not reduce a market route to a loose
+  postcode/city lookup when a specific mapping is missing.
+- AM/PM, Transfers, Markets, waves, overnight/night-out work and driver/vehicle/
+  trailer swaps are planning facts that need explicit reviewed input. Capacity,
+  including the operational 26-pallet expectation, must be checked against the
+  API result and allocated equipment rather than recreated as a UI-only rule.
+- Morrisons and Waitrose are standard-pallet rules; Aldi from Barfoots/NWF is
+  euro; Langmeads-to-Aldi Atherstone is euro, otherwise Langmeads is standard.
+  Keep warnings visible for unknown pallet type and capacity rather than hiding
+  them to make a board look complete.
+- A planned driver/vehicle does not make a run live. Live status comes from
+  RoadTech/Falcon, TachoMaster and linked geofence evidence. Do not show planned
+  start as a live ETA, and do not mark completion until the final linked stop
+  has departed.
+
+## Practical support runbook
+
+| Situation | Portal/operator response |
+| --- | --- |
+| Master data looks stale | Check master-data/reconciliation health in the API-backed view; correct the governed List record and ask for controlled sync. Do not make a browser-side workaround. |
+| Email/order missing or wrong | Open source evidence and staging history, retain the original message/attachment identity, then replay through the normal API intake path after fixing mapping/parser data. Planner review remains required. |
+| Live run, TV board or ETA looks wrong | Compare the wallboard evidence labels, tracking freshness and stop/geofence linkage. Show the specific missing/mismatch state; do not substitute planned times. |
+| Deployment looks incomplete | Use the production release marker, portal root and same-origin `/tms-api/api/v1/health` check; Container Apps can finish asynchronously. Use the existing workflow/revision process to roll back to a tested image. |
+
+## Packs, exports and audit expectations
+
+Customer load-plan/ETA output, customer-facing communication, driver messages
+and operational exports are API-backed, reviewed operational artifacts—not
+browser truth. Customer ETA export selection is planner-controlled in the
+current `main` history. Preserve the selected customer, planning date, source
+evidence and send/audit state when changing these screens. A driver pack or
+customer/load export must display the same allocation, pallet, site and live
+evidence context used by the run/dispatch screen; never reconstruct it from a
+separate client-side master-data cache.
+
+Use `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` and `pnpm test:e2e`
+for a meaningful portal change. The CI workflow runs those commands on branches
+and pull requests and blocks new global runtime patches/type suppressions. Add
+a regression for changed planner, intake, master-data, dispatch, TV or
+wallboard behaviour rather than relying on a visual smoke test alone.
+
+## ChatGPT / new-engineer handover context
+
+This portal is an operational control surface, not the place where business
+master data or live-provider secrets are edited. Its contract is deliberately
+evidence-first: staging before promotion; governed mappings before automation;
+consistent API-backed live progress across planner, operations board, TV board
+and exports; and conspicuous exceptions instead of optimistic defaults.
+
+Repository evidence confirms the web/API contract and checked-in workflows, but
+cannot prove the current Power Automate deployment, Microsoft Lists contents,
+Sage HR filter, RoadTech/TachoMaster/Fleetio data, customer commercial rules,
+current sender mappings or live secret configuration. Treat those as operations
+verification items, especially for NWF, TSBC/COOP, Summer Berry, Barfoots,
+NISA, Aldi, Morrisons, Waitrose, Amazon, Crosspoint/PCC, IFCO/JS and London
+Markets. Before changing any rule, validate it against the governed Lists and a
+real, reviewed production example.
