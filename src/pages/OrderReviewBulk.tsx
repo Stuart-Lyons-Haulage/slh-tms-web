@@ -57,6 +57,16 @@ type DateSummary = {
 };
 
 const text = (value: unknown) => String(value ?? "").trim();
+
+// Normalise a date value that may be stored as ISO 8601 ("2026-09-04T00:00:00+00:00")
+// or as a plain date string ("2026-09-04") to yyyy-MM-dd for consistent comparison.
+function normDate(value: unknown): string {
+  const raw = text(value);
+  if (!raw) return "";
+  // Take only the date part (first 10 chars covers both yyyy-MM-dd and ISO forms)
+  const datePart = raw.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : raw;
+}
 const numberText = (value: unknown) => value == null || value === "" ? "" : String(value);
 
 function dateKey(value: Date) {
@@ -186,10 +196,10 @@ export function OrderReviewBulk() {
   const rows = useMemo(() => (queue.data || []).map(parse), [queue.data]);
   const dateRange = useMemo(rollingDates, []);
   const today = useMemo(todayDate, []);
-  const pendingOrderDates = useMemo(() => Array.from(new Set(rows.flatMap((row) => [text(row.payload.collectionDate), text(row.payload.deliveryDate)]).filter(Boolean))).sort(), [rows]);
+  const pendingOrderDates = useMemo(() => Array.from(new Set(rows.flatMap((row) => [normDate(row.payload.collectionDate), normDate(row.payload.deliveryDate)]).filter(Boolean))).sort(), [rows]);
   const visibleDates = useMemo(() => Array.from(new Set([...dateRange, ...pendingOrderDates, date])).sort(), [date, dateRange, pendingOrderDates]);
   const datedRows = useMemo(() => rows.filter((row) =>
-    text(row.payload.collectionDate) === date || text(row.payload.deliveryDate) === date), [date, rows]);
+    normDate(row.payload.collectionDate) === date || normDate(row.payload.deliveryDate) === date), [date, rows]);
   const selectableRows = useMemo(() => datedRows.filter((row) => !blockingReason(row, date)), [date, datedRows]);
   const cleanRows = useMemo(() => selectableRows.filter((row) => !reviewFlagReason(row)), [selectableRows]);
   const flaggedRows = useMemo(() => selectableRows.filter((row) => Boolean(reviewFlagReason(row))), [selectableRows]);
@@ -200,7 +210,7 @@ export function OrderReviewBulk() {
   const allCleanSelected = cleanRows.length > 0 && cleanRows.every((row) => selectedIds.has(row.item.id));
 
   const summaries = useMemo(() => visibleDates.map<DateSummary>((planningDate) => {
-    const pending = rows.filter((row) => text(row.payload.collectionDate) === planningDate);
+    const pending = rows.filter((row) => normDate(row.payload.collectionDate) === planningDate);
     const selectable = pending.filter((row) => !blockingReason(row, planningDate));
     return {
       date: planningDate,
