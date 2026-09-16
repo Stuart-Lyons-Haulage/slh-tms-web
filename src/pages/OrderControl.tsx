@@ -79,7 +79,7 @@ export function OrderControl({ initialTab = "review" }: { initialTab?: OrderCont
       {repairNotice && <p className="notice inline-notice" style={{ marginBottom: 0 }}>{repairNotice}</p>}
     </section>
     <IntakeHealthPanel />
-    {tab === "review" ? <><UndatedOrderReviewQueue /><OrderReviewBulk key={selectedDate} /></> : <JobsOperational date={selectedDate} />}
+    {tab === "review" ? <><UndatedOrderReviewQueue /><OrderReviewBulk date={selectedDate} /></> : <JobsOperational date={selectedDate} />}
     {sourceEmailStagingId && <SourceEmailEvidenceDrawer stagingId={sourceEmailStagingId} onClose={closeSourceEmail} />}
   </>;
 }
