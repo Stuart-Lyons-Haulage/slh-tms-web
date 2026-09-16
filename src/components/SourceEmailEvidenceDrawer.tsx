@@ -50,6 +50,7 @@ type PreviewState = {
 const orderDocumentExtensions = new Set(["pdf", "csv", "xls", "xlsx", "xlsm"]);
 const previewTextExtensions = new Set(["csv", "txt", "text"]);
 const imageContentTypes = ["image/", "application/octet-stream; image"];
+const invalidDownloadNameChars = new Set(["\\", "/", ":", "*", "?", "\"", "<", ">", "|"]);
 
 function text(value: unknown) {
   return String(value ?? "").trim();
@@ -157,7 +158,10 @@ function displayAttachmentName(attachment: Attachment, index: number, evidence?:
 }
 
 function safeDownloadName(name?: string) {
-  const cleaned = text(name).replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim();
+  const cleaned = Array.from(text(name))
+    .map((char) => invalidDownloadNameChars.has(char) || char.charCodeAt(0) < 32 ? "_" : char)
+    .join("")
+    .trim();
   return cleaned || "source-email-attachment";
 }
 
@@ -215,7 +219,7 @@ export function SourceEmailEvidenceDrawer({ stagingId, onClose }: { stagingId: s
 
   const body = bodyAsText(evidence);
   const allAttachments = normaliseArray<Attachment>(evidence?.attachments);
-  const attachments = useMemo(() => allAttachments.filter(isOperationalAttachment), [allAttachments]);
+  const attachments = useMemo(() => normaliseArray<Attachment>(evidence?.attachments).filter(isOperationalAttachment), [evidence?.attachments]);
   const hiddenAttachmentCount = Math.max(0, allAttachments.length - attachments.length);
 
   function openPreview(attachment: Attachment) {
