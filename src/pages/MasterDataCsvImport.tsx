@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useMemo, useState, type ChangeEvent } from "react";
-import { api, type MasterApplyResponse, type StageBatchRequest } from "../lib/api";
+import { apiBaseUrl, type MasterApplyResponse, type StageBatchRequest } from "../lib/api";
 import { useAccessToken } from "../lib/auth";
 
 type MasterEntity = "driver" | "vehicle" | "trailer" | "site";
@@ -13,7 +13,43 @@ type ParsedMasterCsv = {
   warnings: string[];
 };
 
+type WorkbookSummaryCounts = {
+  total: number;
+  matched: number;
+  imported: number;
+  ready: number;
+  review: number;
+  skipped: number;
+  newRows: number;
+};
+
+type WorkbookRowResult = {
+  section: string;
+  rowNumber: number;
+  key: string;
+  status: string;
+  reason: string;
+  confidence: number;
+  actionTaken?: string;
+  relatedRecords?: string[];
+};
+
+type WorkbookImportResult = {
+  mode: string;
+  rows: WorkbookRowResult[];
+  warnings: string[];
+  summary?: Record<string, WorkbookSummaryCounts>;
+};
+
+type WorkbookUploadState = {
+  file?: File;
+  fileName: string;
+  preview?: WorkbookImportResult;
+  commit?: WorkbookImportResult;
+};
+
 const MASTER_IMPORT_CHUNK_SIZE = 25;
+const WORKBOOK_ACCEPT = ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
 
 const identityFields: Record<MasterEntity, string[]> = {
   driver: ["employeeNumber", "displayName"],
@@ -134,71 +170,182 @@ export async function applyMasterDataInChunks(
   return aggregate;
 }
 
+function isWorkbookFile(file: File) {
+  const name = file.name.toLowerCase();
+  return name.endsWith(".xlsx") || name.endsWith(".xls");
+}
+
+function sectionCount(result: WorkbookImportResult | undefined, section: string) {
+  return result?.rows?.filter((row) => row.section === section).length ?? 0;
+}
+
+function shortResultRows(result: WorkbookImportResult | undefined) {
+  if (!result?.rows?.length) return [];
+  return result.rows
+    .filter((row) => ["review", "conflict", "skipped", "matched", "updated", "imported", "ready", "new"].includes(String(row.status).toLowerCase()))
+    .slice(0, 40);
+}
+
+function apiErrorMessage(payload: unknown, fallback: string) {
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    if (typeof record.detail === "string") return record.detail;
+    if (typeof record.message === "string") return record.message;
+    if (typeof record.error === "string") return record.error;
+  }
+  return fallback;
+}
+
+async function postWorkbook(file: File, action: "preview" | "commit", accessToken?: string): Promise<WorkbookImportResult> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+
+  const response = await fetch(`${apiBaseUrl}/api/v1/master-data/workbook/${action}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    throw new Error(apiErrorMessage(payload, `Workbook import failed (${response.status}).`));
+  }
+
+  return await response.json() as WorkbookImportResult;
+}
+
 export function MasterDataCsvImport() {
   const token = useAccessToken();
-  const [entity, setEntity] = useState<MasterEntity>("driver");
-  const [fileName, setFileName] = useState("");
-  const [parsed, setParsed] = useState<ParsedMasterCsv>();
+  const [upload, setUpload] = useState<WorkbookUploadState>({ fileName: "" });
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const previewHeaders = useMemo(() => parsed ? Array.from(new Set(parsed.preview.flatMap((row) => Object.keys(row)))).slice(0, 8) : [], [parsed]);
+  const [previewing, setPreviewing] = useState(false);
+  const [committing, setCommitting] = useState(false);
+
+  const latestResult = upload.commit || upload.preview;
+  const resultRows = useMemo(() => shortResultRows(latestResult), [latestResult]);
+
+  const summarySections = useMemo(() => {
+    const result = latestResult;
+    if (!result) return [];
+
+    const fromSummary = result.summary
+      ? Object.entries(result.summary).map(([section, counts]) => ({ section, ...counts }))
+      : [];
+
+    if (fromSummary.length) return fromSummary;
+
+    return [
+      "Sites",
+      "Site Cutoffs",
+      "Run Times",
+      "Vehicles & Fuel",
+      "Drivers",
+      "Customer Contacts",
+      "Market Contacts",
+      "Fuel Price History",
+    ].map((section) => ({
+      section,
+      total: sectionCount(result, section),
+      matched: 0,
+      imported: 0,
+      ready: 0,
+      review: 0,
+      skipped: 0,
+      newRows: 0,
+    })).filter((row) => row.total > 0);
+  }, [latestResult]);
 
   async function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    setParsed(undefined); setMessage(undefined); setError(undefined);
+    setUpload({ fileName: "" });
+    setMessage(undefined);
+    setError(undefined);
+
     if (!file) return;
-    setFileName(file.name);
-    if (!file.name.toLowerCase().endsWith(".csv")) { setError("Choose a .csv file."); return; }
+
+    setUpload({ file, fileName: file.name });
+    if (!isWorkbookFile(file)) {
+      setError("Choose the SLH master-data workbook as a .xlsx or .xls file. Do not convert it to CSV.");
+      return;
+    }
+
+    setMessage("Workbook selected. Run preview first to check what will update before committing.");
+  }
+
+  async function previewWorkbook() {
+    if (!upload.file) return;
+    if (!isWorkbookFile(upload.file)) {
+      setError("Choose the SLH master-data workbook as a .xlsx or .xls file.");
+      return;
+    }
+
+    setPreviewing(true);
+    setError(undefined);
+    setMessage("Reading workbook and checking live TMS matches…");
+
     try {
-      const result = parseMasterDataCsv(await file.text(), entity, file.name);
-      setParsed(result);
-      setMessage(`${result.requests.length} ${entity} row${result.requests.length === 1 ? "" : "s"} ready for review.`);
+      const accessToken = await token();
+      const result = await postWorkbook(upload.file, "preview", accessToken);
+      setUpload((current) => ({ ...current, preview: result, commit: undefined }));
+      setMessage(`${result.rows?.length ?? 0} workbook rows checked. Review warnings/conflicts before committing.`);
     } catch (exception) {
-      setError(exception instanceof Error ? exception.message : "The CSV could not be read.");
+      setError(exception instanceof Error ? exception.message : "The workbook preview could not be completed.");
+      setMessage(undefined);
+    } finally {
+      setPreviewing(false);
     }
   }
 
-  async function apply() {
-    if (!parsed?.requests.length) return;
-    setSaving(true); setError(undefined); setMessage(undefined);
+  async function commitWorkbook() {
+    if (!upload.file) return;
+    if (!isWorkbookFile(upload.file)) {
+      setError("Choose the SLH master-data workbook as a .xlsx or .xls file.");
+      return;
+    }
+
+    setCommitting(true);
+    setError(undefined);
+    setMessage("Writing workbook updates to TMS Master Data…");
+
     try {
       const accessToken = await token();
-      const result = await applyMasterDataInChunks(
-        parsed.requests,
-        (batch) => api.applyMasterData(batch, accessToken),
-        MASTER_IMPORT_CHUNK_SIZE,
-        (completed, total) => setMessage(`Applying reviewed rows… ${completed} of ${total} completed.`),
-      );
-      setMessage(`${result.applied} applied${result.registered ? ` · ${result.registered} recovery-registered` : ""}${result.failed ? ` · ${result.failed} failed` : ""}.`);
-      if (result.failed) {
-        const failures = result.results.filter((item) => !item.applied).map((item) => item.error).filter(Boolean).slice(0, 5);
-        if (failures.length) setError(failures.join(" · "));
-      }
+      const result = await postWorkbook(upload.file, "commit", accessToken);
+      setUpload((current) => ({ ...current, commit: result }));
+      const imported = result.rows?.filter((row) => ["imported", "updated", "matched"].includes(String(row.status).toLowerCase())).length ?? 0;
+      const review = result.rows?.filter((row) => ["review", "conflict", "skipped"].includes(String(row.status).toLowerCase())).length ?? 0;
+      setMessage(`${imported} rows written or matched. ${review} rows held/skipped for review.`);
     } catch (exception) {
-      setError(exception instanceof Error ? exception.message : "The master-data CSV could not be applied.");
-    } finally { setSaving(false); }
+      setError(exception instanceof Error ? exception.message : "The workbook commit could not be completed.");
+      setMessage(undefined);
+    } finally {
+      setCommitting(false);
+    }
   }
 
   return <section className="panel master-csv-import">
     <div className="title-row">
       <div>
-        <p className="eyebrow">Contingency sanity check</p>
-        <h2>Master data CSV</h2>
-        <p className="hint">Use this only when you need to reconcile a simple CSV against live TMS master data — for example driver numbers, licence details, vehicles, trailers or site codes. Review the preview before applying.</p>
+        <p className="eyebrow">SQL master-data workbook</p>
+        <h2>Master data workbook</h2>
+        <p className="hint">Upload the full SLH master-data Excel workbook. The API reads every sheet and writes updates to the correct TMS master-data area. Drivers are update-only; TachoMaster remains the authority for driver identity.</p>
       </div>
     </div>
     <div className="master-csv-controls">
-      <label>Master type<select value={entity} onChange={(event) => { setEntity(event.target.value as MasterEntity); setParsed(undefined); setFileName(""); setMessage(undefined); setError(undefined); }}>
-        <option value="driver">Drivers / licences</option><option value="vehicle">Vehicles</option><option value="trailer">Trailers</option><option value="site">Sites</option>
-      </select></label>
-      <label>CSV file<input type="file" accept="text/csv,.csv" onChange={(event) => void chooseFile(event)} /></label>
-      {fileName && <strong>{fileName}</strong>}
+      <label>Workbook file<input type="file" accept={WORKBOOK_ACCEPT} onChange={(event) => void chooseFile(event)} /></label>
+      {upload.fileName && <strong>{upload.fileName}</strong>}
     </div>
     {message && <p className="notice ready">{message}</p>}
     {error && <p className="notice">{error}</p>}
-    {parsed?.warnings.length ? <p className="notice inline-notice">{parsed.warnings.slice(0, 5).join(" · ")}</p> : null}
-    {parsed?.preview.length ? <div className="master-csv-preview"><table className="master-table"><thead><tr>{previewHeaders.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{parsed.preview.map((row, index) => <tr key={index}>{previewHeaders.map((header) => <td key={header}>{String(row[header] ?? "")}</td>)}</tr>)}</tbody></table></div> : null}
-    <div className="actions"><button type="button" className="primary" disabled={!parsed?.requests.length || saving} onClick={() => void apply()}>{saving ? "Applying…" : `Apply ${parsed?.requests.length || ""} reviewed rows`}</button></div>
+    <div className="actions">
+      <button type="button" className="primary" disabled={!upload.file || previewing || committing} onClick={() => void previewWorkbook()}>{previewing ? "Previewing workbook…" : "Preview workbook"}</button>
+      <button type="button" className="primary" disabled={!upload.file || !upload.preview || previewing || committing} onClick={() => void commitWorkbook()}>{committing ? "Writing updates…" : "Commit workbook updates"}</button>
+    </div>
+    {latestResult?.warnings?.length ? <div className="notice inline-notice"><strong>Workbook warnings</strong><ul>{latestResult.warnings.slice(0, 10).map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}</ul></div> : null}
+    {summarySections.length ? <div className="master-csv-preview"><h3>Workbook summary</h3><table className="master-table"><thead><tr><th>Section</th><th>Total</th><th>Matched</th><th>Imported</th><th>Ready</th><th>Review</th><th>Skipped</th><th>New</th></tr></thead><tbody>{summarySections.map((row) => <tr key={row.section}><td>{row.section}</td><td>{row.total}</td><td>{row.matched}</td><td>{row.imported}</td><td>{row.ready}</td><td>{row.review}</td><td>{row.skipped}</td><td>{row.newRows}</td></tr>)}</tbody></table></div> : null}
+    {resultRows.length ? <div className="master-csv-preview"><h3>Review rows</h3><table className="master-table"><thead><tr><th>Section</th><th>Row</th><th>Key</th><th>Status</th><th>Confidence</th><th>Action</th><th>Reason</th></tr></thead><tbody>{resultRows.map((row, index) => <tr key={`${row.section}-${row.rowNumber}-${row.key}-${index}`}><td>{row.section}</td><td>{row.rowNumber}</td><td>{row.key}</td><td>{row.status}</td><td>{row.confidence}</td><td>{row.actionTaken ?? ""}</td><td>{row.reason}</td></tr>)}</tbody></table></div> : null}
   </section>;
 }
