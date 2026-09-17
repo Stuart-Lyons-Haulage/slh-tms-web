@@ -19,7 +19,7 @@ export type Attachment = {
   contentBytes?: string;
 };
 
-type SourceEmailEvidence = {
+export type SourceEmailEvidence = {
   messageId?: string;
   internetMessageId?: string;
   conversationId?: string;
@@ -99,14 +99,11 @@ export function stripHtmlForDisplay(value: string) {
     container.innerHTML = raw;
     return (container.textContent || container.innerText || "").replace(/\s+/g, " ").trim();
   }
+  // Test/server fallback: remove tags and normalise only non-breaking spaces. Do not
+  // decode general entities here; browsers safely decode them through textContent.
   return raw
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
     .replace(/\s+/g, " ")
     .trim();
 }
