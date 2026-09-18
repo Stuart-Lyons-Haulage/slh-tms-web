@@ -94,6 +94,7 @@ function showStartupFailure(error: unknown) {
 
 async function start() {
   try {
+    if (localTestMode) { renderApp(); return; }
     if (e2eAuth) { renderApp(); return; }
     if (isTvRoutePath && (window as Window & { __SLH_TV_COMPATIBILITY__?: boolean }).__SLH_TV_COMPATIBILITY__) return;
     if (isTvRoutePath) (window as Window & { __SLH_TV_REACT_STARTED__?: boolean }).__SLH_TV_REACT_STARTED__ = true;
