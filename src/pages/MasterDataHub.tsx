@@ -7,13 +7,12 @@ import { MarketsMasterClean } from './MarketsMasterClean';
 import { OrderIntakeMappingAdmin } from './OrderIntakeMappingAdmin';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
 import { GeofenceOperational } from './GeofenceOperational';
-import { EmailIntakeMappings } from './EmailIntakeMappings';
 import { MasterDataCsvImport } from './MasterDataCsvImport';
 import { MasterDataDuplicateReviewPanel } from '../components/MasterDataDuplicateReviewPanel';
 import { useAccessToken } from '../lib/auth';
 import { request } from '../lib/api';
 
-type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices' | 'email-intake' | 'intake-rules';
+type MasterSection = MasterDataTab | 'fuel-cards' | 'markets' | 'fuel-prices' | 'intake-rules';
 type DuplicateEntity = 'sites' | 'drivers' | 'vehicles' | 'trailers' | 'markets';
 
 const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
@@ -25,7 +24,6 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
   { key: 'markets', label: 'Markets', detail: 'SQL market and contact register used by order intake and planning.' },
   { key: 'intake-rules', label: 'Email & route rules', detail: 'SQL sender-to-customer mappings and evidence-based route rules used by email intake.' },
   { key: 'fuel-prices', label: 'Fuel prices', detail: 'SQL fuel pricing reference data.' },
-  { key: 'email-intake', label: 'Email intake', detail: 'SQL sender/customer mappings and planner-controlled route rules for staged email orders.' },
 ];
 
 function canonicalSection(value: MasterSection): MasterSection {
@@ -114,7 +112,6 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
       {section === 'markets' && <MarketsMasterClean />}
       {section === 'intake-rules' && <OrderIntakeMappingAdmin />}
       {section === 'fuel-prices' && <FuelMaster />}
-      {section === 'email-intake' && <EmailIntakeMappings />}
     </div>
   </section>;
 }
