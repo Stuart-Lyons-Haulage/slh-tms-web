@@ -154,59 +154,6 @@ export function RoadrunnerCsvExport() {
       <label>Planning date <input type="date" value={date} onChange={event => { setDate(event.target.value); resetSelection(); }} /></label>
     </div>
 
-    <div className="panel">
-      <div className="title-row">
-        <div>
-          <p className="eyebrow">Roadrunner Site Master</p>
-          <h3>Link Roadrunner sites to TMS Site Master</h3>
-          <p className="hint">
-            Upload the Roadrunner site/address export. Existing TMS sites are matched by Roadrunner Code first, then unique postcode and high-confidence name/address evidence.
-            Matched sites are enriched with the Roadrunner code, address aliases, coordinates and the full Roadrunner profile. Ambiguous or unmatched rows are not created automatically.
-          </p>
-        </div>
-        <label className="button">
-          {siteImporting ? 'Reconciling…' : 'Upload Roadrunner Sites CSV'}
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            hidden
-            disabled={siteImporting}
-            onChange={event => {
-              const file = event.target.files?.[0];
-              void importRoadrunnerSiteMaster(file);
-              event.currentTarget.value = '';
-            }}
-          />
-        </label>
-      </div>
-
-      {siteImportFileName && <p className="hint">Last file: <strong>{siteImportFileName}</strong></p>}
-      {siteImportError && <p className="notice error">{siteImportError}</p>}
-
-      {siteImportResult && <>
-        <div className="metrics">
-          <article className="metric"><span>Received</span><strong>{siteImportResult.received}</strong><small>Roadrunner site rows</small></article>
-          <article className="metric"><span>Linked</span><strong>{siteImportResult.linked}</strong><small>Existing TMS sites enriched</small></article>
-          <article className="metric"><span>Review</span><strong>{siteImportResult.review}</strong><small>Ambiguous matches held</small></article>
-          <article className="metric"><span>Unmatched</span><strong>{siteImportResult.unmatched}</strong><small>No site created automatically</small></article>
-        </div>
-
-        {siteImportResult.results.some(result => result.status !== 'linked') && <div className="table-scroll">
-          <table>
-            <thead><tr><th>Roadrunner Code</th><th>Company</th><th>Status</th><th>Confidence</th><th>Reason / candidates</th></tr></thead>
-            <tbody>{siteImportResult.results.filter(result => result.status !== 'linked').slice(0, 50).map((result, index) => <tr key={`${result.code || 'site'}-${index}`}>
-              <td><strong>{result.code || '—'}</strong></td>
-              <td>{result.company || '—'}</td>
-              <td>{result.status}</td>
-              <td>{result.confidence}%</td>
-              <td>{result.reason}{result.candidates?.length ? <><br /><small>{result.candidates.map(candidate => `${candidate.externalCode} · ${candidate.name}`).join(' | ')}</small></> : null}</td>
-            </tr>)}</tbody>
-          </table>
-          {siteImportResult.results.filter(result => result.status !== 'linked').length > 50 && <p className="hint">Showing the first 50 review/unmatched rows.</p>}
-        </div>}
-      </>}
-    </div>
-
     <div className="button-row">
       <button type="button" onClick={() => setMode('orders')} disabled={mode === 'orders'}>Orders export</button>
       <button type="button" onClick={() => setMode('runs')} disabled={mode === 'runs'}>Runs export</button>
