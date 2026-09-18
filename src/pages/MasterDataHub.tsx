@@ -8,6 +8,7 @@ import { OrderIntakeMappingAdmin } from './OrderIntakeMappingAdmin';
 import { MasterDataOperational, type MasterDataTab } from './MasterDataOperational';
 import { GeofenceOperational } from './GeofenceOperational';
 import { EmailIntakeMappings } from './EmailIntakeMappings';
+import { MasterDataCsvImport } from './MasterDataCsvImport';
 import { MasterDataDuplicateReviewPanel } from '../components/MasterDataDuplicateReviewPanel';
 import { useAccessToken } from '../lib/auth';
 import { request } from '../lib/api';
@@ -83,6 +84,8 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
     <div className="notice inline-notice" style={{ marginBottom: 18 }}>
       <strong>One source of truth.</strong> Changes made here are validated and saved to the SQL master before anything downstream can use them.
     </div>
+
+    <MasterDataCsvImport />
 
     {section === 'drivers' && <div className="actions" style={{ marginBottom: 18 }}>
       <button className="primary" onClick={() => void syncDriverIdentities()} disabled={syncingDrivers}>
