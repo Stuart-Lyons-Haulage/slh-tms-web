@@ -4,7 +4,7 @@ import { OrdersOperationalV2 } from "./OrdersOperationalV2";
 import { PlannerPlanImport } from "./PlannerPlanImport";
 import { MasterDataCsvImport } from "./MasterDataCsvImport";
 
-type ImportTab = "planner" | "orders" | "contingency" | "master-csv";
+type ImportTab = "planner" | "orders" | "contingency";
 
 export function ImportCentre({ initialTab = "planner" }: { initialTab?: ImportTab }) {
   const [tab, setTab] = useState<ImportTab>(initialTab);
