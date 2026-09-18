@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { api, type RoadrunnerSiteReconcileResponse } from '../lib/api';
+import { api } from '../lib/api';
 import { useAccessToken } from '../lib/auth';
 import { useApi } from '../lib/useApi';
 import { listRuns } from '../api/runs';
@@ -42,10 +42,6 @@ export function RoadrunnerCsvExport() {
   const [mode, setMode] = useState<ExportMode>('orders');
   const [selectedRunIds, setSelectedRunIds] = useState<Set<string>>(new Set());
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
-  const [siteImporting, setSiteImporting] = useState(false);
-  const [siteImportError, setSiteImportError] = useState('');
-  const [siteImportFileName, setSiteImportFileName] = useState('');
-  const [siteImportResult, setSiteImportResult] = useState<RoadrunnerSiteReconcileResponse>();
 
   const runs = useApi(useCallback(async () => listRuns(date, await token()), [date, token]));
   const orders = useApi(useCallback(async () => api.orders(date, date, await token()), [date, token]));
@@ -103,26 +99,6 @@ export function RoadrunnerCsvExport() {
   function resetSelection() {
     setSelectedRunIds(new Set());
     setSelectedOrderIds(new Set());
-  }
-
-  async function importRoadrunnerSiteMaster(file?: File) {
-    if (!file) return;
-    setSiteImporting(true);
-    setSiteImportError('');
-    setSiteImportFileName(file.name);
-    setSiteImportResult(undefined);
-
-    try {
-      const text = decodeRoadrunnerSiteMasterBytes(await file.arrayBuffer());
-      const records = parseRoadrunnerSiteMasterCsv(text);
-      if (!records.length) throw new Error('No Roadrunner site records were found in this file.');
-      const result = await api.reconcileRoadrunnerSites(records, await token());
-      setSiteImportResult(result);
-    } catch (error) {
-      setSiteImportError(error instanceof Error ? error.message : 'Roadrunner Site Master import failed.');
-    } finally {
-      setSiteImporting(false);
-    }
   }
 
   function toggleRun(id: string) {
