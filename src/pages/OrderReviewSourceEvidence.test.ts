@@ -29,7 +29,8 @@ describe("Order Review source email evidence", () => {
   });
 
   it("opens the exact source email when an Order Review attention item is clicked", () => {
-    expect(dashboardSource).toContain("date=${encodeURIComponent(date)}&reviewId=");\n    expect(dashboardSource).toContain("&sourceEmail=1");
+    expect(dashboardSource).toContain("date=${encodeURIComponent(date)}&reviewId=");
+    expect(dashboardSource).toContain("&sourceEmail=1");
     expect(controlSource).toContain('searchParams.get("reviewId")');
     expect(controlSource).toContain('searchParams.get("sourceEmail") === "1"');
     expect(controlSource).toContain("SourceEmailEvidenceDrawer");
