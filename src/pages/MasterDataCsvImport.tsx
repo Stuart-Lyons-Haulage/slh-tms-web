@@ -260,7 +260,7 @@ export function MasterDataCsvImport({ onCommitted }: { onCommitted?: () => void 
         setMessage(`${result.linked} Roadrunner sites linked/enriched · ${result.review} review · ${result.unmatched} unmatched. Existing populated Site Master values were preserved.`);
       }else{
         if(!upload.csv?.requests.length)throw new Error("Map the CSV to a master-data type first.");
-        const result=await applyMasterDataInChunks(upload.csv.requests,batch=>api.applyMasterData(batch,undefined));
+        const accessToken=await token();\n        const result=await applyMasterDataInChunks(upload.csv.requests,batch=>api.applyMasterData(batch,accessToken));
         setUpload(c=>({...c,csvCommit:result}));
         setMessage(`${result.applied} master rows applied${result.failed?` · ${result.failed} failed`:""}${result.linked?` · ${result.linked} linked`:""}.`);
       }
