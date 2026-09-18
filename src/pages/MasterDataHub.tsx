@@ -21,7 +21,7 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
   { key: 'vehicles', label: 'Vehicles', detail: 'SQL vehicle register linked to Fleetio operational data.' },
   { key: 'trailers', label: 'Trailers', detail: 'SQL trailer register for identity, capacity and Fleetio links.' },
   { key: 'fuel-cards', label: 'Fuel cards & PINs', detail: 'Restricted SQL fuel register for vehicle fuel-card details and PINs.' },
-  { key: 'sites', label: 'Sites', detail: 'SQL site register for aliases, addresses, planning data and linked execution geofences.' },
+  { key: 'sites', label: 'Sites', detail: 'SQL site register for aliases, addresses, planning data and linked execution geofences.' },\n  { key: 'customers', label: 'Customers', detail: 'SQL customer register for identity, trading name, account ownership, service notes and default site.' },
   { key: 'markets', label: 'Markets', detail: 'SQL market and contact register used by order intake and planning.' },
   { key: 'intake-rules', label: 'Email & route rules', detail: 'SQL sender-to-customer mappings and evidence-based route rules used by email intake.' },
   { key: 'fuel-prices', label: 'Fuel prices', detail: 'SQL fuel pricing reference data.' },
@@ -29,7 +29,7 @@ const sections: Array<{ key: MasterSection; label: string; detail: string }> = [
 ];
 
 function canonicalSection(value: MasterSection): MasterSection {
-  return value === 'customers' || value === 'geofences' ? 'sites' : value;
+  return value === 'geofences' ? 'sites' : value;
 }
 
 function duplicateEntity(section: MasterSection): DuplicateEntity | undefined {
@@ -109,6 +109,7 @@ export function MasterDataHub({ initialSection = 'drivers' }: { initialSection?:
         </div>
         <GeofenceOperational />
       </>}
+      {section === 'customers' && <MasterDataOperational initialTab="customers" showCategoryButtons={false} showHeading={false} />}
       {section === 'fuel-cards' && <FuelCardsOperational />}
       {section === 'markets' && <MarketsMasterClean />}
       {section === 'intake-rules' && <OrderIntakeMappingAdmin />}
