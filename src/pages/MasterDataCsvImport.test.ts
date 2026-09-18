@@ -22,7 +22,7 @@ describe("MasterDataCsvImport", () => {
 
   it("maps site enrichment fields without losing canonical identity", () => {
     const parsed = parseMasterDataCsv(
-      "External Code,Site Name,Collection Address,Roadrunner Code,Latitude,Longitude\\nSITE012,Aldi Goldthorpe,Commercial Road Goldthorpe S63 9BL,ALDIGOLD,53.534,-1.302\\n",
+      "External Code,Site Name,Collection Address,Roadrunner Code,Latitude,Longitude\nSITE012,Aldi Goldthorpe,Commercial Road Goldthorpe S63 9BL,ALDIGOLD,53.534,-1.302\n",
       "site",
       "sites.csv",
     );
@@ -39,7 +39,7 @@ describe("MasterDataCsvImport", () => {
 
   it("maps vehicle fuel and compliance enrichment fields", () => {
     const parsed = parseMasterDataCsv(
-      "Registration,Fleet Number,Fuel Provider,MOT Expiry,Tacho Calibration Expiry\\nAB12 CDE,12,Shell,31/12/2026,01/02/2027\\n",
+      "Registration,Fleet Number,Fuel Provider,MOT Expiry,Tacho Calibration Expiry\nAB12 CDE,12,Shell,31/12/2026,01/02/2027\n",
       "vehicle",
       "vehicles.csv",
     );
